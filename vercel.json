@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "outputDirectory": "",
+  "ignoreCommand": "echo 'Using all commits'"
+}
