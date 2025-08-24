@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+  "build": "next build && node -e \"const fs=require('fs');const path='.next';function walk(d){for(const f of fs.readdirSync(d)){const p=d+'/'+f;const s=fs.statSync(p);console.log(p);if(s.isDirectory())walk(p)}}if(fs.existsSync(path))walk(path);\"",
     "start": "next start",
     "lint": "eslint"
   },
