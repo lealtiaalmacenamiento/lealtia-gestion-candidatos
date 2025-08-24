@@ -50,8 +50,7 @@ export function buildAltaUsuarioEmail(email: string, password: string) {
   const username = email.split('@')[0]
   const year = new Date().getFullYear()
   const LOGO_URL = process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
-  // URL de login por defecto (producción). Puede sobreescribirse con MAIL_LOGIN_URL
-  const LOGIN_URL = process.env.MAIL_LOGIN_URL || 'https://lealtia-gestion-candidatos-79ck.vercel.app/login'
+  const LOGIN_URL = process.env.MAIL_LOGIN_URL 
 
   const html = `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
