@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
+import { normalizeDateFields } from '@/lib/dateUtils'
 
 const supabase = getServiceClient()
 
@@ -31,6 +32,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   // (sin modo debug) procedemos directo al update; si nada cambia Supabase devolverá fila igual
   // Evitar fallo "Cannot coerce the result to a single JSON object" cuando no hay filas o RLS impide retorno
   interface EFCRow { id: number; [key: string]: unknown }
+  normalizeDateFields(body)
   const { data: updatedRows, error: updError } = await supabase.from('efc').update(body).eq('id', id).select()
   if (updError) return NextResponse.json({ error: updError.message }, { status: 500 })
   if (process.env.NODE_ENV !== 'production') console.log('[EFC PUT] id', id, 'keys', Object.keys(body), 'updatedRows.len', Array.isArray(updatedRows)? updatedRows.length : 'n/a')

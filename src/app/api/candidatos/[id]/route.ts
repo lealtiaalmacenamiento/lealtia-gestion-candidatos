@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
+import { normalizeDateFields } from '@/lib/dateUtils'
 import type { Candidato } from '@/types'
 
 // Tipo mínimo para acceder a campos dinámicos sin que TS marque "never"
@@ -59,6 +60,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   // Si no existe trigger en BD que actualice ultima_actualizacion, lo hacemos aquí
   body.ultima_actualizacion = new Date().toISOString()
   // fecha_tentativa_de_examen: si viene en body se guarda tal cual (yyyy-mm-dd)
+  normalizeDateFields(body)
   const { data, error } = await supabase.from('candidatos').update(body).eq('id_candidato', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
