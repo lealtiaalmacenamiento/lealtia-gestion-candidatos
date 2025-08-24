@@ -15,10 +15,11 @@
     "bootstrap": "^5.3.7",
     "bootstrap-icons": "^1.13.1",
     "dotenv": "^17.2.1",
-    "next": "15.5.0",
+    "next": "^15.5.0",
     "nodemailer": "^6.10.1",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "vercel": "^46.0.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -1,7 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
+import type { Candidato } from '@/types'
+
+// Tipo mínimo para acceder a campos dinámicos sin que TS marque "never"
+type CandidatoParcial = Partial<Candidato>
 
 const supabase = getServiceClient()
 
@@ -20,25 +25,33 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const existente = await supabase.from('candidatos').select('*').eq('id_candidato', id).single()
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
 
-  const body = await req.json()
+  const body: CandidatoParcial = await req.json()
 
-  if (body.mes && body.mes !== existente.data.mes) {
+  const existenteData: CandidatoParcial = existente.data || {}
+
+  if (body.mes && body.mes !== existenteData.mes) {
     const { data: cedula } = await supabase.from('cedula_a1').select('*').eq('mes', body.mes).single()
-    if (cedula) Object.assign(body, {
-      periodo_para_registro_y_envio_de_documentos: cedula.periodo_para_registro_y_envio_de_documentos,
-      capacitacion_cedula_a1: cedula.capacitacion_cedula_a1
-    })
+    if (cedula) {
+      const c: any = cedula
+      Object.assign(body, {
+        periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
+        capacitacion_cedula_a1: c.capacitacion_cedula_a1
+      })
+    }
   }
 
-  if (body.efc && body.efc !== existente.data.efc) {
+  if (body.efc && body.efc !== existenteData.efc) {
     const { data: efc } = await supabase.from('efc').select('*').eq('efc', body.efc).single()
-    if (efc) Object.assign(body, {
-      periodo_para_ingresar_folio_oficina_virtual: efc.periodo_para_ingresar_folio_oficina_virtual,
-      periodo_para_playbook: efc.periodo_para_playbook,
-      pre_escuela_sesion_unica_de_arranque: efc.pre_escuela_sesion_unica_de_arranque,
-      fecha_limite_para_presentar_curricula_cdp: efc.fecha_limite_para_presentar_curricula_cdp,
-      inicio_escuela_fundamental: efc.inicio_escuela_fundamental
-    })
+    if (efc) {
+      const e: any = efc
+      Object.assign(body, {
+        periodo_para_ingresar_folio_oficina_virtual: e.periodo_para_ingresar_folio_oficina_virtual,
+        periodo_para_playbook: e.periodo_para_playbook,
+        pre_escuela_sesion_unica_de_arranque: e.pre_escuela_sesion_unica_de_arranque,
+        fecha_limite_para_presentar_curricula_cdp: e.fecha_limite_para_presentar_curricula_cdp,
+        inicio_escuela_fundamental: e.inicio_escuela_fundamental
+      })
+    }
   }
 
   body.usuario_que_actualizo = usuario.email
@@ -49,7 +62,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const { data, error } = await supabase.from('candidatos').update(body).eq('id_candidato', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  await logAccion('edicion_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: Number(id), snapshot: existente.data })
+  await logAccion('edicion_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: Number(id), snapshot: existenteData })
 
   return NextResponse.json(data)
 }

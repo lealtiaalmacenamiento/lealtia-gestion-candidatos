@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
       // Buscar en auth por email
       const list = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 })
       if (list.error) return NextResponse.json({ error: 'No se pudo listar usuarios auth: '+list.error.message }, { status:500 })
-      const found = list.data.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+  const found = list.data.users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
       if (!found) return NextResponse.json({ error: 'Usuario auth no encontrado' }, { status:404 })
       authId = found.id
       // Persistir id_auth si no estaba

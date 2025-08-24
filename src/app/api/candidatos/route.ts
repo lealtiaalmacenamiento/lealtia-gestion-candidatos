@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
@@ -32,22 +33,28 @@ export async function POST(req: Request) {
   // Autocompletar desde cedula_a1
   if (body.mes) {
     const { data: cedula } = await supabase.from('cedula_a1').select('*').eq('mes', body.mes).single()
-    if (cedula) Object.assign(body, {
-      periodo_para_registro_y_envio_de_documentos: cedula.periodo_para_registro_y_envio_de_documentos,
-      capacitacion_cedula_a1: cedula.capacitacion_cedula_a1
-    })
+    if (cedula) {
+      const c: any = cedula
+      Object.assign(body, {
+        periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
+        capacitacion_cedula_a1: c.capacitacion_cedula_a1
+      })
+    }
   }
 
   // Autocompletar desde efc
   if (body.efc) {
     const { data: efc } = await supabase.from('efc').select('*').eq('efc', body.efc).single()
-    if (efc) Object.assign(body, {
-      periodo_para_ingresar_folio_oficina_virtual: efc.periodo_para_ingresar_folio_oficina_virtual,
-      periodo_para_playbook: efc.periodo_para_playbook,
-      pre_escuela_sesion_unica_de_arranque: efc.pre_escuela_sesion_unica_de_arranque,
-      fecha_limite_para_presentar_curricula_cdp: efc.fecha_limite_para_presentar_curricula_cdp,
-      inicio_escuela_fundamental: efc.inicio_escuela_fundamental
-    })
+    if (efc) {
+      const e: any = efc
+      Object.assign(body, {
+        periodo_para_ingresar_folio_oficina_virtual: e.periodo_para_ingresar_folio_oficina_virtual,
+        periodo_para_playbook: e.periodo_para_playbook,
+        pre_escuela_sesion_unica_de_arranque: e.pre_escuela_sesion_unica_de_arranque,
+        fecha_limite_para_presentar_curricula_cdp: e.fecha_limite_para_presentar_curricula_cdp,
+        inicio_escuela_fundamental: e.inicio_escuela_fundamental
+      })
+    }
   }
 
   body.usuario_creador = usuario.email
