@@ -46,3 +46,5 @@ Durante build sin variables, el código usa proxys placeholder para evitar fallo
 
 ---
 Actualizado automáticamente.
+\n+## Marca de despliegue
+Commit forzado para redeploy: ajuste timestamp ${(new Date()).toISOString()}.
