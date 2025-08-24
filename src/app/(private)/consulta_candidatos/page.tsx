@@ -1,0 +1,278 @@
+"use client";
+import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import type { Candidato } from '@/types';
+import BasePage from '@/components/BasePage';
+import AppModal from '@/components/ui/AppModal';
+import { useAuth } from '@/context/AuthProvider';
+
+// Tipos
+type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion'>;
+type AnyColKey = keyof Candidato;
+
+export default function ConsultaCandidatosPage() {
+  return (
+    <Suspense fallback={<BasePage title="Consulta de candidatos"><div className="text-center py-5"><div className="spinner-border" /></div></BasePage>}>
+      <ConsultaCandidatosInner />
+    </Suspense>
+  );
+}
+
+function ConsultaCandidatosInner() {
+  const search = useSearchParams();
+  const { user } = useAuth();
+  const role = (user?.rol || '').toLowerCase();
+  const readOnly = role === 'viewer' || role === 'lector';
+  const [data, setData] = useState<Candidato[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('ultima_actualizacion');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc'); // más reciente primero
+  const abortRef = useRef<AbortController | null>(null);
+  // const [reloading, setReloading] = useState(false); // no usado actualmente
+  const [deleting, setDeleting] = useState<number | null>(null);
+
+  const fetchData = React.useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setError(null);
+    try {
+  const r = await fetch(`/api/candidatos`, { signal: controller.signal });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Error');
+      const arr: Candidato[] = Array.isArray(j) ? j : [];
+      arr.sort((a,b)=>{
+        const ua = Date.parse(a.ultima_actualizacion || a.fecha_de_creacion || '') || 0;
+        const ub = Date.parse(b.ultima_actualizacion || b.fecha_de_creacion || '') || 0;
+        return ub - ua;
+      });
+      setData(arr);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return; // request cancelada
+      setError(e instanceof Error ? e.message : 'Error inesperado');
+    } finally {
+  setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const filtered = useMemo(() => {
+    return [...data].sort((a, b) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      let comp: number;
+  if (sortKey === 'fecha_de_creacion' || sortKey === 'ultima_actualizacion' || sortKey === 'fecha_tentativa_de_examen') {
+        const ta = Date.parse(String(av)) || 0;
+        const tb = Date.parse(String(bv)) || 0;
+        comp = ta - tb;
+      } else if (typeof av === 'number' && typeof bv === 'number') comp = av - bv;
+      else comp = String(av).localeCompare(String(bv), 'es', { numeric: true, sensitivity: 'base' });
+      return comp * (sortDir === 'asc' ? 1 : -1);
+    });
+  }, [data, sortKey, sortDir]);
+
+  const columns = useMemo(() => ([
+    { key: 'id_candidato', label: 'ID', sortable: true },
+    { key: 'ct', label: 'CT', sortable: true },
+    { key: 'candidato', label: 'Candidato', sortable: true },
+    { key: 'mes', label: 'Mes', sortable: true },
+    { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
+    { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
+    { key: 'fecha_tentativa_de_examen', label: 'Fecha tentativa examen', sortable: true },
+    { key: 'efc', label: 'EFC', sortable: true },
+    { key: 'periodo_para_ingresar_folio_oficina_virtual', label: 'Periodo folio OV' },
+    { key: 'periodo_para_playbook', label: 'Periodo Playbook' },
+    { key: 'pre_escuela_sesion_unica_de_arranque', label: 'Pre Escuela' },
+    { key: 'fecha_limite_para_presentar_curricula_cdp', label: 'Currícula CDP' },
+    { key: 'inicio_escuela_fundamental', label: 'Inicio Escuela' },
+    { key: 'seg_gmm', label: 'SEG GMM' },
+    { key: 'seg_vida', label: 'SEG VIDA' },
+    { key: 'fecha_de_creacion', label: 'Creado', sortable: true },
+    { key: 'ultima_actualizacion', label: 'Actualizado', sortable: true },
+    { key: 'usuario_creador', label: 'Creador' },
+    { key: 'usuario_que_actualizo', label: 'Actualizó' }
+  ]), []);
+
+  const toggleSort = (k: SortKey) => {
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(k); setSortDir('asc'); }
+  };
+
+  // const onReload = () => { setReloading(true); fetchData(); };
+
+  // Modal de eliminación
+  const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
+  const handleEdit = (id: number) => { window.location.href = `/candidatos/nuevo/${id}`; };
+
+  const performDelete = async () => {
+    if (!pendingDelete) return;
+    try {
+      setDeleting(pendingDelete.id_candidato);
+      const res = await fetch(`/api/candidatos/${pendingDelete.id_candidato}`, { method: 'DELETE' });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Error eliminando');
+      // Redirige para mostrar alerta de eliminado (coherente con la página de edición)
+      window.location.href = `/consulta_candidatos?deleted=1&id=${pendingDelete.id_candidato}&name=${encodeURIComponent(pendingDelete.candidato || '')}`;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error';
+      setError(msg);
+    } finally {
+      setDeleting(null);
+      setPendingDelete(null);
+    }
+  };
+
+  return (
+  <BasePage title="Consulta de candidatos">
+      {search?.get('deleted') === '0' && (
+        <div className="alert alert-warning alert-animated py-3 small d-flex justify-content-between align-items-center shadow-sm">
+          <div className="me-4">
+            <strong>Eliminado:</strong> candidato ID {search.get('id')} {search.get('name') && <>(<span className="text-dark">({decodeURIComponent(search.get('name')||'')})</span>)</>}.
+          </div>
+          <a href="/consulta_candidatos" className="btn-close" aria-label="Cerrar" title="Cerrar"></a>
+        </div>
+      )}
+      <div className="d-flex justify-content-end align-items-center gap-3 mb-2">
+        <button className="btn btn-outline-secondary btn-sm" onClick={fetchData} disabled={loading}>{loading ? '...' : 'Recargar'}</button>
+      </div>
+      {loading && (
+        <div className="table-responsive fade-in-scale">
+          <table className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
+            <thead className="table-light"><tr><th colSpan={columns.length + (readOnly ? 0 : 1)}>Cargando...</th></tr></thead>
+            <tbody>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <tr key={i} className="placeholder-glow">
+                  {Array.from({length:19}).map((__,c)=>(<td key={c}><span className="placeholder col-8" /></td>))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && !error && (
+        <div className="alert alert-info">Sin registros</div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div className="table-responsive fade-in-scale">
+          <table className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
+            <thead className="table-dark">
+              <tr>
+                {columns.map(col => (
+                  <Th key={col.key} label={col.label} k={col.key as AnyColKey} sortKey={sortKey} sortDir={sortDir} onSort={col.sortable ? toggleSort : undefined} sortable={col.sortable} />
+                ))}
+                {!readOnly && <th>Acciones</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c, idx) => (
+                <tr key={c.id_candidato} className={`${c.eliminado ? 'table-danger' : ''} dash-anim stagger-${(idx % 6)+1}`}> 
+                  {columns.map(col => {
+                    const key = col.key as keyof Candidato;
+                    const value = c[key];
+                    const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
+                    const display = (col.key === 'fecha_de_creacion')
+                      ? (formatDate(c.fecha_de_creacion) || '-')
+                      : (col.key === 'ultima_actualizacion'
+                        ? (formatDate(c.ultima_actualizacion) || '-')
+                        : (col.key === 'fecha_tentativa_de_examen'
+                          ? (formatDate(c.fecha_tentativa_de_examen) || '-')
+                          : value));
+                    return (
+                      <td key={col.key} className={cls}>
+                        <Cell v={display} />
+                      </td>
+                    );
+                  })}
+                  {!readOnly && (
+                    <td style={{whiteSpace:'nowrap'}}>
+                      <button
+                        className="btn btn-sm btn-primary me-1"
+                        onClick={() => handleEdit(c.id_candidato)}
+                        disabled={deleting === c.id_candidato}
+                      >Editar</button>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => setPendingDelete(c)}
+                        disabled={deleting === c.id_candidato}
+                      >{deleting === c.id_candidato ? '...' : 'Eliminar'}</button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="small text-muted mt-2">Mostrando {filtered.length} de {data.length} registros cargados.</div>
+        </div>
+      )}
+      {pendingDelete && (
+        <AppModal
+          title="Confirmar eliminación"
+          icon="trash-fill"
+          width={460}
+          onClose={()=> !deleting && setPendingDelete(null)}
+          disableClose={!!deleting}
+          footer={<>
+            <button type="button" className="btn btn-soft-secondary btn-sm" onClick={()=>!deleting && setPendingDelete(null)} disabled={!!deleting}>Cancelar</button>
+            <button type="button" className="btn btn-danger btn-sm d-flex align-items-center gap-2" onClick={performDelete} disabled={!!deleting}>
+              {deleting && <span className="spinner-border spinner-border-sm" />}
+              {deleting ? 'Eliminando…' : 'Sí, eliminar'}
+            </button>
+          </>}
+        >
+          <p className="mb-2">Esta acción marcará el candidato como eliminado.</p>
+          <div className="mb-3 border rounded p-2 bg-light small">
+            <div><strong>ID:</strong> {pendingDelete.id_candidato}</div>
+            <div><strong>Nombre:</strong> {pendingDelete.candidato || '—'}</div>
+          </div>
+          <p className="text-danger fw-semibold mb-0">¿Deseas continuar?</p>
+        </AppModal>
+      )}
+    </BasePage>
+  );
+}
+
+interface ThProps {
+  label: string;
+  k: AnyColKey;
+  sortKey: SortKey;
+  sortDir: 'asc' | 'desc';
+  onSort?: (k: SortKey) => void;
+  sortable?: boolean;
+  width?: string;
+}
+
+function Th({ label, k, sortKey, sortDir, onSort, sortable, width }: ThProps) {
+  const active = sortable && sortKey === k;
+  const handle = () => { if (sortable && onSort) onSort(k as SortKey); };
+  return (
+    <th role={sortable ? 'button' : undefined} onClick={handle} className={sortable ? 'user-select-none' : ''} style={{ whiteSpace: 'nowrap', cursor: sortable ? 'pointer' : 'default', width, maxWidth: width }}>
+      {label} {active && (<i className={`bi bi-caret-${sortDir === 'asc' ? 'up' : 'down'}-fill text-secondary ms-1`}></i>)}
+    </th>
+  );
+}
+
+function formatDate(v?: string) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return v;
+  return d.toLocaleDateString('es-MX', { year: '2-digit', month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
+}
+
+function oneLine(val: unknown) {
+  if (val == null) return '';
+  return String(val).replace(/\s+/g, ' ').trim();
+}
+
+interface CellProps { v: unknown }
+function Cell({ v }: CellProps) {
+  const text = oneLine(v);
+  return <span title={text} style={{ display: 'inline-block', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{text}</span>;
+}
