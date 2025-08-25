@@ -24,6 +24,12 @@ export async function PUT(req: Request) {
 
   const existente = await supabase.from('usuarios').select('*').eq('id', idStr).single()
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
+  // Regla: solo un admin puede modificar a otro admin. Un superusuario NO puede editar admins.
+  const target = existente.data as { rol?: string } | null
+  const targetRol = target?.rol?.toLowerCase()
+  if (targetRol === 'admin' && usuario.rol !== 'admin') {
+    return NextResponse.json({ error: 'Solo un administrador puede editar a otro administrador' }, { status: 403 })
+  }
 
   const body = await req.json()
   const { data, error } = await supabase.from('usuarios').update(body).eq('id', idStr).select().single()
@@ -44,6 +50,11 @@ export async function DELETE(req: Request) {
 
   const existente = await supabase.from('usuarios').select('*').eq('id', idStr).single()
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
+  const target = existente.data as { rol?: string } | null
+  const targetRol = target?.rol?.toLowerCase()
+  if (targetRol === 'admin' && usuario.rol !== 'admin') {
+    return NextResponse.json({ error: 'Solo un administrador puede eliminar a otro administrador' }, { status: 403 })
+  }
 
   const authUserId = (existente.data as Record<string, unknown>)?.['id_auth'] as string | undefined || null
 
