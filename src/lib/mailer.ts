@@ -12,6 +12,23 @@ import nodemailer from 'nodemailer'
 type MailTx = ReturnType<typeof nodemailer.createTransport>
 let transporter: MailTx | null = null
 
+function resolveLoginUrl() {
+  // Prioridad: variable explícita > entorno production > preview dinámico > local
+  if (process.env.MAIL_LOGIN_URL && process.env.MAIL_LOGIN_URL.trim().length > 0) {
+    return process.env.MAIL_LOGIN_URL
+  }
+  const vercelEnv = process.env.VERCEL_ENV
+  if (vercelEnv === 'production') {
+    // Ajusta al dominio final productivo
+    return 'https://lealtia-gestion-candidatos-79ck.vercel.app/login'
+  }
+  if (vercelEnv === 'preview' && process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/login`
+  }
+  // Desarrollo local
+  return 'http://localhost:3000/login'
+}
+
 async function getTransporter(): Promise<MailTx> {
   if (!user || !pass) throw new Error('Mailer no configurado (GMAIL_USER / GMAIL_APP_PASS)')
   if (!transporter) {
@@ -50,7 +67,7 @@ export function buildAltaUsuarioEmail(email: string, password: string) {
   const username = email.split('@')[0]
   const year = new Date().getFullYear()
   const LOGO_URL = process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
-  const LOGIN_URL = process.env.MAIL_LOGIN_URL 
+  const LOGIN_URL = resolveLoginUrl()
 
   const html = `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
