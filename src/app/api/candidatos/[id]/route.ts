@@ -56,6 +56,22 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   }
 
   body.usuario_que_actualizo = usuario.email
+  // Si se agrega CT por primera vez y no había fecha_creacion_ct, la seteamos
+  if (body.ct && !existenteData.ct && !existenteData.fecha_creacion_ct) {
+    body.fecha_creacion_ct = new Date().toISOString()
+  }
+
+  // Validación de empalme de fecha_tentativa_de_examen (mismo día)
+  if (body.fecha_tentativa_de_examen) {
+    const { data: conflictos, error: errConf } = await supabase.from('candidatos')
+      .select('id_candidato, fecha_tentativa_de_examen')
+      .eq('fecha_tentativa_de_examen', body.fecha_tentativa_de_examen)
+      .eq('eliminado', false)
+      .neq('id_candidato', id)
+    if (!errConf && conflictos && conflictos.length > 0) {
+      return NextResponse.json({ error: 'Empalme: fecha tentativa de examen ya asignada a otro candidato.' }, { status: 400 })
+    }
+  }
 
   // Si no existe trigger en BD que actualice ultima_actualizacion, lo hacemos aquí
   body.ultima_actualizacion = new Date().toISOString()

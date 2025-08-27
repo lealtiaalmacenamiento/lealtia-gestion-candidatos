@@ -59,6 +59,19 @@ export async function POST(req: Request) {
   }
 
   body.usuario_creador = usuario.email
+  // Registrar fecha_creacion_ct si existe CT y no viene ya (primer registro)
+  if (body.ct && !body.fecha_creacion_ct) body.fecha_creacion_ct = new Date().toISOString()
+
+  // Validar que fecha_tentativa_de_examen no empalme (ejemplo simple: no permitir misma fecha exacta que otro candidato no eliminado)
+  if (body.fecha_tentativa_de_examen) {
+    const { data: conflictos, error: errConf } = await supabase.from('candidatos')
+      .select('id_candidato, fecha_tentativa_de_examen')
+      .eq('fecha_tentativa_de_examen', body.fecha_tentativa_de_examen)
+      .eq('eliminado', false)
+    if (!errConf && conflictos && conflictos.length > 0) {
+      return NextResponse.json({ error: 'Empalme: la fecha tentativa de examen ya está asignada a otro candidato.' }, { status: 400 })
+    }
+  }
 
   // fecha_tentativa_de_examen se recibe directa del formulario (formato yyyy-mm-dd)
 

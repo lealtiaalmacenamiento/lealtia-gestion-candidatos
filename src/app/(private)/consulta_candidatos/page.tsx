@@ -7,7 +7,7 @@ import AppModal from '@/components/ui/AppModal';
 import { useAuth } from '@/context/AuthProvider';
 
 // Tipos
-type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion'>;
+type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct'>;
 type AnyColKey = keyof Candidato;
 
 export default function ConsultaCandidatosPage() {
@@ -81,7 +81,7 @@ function ConsultaCandidatosInner() {
     { key: 'id_candidato', label: 'ID', sortable: true },
     { key: 'ct', label: 'CT', sortable: true },
     { key: 'candidato', label: 'Candidato', sortable: true },
-    { key: 'mes', label: 'Mes', sortable: true },
+    { key: 'mes', label: 'CÉDULA A1', sortable: true },
     { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
     { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
     { key: 'fecha_tentativa_de_examen', label: 'Fecha tentativa examen', sortable: true },
@@ -93,6 +93,9 @@ function ConsultaCandidatosInner() {
     { key: 'inicio_escuela_fundamental', label: 'Inicio Escuela' },
     { key: 'seg_gmm', label: 'SEG GMM' },
     { key: 'seg_vida', label: 'SEG VIDA' },
+  { key: 'fecha_creacion_ct', label: 'Fecha creación CT', sortable: true },
+  { key: 'proceso_actual', label: 'Proceso' },
+  { key: 'dias_desde_creacion_ct', label: 'Días desde CT' },
     { key: 'fecha_de_creacion', label: 'Creado', sortable: true },
     { key: 'ultima_actualizacion', label: 'Actualizado', sortable: true },
     { key: 'usuario_creador', label: 'Creador' },
@@ -128,6 +131,49 @@ function ConsultaCandidatosInner() {
     }
   };
 
+  // Exportar a Excel (xlsx simple generado en cliente)
+  const exportExcel = () => {
+    // Construimos CSV y lo marcamos como .xls para apertura rápida en Excel.
+    const headers = columns.map(c=>c.label).join(',');
+    const rows = filtered.map(c => columns.map(col => {
+      const k = col.key as keyof Candidato | 'dias_desde_creacion_ct';
+      if (k === 'dias_desde_creacion_ct') return calcDias(c.fecha_creacion_ct);
+      return sanitizeCsv(c[k]);
+    }).join(','));
+    const csv = [headers, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `candidatos_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Calcular proceso (placeholder: basado en qué fechas existen)
+  const deriveProceso = (c: Candidato): string => {
+    if (c.fecha_tentativa_de_examen) return 'Examen programado';
+    if (c.inicio_escuela_fundamental) return 'Escuela';
+    if (c.capacitacion_cedula_a1) return 'Capacitación';
+    return 'Registro';
+  }
+
+  const augmented = filtered.map(c => ({ ...c, proceso_actual: deriveProceso(c) }));
+
+  function calcDias(fecha?: string) {
+    if (!fecha) return '';
+    const t = Date.parse(fecha);
+    if (!t) return '';
+    const diff = Date.now() - t;
+    return Math.floor(diff / 86400000); // días
+  }
+
+  function sanitizeCsv(val: unknown) {
+    if (val == null) return '';
+    const s = String(val).replace(/"/g,'""');
+    if (s.search(/[",\n]/) >= 0) return '"'+s+'"';
+    return s;
+  }
+
   return (
   <BasePage title="Consulta de candidatos">
       {search?.get('deleted') === '0' && (
@@ -160,7 +206,7 @@ function ConsultaCandidatosInner() {
         <div className="alert alert-info">Sin registros</div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && augmented.length > 0 && (
         <div className="table-responsive fade-in-scale">
           <table className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-dark">
@@ -172,19 +218,19 @@ function ConsultaCandidatosInner() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c, idx) => (
+              {augmented.map((c, idx) => (
                 <tr key={c.id_candidato} className={`${c.eliminado ? 'table-danger' : ''} dash-anim stagger-${(idx % 6)+1}`}> 
                   {columns.map(col => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
-                    const display = (col.key === 'fecha_de_creacion')
-                      ? (formatDate(c.fecha_de_creacion) || '-')
-                      : (col.key === 'ultima_actualizacion'
-                        ? (formatDate(c.ultima_actualizacion) || '-')
-                        : (col.key === 'fecha_tentativa_de_examen'
-                          ? (formatDate(c.fecha_tentativa_de_examen) || '-')
-                          : value));
+                    let display: unknown = value;
+                    if (col.key === 'fecha_de_creacion') display = formatDate(c.fecha_de_creacion) || '-';
+                    else if (col.key === 'ultima_actualizacion') display = formatDate(c.ultima_actualizacion) || '-';
+                    else if (col.key === 'fecha_tentativa_de_examen') display = formatDate(c.fecha_tentativa_de_examen) || '-';
+                    else if (col.key === 'fecha_creacion_ct') display = formatDate(c.fecha_creacion_ct) || '-';
+                    else if (col.key === 'proceso_actual') display = c.proceso_actual || deriveProceso(c);
+                    else if (col.key === 'dias_desde_creacion_ct') display = calcDias(c.fecha_creacion_ct);
                     return (
                       <td key={col.key} className={cls}>
                         <Cell v={display} />
@@ -198,6 +244,7 @@ function ConsultaCandidatosInner() {
                         onClick={() => handleEdit(c.id_candidato)}
                         disabled={deleting === c.id_candidato}
                       >Editar</button>
+                      <a className="btn btn-sm btn-outline-secondary me-1" href={`/api/candidatos/${c.id_candidato}?export=pdf`} target="_blank" rel="noopener noreferrer">PDF</a>
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => setPendingDelete(c)}
@@ -209,7 +256,12 @@ function ConsultaCandidatosInner() {
               ))}
             </tbody>
           </table>
-          <div className="small text-muted mt-2">Mostrando {filtered.length} de {data.length} registros cargados.</div>
+          <div className="d-flex justify-content-between align-items-center mt-2 small">
+            <div className="text-muted">Mostrando {augmented.length} de {data.length} registros cargados.</div>
+            <div className="d-flex gap-2">
+              <button className="btn btn-sm btn-outline-success" onClick={exportExcel} title="Exportar listado a Excel">Exportar Excel</button>
+            </div>
+          </div>
         </div>
       )}
       {pendingDelete && (

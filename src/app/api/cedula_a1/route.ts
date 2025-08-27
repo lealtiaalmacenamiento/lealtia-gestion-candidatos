@@ -6,7 +6,7 @@ import { logAccion } from '@/lib/logger'
 const supabase = getServiceClient()
 
 export async function GET() {
-  const { data, error } = await supabase.from('cedula_a1').select('*').order('mes')
+  const { data, error } = await supabase.from('cedula_a1').select('*').order('id', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }

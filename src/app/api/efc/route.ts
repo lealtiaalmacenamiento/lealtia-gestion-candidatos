@@ -7,7 +7,7 @@ import { normalizeDateFields } from '@/lib/dateUtils'
 const supabase = getServiceClient()
 
 export async function GET() {
-  const { data, error } = await supabase.from('efc').select('*').order('efc')
+  const { data, error } = await supabase.from('efc').select('*').order('id', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
