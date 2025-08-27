@@ -2,6 +2,9 @@
 import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
+import { calcularDerivados } from '@/lib/proceso';
+
+interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string }
 import BasePage from '@/components/BasePage';
 import AppModal from '@/components/ui/AppModal';
 import { useAuth } from '@/context/AuthProvider';
@@ -43,6 +46,21 @@ function ConsultaCandidatosInner() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Error');
       const arr: Candidato[] = Array.isArray(j) ? j : [];
+      // Adjuntar derivados (proceso, dias) en memoria
+      (arr as CandidatoExt[]).forEach(c => {
+        const { proceso } = calcularDerivados({
+          periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
+          capacitacion_cedula_a1: c.capacitacion_cedula_a1,
+          periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
+          periodo_para_playbook: c.periodo_para_playbook,
+            pre_escuela_sesion_unica_de_arranque: c.pre_escuela_sesion_unica_de_arranque,
+          fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
+          inicio_escuela_fundamental: c.inicio_escuela_fundamental,
+          fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
+          fecha_creacion_ct: c.fecha_creacion_ct
+        })
+        c.proceso = proceso
+      })
       arr.sort((a,b)=>{
         const ua = Date.parse(a.ultima_actualizacion || a.fecha_de_creacion || '') || 0;
         const ub = Date.parse(b.ultima_actualizacion || b.fecha_de_creacion || '') || 0;
@@ -80,8 +98,10 @@ function ConsultaCandidatosInner() {
   const columns = useMemo(() => ([
     { key: 'id_candidato', label: 'ID', sortable: true },
     { key: 'ct', label: 'CT', sortable: true },
-    { key: 'candidato', label: 'Candidato', sortable: true },
-    { key: 'mes', label: 'CÉDULA A1', sortable: true },
+  { key: 'candidato', label: 'Candidato', sortable: true },
+  { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
+  { key: 'proceso', label: 'Proceso' },
+    { key: 'mes', label: 'Mes', sortable: true },
     { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
     { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
     { key: 'fecha_tentativa_de_examen', label: 'Fecha tentativa examen', sortable: true },
@@ -93,9 +113,7 @@ function ConsultaCandidatosInner() {
     { key: 'inicio_escuela_fundamental', label: 'Inicio Escuela' },
     { key: 'seg_gmm', label: 'SEG GMM' },
     { key: 'seg_vida', label: 'SEG VIDA' },
-  { key: 'fecha_creacion_ct', label: 'Fecha creación CT', sortable: true },
-  { key: 'proceso_actual', label: 'Proceso' },
-  { key: 'dias_desde_creacion_ct', label: 'Días desde CT' },
+  // columnas derivadas ya incluidas arriba (no duplicar)
     { key: 'fecha_de_creacion', label: 'Creado', sortable: true },
     { key: 'ultima_actualizacion', label: 'Actualizado', sortable: true },
     { key: 'usuario_creador', label: 'Creador' },
@@ -149,15 +167,7 @@ function ConsultaCandidatosInner() {
     URL.revokeObjectURL(url);
   }
 
-  // Calcular proceso (placeholder: basado en qué fechas existen)
-  const deriveProceso = (c: Candidato): string => {
-    if (c.fecha_tentativa_de_examen) return 'Examen programado';
-    if (c.inicio_escuela_fundamental) return 'Escuela';
-    if (c.capacitacion_cedula_a1) return 'Capacitación';
-    return 'Registro';
-  }
-
-  const augmented = filtered.map(c => ({ ...c, proceso_actual: deriveProceso(c) }));
+  // 'proceso' ya se adjunta en fetchData vía calcularDerivados
 
   function calcDias(fecha?: string) {
     if (!fecha) return '';
@@ -206,7 +216,7 @@ function ConsultaCandidatosInner() {
         <div className="alert alert-info">Sin registros</div>
       )}
 
-      {!loading && augmented.length > 0 && (
+  {!loading && filtered.length > 0 && (
         <div className="table-responsive fade-in-scale">
           <table className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-dark">
@@ -218,19 +228,23 @@ function ConsultaCandidatosInner() {
               </tr>
             </thead>
             <tbody>
-              {augmented.map((c, idx) => (
+                  {filtered.map((c, idx) => (
                 <tr key={c.id_candidato} className={`${c.eliminado ? 'table-danger' : ''} dash-anim stagger-${(idx % 6)+1}`}> 
                   {columns.map(col => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
-                    let display: unknown = value;
-                    if (col.key === 'fecha_de_creacion') display = formatDate(c.fecha_de_creacion) || '-';
-                    else if (col.key === 'ultima_actualizacion') display = formatDate(c.ultima_actualizacion) || '-';
-                    else if (col.key === 'fecha_tentativa_de_examen') display = formatDate(c.fecha_tentativa_de_examen) || '-';
-                    else if (col.key === 'fecha_creacion_ct') display = formatDate(c.fecha_creacion_ct) || '-';
-                    else if (col.key === 'proceso_actual') display = c.proceso_actual || deriveProceso(c);
-                    else if (col.key === 'dias_desde_creacion_ct') display = calcDias(c.fecha_creacion_ct);
+                    const display = (col.key === 'fecha_de_creacion')
+                      ? (formatDate(c.fecha_de_creacion) || '-')
+                      : (col.key === 'ultima_actualizacion'
+                        ? (formatDate(c.ultima_actualizacion) || '-')
+                        : (col.key === 'fecha_tentativa_de_examen'
+                          ? (formatDate(c.fecha_tentativa_de_examen) || '-')
+                          : (col.key === 'fecha_creacion_ct'
+                            ? (formatDate(c.fecha_creacion_ct) || '-')
+                             : (col.key === 'proceso'
+                               ? (c as unknown as { proceso?: string }).proceso || ''
+                              : value))));
                     return (
                       <td key={col.key} className={cls}>
                         <Cell v={display} />
@@ -257,7 +271,7 @@ function ConsultaCandidatosInner() {
             </tbody>
           </table>
           <div className="d-flex justify-content-between align-items-center mt-2 small">
-            <div className="text-muted">Mostrando {augmented.length} de {data.length} registros cargados.</div>
+            <div className="text-muted">Mostrando {filtered.length} de {data.length} registros cargados.</div>
             <div className="d-flex gap-2">
               <button className="btn btn-sm btn-outline-success" onClick={exportExcel} title="Exportar listado a Excel">Exportar Excel</button>
             </div>
@@ -313,12 +327,10 @@ function Th({ label, k, sortKey, sortDir, onSort, sortable, width }: ThProps) {
 
 function formatDate(v?: string) {
   if (!v) return ''
-  // Si es fecha pura YYYY-MM-DD no la pasamos por Date() para evitar desfase de zona horaria
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
     const [y,m,d] = v.split('-')
-    return `${d}/${m}/${y.slice(2)}` // dd/mm/aa
+    return `${d}/${m}/${y.slice(2)}`
   }
-  // Para otros formatos (con hora) usamos Date y mostramos fecha + hora local
   const dObj = new Date(v)
   if (isNaN(dObj.getTime())) return v
   return dObj.toLocaleDateString('es-MX', { year: '2-digit', month: '2-digit', day: '2-digit' })

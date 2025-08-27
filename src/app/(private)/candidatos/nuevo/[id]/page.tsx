@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { getCandidatoById, updateCandidato, getCedulaA1, getEfc } from '@/lib/api'
-import { diasDesdeCreacionCT } from '@/lib/proceso'
+import { calcularDerivados } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 // Modal de eliminación y lógica removidos según solicitud
@@ -10,6 +10,9 @@ import BasePage from '@/components/BasePage'
 interface FormState {
   ct?: string;
   candidato?: string;
+  fecha_creacion_ct?: string;
+  dias_desde_ct?: number; // derivado
+  proceso?: string; // derivado
   mes?: string;
   efc?: string;
   fecha_tentativa_de_examen?: string;
@@ -50,8 +53,8 @@ export default function EditarCandidato() {
         ])
         setMeses(m)
         setEfcs(e)
-        // Normalizar datos existentes en formato del formulario
-        setForm({ ...cand })
+  // Normalizar datos existentes + derivados
+  setForm(prev => ({ ...prev, ...calcularDerivados(cand), ...cand }))
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error cargando datos'
         setNotif({ type: 'danger', msg: message })
@@ -81,10 +84,12 @@ export default function EditarCandidato() {
     })
   }
 
+  const recomputeDerived = (draft: FormState): FormState => ({ ...draft, ...calcularDerivados(draft) })
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
   const nextVal: string = value
-    setForm(prev => ({ ...prev, [name]: nextVal }))
+    setForm(prev => recomputeDerived({ ...prev, [name]: nextVal }))
     if (name === 'mes') {
       const encontrado = meses.find(x => x.mes === value)
       setForm(prev => ({
@@ -127,8 +132,8 @@ export default function EditarCandidato() {
     setSaving(true)
     setNotif(null)
     try {
-  // La API normaliza fecha_tentativa_de_examen dd/mm/aaaa -> yyyy-mm-dd antes de guardar
-      await updateCandidato(Number(params.id), form as Partial<Candidato>)
+  // La API se encarga de normalizar/derivar antes de guardar
+  await updateCandidato(Number(params.id), form as Partial<Candidato>)
   router.push('/consulta_candidatos')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo guardar'
@@ -140,32 +145,8 @@ export default function EditarCandidato() {
 
   if (loading) return <BasePage title="Editar candidato"><div className="text-center py-5"><div className="spinner-border" /></div></BasePage>
 
-  const procesoActual = (() => {
-    const hoyISO = new Date().toISOString().slice(0,10)
-    const fechaExam = form.fecha_tentativa_de_examen
-    if (!form.ct) return 'Registro'
-    if (fechaExam) {
-      if (fechaExam === hoyISO) return 'Examen'
-      if (fechaExam < hoyISO) return 'Post-examen'
-      return 'Preparación'
-    }
-    return 'Preparación'
-  })()
-
-  interface MiniCand { id_candidato: number; ct: string; candidato: string; mes: string; efc: string; seg_gmm: number; seg_vida: number; eliminado: boolean; usuario_creador: string; fecha_creacion_ct?: string }
-  const mini: MiniCand = {
-    id_candidato: Number(params.id),
-    ct: form.ct || '',
-    candidato: form.candidato || '',
-    mes: form.mes || '',
-    efc: form.efc || '',
-    seg_gmm: form.seg_gmm || 0,
-    seg_vida: form.seg_vida || 0,
-    eliminado: false,
-    usuario_creador: '',
-    fecha_creacion_ct: (form as unknown as { fecha_creacion_ct?: string }).fecha_creacion_ct
-  }
-  const diasCT = diasDesdeCreacionCT({ fecha_creacion_ct: mini.fecha_creacion_ct })
+  const procesoActual = form.proceso || ''
+  const diasCT = form.dias_desde_ct
 
   return (
     <BasePage title={`Editar candidato #${params.id}`}>
@@ -177,9 +158,9 @@ export default function EditarCandidato() {
             </div>
             {notif && (<div className={`alert alert-${notif.type}`}>{notif.msg}</div>)}
             <div className="alert alert-info py-2 small d-flex flex-wrap gap-3">
-              <span><strong>Proceso:</strong> {procesoActual}</span>
-              {(mini.fecha_creacion_ct) && <span><strong>Fecha creación CT:</strong> {mini.fecha_creacion_ct}</span>}
-              {(mini.fecha_creacion_ct) && <span><strong>Días desde CT:</strong> {diasCT ?? '—'}</span>}
+              {procesoActual && <span><strong>Proceso:</strong> {procesoActual}</span>}
+              {form.fecha_creacion_ct && <span><strong>Fecha creación CT:</strong> {form.fecha_creacion_ct}</span>}
+              {form.fecha_creacion_ct && <span><strong>Días desde CT:</strong> {diasCT ?? '—'}</span>}
             </div>
             <form onSubmit={handleSubmit} className="row g-3" noValidate>
               <div className="col-12">
@@ -191,7 +172,19 @@ export default function EditarCandidato() {
                 <input name="candidato" className="form-control" value={form.candidato || ''} onChange={handleChange} required />
               </div>
               <div className="col-12">
-                <label className="form-label fw-semibold small mb-1">Cédula A1 <span className="text-danger">*</span></label>
+                <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
+                <input type="date" name="fecha_creacion_ct" className="form-control" value={form.fecha_creacion_ct || ''} onChange={handleChange} />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">DÍAS DESDE CT <span className="badge bg-secondary">auto</span></label>
+                <input className="form-control bg-light" value={form.dias_desde_ct ?? ''} readOnly />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">PROCESO <span className="badge bg-secondary">auto</span></label>
+                <input className="form-control bg-light" value={form.proceso || ''} readOnly />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">MES <span className="text-danger">*</span></label>
                 <select name="mes" className="form-select" value={form.mes || ''} onChange={handleChange} required>
                   <option value="">Selecciona una opción</option>
                   {meses.map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}

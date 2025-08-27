@@ -15,8 +15,10 @@ export interface Candidato {
   usuario_que_actualizo?: string
   fecha_de_creacion?: string
   ultima_actualizacion?: string
-  // Nuevo campo: fecha creación de CT (cuando se capturó un CT por primera vez)
+  // Nueva fecha manual definida por el usuario (fecha de creación de CT)
   fecha_creacion_ct?: string
+  // Campo derivado (no necesariamente persistido). Si se persiste agregar columna BD.
+  proceso?: string
   // Campos snapshot
   periodo_para_registro_y_envio_de_documentos?: string
   capacitacion_cedula_a1?: string
@@ -26,8 +28,6 @@ export interface Candidato {
   pre_escuela_sesion_unica_de_arranque?: string
   fecha_limite_para_presentar_curricula_cdp?: string
   inicio_escuela_fundamental?: string
-  // Campo derivado (no persistente) para mostrar proceso actual
-  proceso_actual?: string
 }
 
 /** Usuarios */
