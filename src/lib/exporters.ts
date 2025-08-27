@@ -12,7 +12,7 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
     ID: c.id_candidato,
     CT: c.ct,
     Candidato: c.candidato,
-    'MES Cédula A1': c.mes,
+  'Cédula A1': c.mes,
     EFC: c.efc,
     Proceso: c.proceso_actual || '',
     'Fecha creación CT': c.fecha_creacion_ct || '',
@@ -37,7 +37,7 @@ export async function exportCandidatoPDF(c: Candidato) {
   const push = (k: string, v: unknown) => rows.push([k, v == null ? '' : String(v)])
   push('CT', c.ct)
   push('Candidato', c.candidato)
-  push('MES Cédula A1', c.mes)
+  push('Cédula A1', c.mes)
   push('EFC', c.efc)
   push('Proceso', c.proceso_actual || '')
   push('Fecha creación CT', c.fecha_creacion_ct || '')

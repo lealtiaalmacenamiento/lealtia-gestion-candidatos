@@ -52,7 +52,7 @@ export default function CandidatosPage() {
                   <tr>
                     <th>CT</th>
                     <th>Nombre</th>
-                    <th>MES Cédula A1</th>
+                    <th>Cédula A1</th>
                     <th>EFC</th>
                     <th>Proceso</th>
                     <th>Días CT</th>

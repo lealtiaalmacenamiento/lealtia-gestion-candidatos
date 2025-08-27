@@ -158,7 +158,7 @@ export default function EditarCandidato() {
                 <input name="candidato" className="form-control" value={form.candidato || ''} onChange={handleChange} required />
               </div>
               <div className="col-12">
-                <label className="form-label fw-semibold small mb-1">MES Cédula A1 <span className="text-danger">*</span></label>
+                <label className="form-label fw-semibold small mb-1">Cédula A1 <span className="text-danger">*</span></label>
                 <select name="mes" className="form-select" value={form.mes || ''} onChange={handleChange} required>
                   <option value="">Selecciona una opción</option>
                   {meses.map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}
