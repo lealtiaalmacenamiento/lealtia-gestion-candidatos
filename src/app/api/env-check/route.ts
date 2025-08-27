@@ -8,5 +8,9 @@ export async function GET() {
   ] as const
   const data: Record<string,string> = {}
   keys.forEach(k => { data[k] = process.env[k] ? 'SET' : 'MISSING' })
+  // Si falta SUPABASE_URL pero existe NEXT_PUBLIC_SUPABASE_URL mostramos INFERRED (usamos fallback internamente)
+  if (data['SUPABASE_URL'] === 'MISSING' && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    data['SUPABASE_URL'] = 'INFERRED_FROM_PUBLIC'
+  }
   return NextResponse.json({ ok:true, data })
 }
