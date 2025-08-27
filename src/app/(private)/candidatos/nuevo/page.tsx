@@ -1,15 +1,21 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createCandidato, getCedulaA1, getEfc } from '@/lib/api'
+import { calcularDerivados } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 
 interface FormState {
   ct: string;
   candidato: string;
+  // Nueva fecha manual: fecha de creación CT
+  fecha_creacion_ct?: string;
   mes: string;
   efc: string;
-  fecha_tentativa_de_examen?: string; // nueva entrada manual
+  fecha_tentativa_de_examen?: string; // entrada manual
+  // Derivados en UI
+  dias_desde_ct?: number; // no se envía; calculado
+  proceso?: string; // calculado
   // Campos dependientes (solo lectura)
   periodo_para_registro_y_envio_de_documentos?: string;
   capacitacion_cedula_a1?: string;
@@ -20,7 +26,7 @@ interface FormState {
   inicio_escuela_fundamental?: string;
 }
 
-const initialForm: FormState = { ct: '', candidato: '', mes: '', efc: '', fecha_tentativa_de_examen: '' }
+const initialForm: FormState = { ct: '', candidato: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '' }
 
 export default function NuevoCandidato() {
   const [meses, setMeses] = useState<CedulaA1[]>([])
@@ -47,11 +53,16 @@ export default function NuevoCandidato() {
     })()
   }, [])
 
+  const recomputeDerived = (draft: FormState): FormState => ({ ...draft, ...calcularDerivados(draft) })
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
   const nextVal = value
     // Convert ISO date (yyyy-mm-dd) from date input to dd/mm/aaaa for storage
-    setForm(prev => ({ ...prev, [name]: nextVal }))
+    setForm(prev => {
+      const updated = { ...prev, [name]: nextVal }
+      return recomputeDerived(updated)
+    })
     if (name === 'mes') {
       const encontrado = meses.find(x => x.mes === value)
       setForm(prev => ({
@@ -107,7 +118,10 @@ export default function NuevoCandidato() {
     setNotif(null)
     try {
   // Forzado: seg_gmm y seg_vida deben iniciarse en 0 y no se muestran en el registro
-  await createCandidato({ ...(form as unknown as Partial<Candidato>), seg_gmm: 0, seg_vida: 0 })
+  // Omitir campos derivados que no se guardan directamente
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { dias_desde_ct: _omitDias, proceso: _omitProceso, ...payload } = form
+  await createCandidato({ ...(payload as unknown as Partial<Candidato>), seg_gmm: 0, seg_vida: 0 })
       setNotif({ type: 'success', msg: 'Candidato guardado correctamente. Puedes capturar otro.' })
       // Reiniciar formulario limpio
       setForm(initialForm)
@@ -156,6 +170,19 @@ export default function NuevoCandidato() {
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
                   <input name="candidato" className="form-control" value={form.candidato} onChange={handleChange} placeholder="Nombre completo" required />
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
+                  <input type="date" name="fecha_creacion_ct" className="form-control" value={form.fecha_creacion_ct || ''} onChange={handleChange} />
+                  <div className="form-text small">Selecciona la fecha en que se creó el CT.</div>
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">DÍAS DESDE CT <span className="badge bg-secondary">auto</span></label>
+                  <input className="form-control bg-light" value={form.dias_desde_ct ?? ''} readOnly />
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">PROCESO <span className="badge bg-secondary">auto</span></label>
+                  <input className="form-control bg-light" value={form.proceso || ''} readOnly />
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">MES <span className="text-danger">*</span></label>

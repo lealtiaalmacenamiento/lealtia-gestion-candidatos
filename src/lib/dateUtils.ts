@@ -8,7 +8,8 @@ const DATE_FIELD_NAMES = new Set([
   'pre_escuela_sesion_unica_de_arranque',
   'fecha_eliminacion',
   'fecha_de_creacion',
-  'ultima_actualizacion'
+  'ultima_actualizacion',
+  'fecha_creacion_ct'
 ])
 
 // Convierte dd/mm/aaaa -> aaaa-mm-dd si es válido

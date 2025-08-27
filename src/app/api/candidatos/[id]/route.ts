@@ -4,6 +4,7 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
+import { calcularDerivados } from '@/lib/proceso'
 import type { Candidato } from '@/types'
 
 // Tipo mínimo para acceder a campos dinámicos sin que TS marque "never"
@@ -59,7 +60,20 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
 
   // Si no existe trigger en BD que actualice ultima_actualizacion, lo hacemos aquí
   body.ultima_actualizacion = new Date().toISOString()
-  // fecha_tentativa_de_examen: si viene en body se guarda tal cual (yyyy-mm-dd)
+  // Recalcular proceso ignorando lo que venga del cliente
+  const snap = {
+    periodo_para_registro_y_envio_de_documentos: body.periodo_para_registro_y_envio_de_documentos ?? existenteData.periodo_para_registro_y_envio_de_documentos,
+    capacitacion_cedula_a1: body.capacitacion_cedula_a1 ?? existenteData.capacitacion_cedula_a1,
+    periodo_para_ingresar_folio_oficina_virtual: body.periodo_para_ingresar_folio_oficina_virtual ?? existenteData.periodo_para_ingresar_folio_oficina_virtual,
+    periodo_para_playbook: body.periodo_para_playbook ?? existenteData.periodo_para_playbook,
+    pre_escuela_sesion_unica_de_arranque: body.pre_escuela_sesion_unica_de_arranque ?? existenteData.pre_escuela_sesion_unica_de_arranque,
+    fecha_limite_para_presentar_curricula_cdp: body.fecha_limite_para_presentar_curricula_cdp ?? existenteData.fecha_limite_para_presentar_curricula_cdp,
+    inicio_escuela_fundamental: body.inicio_escuela_fundamental ?? existenteData.inicio_escuela_fundamental,
+    fecha_tentativa_de_examen: body.fecha_tentativa_de_examen ?? existenteData.fecha_tentativa_de_examen,
+    fecha_creacion_ct: body.fecha_creacion_ct ?? (existenteData as any).fecha_creacion_ct
+  }
+  body.proceso = calcularDerivados(snap).proceso
+  // fecha_creacion_ct y fecha_tentativa_de_examen: si vienen en body se guardan tal cual (yyyy-mm-dd)
   normalizeDateFields(body)
   const { data, error } = await supabase.from('candidatos').update(body).eq('id_candidato', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

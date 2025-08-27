@@ -4,6 +4,7 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
+import { calcularDerivados } from '@/lib/proceso'
 
 const supabase = getServiceClient()
 
@@ -60,7 +61,20 @@ export async function POST(req: Request) {
 
   body.usuario_creador = usuario.email
 
-  // fecha_tentativa_de_examen se recibe directa del formulario (formato yyyy-mm-dd)
+  // fecha_creacion_ct y fecha_tentativa_de_examen se reciben directas del formulario (formato yyyy-mm-dd)
+  // Recalcular siempre proceso en backend ignorando valor cliente
+  const deriv = calcularDerivados({
+    periodo_para_registro_y_envio_de_documentos: body.periodo_para_registro_y_envio_de_documentos,
+    capacitacion_cedula_a1: body.capacitacion_cedula_a1,
+    periodo_para_ingresar_folio_oficina_virtual: body.periodo_para_ingresar_folio_oficina_virtual,
+    periodo_para_playbook: body.periodo_para_playbook,
+    pre_escuela_sesion_unica_de_arranque: body.pre_escuela_sesion_unica_de_arranque,
+    fecha_limite_para_presentar_curricula_cdp: body.fecha_limite_para_presentar_curricula_cdp,
+    inicio_escuela_fundamental: body.inicio_escuela_fundamental,
+    fecha_tentativa_de_examen: body.fecha_tentativa_de_examen,
+    fecha_creacion_ct: body.fecha_creacion_ct
+  })
+  body.proceso = deriv.proceso
 
   // fecha_de_creacion se asume default NOW() en BD
   normalizeDateFields(body)

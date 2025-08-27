@@ -2,6 +2,9 @@
 import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
+import { calcularDerivados } from '@/lib/proceso';
+
+interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string }
 import BasePage from '@/components/BasePage';
 import AppModal from '@/components/ui/AppModal';
 import { useAuth } from '@/context/AuthProvider';
@@ -43,6 +46,21 @@ function ConsultaCandidatosInner() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Error');
       const arr: Candidato[] = Array.isArray(j) ? j : [];
+      // Adjuntar derivados (proceso, dias) en memoria
+      (arr as CandidatoExt[]).forEach(c => {
+        const { proceso } = calcularDerivados({
+          periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
+          capacitacion_cedula_a1: c.capacitacion_cedula_a1,
+          periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
+          periodo_para_playbook: c.periodo_para_playbook,
+            pre_escuela_sesion_unica_de_arranque: c.pre_escuela_sesion_unica_de_arranque,
+          fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
+          inicio_escuela_fundamental: c.inicio_escuela_fundamental,
+          fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
+          fecha_creacion_ct: c.fecha_creacion_ct
+        })
+        c.proceso = proceso
+      })
       arr.sort((a,b)=>{
         const ua = Date.parse(a.ultima_actualizacion || a.fecha_de_creacion || '') || 0;
         const ub = Date.parse(b.ultima_actualizacion || b.fecha_de_creacion || '') || 0;
@@ -81,6 +99,8 @@ function ConsultaCandidatosInner() {
     { key: 'id_candidato', label: 'ID', sortable: true },
     { key: 'ct', label: 'CT', sortable: true },
     { key: 'candidato', label: 'Candidato', sortable: true },
+    { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
+    { key: 'proceso', label: 'Proceso' },
     { key: 'mes', label: 'Mes', sortable: true },
     { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
     { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
@@ -172,19 +192,21 @@ function ConsultaCandidatosInner() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c, idx) => (
+                  {filtered.map((c, idx) => (
                 <tr key={c.id_candidato} className={`${c.eliminado ? 'table-danger' : ''} dash-anim stagger-${(idx % 6)+1}`}> 
                   {columns.map(col => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
-                    const display = (col.key === 'fecha_de_creacion')
+                        const display = (col.key === 'fecha_de_creacion')
                       ? (formatDate(c.fecha_de_creacion) || '-')
                       : (col.key === 'ultima_actualizacion'
                         ? (formatDate(c.ultima_actualizacion) || '-')
                         : (col.key === 'fecha_tentativa_de_examen'
                           ? (formatDate(c.fecha_tentativa_de_examen) || '-')
-                          : value));
+                          : (col.key === 'fecha_creacion_ct'
+                            ? (formatDate(c.fecha_creacion_ct) || '-')
+                            : value)));
                     return (
                       <td key={col.key} className={cls}>
                         <Cell v={display} />

@@ -15,6 +15,10 @@ export interface Candidato {
   usuario_que_actualizo?: string
   fecha_de_creacion?: string
   ultima_actualizacion?: string
+  // Nueva fecha manual definida por el usuario (fecha de creación de CT)
+  fecha_creacion_ct?: string
+  // Campo derivado (no necesariamente persistido). Si se persiste agregar columna BD.
+  proceso?: string
   // Campos snapshot
   periodo_para_registro_y_envio_de_documentos?: string
   capacitacion_cedula_a1?: string

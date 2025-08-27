@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { getCandidatoById, updateCandidato, getCedulaA1, getEfc } from '@/lib/api'
+import { calcularDerivados } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 // Modal de eliminación y lógica removidos según solicitud
@@ -9,6 +10,9 @@ import BasePage from '@/components/BasePage'
 interface FormState {
   ct?: string;
   candidato?: string;
+  fecha_creacion_ct?: string;
+  dias_desde_ct?: number; // derivado
+  proceso?: string; // derivado
   mes?: string;
   efc?: string;
   fecha_tentativa_de_examen?: string;
@@ -49,8 +53,8 @@ export default function EditarCandidato() {
         ])
         setMeses(m)
         setEfcs(e)
-        // Normalizar datos existentes en formato del formulario
-        setForm({ ...cand })
+  // Normalizar datos existentes + derivados
+  setForm(prev => ({ ...prev, ...calcularDerivados(cand), ...cand }))
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error cargando datos'
         setNotif({ type: 'danger', msg: message })
@@ -80,10 +84,12 @@ export default function EditarCandidato() {
     })
   }
 
+  const recomputeDerived = (draft: FormState): FormState => ({ ...draft, ...calcularDerivados(draft) })
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
   const nextVal: string = value
-    setForm(prev => ({ ...prev, [name]: nextVal }))
+    setForm(prev => recomputeDerived({ ...prev, [name]: nextVal }))
     if (name === 'mes') {
       const encontrado = meses.find(x => x.mes === value)
       setForm(prev => ({
@@ -156,6 +162,18 @@ export default function EditarCandidato() {
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
                 <input name="candidato" className="form-control" value={form.candidato || ''} onChange={handleChange} required />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
+                <input type="date" name="fecha_creacion_ct" className="form-control" value={form.fecha_creacion_ct || ''} onChange={handleChange} />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">DÍAS DESDE CT <span className="badge bg-secondary">auto</span></label>
+                <input className="form-control bg-light" value={form.dias_desde_ct ?? ''} readOnly />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">PROCESO <span className="badge bg-secondary">auto</span></label>
+                <input className="form-control bg-light" value={form.proceso || ''} readOnly />
               </div>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">MES <span className="text-danger">*</span></label>
