@@ -132,8 +132,11 @@ export default function EditarCandidato() {
     setSaving(true)
     setNotif(null)
     try {
-  // La API se encarga de normalizar/derivar antes de guardar
-  await updateCandidato(Number(params.id), form as Partial<Candidato>)
+  // Omitir campos derivados que no existen físicamente en la tabla
+  // Extraer y descartar campos derivados sin declararlos (para evitar warnings)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { dias_desde_ct: _d, proceso: _p, ...payload } = form
+  await updateCandidato(Number(params.id), payload as Partial<Candidato>)
   router.push('/consulta_candidatos')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo guardar'
