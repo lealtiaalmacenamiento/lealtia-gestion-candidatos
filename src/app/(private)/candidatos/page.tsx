@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 
 import { getCandidatos, deleteCandidato } from '@/lib/api';
-import { calcularProceso, diasDesdeCreacionCT } from '@/lib/proceso';
+import { calcularDerivados } from '@/lib/proceso';
 import { exportCandidatosExcel, exportCandidatoPDF } from '@/lib/exporters';
 import AppModal from '@/components/ui/AppModal';
 import type { Candidato } from '@/types';
@@ -63,8 +63,18 @@ export default function CandidatosPage() {
                   {candidatos.length === 0 ? (
                     <tr><td colSpan={7} className="text-center">No hay candidatos registrados.</td></tr>
                   ) : candidatos.map((c) => {
-                    const proceso = calcularProceso(c)
-                    const dias = diasDesdeCreacionCT(c)
+                    const { proceso, dias_desde_ct } = calcularDerivados({
+                      periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
+                      capacitacion_cedula_a1: c.capacitacion_cedula_a1,
+                      periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
+                      periodo_para_playbook: c.periodo_para_playbook,
+                      pre_escuela_sesion_unica_de_arranque: c.pre_escuela_sesion_unica_de_arranque,
+                      fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
+                      inicio_escuela_fundamental: c.inicio_escuela_fundamental,
+                      fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
+                      fecha_creacion_ct: c.fecha_creacion_ct
+                    })
+                    const dias = dias_desde_ct
                     return (
                       <tr key={c.id_candidato}>
                         <td>{c.ct}</td>
@@ -75,8 +85,8 @@ export default function CandidatosPage() {
                         <td>{dias ?? '—'}</td>
                         <td className="p-1">
                           <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
-                            <Link href={`/candidatos/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
-                            <button onClick={() => exportCandidatoPDF({ ...c, proceso_actual: proceso })} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
+                            <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
+                            <button onClick={() => exportCandidatoPDF({ ...c, proceso })} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
                             <button onClick={() => setPendingDelete(c)} className="btn btn-danger btn-sm flex-fill">Eliminar</button>
                           </div>
                         </td>
