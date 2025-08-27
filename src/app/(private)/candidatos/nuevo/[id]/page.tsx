@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { getCandidatoById, updateCandidato, getCedulaA1, getEfc } from '@/lib/api'
-import { calcularDerivados } from '@/lib/proceso'
+import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 // Modal de eliminación y lógica removidos según solicitud
@@ -148,7 +148,7 @@ export default function EditarCandidato() {
 
   if (loading) return <BasePage title="Editar candidato"><div className="text-center py-5"><div className="spinner-border" /></div></BasePage>
 
-  const procesoActual = form.proceso || ''
+  const procesoActual = etiquetaProceso(form.proceso)
   const diasCT = form.dias_desde_ct
 
   return (
