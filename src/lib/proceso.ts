@@ -18,6 +18,22 @@ interface Range { start: Date; end: Date }
 
 const MS_PER_DAY = 86400000
 
+// Mapa de meses en español (formas largas y abreviadas aceptadas)
+const MESES: Record<string, number> = {
+  enero:1, ene:1,
+  febrero:2, feb:2,
+  marzo:3, mar:3,
+  abril:4, abr:4,
+  mayo:5, may:5,
+  junio:6, jun:6,
+  julio:7, jul:7,
+  agosto:8, ago:8,
+  septiembre:9, setiembre:9, sept:9, sep:9,
+  octubre:10, oct:10,
+  noviembre:11, nov:11,
+  diciembre:12, dic:12
+}
+
 function parseOneDate(raw?: string): Date | null {
   if (!raw) return null
   const t = raw.trim()
@@ -34,11 +50,62 @@ function parseOneDate(raw?: string): Date | null {
   const yi = Number(yFull), mi = Number(m), di = Number(d)
     if (yi && mi && di) return new Date(Date.UTC(yi, mi-1, di))
   }
+  // Formatos con nombre de mes: "1 septiembre 2025", "1 sep 25", "1 de septiembre", "1 septiembre"
+  const m2 = t.match(/^(\d{1,2})(?:\s+de)?\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{2,4}))?$/i)
+  if (m2) {
+    const [, dStr, mesStrRaw, yRaw] = m2
+    const mesKey = mesStrRaw.toLowerCase()
+    const mi = MESES[mesKey]
+    if (mi) {
+      let year: number
+      if (yRaw) {
+        year = Number(yRaw.length === 2 ? '20'+yRaw : yRaw)
+      } else {
+        // Si el mes ya pasó y estamos cerca de fin de año quizá sea el próximo? Mantener año actual por simplicidad
+        year = new Date().getUTCFullYear()
+      }
+      const di = Number(dStr)
+      if (di >=1 && di <=31) return new Date(Date.UTC(year, mi-1, di))
+    }
+  }
   return null
 }
 
 function parseRange(raw?: string): Range | null {
   if (!raw) return null
+  const t = raw.trim()
+  // Rango tipo "1 al 5 septiembre 2025" o "1-5 sep" (año opcional)
+  const rg = t.match(/^(\d{1,2})\s*(?:-|al)\s*(\d{1,2})\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{4}))?$/i)
+  if (rg) {
+    const [, d1, d2, mesStrRaw, yRaw] = rg
+    const mesKey = mesStrRaw.toLowerCase()
+    const mi = MESES[mesKey]
+    if (mi) {
+  const year = yRaw ? Number(yRaw) : new Date().getUTCFullYear()
+      const di1 = Number(d1), di2 = Number(d2)
+      if (di1>=1 && di1<=31 && di2>=1 && di2<=31) {
+        const start = new Date(Date.UTC(year, mi-1, di1))
+        const end = new Date(Date.UTC(year, mi-1, di2))
+        if (end.getTime() < start.getTime()) return { start:end, end:start }
+        return { start, end }
+      }
+    }
+  }
+  // Rango de un solo día expresado como "1 septiembre (2025)"
+  const singleNamed = t.match(/^(\d{1,2})(?:\s+de)?\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{4}))?$/i)
+  if (singleNamed) {
+    const [, dStr, mesStrRaw, yRaw] = singleNamed
+    const mesKey = mesStrRaw.toLowerCase()
+    const mi = MESES[mesKey]
+    if (mi) {
+  const year = yRaw ? Number(yRaw) : new Date().getUTCFullYear()
+      const di = Number(dStr)
+      if (di>=1 && di<=31) {
+        const dt = new Date(Date.UTC(year, mi-1, di))
+        return { start: dt, end: dt }
+      }
+    }
+  }
   const parts = raw.split(/\s*-\s*|\sal\s/i).map(s=>s.trim()).filter(Boolean)
   if (parts.length === 2) {
     const a = parseOneDate(parts[0])
