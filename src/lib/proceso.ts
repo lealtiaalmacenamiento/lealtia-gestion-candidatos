@@ -59,36 +59,42 @@ export function diasDesdeCT(fecha_creacion_ct?: string): number | undefined {
 }
 
 export function derivarProceso(s: SnapshotFechas, hoyDate: Date = new Date()): string {
+  // Normalizamos hoy a UTC (solo fecha)
   const hoy = new Date(Date.UTC(hoyDate.getUTCFullYear(), hoyDate.getUTCMonth(), hoyDate.getUTCDate()))
-  const exam = parseOneDate(s.fecha_tentativa_de_examen || '')
 
-  // Si ya pasó examen
-  if (exam && hoy.getTime() > exam.getTime()) return 'Post-examen'
+  // Rango especial: fecha_tentativa_de_examen (si coincide el día exacto lo mostramos como campo activo)
+  const examDate = parseOneDate(s.fecha_tentativa_de_examen || '')
+  if (examDate) {
+    const examUTC = new Date(Date.UTC(examDate.getUTCFullYear(), examDate.getUTCMonth(), examDate.getUTCDate()))
+    if (hoy.getTime() === examUTC.getTime()) return 'fecha_tentativa_de_examen'
+    if (hoy.getTime() > examUTC.getTime()) return 'post_examen'
+  }
 
-  const etapas: Array<{ nombre: string; range: Range | null }> = [
-    { nombre: 'Registro', range: parseRange(s.periodo_para_registro_y_envio_de_documentos) },
-    { nombre: 'Capacitación A1', range: parseRange(s.capacitacion_cedula_a1) },
-    { nombre: 'Folio OV', range: parseRange(s.periodo_para_ingresar_folio_oficina_virtual) },
-    { nombre: 'Playbook', range: parseRange(s.periodo_para_playbook) },
-    { nombre: 'Pre Escuela', range: parseRange(s.pre_escuela_sesion_unica_de_arranque) },
-    { nombre: 'Currícula CDP', range: parseRange(s.fecha_limite_para_presentar_curricula_cdp) },
-    { nombre: 'Escuela Fundamental', range: parseRange(s.inicio_escuela_fundamental) }
+  // Colección de campos/rangos (devolvemos el NOMBRE DEL CAMPO que contiene hoy)
+  const campos: Array<{ campo: keyof SnapshotFechas; range: Range | null }> = [
+    { campo: 'periodo_para_registro_y_envio_de_documentos', range: parseRange(s.periodo_para_registro_y_envio_de_documentos) },
+    { campo: 'capacitacion_cedula_a1', range: parseRange(s.capacitacion_cedula_a1) },
+    { campo: 'periodo_para_ingresar_folio_oficina_virtual', range: parseRange(s.periodo_para_ingresar_folio_oficina_virtual) },
+    { campo: 'periodo_para_playbook', range: parseRange(s.periodo_para_playbook) },
+    { campo: 'pre_escuela_sesion_unica_de_arranque', range: parseRange(s.pre_escuela_sesion_unica_de_arranque) },
+    { campo: 'fecha_limite_para_presentar_curricula_cdp', range: parseRange(s.fecha_limite_para_presentar_curricula_cdp) },
+    { campo: 'inicio_escuela_fundamental', range: parseRange(s.inicio_escuela_fundamental) }
   ]
 
-  for (const e of etapas) {
-    if (e.range && hoy.getTime() >= e.range.start.getTime() && hoy.getTime() <= e.range.end.getTime()) {
-      return e.nombre
+  for (const c of campos) {
+    if (c.range && hoy.getTime() >= c.range.start.getTime() && hoy.getTime() <= c.range.end.getTime()) {
+      return String(c.campo)
     }
   }
 
-  // Si aún no empieza ninguna pero hay futuras
-  const futuras = etapas.filter(e=> e.range && e.range.start.getTime() > hoy.getTime()).sort((a,b)=> a.range!.start.getTime() - b.range!.start.getTime())
-  if (futuras.length) return 'Pendiente ' + futuras[0].nombre
+  // Próximo campo futuro -> indicamos nombre prefijado con 'pendiente:'
+  const futuras = campos.filter(c=> c.range && c.range.start.getTime() > hoy.getTime()).sort((a,b)=> a.range!.start.getTime() - b.range!.start.getTime())
+  if (futuras.length) return 'pendiente:' + futuras[0].campo
 
-  // Si ya terminó la última etapa pero aún no es examen
-  if (exam && hoy.getTime() < exam.getTime()) return 'Preparación Examen'
+  // Si hay examen futuro (pero no estamos en ningún rango ya finalizado todos los demás)
+  if (examDate && hoy.getTime() < examDate.getTime()) return 'preparacion_examen'
 
-  return 'Sin etapa'
+  return 'sin_etapa'
 }
 
 export function calcularDerivados(s: SnapshotFechas) {
