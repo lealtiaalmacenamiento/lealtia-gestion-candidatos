@@ -66,35 +66,35 @@ export function derivarProceso(s: SnapshotFechas, hoyDate: Date = new Date()): s
   const examDate = parseOneDate(s.fecha_tentativa_de_examen || '')
   if (examDate) {
     const examUTC = new Date(Date.UTC(examDate.getUTCFullYear(), examDate.getUTCMonth(), examDate.getUTCDate()))
-    if (hoy.getTime() === examUTC.getTime()) return 'fecha_tentativa_de_examen'
-    if (hoy.getTime() > examUTC.getTime()) return 'post_examen'
+    if (hoy.getTime() === examUTC.getTime()) return 'FECHA TENTATIVA DE EXAMEN'
+    if (hoy.getTime() > examUTC.getTime()) return 'POST EXAMEN'
   }
 
   // Colección de campos/rangos (devolvemos el NOMBRE DEL CAMPO que contiene hoy)
-  const campos: Array<{ campo: keyof SnapshotFechas; range: Range | null }> = [
-    { campo: 'periodo_para_registro_y_envio_de_documentos', range: parseRange(s.periodo_para_registro_y_envio_de_documentos) },
-    { campo: 'capacitacion_cedula_a1', range: parseRange(s.capacitacion_cedula_a1) },
-    { campo: 'periodo_para_ingresar_folio_oficina_virtual', range: parseRange(s.periodo_para_ingresar_folio_oficina_virtual) },
-    { campo: 'periodo_para_playbook', range: parseRange(s.periodo_para_playbook) },
-    { campo: 'pre_escuela_sesion_unica_de_arranque', range: parseRange(s.pre_escuela_sesion_unica_de_arranque) },
-    { campo: 'fecha_limite_para_presentar_curricula_cdp', range: parseRange(s.fecha_limite_para_presentar_curricula_cdp) },
-    { campo: 'inicio_escuela_fundamental', range: parseRange(s.inicio_escuela_fundamental) }
+  const campos: Array<{ etiqueta: string; range: Range | null }> = [
+    { etiqueta: 'PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', range: parseRange(s.periodo_para_registro_y_envio_de_documentos) },
+    { etiqueta: 'CAPACITACIÓN CÉDULA A1', range: parseRange(s.capacitacion_cedula_a1) },
+    { etiqueta: 'PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL', range: parseRange(s.periodo_para_ingresar_folio_oficina_virtual) },
+    { etiqueta: 'PERIODO PARA PLAYBOOK', range: parseRange(s.periodo_para_playbook) },
+    { etiqueta: 'PRE ESCUELA SESIÓN ÚNICA DE ARRANQUE', range: parseRange(s.pre_escuela_sesion_unica_de_arranque) },
+    { etiqueta: 'FECHA LÍMITE PARA PRESENTAR CURRÍCULA CDP', range: parseRange(s.fecha_limite_para_presentar_curricula_cdp) },
+    { etiqueta: 'INICIO ESCUELA FUNDAMENTAL', range: parseRange(s.inicio_escuela_fundamental) }
   ]
 
   for (const c of campos) {
     if (c.range && hoy.getTime() >= c.range.start.getTime() && hoy.getTime() <= c.range.end.getTime()) {
-      return String(c.campo)
+      return c.etiqueta
     }
   }
 
   // Próximo campo futuro -> indicamos nombre prefijado con 'pendiente:'
   const futuras = campos.filter(c=> c.range && c.range.start.getTime() > hoy.getTime()).sort((a,b)=> a.range!.start.getTime() - b.range!.start.getTime())
-  if (futuras.length) return 'pendiente:' + futuras[0].campo
+  if (futuras.length) return 'PENDIENTE ' + futuras[0].etiqueta
 
   // Si hay examen futuro (pero no estamos en ningún rango ya finalizado todos los demás)
-  if (examDate && hoy.getTime() < examDate.getTime()) return 'preparacion_examen'
+  if (examDate && hoy.getTime() < examDate.getTime()) return 'PREPARACIÓN EXAMEN'
 
-  return 'sin_etapa'
+  return 'SIN ETAPA'
 }
 
 export function calcularDerivados(s: SnapshotFechas) {
@@ -106,24 +106,9 @@ export function calcularDerivados(s: SnapshotFechas) {
 
 // Mapeo a etiquetas legibles en UI
 export const LABELS: Record<string,string> = {
-  periodo_para_registro_y_envio_de_documentos: 'Registro & envío de documentos',
-  capacitacion_cedula_a1: 'Capacitación Cédula A1',
-  periodo_para_ingresar_folio_oficina_virtual: 'Ingreso Folio OV',
-  periodo_para_playbook: 'Playbook',
-  pre_escuela_sesion_unica_de_arranque: 'Pre Escuela (Sesión única)',
-  fecha_limite_para_presentar_curricula_cdp: 'Currícula CDP',
-  inicio_escuela_fundamental: 'Escuela Fundamental',
-  fecha_tentativa_de_examen: 'Examen (tentativo)',
-  post_examen: 'Post Examen',
-  preparacion_examen: 'Preparación examen',
-  sin_etapa: 'Sin etapa',
+  // Ya no se usan códigos internos, la función derivarProceso devuelve etiquetas finales.
 }
 
 export function etiquetaProceso(codigo?: string): string {
-  if (!codigo) return ''
-  if (codigo.startsWith('pendiente:')) {
-    const campo = codigo.split(':')[1]
-    return 'Pendiente ' + (LABELS[campo] || campo)
-  }
-  return LABELS[codigo] || codigo
+  return codigo || ''
 }

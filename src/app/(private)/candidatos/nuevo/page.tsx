@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createCandidato, getCedulaA1, getEfc } from '@/lib/api'
-import { calcularDerivados } from '@/lib/proceso'
+import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 
@@ -182,10 +182,10 @@ export default function NuevoCandidato() {
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">PROCESO <span className="badge bg-secondary">auto</span></label>
-                  <input className="form-control bg-light" value={form.proceso || ''} readOnly />
+                  <input className="form-control bg-light" value={etiquetaProceso(form.proceso)} readOnly />
                 </div>
                 <div className="col-12">
-                  <label className="form-label fw-semibold small mb-1">MES <span className="text-danger">*</span></label>
+                  <label className="form-label fw-semibold small mb-1">CÉDULA A1 <span className="text-danger">*</span></label>
                   <select name="mes" className="form-select" value={form.mes} onChange={handleChange} required>
                     <option value="">Selecciona una opción</option>
                     {meses.map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}

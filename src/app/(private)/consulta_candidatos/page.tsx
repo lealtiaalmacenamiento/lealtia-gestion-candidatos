@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
-import { calcularDerivados } from '@/lib/proceso';
+import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 
 interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string }
 import BasePage from '@/components/BasePage';
@@ -101,7 +101,7 @@ function ConsultaCandidatosInner() {
   { key: 'candidato', label: 'Candidato', sortable: true },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'proceso', label: 'Proceso' },
-    { key: 'mes', label: 'Mes', sortable: true },
+  { key: 'mes', label: 'Cédula A1', sortable: true },
     { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
     { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
     { key: 'fecha_tentativa_de_examen', label: 'Fecha tentativa examen', sortable: true },
@@ -243,13 +243,14 @@ function ConsultaCandidatosInner() {
                           : (col.key === 'fecha_creacion_ct'
                             ? (formatDate(c.fecha_creacion_ct) || '-')
                              : (col.key === 'proceso'
-                               ? (c as unknown as { proceso?: string }).proceso || ''
+                               ? etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''
                               : value))));
+                    const rawProceso = (c as unknown as { proceso?: string }).proceso || ''
                     return (
-                      <td key={col.key} className={cls}>
+                      <td key={col.key} className={cls} title={col.key==='proceso' ? rawProceso : undefined}>
                         <Cell v={display} />
                       </td>
-                    );
+                    )
                   })}
                   {!readOnly && (
                     <td style={{whiteSpace:'nowrap'}}>

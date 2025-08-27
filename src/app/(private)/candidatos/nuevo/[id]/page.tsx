@@ -187,7 +187,7 @@ export default function EditarCandidato() {
                 <input className="form-control bg-light" value={procesoActual} readOnly title={form.proceso || ''} />
               </div>
               <div className="col-12">
-                <label className="form-label fw-semibold small mb-1">MES <span className="text-danger">*</span></label>
+                <label className="form-label fw-semibold small mb-1">CÉDULA A1 <span className="text-danger">*</span></label>
                 <select name="mes" className="form-select" value={form.mes || ''} onChange={handleChange} required>
                   <option value="">Selecciona una opción</option>
                   {meses.map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}
