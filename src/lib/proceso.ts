@@ -13,7 +13,7 @@ export function calcularProceso(c: Candidato): string {
   return 'Preparación'
 }
 
-export function diasDesdeCreacionCT(c: Candidato): number | null {
+export function diasDesdeCreacionCT(c: Pick<Candidato,'fecha_creacion_ct'>): number | null {
   if (!c.fecha_creacion_ct) return null
   const inicio = new Date(c.fecha_creacion_ct)
   if (isNaN(inicio.getTime())) return null

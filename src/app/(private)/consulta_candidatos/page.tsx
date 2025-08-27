@@ -312,10 +312,16 @@ function Th({ label, k, sortKey, sortDir, onSort, sortable, width }: ThProps) {
 }
 
 function formatDate(v?: string) {
-  if (!v) return '';
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return v;
-  return d.toLocaleDateString('es-MX', { year: '2-digit', month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
+  if (!v) return ''
+  // Si es fecha pura YYYY-MM-DD no la pasamos por Date() para evitar desfase de zona horaria
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y,m,d] = v.split('-')
+    return `${d}/${m}/${y.slice(2)}` // dd/mm/aa
+  }
+  // Para otros formatos (con hora) usamos Date y mostramos fecha + hora local
+  const dObj = new Date(v)
+  if (isNaN(dObj.getTime())) return v
+  return dObj.toLocaleDateString('es-MX', { year: '2-digit', month: '2-digit', day: '2-digit' })
 }
 
 function oneLine(val: unknown) {
