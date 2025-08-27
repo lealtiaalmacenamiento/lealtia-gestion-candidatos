@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 
 import { getCandidatos, deleteCandidato } from '@/lib/api';
-import { calcularDerivados } from '@/lib/proceso';
+import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 import { exportCandidatosExcel, exportCandidatoPDF } from '@/lib/exporters';
 import AppModal from '@/components/ui/AppModal';
 import type { Candidato } from '@/types';
@@ -81,7 +81,7 @@ export default function CandidatosPage() {
                         <td>{c.candidato}</td>
                         <td>{c.mes}</td>
                         <td>{c.efc}</td>
-                        <td>{proceso}</td>
+                        <td title={proceso}>{etiquetaProceso(proceso)}</td>
                         <td>{dias ?? '—'}</td>
                         <td className="p-1">
                           <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">

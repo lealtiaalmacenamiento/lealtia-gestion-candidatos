@@ -103,3 +103,27 @@ export function calcularDerivados(s: SnapshotFechas) {
     proceso: derivarProceso(s)
   }
 }
+
+// Mapeo a etiquetas legibles en UI
+export const LABELS: Record<string,string> = {
+  periodo_para_registro_y_envio_de_documentos: 'Registro & envío de documentos',
+  capacitacion_cedula_a1: 'Capacitación Cédula A1',
+  periodo_para_ingresar_folio_oficina_virtual: 'Ingreso Folio OV',
+  periodo_para_playbook: 'Playbook',
+  pre_escuela_sesion_unica_de_arranque: 'Pre Escuela (Sesión única)',
+  fecha_limite_para_presentar_curricula_cdp: 'Currícula CDP',
+  inicio_escuela_fundamental: 'Escuela Fundamental',
+  fecha_tentativa_de_examen: 'Examen (tentativo)',
+  post_examen: 'Post Examen',
+  preparacion_examen: 'Preparación examen',
+  sin_etapa: 'Sin etapa',
+}
+
+export function etiquetaProceso(codigo?: string): string {
+  if (!codigo) return ''
+  if (codigo.startsWith('pendiente:')) {
+    const campo = codigo.split(':')[1]
+    return 'Pendiente ' + (LABELS[campo] || campo)
+  }
+  return LABELS[codigo] || codigo
+}

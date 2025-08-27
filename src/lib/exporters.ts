@@ -1,5 +1,5 @@
 import type { Candidato } from '@/types'
-import { calcularDerivados } from '@/lib/proceso'
+import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 
 // Lazy dynamic imports para no inflar el bundle inicial
 async function loadXLSX() { return (await import('xlsx')).default }
@@ -27,7 +27,7 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       Candidato: c.candidato,
       'Cédula A1': c.mes,
       EFC: c.efc,
-      Proceso: proceso || '',
+  Proceso: etiquetaProceso(proceso) || '',
       'Fecha creación CT': c.fecha_creacion_ct || '',
       'Días desde creación CT': dias_desde_ct ?? '',
       'Fecha tent. examen': c.fecha_tentativa_de_examen || ''
@@ -64,7 +64,7 @@ export async function exportCandidatoPDF(c: Candidato) {
     fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
     fecha_creacion_ct: c.fecha_creacion_ct
   })
-  push('Proceso', proceso || '')
+  push('Proceso', etiquetaProceso(proceso) || '')
   push('Fecha creación CT', c.fecha_creacion_ct || '')
   push('Fecha tent. examen', c.fecha_tentativa_de_examen || '')
   // @ts-expect-error autoTable inyectada por plugin

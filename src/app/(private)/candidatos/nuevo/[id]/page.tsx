@@ -184,7 +184,7 @@ export default function EditarCandidato() {
               </div>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">PROCESO <span className="badge bg-secondary">auto</span></label>
-                <input className="form-control bg-light" value={form.proceso || ''} readOnly />
+                <input className="form-control bg-light" value={procesoActual} readOnly title={form.proceso || ''} />
               </div>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">MES <span className="text-danger">*</span></label>
