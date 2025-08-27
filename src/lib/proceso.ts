@@ -156,7 +156,7 @@ export function derivarProceso(s: SnapshotFechas, hoyDate: Date = new Date()): s
 
   // Próximo campo futuro -> indicamos nombre prefijado con 'pendiente:'
   const futuras = campos.filter(c=> c.range && c.range.start.getTime() > hoy.getTime()).sort((a,b)=> a.range!.start.getTime() - b.range!.start.getTime())
-  if (futuras.length) return 'PENDIENTE ' + futuras[0].etiqueta
+  if (futuras.length) return  futuras[0].etiqueta
 
   // Si hay examen futuro (pero no estamos en ningún rango ya finalizado todos los demás)
   if (examDate && hoy.getTime() < examDate.getTime()) return 'PREPARACIÓN EXAMEN'
