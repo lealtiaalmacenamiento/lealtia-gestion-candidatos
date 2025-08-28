@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
+import Notification from '@/components/ui/Notification'
 import { useAuth } from '@/context/AuthProvider'
 import type { BloquePlanificacion, ProspectoEstado } from '@/types'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
@@ -20,6 +21,8 @@ export default function PlanificacionPage(){
   const [agenteId,setAgenteId]=useState('')
   const [data,setData]=useState<PlanificacionResponse|null>(null)
   const [loading,setLoading]=useState(false)
+  const [dirty,setDirty]=useState(false)
+  const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const agenteQuery = superuser && agenteId ? '&agente_id='+agenteId : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
@@ -89,7 +92,8 @@ export default function PlanificacionPage(){
       if(idx===ACTIVIDADES.length-1){ nuevos = data.bloques.filter(b=> !(b.day===day && b.hour===hour)) }
       else { nuevos = data.bloques.map(b=> b===existing? {...b,activity:next}:b) }
     }
-    setData(prev=> prev? {...prev,bloques:nuevos}:prev)
+  setData(prev=> prev? {...prev,bloques:nuevos}:prev)
+  setDirty(true)
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -112,7 +116,7 @@ export default function PlanificacionPage(){
       porcentaje_comision: data.porcentaje_comision
     }
     const r=await fetch('/api/planificacion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    if(r.ok) fetchData()
+    if(r.ok){ fetchData(); setDirty(false); setToast({msg:'Planificación guardada', type:'success'}) } else { setToast({msg:'Error al guardar', type:'error'}) }
   }
 
   return <div className="container py-4">
@@ -172,13 +176,14 @@ export default function PlanificacionPage(){
             <div className={`progress-bar ${horasCitas>=metaCitas? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasCitas/metaCitas)*100)}%`}}>{horasCitas}/{metaCitas}</div>
           </div>
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-          <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string')}>Guardar</button>
-          <div className="form-text small">Los cambios en la grilla requieren Guardar para persistir.</div>
+          <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
+          <div className="form-text small">{dirty? 'Cambios pendientes de guardar.':'Sin cambios.'}</div>
         </div>
   <div className="mt-3 small text-muted">Click en celda: ciclo PROSPECCION → CITAS → SMNYL → vacío. Letra mostrada: inicial de actividad.</div>
   {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> `${b.day}/${b.hour}`).join(', ')}</div>}
       </div>
     </div>}
-    {loading && <div>Cargando...</div>}
+  {loading && <div>Cargando...</div>}
+  {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
   </div>
 }
