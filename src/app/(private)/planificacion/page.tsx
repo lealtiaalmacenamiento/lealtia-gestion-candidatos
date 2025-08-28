@@ -179,6 +179,13 @@ export default function PlanificacionPage(){
             </tbody>
           </table>
         </div>
+        <div className="small text-muted mt-2 d-flex flex-wrap gap-3">
+          <span><span className="badge bg-success">Cita</span> cita manual</span>
+          <span><span className="badge bg-success bg-opacity-75 text-white">Cita auto</span> cita proveniente de prospecto</span>
+          <span><span className="badge bg-primary">Prospección</span></span>
+          <span><span className="badge bg-info text-dark">SMNYL</span></span>
+          <span>Click celda = editar / crear bloque</span>
+        </div>
       </div>
       <div className="col-lg-3">
         <div className="card p-3 shadow-sm">
