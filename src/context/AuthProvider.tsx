@@ -21,6 +21,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Recupera el usuario actual al cargar la app
   useEffect(() => {
     let cancelled = false
+    let performedRecovery = false
     const init = async () => {
       try {
         console.log('[AuthProvider:init] Intento cargar usuario vía /api/login')
@@ -38,6 +39,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUser(null)
             setSession(null)
             console.warn('[AuthProvider:init] /api/login status', res.status)
+            // Fallback: si existen cookies de supabase pero el registro usuarios se borró, limpiamos sesión llamando logout
+            if (!performedRecovery) {
+              performedRecovery = true
+              try { await fetch('/api/logout', { method: 'POST' }) } catch {}
+              // Redirigir a login sólo si no estamos ya allí para evitar loop
+              if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+                window.location.replace('/login')
+              }
+            }
           }
         }
       } catch (e) {
@@ -45,6 +55,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           console.error('[AuthProvider:init] error', e)
           setUser(null)
           setSession(null)
+          if (!performedRecovery) {
+            performedRecovery = true
+            try { await fetch('/api/logout', { method: 'POST' }) } catch {}
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              window.location.replace('/login')
+            }
+          }
         }
       } finally {
         if (!cancelled) setLoadingUser(false)
