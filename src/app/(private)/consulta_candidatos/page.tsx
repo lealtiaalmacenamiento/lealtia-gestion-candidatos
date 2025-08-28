@@ -146,13 +146,15 @@ function ConsultaCandidatosInner() {
   }
   const [agenteMeta, setAgenteMeta] = useState<AgenteMeta | null>(null)
   const openAgenteModal = (c: Candidato) => {
+    if (c.email_agente) return; // no permitir cambiar
     setSelectedForAgente(c)
-    setAgenteEmail(c.email_agente || '')
+    setAgenteEmail('')
     setAgenteMeta(null)
   }
   const submitAgente = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedForAgente) return
+  if (!selectedForAgente) return
+  if (selectedForAgente.email_agente) { setAgenteMeta({ error: 'Ya tiene agente asignado' }); return }
     const email = agenteEmail.trim().toLowerCase()
     if (!/.+@.+\..+/.test(email)) { setAgenteMeta({ error: 'Email inválido' }); return }
     try {
@@ -302,11 +304,7 @@ function ConsultaCandidatosInner() {
                         disabled={deleting === c.id_candidato}
                       >Editar</button>
                       <a className="btn btn-sm btn-outline-secondary me-1" href={`/api/candidatos/${c.id_candidato}?export=pdf`} target="_blank" rel="noopener noreferrer">PDF</a>
-                      <button
-                        className={`btn btn-sm ${c.email_agente ? 'btn-outline-warning' : 'btn-outline-success'} me-1`}
-                        onClick={()=>openAgenteModal(c)}
-                        title={c.email_agente ? 'Cambiar email agente' : 'Asignar email agente'}
-                      >{c.email_agente ? 'Cambiar agente' : 'Asignar agente'}</button>
+            {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => setPendingDelete(c)}
@@ -360,8 +358,7 @@ function ConsultaCandidatosInner() {
         >
           <form onSubmit={submitAgente} className="needs-validation" noValidate>
             <div className="mb-3 small">
-              <strong>Candidato:</strong> {selectedForAgente.candidato || '—'} (ID {selectedForAgente.id_candidato})<br />
-              {selectedForAgente.email_agente && <span className="text-muted">Actual: {selectedForAgente.email_agente}</span>}
+              <strong>Candidato:</strong> {selectedForAgente.candidato || '—'} (ID {selectedForAgente.id_candidato})
             </div>
             <div className="mb-3">
               <label className="form-label">Email del agente</label>

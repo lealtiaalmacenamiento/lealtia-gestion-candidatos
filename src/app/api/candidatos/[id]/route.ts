@@ -36,17 +36,18 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   let agenteMeta: any = undefined
   if (typeof body.email_agente === 'string') {
     const email = body.email_agente.trim().toLowerCase()
-    if (email) {
-      const existenteEmail = (existenteData as any).email_agente as string | undefined
-      if (!existenteEmail || existenteEmail.toLowerCase() !== email) {
-        try {
-          agenteMeta = await crearUsuarioAgenteAuto({ email, nombre: body.candidato || (existenteData as any).candidato })
-        } catch (e) {
-          agenteMeta = { error: e instanceof Error ? e.message : 'Error desconocido creando usuario agente' }
-        }
+    const existenteEmail = (existenteData as any).email_agente as string | undefined
+    if (existenteEmail) {
+      // No permitir cambio; ignorar y no tocar body.email_agente
+      delete (body as any).email_agente
+    } else if (email) {
+      try {
+        agenteMeta = await crearUsuarioAgenteAuto({ email, nombre: body.candidato || (existenteData as any).candidato })
+      } catch (e) {
+        agenteMeta = { error: e instanceof Error ? e.message : 'Error desconocido creando usuario agente' }
       }
+      body.email_agente = email
     }
-    body.email_agente = email
   }
 
   if (body.mes && body.mes !== existenteData.mes) {
