@@ -38,6 +38,7 @@ export default function PlanificacionPage(){
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
+  const metaCitas = 5
   const ganancia = horasCitas * ( (data?.prima_anual_promedio||0) * ((data?.porcentaje_comision||0)/100) )
 
   const guardar = async()=>{
@@ -79,6 +80,10 @@ export default function PlanificacionPage(){
           <div className="mb-2 small">Horas CITAS: <strong>{horasCitas}</strong></div>
           <div className="mb-2 small">Prima anual promedio <input type="number" className="form-control form-control-sm" value={data.prima_anual_promedio} onChange={e=>setData({...data,prima_anual_promedio:Number(e.target.value)})}/></div>
           <div className="mb-2 small">% Comisión <input type="number" className="form-control form-control-sm" value={data.porcentaje_comision} onChange={e=>setData({...data,porcentaje_comision:Number(e.target.value)})}/></div>
+          <div className="mb-2 small">Meta CITAS semanal: {metaCitas}</div>
+          <div className="progress mb-2" role="progressbar" aria-valuenow={horasCitas} aria-valuemin={0} aria-valuemax={metaCitas}>
+            <div className={`progress-bar ${horasCitas>=metaCitas? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasCitas/metaCitas)*100)}%`}}>{horasCitas}/{metaCitas}</div>
+          </div>
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading}>Guardar</button>
         </div>

@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
@@ -17,7 +17,18 @@ export default function ProspectosPage() {
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
   const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado, fecha_cita:'' })
   const [agenteId,setAgenteId]=useState<string>('')
+  const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
+  const debounceRef = useRef<number|null>(null)
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
+
+  const fetchAgentes = async()=>{
+    if(!superuser) return
+    const r = await fetch('/api/agentes')
+    if(r.ok) {
+      const list = await r.json()
+      setAgentes(list)
+    }
+  }
 
   const fetchAll=async()=>{
     setLoading(true)
@@ -31,28 +42,45 @@ export default function ProspectosPage() {
     setLoading(false)
   }
 
-  useEffect(()=>{ fetchAll() // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{ fetchAll(); if(superuser) fetchAgentes() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[estadoFiltro, agenteId])
 
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!form.nombre.trim()) return; const body: Record<string,unknown>={...form}; if(!body.fecha_cita) delete body.fecha_cita; const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(r.ok){setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:''}); fetchAll()} }
 
-  const update=(id:number, patch:Partial<Prospecto>)=> fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)}).then(r=>{ if(r.ok) fetchAll() })
+  const update=(id:number, patch:Partial<Prospecto>)=> {
+    // debounce mínimo
+    window.clearTimeout(debounceRef.current||0)
+    debounceRef.current = window.setTimeout(()=>{
+      fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)}).then(r=>{ if(r.ok) fetchAll() })
+    },300)
+  }
 
   const eliminar=(id:number)=>{ if(!confirm('Eliminar prospecto?')) return; fetch('/api/prospectos/'+id,{method:'DELETE'}).then(r=>{ if(r.ok) fetchAll() }) }
 
   return <div className="container py-4">
     <h2 className="fw-semibold mb-3">Prospectos – Semana {semanaActual.semana} ({semanaActual.anio})</h2>
-    {superuser && <div className="mb-3 d-flex gap-2"> <input placeholder="Agente ID" value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-control w-auto"/> </div>}
+    {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
+      <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto">
+        <option value="">(Seleccionar agente)</option>
+        {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
+      </select>
+      {agenteId && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=>exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, `Prospectos Semana ${semanaActual.semana}`)}>PDF</button>}
+    </div>}
   <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
       <select value={estadoFiltro} onChange={e=>setEstadoFiltro(e.target.value as ProspectoEstado|'' )} className="form-select w-auto">
         <option value="">Todos los estados</option>
         {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
-      {agg && <div className="d-flex flex-wrap gap-2 small">
-        <span className="badge bg-secondary">Total {agg.total}</span>
-        {Object.entries(agg.por_estado).map(([k,v])=> <span key={k} className="badge bg-light text-dark border">{ESTADO_LABEL[k as ProspectoEstado]} {v}</span>)}
-        <span className={"badge "+ (agg.cumplimiento_30? 'bg-success':'bg-warning text-dark')}>{agg.cumplimiento_30? 'Meta 30 ok':'<30 prospectos'}</span>
-        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos Semana ${semanaActual.semana}`)}>PDF</button>
+      {agg && <div className="d-flex flex-column gap-2 small">
+        <div className="d-flex flex-wrap gap-2 align-items-center">
+          <span className="badge bg-secondary">Total {agg.total}</span>
+          {Object.entries(agg.por_estado).map(([k,v])=> <span key={k} className="badge bg-light text-dark border">{ESTADO_LABEL[k as ProspectoEstado]} {v}</span>)}
+          <span className={"badge "+ (agg.cumplimiento_30? 'bg-success':'bg-warning text-dark')}>{agg.cumplimiento_30? 'Meta 30 ok':'<30 prospectos'}</span>
+          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos Semana ${semanaActual.semana}`)}>PDF</button>
+        </div>
+        <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={30}>
+          <div className={`progress-bar ${agg.total>=30? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/30)*100)}%`}}>{agg.total}/30</div>
+        </div>
       </div>}
     </div>
     <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
