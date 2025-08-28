@@ -133,10 +133,6 @@ export default function ProspectosPage() {
   {agenteId && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=>exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, `Prospectos ${semana==='ALL'?'Año': 'Semana '+semana}`)}>PDF</button>}
     </div>}
   <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
-      <select value={estadoFiltro} onChange={e=>setEstadoFiltro(e.target.value as ProspectoEstado|'' )} className="form-select w-auto">
-        <option value="">Todos los estados</option>
-        {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
       <div className="form-check form-switch small">
         <input className="form-check-input" type="checkbox" id="soloCitaChk" checked={soloConCita} onChange={e=>setSoloConCita(e.target.checked)} />
         <label className="form-check-label" htmlFor="soloCitaChk">Solo con cita</label>
