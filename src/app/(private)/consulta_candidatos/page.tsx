@@ -371,7 +371,6 @@ function ConsultaCandidatosInner() {
                   <>
                     {agenteMeta.created && <div>Usuario agente creado.</div>}
                     {agenteMeta.existed && <div>El usuario ya existía.</div>}
-                    {agenteMeta.passwordTemporal && <div>Password temporal: <code>{agenteMeta.passwordTemporal}</code></div>}
                     {agenteMeta.correoEnviado === true && <div>Correo de bienvenida enviado.</div>}
                     {agenteMeta.correoEnviado === false && <div>No se pudo enviar correo: {agenteMeta.correoError || 'Error desconocido'}</div>}
                     {!agenteMeta.created && !agenteMeta.existed && !agenteMeta.error && <div>Asignado.</div>}

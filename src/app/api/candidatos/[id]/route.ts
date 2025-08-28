@@ -116,6 +116,10 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   await logAccion('edicion_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: Number(id), snapshot: existenteData })
 
   // Adjuntar meta de agente si aplica sin romper clientes existentes
+  if (agenteMeta && agenteMeta.passwordTemporal) {
+    // No exponer password temporal al cliente por seguridad
+    delete agenteMeta.passwordTemporal
+  }
   const responsePayload = agenteMeta ? { ...data, _agente_meta: agenteMeta } : data
   return NextResponse.json(responsePayload)
 }

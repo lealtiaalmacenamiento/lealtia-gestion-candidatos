@@ -115,5 +115,6 @@ export async function POST(req: Request) {
   await logAccion('alta_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: idLog, snapshot: data })
 
   // 3) Responder incluyendo meta de agente (no rompe consumidores existentes)
+  if (agenteMeta.passwordTemporal) delete agenteMeta.passwordTemporal
   return NextResponse.json({ ...data, _agente_meta: agenteMeta })
 }
