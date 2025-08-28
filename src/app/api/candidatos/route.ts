@@ -5,6 +5,23 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
+import { buildAltaUsuarioEmail, sendMail } from '@/lib/mailer'
+
+// Utilidades para creación automática de usuario agente
+function randomTempPassword() {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const lower = 'abcdefghijkmnopqrstuvwxyz'
+  const digits = '23456789'
+  const specials = '!@$%*?'
+  const all = upper+lower+digits+specials
+  const pick = (src: string)=> src[Math.floor(Math.random()*src.length)]
+  let base = pick(upper)+pick(lower)+pick(digits)+pick(specials)
+  for(let i=0;i<8;i++) base += pick(all)
+  return base.split('').sort(()=>Math.random()-0.5).join('')
+}
+function isStrongPassword(pw: string) {
+  return pw.length >= 8 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /\d/.test(pw)
+}
 
 const supabase = getServiceClient()
 
@@ -27,6 +44,9 @@ export async function POST(req: Request) {
   if (!usuario.activo) return NextResponse.json({ error: 'Usuario inactivo' }, { status: 403 })
 
   const body = await req.json()
+  const emailAgenteRaw: unknown = body.email_agente
+  const emailAgente = typeof emailAgenteRaw === 'string' ? emailAgenteRaw.trim().toLowerCase() : ''
+  delete body.email_agente // evitar insertar columna inexistente en candidatos
   // Validación mínima de campos requeridos
   const requeridos: Array<keyof typeof body> = ['candidato', 'mes', 'efc']
   const faltan = requeridos.filter(k => !body[k] || (typeof body[k] === 'string' && body[k].trim() === ''))
@@ -97,6 +117,33 @@ export async function POST(req: Request) {
   interface CandidatoInsert { id_candidato?: number }
   const idLog = (data as CandidatoInsert)?.id_candidato
   await logAccion('alta_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: idLog, snapshot: data })
+
+  // Intentar creación automática de usuario agente (silenciosa, no afecta resultado principal)
+  if (emailAgente && /.+@.+\..+/.test(emailAgente)) {
+    try {
+      // ¿Existe ya?
+      const existente = await supabase.from('usuarios').select('id,rol').eq('email', emailAgente).maybeSingle()
+      if (!existente.error && !existente.data) {
+        // Crear en Auth
+        const tempPassword = randomTempPassword()
+        if(!isStrongPassword(tempPassword)) throw new Error('Password temporal generado inválido')
+        const authRes = await (supabase as any).auth.admin.createUser({ email: emailAgente, password: tempPassword, email_confirm: true })
+        if (authRes.error) throw new Error(authRes.error.message)
+        const authId = authRes.data?.user?.id
+        const ins = await supabase.from('usuarios').insert([{ email: emailAgente, rol: 'agente', activo: true, must_change_password: true, id_auth: authId }]).select('id').single()
+        if (ins.error) throw new Error(ins.error.message)
+        await logAccion('alta_usuario_auto_candidato', { usuario: usuario.email, tabla_afectada: 'usuarios', snapshot: { email: emailAgente, rol: 'agente' } })
+        try {
+          const { subject, html, text } = buildAltaUsuarioEmail(emailAgente, tempPassword)
+          await sendMail({ to: emailAgente, subject, html, text })
+        } catch (e) {
+          console.warn('[api/candidatos] Fallo envío correo usuario agente:', e)
+        }
+      }
+    } catch (e) {
+      console.warn('[api/candidatos] creación usuario agente fallida:', e)
+    }
+  }
 
   return NextResponse.json(data)
 }

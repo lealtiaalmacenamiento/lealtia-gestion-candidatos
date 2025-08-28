@@ -10,6 +10,7 @@ interface FormState {
   candidato: string;
   // Nueva fecha manual: fecha de creación CT
   fecha_creacion_ct?: string;
+  email_agente: string; // correo para crear usuario agente
   mes: string;
   efc: string;
   fecha_tentativa_de_examen?: string; // entrada manual
@@ -26,7 +27,7 @@ interface FormState {
   inicio_escuela_fundamental?: string;
 }
 
-const initialForm: FormState = { ct: '', candidato: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '' }
+const initialForm: FormState = { ct: '', candidato: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '' }
 
 export default function NuevoCandidato() {
   const [meses, setMeses] = useState<CedulaA1[]>([])
@@ -122,7 +123,7 @@ export default function NuevoCandidato() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { dias_desde_ct: _omitDias, proceso: _omitProceso, ...payload } = form
   await createCandidato({ ...(payload as unknown as Partial<Candidato>), seg_gmm: 0, seg_vida: 0 })
-      setNotif({ type: 'success', msg: 'Candidato guardado correctamente. Puedes capturar otro.' })
+      setNotif({ type: 'success', msg: 'Candidato guardado correctamente. (Se intentó crear el usuario agente en backend si no existía).' })
       // Reiniciar formulario limpio
       setForm(initialForm)
       // Reenfocar primer campo
@@ -170,6 +171,11 @@ export default function NuevoCandidato() {
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
                   <input name="candidato" className="form-control" value={form.candidato} onChange={handleChange} placeholder="Nombre completo" required />
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1">EMAIL (AGENTE) <span className="text-danger">*</span></label>
+                  <input name="email_agente" type="email" className="form-control" value={form.email_agente} onChange={handleChange} placeholder="correo@dominio.com" required />
+                  <div className="form-text small">Se creará automáticamente un usuario con rol agente usando este correo.</div>
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
