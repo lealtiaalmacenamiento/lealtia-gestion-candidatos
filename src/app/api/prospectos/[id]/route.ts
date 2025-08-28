@@ -5,10 +5,13 @@ import type { ProspectoEstado } from '@/types'
 
 const supabase = getServiceClient()
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request) {
   const usuario = await getUsuarioSesion()
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  const id = Number(params.id)
+  const url = new URL(req.url)
+  const segments = url.pathname.split('/')
+  const idStr = segments[segments.length - 1]
+  const id = Number(idStr)
   if (!id) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
   const body = await req.json()
 
@@ -41,10 +44,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(data)
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request) {
   const usuario = await getUsuarioSesion()
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  const id = Number(params.id)
+  const url = new URL(req.url)
+  const segments = url.pathname.split('/')
+  const idStr = segments[segments.length - 1]
+  const id = Number(idStr)
   if (!id) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
   if (usuario.rol === 'agente') {
     const { data: existing, error: errExisting } = await supabase.from('prospectos').select('agente_id').eq('id', id).single()
