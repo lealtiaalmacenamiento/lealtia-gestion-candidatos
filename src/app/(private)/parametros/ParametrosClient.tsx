@@ -29,6 +29,11 @@ export default function ParametrosClient(){
   const [notif, setNotif] = useState<{msg:string; type:'success'|'danger'|'info'|'warning'}|null>(null);
   const [openMes, setOpenMes] = useState(true);
   const [openEfc, setOpenEfc] = useState(true);
+  // Fase 2 metas
+  const [openFase2,setOpenFase2]=useState(true)
+  const [metaProspectos,setMetaProspectos]=useState<number|null>(null)
+  const [metaCitas,setMetaCitas]=useState<number|null>(null)
+  const [savingFase2,setSavingFase2]=useState(false)
   // Confirmación de guardado
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
 
@@ -38,6 +43,18 @@ export default function ParametrosClient(){
       const [mes, efc] = await Promise.all([getCedulaA1(), getEfc()]);
       setMesRows([...mes].sort((a,b)=>a.id - b.id));
       setEfcRows([...efc].sort((a,b)=>a.id - b.id));
+      // Cargar fase2 metas
+      try {
+        const r = await fetch('/api/parametros?tipo=fase2')
+        if(r.ok){
+          const j = await r.json() as { success?:boolean; data?: Array<{id:number; clave?:string; valor?:string|number|null}> }
+          const arr = j.data||[]
+          const mp = arr.find(p=> p.clave==='meta_prospectos_semana')
+          const mc = arr.find(p=> p.clave==='meta_citas_semana')
+          if(mp) setMetaProspectos(Number(mp.valor)||null)
+          if(mc) setMetaCitas(Number(mc.valor)||null)
+        }
+      } catch {}
     } catch (e){
       setNotif({msg: e instanceof Error? e.message : 'Error cargando parámetros', type:'danger'});
     } finally { setLoading(false); }
@@ -87,6 +104,27 @@ export default function ParametrosClient(){
   }
   const saveEditEfc = openConfirmEfc;
   const cancelEditEfc = ()=>{ setEditEfcId(null); setEditEfcRow(null); };
+
+  const saveFase2 = async()=>{
+    if(metaProspectos==null || metaCitas==null){ setNotif({msg:'Complete ambos valores', type:'warning'}); return }
+    setSavingFase2(true)
+    try {
+      // Obtener listado actual para IDs
+      const r = await fetch('/api/parametros?tipo=fase2')
+      const j = r.ok? await r.json(): {data:[]}
+      const arr: Array<{id:number; clave?:string}> = j.data||[]
+      const reqs: Promise<Response>[] = []
+      const solicitante = 'sistema'
+      const mp = arr.find(p=> p.clave==='meta_prospectos_semana')
+      const mc = arr.find(p=> p.clave==='meta_citas_semana')
+      if(mp) reqs.push(fetch('/api/parametros',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ id: mp.id, valor:String(metaProspectos), solicitante })}))
+      if(mc) reqs.push(fetch('/api/parametros',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ id: mc.id, valor:String(metaCitas), solicitante })}))
+      await Promise.all(reqs)
+      setNotif({msg:'Metas fase 2 actualizadas', type:'success'})
+    } catch {
+      setNotif({msg:'Error guardando metas', type:'danger'})
+    } finally { setSavingFase2(false) }
+  }
 
   return (
     <BasePage title="Parámetros" alert={notif? {type: notif.type, message: notif.msg, show:true}: undefined}>
@@ -192,6 +230,30 @@ export default function ParametrosClient(){
           </section>
         </div>
       )}
+      <section className="border rounded p-3 bg-white shadow-sm mt-4">
+        <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <button type="button" onClick={()=>setOpenFase2(o=>!o)} aria-expanded={openFase2} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
+            <i className={`bi bi-caret-${openFase2? 'down':'right'}-fill`}></i>
+            <span className="fw-bold small text-uppercase">Metas Fase 2</span>
+          </button>
+          {openFase2 && <span className="small text-muted">Prospectos y Citas</span>}
+        </div>
+        {openFase2 && (
+          <div className="row g-3 mt-2 small">
+            <div className="col-12 col-md-4 col-lg-3">
+              <label className="form-label small mb-1">Meta prospectos / semana</label>
+              <input type="number" className="form-control form-control-sm" value={metaProspectos??''} onChange={e=> setMetaProspectos(e.target.value? Number(e.target.value): null)} />
+            </div>
+            <div className="col-12 col-md-4 col-lg-3">
+              <label className="form-label small mb-1">Meta citas / semana</label>
+              <input type="number" className="form-control form-control-sm" value={metaCitas??''} onChange={e=> setMetaCitas(e.target.value? Number(e.target.value): null)} />
+            </div>
+            <div className="col-12 col-md-4 col-lg-3 d-flex align-items-end">
+              <button type="button" className="btn btn-primary btn-sm" disabled={savingFase2} onClick={saveFase2}>{savingFase2? 'Guardando...':'Guardar metas'}</button>
+            </div>
+          </div>
+        )}
+      </section>
       {confirm && (
         <ConfirmModal confirm={confirm} onCancel={()=> setConfirm(null)} onConfirm={confirm.tipo==='mes'? executeSaveMes : executeSaveEfc} />
       )}
