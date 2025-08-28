@@ -20,18 +20,7 @@ export default function Header() {
   // Navegación contextual por módulo
   // (Se removió navegación contextual, rol ya no utilizado)
   const moduleLinks: { href: string; label: string; icon?: string; roles?: string[] }[] = []
-  if (user) {
-    const superuser = user.rol === 'superusuario' || user.rol === 'admin'
-    // Fase 2 menús
-    if (user.rol === 'agente') {
-      moduleLinks.push({ href: '/prospectos', label: 'Prospectos', icon: 'people-fill' })
-      moduleLinks.push({ href: '/planificacion', label: 'Planificación', icon: 'calendar-week' })
-    } else if (superuser) {
-      moduleLinks.push({ href: '/prospectos', label: 'Prospectos', icon: 'people-fill' })
-      moduleLinks.push({ href: '/planificacion', label: 'Planificación', icon: 'calendar-week' })
-      // Accesos existentes (candidatos, usuarios, parámetros) conservados de forma implícita navegando manualmente
-    }
-  }
+  // Eliminamos prospectos/planificación del navbar; se mostrarán solo en el dashboard principal.
 
   return (
     <Navbar pageTitle={title && title.toLowerCase() !== 'dashboard' ? title : undefined}>
