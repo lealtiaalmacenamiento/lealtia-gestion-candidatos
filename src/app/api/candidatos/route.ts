@@ -7,6 +7,9 @@ import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
 import { buildAltaUsuarioEmail, sendMail } from '@/lib/mailer'
 
+// Forzar runtime Node.js (necesario para nodemailer / auth admin)
+export const runtime = 'nodejs'
+
 // Utilidades para creación automática de usuario agente
 function randomTempPassword() {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
@@ -109,41 +112,48 @@ export async function POST(req: Request) {
   })
   body.proceso = deriv.proceso
 
-  // fecha_de_creacion se asume default NOW() en BD
+  // 1) Intentar creación de usuario agente (antes de insertar candidato) para poder abortar si falla gravemente
+  const agenteMeta: { created?: boolean; existed?: boolean; error?: string } = {}
+  if (emailAgente && /.+@.+\..+/.test(emailAgente)) {
+    try {
+      const existente = await supabase.from('usuarios').select('id,rol').eq('email', emailAgente).maybeSingle()
+      if (existente.error) throw new Error(existente.error.message)
+      if (existente.data) {
+        agenteMeta.existed = true
+      } else {
+        const tempPassword = randomTempPassword()
+        if(!isStrongPassword(tempPassword)) throw new Error('Password temporal inválida generada')
+        const authRes = await (supabase as any).auth.admin.createUser({ email: emailAgente, password: tempPassword, email_confirm: true })
+        if (authRes.error) throw new Error('Auth: ' + authRes.error.message)
+        const authId = authRes.data?.user?.id
+        const ins = await supabase.from('usuarios').insert([{ email: emailAgente, rol: 'agente', activo: true, must_change_password: true, id_auth: authId }]).select('*').single()
+        if (ins.error) throw new Error('DB usuarios: ' + ins.error.message)
+        agenteMeta.created = true
+        await logAccion('alta_usuario_auto_candidato', { usuario: usuario.email, tabla_afectada: 'usuarios', snapshot: { email: emailAgente, rol: 'agente' } })
+        // Enviar correo (no aborta si falla)
+        try {
+          const { subject, html, text } = buildAltaUsuarioEmail(emailAgente, tempPassword)
+          await sendMail({ to: emailAgente, subject, html, text })
+        } catch (mailErr) {
+          agenteMeta.error = 'Fallo envío correo: ' + (mailErr instanceof Error ? mailErr.message : String(mailErr))
+        }
+      }
+    } catch (agErr) {
+      agenteMeta.error = agErr instanceof Error ? agErr.message : String(agErr)
+      // En este punto seguimos (no abortamos creación de candidato) pero registramos warning
+      console.warn('[api/candidatos] usuario agente no creado:', agenteMeta.error)
+    }
+  }
+
+  // 2) Insertar candidato
   normalizeDateFields(body)
   const { data, error } = await supabase.from('candidatos').insert([body]).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: error.message, _agente_meta: agenteMeta }, { status: 500 })
 
   interface CandidatoInsert { id_candidato?: number }
   const idLog = (data as CandidatoInsert)?.id_candidato
   await logAccion('alta_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: idLog, snapshot: data })
 
-  // Intentar creación automática de usuario agente (silenciosa, no afecta resultado principal)
-  if (emailAgente && /.+@.+\..+/.test(emailAgente)) {
-    try {
-      // ¿Existe ya?
-      const existente = await supabase.from('usuarios').select('id,rol').eq('email', emailAgente).maybeSingle()
-      if (!existente.error && !existente.data) {
-        // Crear en Auth
-        const tempPassword = randomTempPassword()
-        if(!isStrongPassword(tempPassword)) throw new Error('Password temporal generado inválido')
-        const authRes = await (supabase as any).auth.admin.createUser({ email: emailAgente, password: tempPassword, email_confirm: true })
-        if (authRes.error) throw new Error(authRes.error.message)
-        const authId = authRes.data?.user?.id
-        const ins = await supabase.from('usuarios').insert([{ email: emailAgente, rol: 'agente', activo: true, must_change_password: true, id_auth: authId }]).select('id').single()
-        if (ins.error) throw new Error(ins.error.message)
-        await logAccion('alta_usuario_auto_candidato', { usuario: usuario.email, tabla_afectada: 'usuarios', snapshot: { email: emailAgente, rol: 'agente' } })
-        try {
-          const { subject, html, text } = buildAltaUsuarioEmail(emailAgente, tempPassword)
-          await sendMail({ to: emailAgente, subject, html, text })
-        } catch (e) {
-          console.warn('[api/candidatos] Fallo envío correo usuario agente:', e)
-        }
-      }
-    } catch (e) {
-      console.warn('[api/candidatos] creación usuario agente fallida:', e)
-    }
-  }
-
-  return NextResponse.json(data)
+  // 3) Responder incluyendo meta de agente (no rompe consumidores existentes)
+  return NextResponse.json({ ...data, _agente_meta: agenteMeta })
 }

@@ -52,6 +52,7 @@ export default function CandidatosPage() {
                   <tr>
                     <th>CT</th>
                     <th>Nombre</th>
+                    <th>Email agente</th>
                     <th>Cédula A1</th>
                     <th>EFC</th>
                     <th>Proceso</th>
@@ -61,7 +62,7 @@ export default function CandidatosPage() {
                 </thead>
                 <tbody>
                   {candidatos.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center">No hay candidatos registrados.</td></tr>
+                    <tr><td colSpan={8} className="text-center">No hay candidatos registrados.</td></tr>
                   ) : candidatos.map((c) => {
                     const { proceso, dias_desde_ct } = calcularDerivados({
                       periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
@@ -79,6 +80,7 @@ export default function CandidatosPage() {
                       <tr key={c.id_candidato}>
                         <td>{c.ct}</td>
                         <td>{c.candidato}</td>
+                        <td>{(c as unknown as Record<string, unknown>).email_agente as string || ''}</td>
                         <td>{c.mes}</td>
                         <td>{c.efc}</td>
                         <td title={proceso}>{etiquetaProceso(proceso)}</td>

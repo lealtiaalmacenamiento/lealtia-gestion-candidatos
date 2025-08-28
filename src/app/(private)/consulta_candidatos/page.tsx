@@ -99,6 +99,7 @@ function ConsultaCandidatosInner() {
     { key: 'id_candidato', label: 'ID', sortable: true },
     { key: 'ct', label: 'CT', sortable: true },
   { key: 'candidato', label: 'Candidato', sortable: true },
+  { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'proceso', label: 'Proceso' },
   { key: 'mes', label: 'Cédula A1', sortable: true },
