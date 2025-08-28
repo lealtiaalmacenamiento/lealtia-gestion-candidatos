@@ -29,15 +29,17 @@ export default function PlanificacionPage(){
   const [prospectosDisponibles,setProspectosDisponibles]=useState<Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>>([])
   const saveDebounce = useRef<number | null>(null)
   const lastSavedManualRef = useRef<string>('') // hash JSON de bloques manuales guardados
-  const [autoSaveEnabled,setAutoSaveEnabled]=useState(true)
+  const [autoSaveEnabled,setAutoSaveEnabled]=useState(false) // desactivado por defecto
+  const localManualRef = useRef<BloquePlanificacion[]>([])
   const agenteQuery = superuser && agenteId ? `&agente_id=${agenteId}` : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
-  const fetchData = async (force=false) => {
+  const fetchData = async (force=false, trigger: 'manual'|'interval'|'postsave'='manual') => {
     if(semana==='ALL'){ setData(null); return }
     // Si hay cambios locales sin guardar y no es un fetch forzado, evitamos sobreescribir (causa "desaparecer" bloques)
     if(dirty && !force) return
-    setLoading(true)
+  const showLoading = trigger!=='interval'
+  if(showLoading) setLoading(true)
     let plan: PlanificacionResponse | null = null
     const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
     if(planRes.ok) plan = await planRes.json()
@@ -77,6 +79,9 @@ export default function PlanificacionPage(){
       const rango = semanaDesdeNumero(anio, semana as number)
       const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
       const manual = plan.bloques.filter(b=> b.origin !== 'auto')
+      if(manual.length===0 && localManualRef.current.length>0 && !force){
+        manual.push(...localManualRef.current.map(b=> ({...b})))
+      }
       for(const c of citas){
         const dt = new Date(c.fecha_cita)
         const citaLocalMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
@@ -99,8 +104,8 @@ export default function PlanificacionPage(){
       }
       console.debug('PLANIF_FETCH_STATS', stats)
     }
-    setData(plan)
-    setLoading(false)
+  setData(plan)
+  if(showLoading) setLoading(false)
   }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
@@ -116,7 +121,7 @@ export default function PlanificacionPage(){
   // Refresco periódico de citas cada 60s para mantener sincronía con cambios en prospectos
   useEffect(()=>{
     if(semana==='ALL') return
-    const id = setInterval(()=> fetchData(), 60000)
+  const id = setInterval(()=> fetchData(false,'interval'), 60000)
     return ()=> clearInterval(id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[semana, anio, agenteId])
@@ -136,7 +141,9 @@ export default function PlanificacionPage(){
     if(!data) return
   const nuevos = data.bloques.filter(x=> !(x.day===modal?.day && x.hour===modal?.hour))
     if(b) nuevos.push(b)
-    setData({...data,bloques:nuevos})
+  const updated = {...data,bloques:nuevos}
+  setData(updated)
+  localManualRef.current = updated.bloques.filter(b=> b.origin!=='auto')
     setDirty(true)
     // autosave debounce
     if(autoSaveEnabled){
@@ -173,9 +180,10 @@ export default function PlanificacionPage(){
     if(r.ok){
       setDirty(false)
       if(!auto) setToast({msg:'Planificación guardada', type:'success'})
-      lastSavedManualRef.current = hash
-      // Refrescar (forzado) para mergear correctamente tras persistir
-      setTimeout(()=> fetchData(true), 400)
+  lastSavedManualRef.current = hash
+  localManualRef.current = manual
+  // Refrescar (forzado) para mergear correctamente tras persistir
+  setTimeout(()=> fetchData(true,'postsave'), 400)
     } else {
       if(!auto) setToast({msg:'Error al guardar', type:'error'})
     }
