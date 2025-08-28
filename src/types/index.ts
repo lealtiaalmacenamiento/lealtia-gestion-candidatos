@@ -81,3 +81,38 @@ export interface Parametro {
   actualizado_por?: string | null
   actualizado_en?: string | null
 }
+
+/* ===== Fase 2: Prospectos y Planificación ===== */
+export type ProspectoEstado = 'pendiente' | 'seguimiento' | 'con_cita' | 'descartado'
+
+export interface Prospecto {
+  id: number
+  agente_id: number
+  anio: number
+  semana_iso: number
+  nombre: string
+  telefono?: string | null
+  notas?: string | null
+  estado: ProspectoEstado
+  fecha_cita?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface BloquePlanificacion {
+  day: number // 0=Lunes ISO? (usaremos 0=lunes..6=domingo para consistencia)
+  hour: string // '05'..'23'
+  activity: 'PROSPECCION' | 'CITAS' | 'SMNYL'
+}
+
+export interface PlanificacionSemana {
+  id: number
+  agente_id: number
+  anio: number
+  semana_iso: number
+  prima_anual_promedio: number
+  porcentaje_comision: number
+  bloques: BloquePlanificacion[]
+  created_at?: string
+  updated_at?: string
+}
