@@ -19,7 +19,6 @@ export default function PlanificacionPage(){
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
-  // Semana puede ser un número ISO o 'ALL' para vista anual
   const [semana,setSemana]=useState<number|"ALL">(semanaActual.semana)
   const [agenteId,setAgenteId]=useState('')
   const [data,setData]=useState<PlanificacionResponse|null>(null)
@@ -27,44 +26,57 @@ export default function PlanificacionPage(){
   const [dirty,setDirty]=useState(false)
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const [modal,setModal]=useState<null|{day:number; hour:string; blk?:BloquePlanificacion}>(null)
-  const [prospectosSemana,setProspectosSemana]=useState<Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>>([])
+  const [prospectosDisponibles,setProspectosDisponibles]=useState<Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>>([])
   const saveDebounce = useRef<number | null>(null)
-  const agenteQuery = superuser && agenteId ? '&agente_id='+agenteId : ''
+  const agenteQuery = superuser && agenteId ? `&agente_id=${agenteId}` : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
-  const fetchData=async()=>{ 
+  const fetchData = async () => {
     if(semana==='ALL'){ setData(null); return }
     setLoading(true)
-    const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
     let plan: PlanificacionResponse | null = null
+    const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
     if(planRes.ok) plan = await planRes.json()
-    // Obtener citas y fusionar
-  if(plan){
+    if(plan){
+      // Citas de la semana seleccionada
+      let citas: Array<{id:number; fecha_cita:string; nombre:string; estado:string; notas?:string; telefono?:string}> = []
       const citasRes = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
-      if(citasRes.ok){
-        const citas: Array<{id:number; fecha_cita:string; nombre:string; estado:string; notas?:string; telefono?:string}> = await citasRes.json()
-    setProspectosSemana(citas.map(c=> ({id:c.id,nombre:c.nombre,estado:c.estado as ProspectoEstado, notas:c.notas, telefono:c.telefono})))
-        const rango = semanaDesdeNumero(anio, semana as number)
-  const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
-        const manual = plan.bloques.filter(b=> b.origin !== 'auto')
-        for(const c of citas){
-          const dt = new Date(c.fecha_cita)
-            // Calcular día basado en hora local del navegador
-          const citaLocalMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
-          const day = Math.floor((citaLocalMidnight.getTime() - mondayLocal.getTime())/86400000)
-          if(day<0 || day>6) continue
-          const hour = dt.getHours().toString().padStart(2,'0') // local hour
-          if(!manual.find(b=> b.day===day && b.hour===hour)){
-            manual.push({day, hour, activity:'CITAS', origin:'auto', prospecto_id:c.id, prospecto_nombre:c.nombre, prospecto_estado:c.estado as ProspectoEstado})
-          } else {
-            // Actualizar metadata si existe bloque CITAS manual en mismo slot
-            manual.forEach(b=> { if(b.day===day && b.hour===hour && b.activity==='CITAS') Object.assign(b,{prospecto_id:c.id, prospecto_nombre:c.nombre, prospecto_estado:c.estado as ProspectoEstado}) })
-          }
-        }
-        plan = {...plan, bloques: manual}
+      if(citasRes.ok) citas = await citasRes.json()
+
+      // Prospectos pendientes/seguimiento sin cita
+      let sinCita: Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}> = []
+      const sinCitaRes = await fetch(`/api/prospectos?solo_sin_cita=1${agenteQuery}`)
+      if(sinCitaRes.ok){
+        const raw = await sinCitaRes.json()
+  sinCita = raw.map((p: {id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string})=> ({id:p.id, nombre:p.nombre, estado:p.estado as ProspectoEstado, notas:p.notas, telefono:p.telefono}))
       }
-      setData(plan)
+
+      // Combinar lista disponible
+      const map = new Map<number,{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>()
+      citas.forEach(c=> map.set(c.id,{id:c.id,nombre:c.nombre,estado:c.estado as ProspectoEstado,notas:c.notas,telefono:c.telefono}))
+      sinCita.forEach(s=> { if(!map.has(s.id)) map.set(s.id,s) })
+      setProspectosDisponibles(Array.from(map.values()))
+
+      // Integrar citas a bloques auto
+      const rango = semanaDesdeNumero(anio, semana as number)
+      const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
+      const manual = plan.bloques.filter(b=> b.origin !== 'auto')
+      for(const c of citas){
+        const dt = new Date(c.fecha_cita)
+        const citaLocalMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+        const day = Math.floor((citaLocalMidnight.getTime() - mondayLocal.getTime())/86400000)
+        if(day<0 || day>6) continue
+        const hour = dt.getHours().toString().padStart(2,'0')
+        const existente = manual.find(b=> b.day===day && b.hour===hour)
+        if(!existente){
+          manual.push({day, hour, activity:'CITAS', origin:'auto', prospecto_id:c.id, prospecto_nombre:c.nombre, prospecto_estado:c.estado as ProspectoEstado})
+        } else if(existente.activity==='CITAS'){
+          Object.assign(existente,{prospecto_id:c.id, prospecto_nombre:c.nombre, prospecto_estado:c.estado as ProspectoEstado})
+        }
+      }
+      plan = {...plan, bloques: manual}
     }
+    setData(plan)
     setLoading(false)
   }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,7 +197,7 @@ export default function PlanificacionPage(){
   {loading && <div>Cargando...</div>}
   {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
   {modal && data && <AppModal title={`Bloque ${modal.hour}:00`} icon="calendar-event" onClose={closeModal}>
-    <BloqueEditor modal={modal} prospectos={prospectosSemana} onSave={b=>{ upsertBloque(b); closeModal() }} onDelete={()=>{ upsertBloque(null); closeModal() }} />
+    <BloqueEditor modal={modal} prospectos={prospectosDisponibles} onSave={b=>{ upsertBloque(b); closeModal() }} onDelete={()=>{ upsertBloque(null); closeModal() }} />
   </AppModal>}
   </div>
 }
