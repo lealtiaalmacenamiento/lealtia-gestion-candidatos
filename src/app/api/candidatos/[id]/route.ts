@@ -5,6 +5,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
+import { crearUsuarioAgenteAuto } from '@/lib/autoAgente'
 import type { Candidato } from '@/types'
 
 // Tipo mínimo para acceder a campos dinámicos sin que TS marque "never"
@@ -30,6 +31,23 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const body: CandidatoParcial = await req.json()
 
   const existenteData: CandidatoParcial = existente.data || {}
+
+  // Normalizar email_agente si viene (después de cargar existenteData)
+  let agenteMeta: any = undefined
+  if (typeof body.email_agente === 'string') {
+    const email = body.email_agente.trim().toLowerCase()
+    if (email) {
+      const existenteEmail = (existenteData as any).email_agente as string | undefined
+      if (!existenteEmail || existenteEmail.toLowerCase() !== email) {
+        try {
+          agenteMeta = await crearUsuarioAgenteAuto({ email, nombre: body.candidato || (existenteData as any).candidato })
+        } catch (e) {
+          agenteMeta = { error: e instanceof Error ? e.message : 'Error desconocido creando usuario agente' }
+        }
+      }
+    }
+    body.email_agente = email
+  }
 
   if (body.mes && body.mes !== existenteData.mes) {
     const { data: cedula } = await supabase.from('cedula_a1').select('*').eq('mes', body.mes).single()
@@ -96,7 +114,9 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
 
   await logAccion('edicion_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: Number(id), snapshot: existenteData })
 
-  return NextResponse.json(data)
+  // Adjuntar meta de agente si aplica sin romper clientes existentes
+  const responsePayload = agenteMeta ? { ...data, _agente_meta: agenteMeta } : data
+  return NextResponse.json(responsePayload)
 }
 
 export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {

@@ -131,6 +131,44 @@ function ConsultaCandidatosInner() {
   // Modal de eliminación
   const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
   const handleEdit = (id: number) => { window.location.href = `/candidatos/nuevo/${id}`; };
+  // Modal asignar email agente
+  const [assigning, setAssigning] = useState(false)
+  const [selectedForAgente, setSelectedForAgente] = useState<Candidato | null>(null)
+  const [agenteEmail, setAgenteEmail] = useState('')
+  interface AgenteMeta {
+    created?: boolean
+    existed?: boolean
+    passwordTemporal?: string
+    correoEnviado?: boolean
+    correoError?: string
+    error?: string
+    ok?: boolean
+  }
+  const [agenteMeta, setAgenteMeta] = useState<AgenteMeta | null>(null)
+  const openAgenteModal = (c: Candidato) => {
+    setSelectedForAgente(c)
+    setAgenteEmail(c.email_agente || '')
+    setAgenteMeta(null)
+  }
+  const submitAgente = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedForAgente) return
+    const email = agenteEmail.trim().toLowerCase()
+    if (!/.+@.+\..+/.test(email)) { setAgenteMeta({ error: 'Email inválido' }); return }
+    try {
+      setAssigning(true)
+      const res = await fetch(`/api/candidatos/${selectedForAgente.id_candidato}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email_agente: email }) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error asignando email')
+      setAgenteMeta(j._agente_meta || { ok: true })
+      // Actualizar en memoria
+      setData(d => d.map(x => x.id_candidato === selectedForAgente.id_candidato ? { ...x, email_agente: email } : x))
+    } catch (er) {
+      setAgenteMeta({ error: er instanceof Error ? er.message : 'Error' })
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   const performDelete = async () => {
     if (!pendingDelete) return;
@@ -253,7 +291,7 @@ function ConsultaCandidatosInner() {
                       </td>
                     )
                   })}
-                  {!readOnly && (
+          {!readOnly && (
                     <td style={{whiteSpace:'nowrap'}}>
                       <button
                         className="btn btn-sm btn-primary me-1"
@@ -261,6 +299,7 @@ function ConsultaCandidatosInner() {
                         disabled={deleting === c.id_candidato}
                       >Editar</button>
                       <a className="btn btn-sm btn-outline-secondary me-1" href={`/api/candidatos/${c.id_candidato}?export=pdf`} target="_blank" rel="noopener noreferrer">PDF</a>
+            {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)}>Asignar agente</button>}
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => setPendingDelete(c)}
@@ -301,6 +340,48 @@ function ConsultaCandidatosInner() {
             <div><strong>Nombre:</strong> {pendingDelete.candidato || '—'}</div>
           </div>
           <p className="text-danger fw-semibold mb-0">¿Deseas continuar?</p>
+        </AppModal>
+      )}
+      {selectedForAgente && (
+        <AppModal
+          title="Asignar email agente"
+          icon="person-plus-fill"
+          width={500}
+          onClose={()=> !assigning && setSelectedForAgente(null)}
+          disableClose={assigning}
+          footer={null}
+        >
+          <form onSubmit={submitAgente} className="needs-validation" noValidate>
+            <div className="mb-3 small">
+              <strong>Candidato:</strong> {selectedForAgente.candidato || '—'} (ID {selectedForAgente.id_candidato})
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Email del agente</label>
+              <input type="email" className="form-control" value={agenteEmail} onChange={e=>setAgenteEmail(e.target.value)} required disabled={assigning} placeholder="agente@dominio.com" />
+            </div>
+            {agenteMeta && (
+              <div className={`alert py-2 small ${agenteMeta.error ? 'alert-danger' : 'alert-info'}`}>
+                {agenteMeta.error && <><strong>Error:</strong> {agenteMeta.error}</>}
+                {!agenteMeta.error && (
+                  <>
+                    {agenteMeta.created && <div>Usuario agente creado.</div>}
+                    {agenteMeta.existed && <div>El usuario ya existía.</div>}
+                    {agenteMeta.passwordTemporal && <div>Password temporal: <code>{agenteMeta.passwordTemporal}</code></div>}
+                    {agenteMeta.correoEnviado === true && <div>Correo de bienvenida enviado.</div>}
+                    {agenteMeta.correoEnviado === false && <div>No se pudo enviar correo: {agenteMeta.correoError || 'Error desconocido'}</div>}
+                    {!agenteMeta.created && !agenteMeta.existed && !agenteMeta.error && <div>Asignado.</div>}
+                  </>
+                )}
+              </div>
+            )}
+            <div className="d-flex justify-content-end gap-2">
+              <button type="button" className="btn btn-soft-secondary btn-sm" onClick={()=>!assigning && setSelectedForAgente(null)} disabled={assigning}>Cerrar</button>
+              <button type="submit" className="btn btn-success btn-sm d-flex align-items-center gap-2" disabled={assigning}>
+                {assigning && <span className="spinner-border spinner-border-sm" />}
+                {assigning ? 'Asignando…' : 'Guardar'}
+              </button>
+            </div>
+          </form>
         </AppModal>
       )}
     </BasePage>
