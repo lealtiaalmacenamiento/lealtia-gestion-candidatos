@@ -21,6 +21,7 @@ export default function PlanificacionPage(){
   const [anio,setAnio]=useState(semanaActual.anio)
   const [semana,setSemana]=useState<number|"ALL">(semanaActual.semana)
   const [agenteId,setAgenteId]=useState('')
+  const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
   const [data,setData]=useState<PlanificacionResponse|null>(null)
   const [loading,setLoading]=useState(false)
   const [dirty,setDirty]=useState(false)
@@ -108,6 +109,9 @@ export default function PlanificacionPage(){
   }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
+
+  // Cargar agentes para superuser
+  useEffect(()=>{ if(superuser){ fetch('/api/agentes').then(r=> r.ok? r.json():[]).then(setAgentes).catch(()=>{}) } },[superuser])
 
   // Escuchar eventos de actualización de citas desde la vista de prospectos
   useEffect(()=>{
@@ -198,8 +202,11 @@ export default function PlanificacionPage(){
         </select>
       </div>
       {superuser && <div>
-        <label className="form-label small mb-1">Agente ID</label>
-        <input placeholder="Agente ID" value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-control form-control-sm w-auto"/>
+        <label className="form-label small mb-1">Agente</label>
+        <select className="form-select form-select-sm" value={agenteId} onChange={e=>setAgenteId(e.target.value)}>
+          <option value="">(Seleccionar agente)</option>
+          {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
+        </select>
       </div>}
     </div>
   {semana==='ALL' && <div className="alert alert-info py-2 small">Vista anual: seleccione una semana para editar planificación detallada.</div>}
