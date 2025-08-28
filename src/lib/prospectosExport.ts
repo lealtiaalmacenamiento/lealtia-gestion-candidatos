@@ -5,8 +5,21 @@ async function loadAutoTable() { return (await import('jspdf-autotable')).defaul
 
 function pct(part:number,total:number){ if(!total) return '0%'; return ((part/total)*100).toFixed(1)+'%' }
 const MX_TZ='America/Mexico_City'
-function formatFechaCita(iso?:string|null){ if(!iso) return ''; try { const d=new Date(iso); return new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}).format(d) } catch { return iso||'' } }
-function nowMX(){ return new Intl.DateTimeFormat('es-MX',{ timeZone: MX_TZ, dateStyle:'short', timeStyle:'medium'}).format(new Date()) }
+function formatFechaCita(iso?:string|null){
+  if(!iso) return ''
+  try {
+    const d=new Date(iso)
+    const fecha = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, day:'2-digit', month:'2-digit'}).format(d)
+    const hora = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', minute:'2-digit', hour12:false}).format(d)
+    return `${fecha} ${hora}`
+  } catch { return iso||'' }
+}
+function nowMX(){
+  const d=new Date()
+  const fecha = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, day:'2-digit', month:'2-digit', year:'numeric'}).format(d)
+  const hora = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', minute:'2-digit', hour12:false}).format(d)
+  return `${fecha} ${hora}`
+}
 async function fetchLogoDataUrl(): Promise<string|undefined>{
   try {
   const url = (typeof process !== 'undefined' ? (process.env?.NEXT_PUBLIC_MAIL_LOGO_URL || process.env?.MAIL_LOGO_URL) : undefined)
