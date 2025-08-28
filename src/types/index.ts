@@ -105,6 +105,7 @@ export interface Prospecto {
   telefono?: string | null
   notas?: string | null
   estado: ProspectoEstado
+  // Ahora timestamp (ISO) con fecha y hora
   fecha_cita?: string | null
   created_at?: string
   updated_at?: string

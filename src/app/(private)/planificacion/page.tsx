@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import type { BloquePlanificacion } from '@/types'
-import { obtenerSemanaIso } from '@/lib/semanaIso'
+import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 
 interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:number; anio:number; bloques:BloquePlanificacion[]; prima_anual_promedio:number; porcentaje_comision:number }
@@ -14,15 +14,17 @@ export default function PlanificacionPage(){
   const { user } = useAuth()
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
+  const [anio,setAnio]=useState(semanaActual.anio)
+  const [semana,setSemana]=useState(semanaActual.semana)
   const [agenteId,setAgenteId]=useState('')
   const [data,setData]=useState<PlanificacionResponse|null>(null)
   const [loading,setLoading]=useState(false)
   const agenteQuery = superuser && agenteId ? '&agente_id='+agenteId : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
-  const fetchData=async()=>{ setLoading(true); const r=await fetch(`/api/planificacion?semana=${semanaActual.semana}&anio=${semanaActual.anio}${agenteQuery}`); if(r.ok) setData(await r.json()); setLoading(false) }
+  const fetchData=async()=>{ setLoading(true); const r=await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`); if(r.ok) setData(await r.json()); setLoading(false) }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[agenteId])
+  },[agenteId, semana, anio])
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaCitas(m.metaCitas)) },[])
 
@@ -48,8 +50,8 @@ export default function PlanificacionPage(){
     if(!data) return
     const body={
       agente_id: superuser && agenteId? Number(agenteId): undefined,
-      semana_iso: semanaActual.semana,
-      anio: semanaActual.anio,
+      semana_iso: semana,
+      anio: anio,
       bloques: data.bloques,
       prima_anual_promedio: data.prima_anual_promedio,
       porcentaje_comision: data.porcentaje_comision
@@ -59,13 +61,27 @@ export default function PlanificacionPage(){
   }
 
   return <div className="container py-4">
-    <h2 className="fw-semibold mb-3">Planificación semanal – Semana {semanaActual.semana}</h2>
-    {superuser && <div className="mb-3 d-flex gap-2"><input placeholder="Agente ID" value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-control w-auto"/></div>}
+    <h2 className="fw-semibold mb-3">Planificación semanal</h2>
+    <div className="d-flex flex-wrap gap-2 align-items-end mb-3">
+      <div>
+        <label className="form-label small mb-1">Año</label>
+        <input type="number" className="form-control form-control-sm" value={anio} onChange={e=>setAnio(Number(e.target.value)||anio)} />
+      </div>
+      <div>
+        <label className="form-label small mb-1">Semana ISO</label>
+        <input type="number" className="form-control form-control-sm" value={semana} onChange={e=>{const v=Number(e.target.value); if(v>=1 && v<=53) setSemana(v)}} />
+      </div>
+      <div className="small mt-3">Rango: {formatearRangoSemana(semanaDesdeNumero(anio, semana))}</div>
+      {superuser && <div>
+        <label className="form-label small mb-1">Agente ID</label>
+        <input placeholder="Agente ID" value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-control form-control-sm w-auto"/>
+      </div>}
+    </div>
     {data && <div className="row">
       <div className="col-lg-9 mb-3">
         <div className="table-responsive border rounded shadow-sm">
           <table className="table table-sm mb-0 align-middle text-center" style={{minWidth:900}}>
-            <thead className="table-light"><tr><th style={{width:70}}>Hora</th>{['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d=> <th key={d}>{d}</th>)}</tr></thead>
+            <thead className="table-light"><tr><th style={{width:70}}>Hora</th>{['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map((d,i)=> <th key={d}>{d}<div className="small text-muted">{semanaDesdeNumero(anio, semana).inicio.getUTCDate()+i}</div></th>)}</tr></thead>
             <tbody>
               {HORAS.map(h=> <tr key={h}> <th className="bg-light fw-normal">{h}:00</th>
                 {Array.from({length:7},(_,day)=>{

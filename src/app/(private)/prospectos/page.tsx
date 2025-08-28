@@ -5,13 +5,15 @@ import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
 import { exportProspectosPDF } from '@/lib/prospectosExport'
 import { fetchFase2Metas } from '@/lib/fase2Params'
-import { obtenerSemanaIso } from '@/lib/semanaIso'
+import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
 
 interface Aggregate { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean }
 
 export default function ProspectosPage() {
   const { user } = useAuth()
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
+  const [anio,setAnio]=useState(semanaActual.anio)
+  const [semana,setSemana]=useState(semanaActual.semana)
   const [prospectos,setProspectos]=useState<Prospecto[]>([])
   const [loading,setLoading]=useState(false)
   const [agg,setAgg]=useState<Aggregate|null>(null)
@@ -21,6 +23,7 @@ export default function ProspectosPage() {
   const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
   const debounceRef = useRef<number|null>(null)
   const [metaProspectos,setMetaProspectos]=useState(30)
+  const [soloConCita,setSoloConCita]=useState(false)
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
 
   const fetchAgentes = async()=>{
@@ -34,9 +37,10 @@ export default function ProspectosPage() {
 
   const fetchAll=async()=>{
     setLoading(true)
-    const params = new URLSearchParams({ semana:String(semanaActual.semana), anio:String(semanaActual.anio) })
+  const params = new URLSearchParams({ semana:String(semana), anio:String(anio) })
     if (estadoFiltro) params.set('estado', estadoFiltro)
     if (superuser && agenteId) params.set('agente_id', agenteId)
+  if (soloConCita) params.set('solo_con_cita','1')
     const r = await fetch('/api/prospectos?'+params.toString())
     if (r.ok) setProspectos(await r.json())
     const r2 = await fetch('/api/prospectos/aggregate?'+params.toString())
@@ -45,7 +49,7 @@ export default function ProspectosPage() {
   }
 
   useEffect(()=>{ fetchAll(); if(superuser) fetchAgentes() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[estadoFiltro, agenteId])
+  },[estadoFiltro, agenteId, semana, anio, soloConCita])
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaProspectos(m.metaProspectos)) },[])
 
@@ -62,25 +66,40 @@ export default function ProspectosPage() {
   const eliminar=(id:number)=>{ if(!confirm('Eliminar prospecto?')) return; fetch('/api/prospectos/'+id,{method:'DELETE'}).then(r=>{ if(r.ok) fetchAll() }) }
 
   return <div className="container py-4">
-    <h2 className="fw-semibold mb-3">Prospectos – Semana {semanaActual.semana} ({semanaActual.anio})</h2>
+    <h2 className="fw-semibold mb-3">Prospectos</h2>
+    <div className="d-flex flex-wrap gap-3 align-items-end mb-2">
+      <div>
+        <label className="form-label small mb-1">Año</label>
+        <input type="number" className="form-control form-control-sm" value={anio} onChange={e=>setAnio(Number(e.target.value)||anio)} />
+      </div>
+      <div>
+        <label className="form-label small mb-1">Semana ISO (vacío = todo el año)</label>
+        <input type="number" className="form-control form-control-sm" value={semana} onChange={e=>{const raw=e.target.value; if(raw===''){setSemana(semanaActual.semana); return;} const v=Number(raw); if(v>=1 && v<=53) setSemana(v)}} placeholder="" />
+      </div>
+      <div className="small mt-3">Rango: {semana? formatearRangoSemana(semanaDesdeNumero(anio, semana)) : 'Año completo'}</div>
+    </div>
     {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
       <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto">
         <option value="">(Seleccionar agente)</option>
         {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
       </select>
-      {agenteId && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=>exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, `Prospectos Semana ${semanaActual.semana}`)}>PDF</button>}
+  {agenteId && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=>exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, `Prospectos Semana ${semana}`)}>PDF</button>}
     </div>}
   <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
       <select value={estadoFiltro} onChange={e=>setEstadoFiltro(e.target.value as ProspectoEstado|'' )} className="form-select w-auto">
         <option value="">Todos los estados</option>
         {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
+      <div className="form-check form-switch small">
+        <input className="form-check-input" type="checkbox" id="soloCitaChk" checked={soloConCita} onChange={e=>setSoloConCita(e.target.checked)} />
+        <label className="form-check-label" htmlFor="soloCitaChk">Solo con cita</label>
+      </div>
       {agg && <div className="d-flex flex-column gap-2 small">
         <div className="d-flex flex-wrap gap-2 align-items-center">
           <span className="badge bg-secondary">Total {agg.total}</span>
           {Object.entries(agg.por_estado).map(([k,v])=> <span key={k} className="badge bg-light text-dark border">{ESTADO_LABEL[k as ProspectoEstado]} {v}</span>)}
           <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')}>{agg.total>=metaProspectos? `Meta ${metaProspectos} ok`:`<${metaProspectos} prospectos`}</span>
-          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos Semana ${semanaActual.semana}`)}>PDF</button>
+          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos Semana ${semana}`)}>PDF</button>
         </div>
         <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>
           <div className={`progress-bar ${agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/metaProspectos)*100)}%`}}>{agg.total}/{metaProspectos}</div>
@@ -93,13 +112,13 @@ export default function ProspectosPage() {
         <div className="col-sm-2"><input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} placeholder="Teléfono" className="form-control"/></div>
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
         <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-        <div className="col-sm-2"><input type="date" value={form.fecha_cita} onChange={e=>setForm(f=>({...f,fecha_cita:e.target.value}))} className="form-control"/></div>
+  <div className="col-sm-2"><input type="datetime-local" value={form.fecha_cita} onChange={e=>setForm(f=>({...f,fecha_cita:e.target.value}))} className="form-control"/></div>
       </div>
       <div className="mt-2"><button className="btn btn-primary btn-sm" disabled={loading}>Agregar</button></div>
     </form>
     <div className="table-responsive">
       <table className="table table-sm align-middle">
-        <thead><tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th>Cita</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th>Cita</th><th></th></tr></thead>
         <tbody>
           {prospectos.map(p=> <tr key={p.id}>
             <td>{p.id}</td>
@@ -111,7 +130,10 @@ export default function ProspectosPage() {
                 {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </td>
-            <td><input type="date" value={p.fecha_cita||''} onChange={e=>update(p.id,{fecha_cita:e.target.value||null})} className="form-control form-control-sm"/></td>
+            <td style={{minWidth:160}}>
+              <input type="datetime-local" value={p.fecha_cita? p.fecha_cita.substring(0,16):''} onChange={e=>update(p.id,{fecha_cita:e.target.value||null})} className="form-control form-control-sm mb-1"/>
+              {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit', minute:'2-digit'})}</div>}
+            </td>
             <td><button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm">×</button></td>
           </tr>)}
         </tbody>
