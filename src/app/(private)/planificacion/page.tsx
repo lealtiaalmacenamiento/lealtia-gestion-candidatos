@@ -31,15 +31,27 @@ export default function PlanificacionPage(){
   const agenteQuery = superuser && agenteId ? `&agente_id=${agenteId}` : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
-  const fetchData = async () => {
+  const fetchData = async (force=false) => {
     if(semana==='ALL'){ setData(null); return }
+    // Si hay cambios locales sin guardar y no es un fetch forzado, evitamos sobreescribir (causa "desaparecer" bloques)
+    if(dirty && !force) return
     setLoading(true)
     let plan: PlanificacionResponse | null = null
     const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
     if(planRes.ok) plan = await planRes.json()
     if(plan){
       // Normalizar horas a 'HH'
-  plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
+      plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
+      // Si había cambios locales pendientes y este es un fetch forzado (post-guardado), mergeamos bloques manuales que aún no estén en remoto
+      if(force && data && data.bloques && data.bloques.length){
+        const remoteKeys = new Set(plan.bloques.map(b=> `${b.day}-${b.hour}-${b.activity}`))
+        for(const b of data.bloques){
+          if(b.origin !== 'auto'){
+            const k = `${b.day}-${b.hour}-${b.activity}`
+            if(!remoteKeys.has(k)) plan.bloques.push(b)
+          }
+        }
+      }
       // Citas de la semana seleccionada
       let citas: Array<{id:number; fecha_cita:string; nombre:string; estado:string; notas?:string; telefono?:string}> = []
       const citasRes = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
@@ -50,11 +62,11 @@ export default function PlanificacionPage(){
       const sinCitaRes = await fetch(`/api/prospectos?solo_sin_cita=1${agenteQuery}`)
       if(sinCitaRes.ok){
         const raw = await sinCitaRes.json()
-  sinCita = raw.map((p: {id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string})=> ({id:p.id, nombre:p.nombre, estado:p.estado as ProspectoEstado, notas:p.notas, telefono:p.telefono}))
+        sinCita = raw.map((p: {id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string})=> ({id:p.id, nombre:p.nombre, estado:p.estado as ProspectoEstado, notas:p.notas, telefono:p.telefono}))
       }
 
-  // Solo prospectos sin cita (pendiente/seguimiento) para agendar
-  setProspectosDisponibles(sinCita)
+      // Solo prospectos sin cita (pendiente/seguimiento) para agendar
+      setProspectosDisponibles(sinCita)
 
       // Integrar citas a bloques auto
       const rango = semanaDesdeNumero(anio, semana as number)
@@ -115,8 +127,8 @@ export default function PlanificacionPage(){
     setData({...data,bloques:nuevos})
     setDirty(true)
     // autosave debounce
-    window.clearTimeout(saveDebounce.current)
-    saveDebounce.current = window.setTimeout(()=>{ guardar(true) }, 1200) as unknown as number
+  window.clearTimeout(saveDebounce.current)
+  saveDebounce.current = window.setTimeout(()=>{ guardar(true) }, 1200) as unknown as number
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -142,8 +154,8 @@ export default function PlanificacionPage(){
     if(r.ok){
       setDirty(false)
       if(!auto) setToast({msg:'Planificación guardada', type:'success'})
-      // Refrescar citas auto en segundo plano sin perder manuales
-      setTimeout(()=> fetchData(), 500)
+      // Refrescar (forzado) para mergear correctamente tras persistir
+      setTimeout(()=> fetchData(true), 400)
     } else {
       if(!auto) setToast({msg:'Error al guardar', type:'error'})
     }
