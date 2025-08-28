@@ -43,7 +43,7 @@ export default function PlanificacionPage(){
           const citaLocalMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
           const day = Math.floor((citaLocalMidnight.getTime() - mondayLocal.getTime())/86400000)
           if(day<0 || day>6) continue
-          const hour = dt.getHours().toString().padStart(2,'0')
+          const hour = dt.getHours().toString().padStart(2,'0') // local hour
           if(!manual.find(b=> b.day===day && b.hour===hour)){
             manual.push({day, hour, activity:'CITAS', origin:'auto', prospecto_id:c.id, prospecto_nombre:c.nombre, prospecto_estado:c.estado as ProspectoEstado})
           } else {
@@ -158,7 +158,7 @@ export default function PlanificacionPage(){
                       toggle(day,h)
                     }
                   }
-                  return <td key={day} style={{cursor:'pointer'}} onClick={onCellClick} className={color} title={blk && blk.origin==='auto'? (blk.prospecto_nombre? blk.prospecto_nombre:'Cita agendada (auto)'): undefined}>{blk? blk.activity[0]: ''}</td>
+                  return <td key={day} style={{cursor:'pointer'}} onClick={onCellClick} className={color} title={blk && blk.origin==='auto'? (blk.prospecto_nombre? `${blk.prospecto_nombre}`:'Cita agendada (auto)'): undefined}>{blk? blk.activity[0]: ''}</td>
                 })}
               </tr>)}
             </tbody>

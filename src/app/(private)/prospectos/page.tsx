@@ -137,8 +137,10 @@ export default function ProspectosPage() {
               </select>
             </td>
             <td style={{minWidth:160}}>
-              <input type="datetime-local" value={p.fecha_cita? p.fecha_cita.substring(0,16):''} onChange={e=>update(p.id,{fecha_cita:e.target.value||null})} className="form-control form-control-sm mb-1"/>
-              {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit', minute:'2-digit'})}</div>}
+              {(()=>{ const toLocalInput=(iso:string)=>{ const d=new Date(iso); const pad=(n:number)=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }; const val = p.fecha_cita? toLocalInput(p.fecha_cita):''; return <>
+                <input type="datetime-local" value={val} onChange={e=>update(p.id,{fecha_cita:e.target.value||null})} className="form-control form-control-sm mb-1"/>
+                {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit', minute:'2-digit'})}</div>}
+              </> })()}
             </td>
             <td><button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm">×</button></td>
           </tr>)}
