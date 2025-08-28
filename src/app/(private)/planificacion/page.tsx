@@ -39,7 +39,7 @@ export default function PlanificacionPage(){
     if(planRes.ok) plan = await planRes.json()
     if(plan){
       // Normalizar horas a 'HH'
-  plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0')}))
+  plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
       // Citas de la semana seleccionada
       let citas: Array<{id:number; fecha_cita:string; nombre:string; estado:string; notas?:string; telefono?:string}> = []
       const citasRes = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
@@ -139,7 +139,14 @@ export default function PlanificacionPage(){
       porcentaje_comision: data.porcentaje_comision
     }
     const r=await fetch('/api/planificacion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    if(r.ok){ fetchData(); setDirty(false); if(!auto) setToast({msg:'Planificación guardada', type:'success'}) } else { if(!auto) setToast({msg:'Error al guardar', type:'error'}) }
+    if(r.ok){
+      setDirty(false)
+      if(!auto) setToast({msg:'Planificación guardada', type:'success'})
+      // Refrescar citas auto en segundo plano sin perder manuales
+      setTimeout(()=> fetchData(), 500)
+    } else {
+      if(!auto) setToast({msg:'Error al guardar', type:'error'})
+    }
   }
 
   return <div className="container py-4">
