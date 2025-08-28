@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
+import { exportProspectosPDF } from '@/lib/prospectosExport'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 interface Aggregate { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean }
@@ -42,7 +43,7 @@ export default function ProspectosPage() {
   return <div className="container py-4">
     <h2 className="fw-semibold mb-3">Prospectos – Semana {semanaActual.semana} ({semanaActual.anio})</h2>
     {superuser && <div className="mb-3 d-flex gap-2"> <input placeholder="Agente ID" value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-control w-auto"/> </div>}
-    <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
+  <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
       <select value={estadoFiltro} onChange={e=>setEstadoFiltro(e.target.value as ProspectoEstado|'' )} className="form-select w-auto">
         <option value="">Todos los estados</option>
         {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -51,6 +52,7 @@ export default function ProspectosPage() {
         <span className="badge bg-secondary">Total {agg.total}</span>
         {Object.entries(agg.por_estado).map(([k,v])=> <span key={k} className="badge bg-light text-dark border">{ESTADO_LABEL[k as ProspectoEstado]} {v}</span>)}
         <span className={"badge "+ (agg.cumplimiento_30? 'bg-success':'bg-warning text-dark')}>{agg.cumplimiento_30? 'Meta 30 ok':'<30 prospectos'}</span>
+        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos Semana ${semanaActual.semana}`)}>PDF</button>
       </div>}
     </div>
     <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
