@@ -28,6 +28,8 @@ export default function PlanificacionPage(){
   const [modal,setModal]=useState<null|{day:number; hour:string; blk?:BloquePlanificacion}>(null)
   const [prospectosDisponibles,setProspectosDisponibles]=useState<Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>>([])
   const saveDebounce = useRef<number | null>(null)
+  const lastSavedManualRef = useRef<string>('') // hash JSON de bloques manuales guardados
+  const [autoSaveEnabled,setAutoSaveEnabled]=useState(true)
   const agenteQuery = superuser && agenteId ? `&agente_id=${agenteId}` : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
@@ -39,6 +41,9 @@ export default function PlanificacionPage(){
     let plan: PlanificacionResponse | null = null
     const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
     if(planRes.ok) plan = await planRes.json()
+    if(planRes.ok){
+      try { console.debug('PLANIF_FETCH_RAW', await planRes.clone().text()) } catch {}
+    }
     if(plan){
       // Normalizar horas a 'HH'
       plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
@@ -86,6 +91,13 @@ export default function PlanificacionPage(){
         }
       }
       plan = {...plan, bloques: manual}
+      const stats = {
+        manual_PROSPECCION: manual.filter(b=>b.origin!=='auto' && b.activity==='PROSPECCION').length,
+        manual_CITAS: manual.filter(b=>b.origin!=='auto' && b.activity==='CITAS').length,
+        manual_SMNYL: manual.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length,
+        auto_CITAS: manual.filter(b=>b.origin==='auto' && b.activity==='CITAS').length
+      }
+      console.debug('PLANIF_FETCH_STATS', stats)
     }
     setData(plan)
     setLoading(false)
@@ -127,8 +139,10 @@ export default function PlanificacionPage(){
     setData({...data,bloques:nuevos})
     setDirty(true)
     // autosave debounce
-  window.clearTimeout(saveDebounce.current)
-  saveDebounce.current = window.setTimeout(()=>{ guardar(true) }, 1200) as unknown as number
+    if(autoSaveEnabled){
+      window.clearTimeout(saveDebounce.current)
+      saveDebounce.current = window.setTimeout(()=>{ guardar(true) }, 1500) as unknown as number
+    }
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -142,6 +156,10 @@ export default function PlanificacionPage(){
   const guardar = async(auto=false)=>{
   if(!data) return 
     if(semana==='ALL') return
+    // Evitar guardar si autosave y no hay cambios reales en bloques manuales
+    const manual = data.bloques.filter(b=> b.origin!=='auto').sort((a,b)=> a.day-b.day || a.hour.localeCompare(b.hour) || a.activity.localeCompare(b.activity))
+    const hash = JSON.stringify(manual)
+    if(auto && hash===lastSavedManualRef.current && !dirty) return
     const body={
       agente_id: superuser && agenteId? Number(agenteId): undefined,
       semana_iso: semana as number,
@@ -155,6 +173,7 @@ export default function PlanificacionPage(){
     if(r.ok){
       setDirty(false)
       if(!auto) setToast({msg:'Planificación guardada', type:'success'})
+      lastSavedManualRef.current = hash
       // Refrescar (forzado) para mergear correctamente tras persistir
       setTimeout(()=> fetchData(true), 400)
     } else {
@@ -212,6 +231,8 @@ export default function PlanificacionPage(){
       <div className="col-lg-3">
         <div className="card p-3 shadow-sm">
           <div className="mb-2 small">Horas CITAS: <strong>{horasCitas}</strong></div>
+          <div className="mb-1 small text-muted">Manual Prospecto: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='PROSPECCION').length}</div>
+          <div className="mb-2 small text-muted">Manual SMNYL: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
           <div className="mb-2 small">Prima anual promedio <input type="number" className="form-control form-control-sm" value={data.prima_anual_promedio} onChange={e=>setData({...data,prima_anual_promedio:Number(e.target.value)})}/></div>
           <div className="mb-2 small">% Comisión <input type="number" className="form-control form-control-sm" value={data.porcentaje_comision} onChange={e=>setData({...data,porcentaje_comision:Number(e.target.value)})}/></div>
           <div className="mb-2 small">Meta CITAS semanal: {metaCitas}</div>
@@ -221,6 +242,10 @@ export default function PlanificacionPage(){
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           <button className="btn btn-primary btn-sm" onClick={()=>guardar(false)} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
           <div className="form-text small">{dirty? 'Cambios pendientes de guardar.':'Sin cambios.'}</div>
+          <div className="form-check form-switch mt-2 small">
+            <input className="form-check-input" type="checkbox" id="autosaveSwitch" checked={autoSaveEnabled} onChange={e=> setAutoSaveEnabled(e.target.checked)} />
+            <label className="form-check-label" htmlFor="autosaveSwitch">Auto-guardado</label>
+          </div>
         </div>
   {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> { const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+b.day); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); const nombre=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'][b.day]; return `${nombre} ${dia}/${mes} ${b.hour}:00`; }).join(', ')}</div>}
       </div>
