@@ -200,7 +200,6 @@ export default function PlanificacionPage(){
           <button className="btn btn-primary btn-sm" onClick={()=>guardar(false)} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
           <div className="form-text small">{dirty? 'Cambios pendientes de guardar.':'Sin cambios.'}</div>
         </div>
-  <div className="mt-3 small text-muted">Click en celda: ciclo PROSPECCION → CITAS → SMNYL → vacío. Letra mostrada: inicial de actividad.</div>
   {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> `${b.day}/${b.hour}`).join(', ')}</div>}
       </div>
     </div>}
