@@ -14,6 +14,7 @@ export async function GET(req: Request) {
   const anio = url.searchParams.get('anio')
   const estado = url.searchParams.get('estado') as ProspectoEstado | null
   const soloConCita = url.searchParams.get('solo_con_cita') === '1'
+  const soloSinCita = url.searchParams.get('solo_sin_cita') === '1'
   let agenteIdParam = url.searchParams.get('agente_id')
 
   // Restricción rol agente
@@ -24,6 +25,10 @@ export async function GET(req: Request) {
   if (anio) query = query.eq('anio', Number(anio))
   if (estado) query = query.eq('estado', estado)
   if (soloConCita) query = query.not('fecha_cita','is',null)
+  if (soloSinCita && !soloConCita) {
+    // Sólo prospectos sin cita, estados permitidos pendiente / seguimiento
+    query = query.is('fecha_cita', null).in('estado', ['pendiente','seguimiento'])
+  }
 
   // Filtrado semana:
   // - Si no se envía semana => todas las semanas del año (ya filtrado por anio si se dio)
