@@ -25,38 +25,37 @@ export default function PlanificacionPage(){
 
   const fetchData=async()=>{ 
     if(semana==='ALL'){ setData(null); return }
-    setLoading(true); 
-    const r=await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`); 
-    if(r.ok) setData(await r.json()); 
-    setLoading(false) 
-  }
-
-  const fetchCitas=async()=>{
-    if(semana==='ALL') return
-    const r = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
-    if(!r.ok) return
-    const citas: Array<{id:number; fecha_cita:string}> = await r.json()
-    if(!data) return
-    // Marcar bloques CITAS (origin auto) sin pisar manuales existentes
-    const rango = semanaDesdeNumero(anio, semana)
-    const nuevos = [...data.bloques.filter(b=> b.origin!=='auto')]
-    for(const c of citas){
-      const dt = new Date(c.fecha_cita)
-      const day = Math.floor((Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate()) - Date.UTC(rango.inicio.getUTCFullYear(),rango.inicio.getUTCMonth(),rango.inicio.getUTCDate()))/86400000)
-      if(day<0 || day>6) continue
-      const hour = dt.getUTCHours().toString().padStart(2,'0')
-      // Solo si no existe bloque manual para ese slot
-      if(!nuevos.find(b=>b.day===day && b.hour===hour)){
-        nuevos.push({day, hour, activity:'CITAS', origin:'auto'})
+    setLoading(true)
+    const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
+    let plan: PlanificacionResponse | null = null
+    if(planRes.ok) plan = await planRes.json()
+    // Obtener citas y fusionar
+    if(plan){
+      const citasRes = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
+      if(citasRes.ok){
+        const citas: Array<{id:number; fecha_cita:string}> = await citasRes.json()
+        const rango = semanaDesdeNumero(anio, semana as number)
+        const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
+        const manual = plan.bloques.filter(b=> b.origin !== 'auto')
+        for(const c of citas){
+          const dt = new Date(c.fecha_cita)
+            // Calcular día basado en hora local del navegador
+          const citaLocalMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+          const day = Math.round((citaLocalMidnight.getTime() - mondayLocal.getTime())/86400000)
+          if(day<0 || day>6) continue
+          const hour = dt.getHours().toString().padStart(2,'0')
+          if(!manual.find(b=> b.day===day && b.hour===hour)){
+            manual.push({day, hour, activity:'CITAS', origin:'auto'})
+          }
+        }
+        plan = {...plan, bloques: manual}
       }
+      setData(plan)
     }
-    setData(d=> d? {...d, bloques:nuevos}: d)
+    setLoading(false)
   }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
-
-  useEffect(()=>{ if(data) fetchCitas() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[data, semana, anio, agenteId])
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaCitas(m.metaCitas)) },[])
 
