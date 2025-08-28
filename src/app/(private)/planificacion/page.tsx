@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Notification from '@/components/ui/Notification'
+import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
 import type { BloquePlanificacion, ProspectoEstado } from '@/types'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
@@ -8,7 +9,9 @@ import { fetchFase2Metas } from '@/lib/fase2Params'
 
 interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:number; anio:number; bloques:BloquePlanificacion[]; prima_anual_promedio:number; porcentaje_comision:number }
 
-const ACTIVIDADES = ['PROSPECCION','CITAS','SMNYL'] as const
+// Ciclo original ya no usado para toggle directo, mantenido por referencia futura
+// const ACTIVIDADES = ['PROSPECCION','CITAS','SMNYL'] as const
+
 const HORAS_BASE = Array.from({length:17},(_ ,i)=> (5+i).toString().padStart(2,'0')) // 05..21 rango base
 
 export default function PlanificacionPage(){
@@ -23,6 +26,9 @@ export default function PlanificacionPage(){
   const [loading,setLoading]=useState(false)
   const [dirty,setDirty]=useState(false)
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
+  const [modal,setModal]=useState<null|{day:number; hour:string; blk?:BloquePlanificacion}>(null)
+  const [prospectosSemana,setProspectosSemana]=useState<Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>>([])
+  const saveDebounce = useRef<number | null>(null)
   const agenteQuery = superuser && agenteId ? '&agente_id='+agenteId : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
@@ -33,10 +39,11 @@ export default function PlanificacionPage(){
     let plan: PlanificacionResponse | null = null
     if(planRes.ok) plan = await planRes.json()
     // Obtener citas y fusionar
-    if(plan){
+  if(plan){
       const citasRes = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
       if(citasRes.ok){
         const citas: Array<{id:number; fecha_cita:string; nombre:string; estado:string; notas?:string; telefono?:string}> = await citasRes.json()
+    setProspectosSemana(citas.map(c=> ({id:c.id,nombre:c.nombre,estado:c.estado as ProspectoEstado, notas:c.notas, telefono:c.telefono})))
         const rango = semanaDesdeNumero(anio, semana as number)
   const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
         const manual = plan.bloques.filter(b=> b.origin !== 'auto')
@@ -81,19 +88,18 @@ export default function PlanificacionPage(){
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaCitas(m.metaCitas)) },[])
 
-  const toggle=(day:number,hour:string)=>{
+  const openModal=(day:number,hour:string, blk?:BloquePlanificacion)=>{ setModal({day,hour,blk}) }
+  const closeModal=()=> setModal(null)
+
+  const upsertBloque=(b:BloquePlanificacion|null)=>{
     if(!data) return
-    const existing = data.bloques.find(b=>b.day===day && b.hour===hour)
-    let nuevos:BloquePlanificacion[]
-    if(!existing){ nuevos=[...data.bloques,{day,hour,activity:'PROSPECCION'}] }
-    else {
-      const idx = ACTIVIDADES.indexOf(existing.activity as typeof ACTIVIDADES[number])
-      const next = ACTIVIDADES[(idx+1)%ACTIVIDADES.length]
-      if(idx===ACTIVIDADES.length-1){ nuevos = data.bloques.filter(b=> !(b.day===day && b.hour===hour)) }
-      else { nuevos = data.bloques.map(b=> b===existing? {...b,activity:next}:b) }
-    }
-  setData(prev=> prev? {...prev,bloques:nuevos}:prev)
-  setDirty(true)
+  const nuevos = data.bloques.filter(x=> !(x.day===modal?.day && x.hour===modal?.hour))
+    if(b) nuevos.push(b)
+    setData({...data,bloques:nuevos})
+    setDirty(true)
+    // autosave debounce
+    window.clearTimeout(saveDebounce.current)
+    saveDebounce.current = window.setTimeout(()=>{ guardar(true) }, 1200) as unknown as number
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -104,8 +110,8 @@ export default function PlanificacionPage(){
   },[data])
   const ganancia = horasCitas * ( (data?.prima_anual_promedio||0) * ((data?.porcentaje_comision||0)/100) )
 
-  const guardar = async()=>{
-    if(!data) return
+  const guardar = async(auto=false)=>{
+  if(!data) return 
     if(semana==='ALL') return
     const body={
       agente_id: superuser && agenteId? Number(agenteId): undefined,
@@ -116,7 +122,7 @@ export default function PlanificacionPage(){
       porcentaje_comision: data.porcentaje_comision
     }
     const r=await fetch('/api/planificacion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    if(r.ok){ fetchData(); setDirty(false); setToast({msg:'Planificación guardada', type:'success'}) } else { setToast({msg:'Error al guardar', type:'error'}) }
+    if(r.ok){ fetchData(); setDirty(false); if(!auto) setToast({msg:'Planificación guardada', type:'success'}) } else { if(!auto) setToast({msg:'Error al guardar', type:'error'}) }
   }
 
   return <div className="container py-4">
@@ -151,15 +157,8 @@ export default function PlanificacionPage(){
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
                   const color = blk? blk.activity==='CITAS'? (blk.origin==='auto'? 'bg-success bg-opacity-75 text-white':'bg-success text-white'): blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark':''
-                  const onCellClick=()=>{
-                    if(blk && blk.activity==='CITAS' && blk.origin==='auto' && blk.prospecto_id){
-                      const detalle = `Prospecto #${blk.prospecto_id}\nNombre: ${blk.prospecto_nombre||''}\nEstado: ${blk.prospecto_estado||''}`
-                      alert(detalle)
-                    } else {
-                      toggle(day,h)
-                    }
-                  }
-                  return <td key={day} style={{cursor:'pointer'}} onClick={onCellClick} className={color} title={blk && blk.origin==='auto'? (blk.prospecto_nombre? `${blk.prospecto_nombre}`:'Cita agendada (auto)'): undefined}>{blk? blk.activity[0]: ''}</td>
+                  const label = blk? (blk.activity==='CITAS'? (blk.prospecto_nombre? `Cita ${blk.prospecto_nombre}`:'Cita'): blk.activity==='PROSPECCION'? 'Prospecto':'SMNYL') : ''
+                  return <td key={day} style={{cursor:'pointer', fontSize:'0.7rem'}} onClick={()=>openModal(day,h,blk)} className={color} title={label}>{label}</td>
                 })}
               </tr>)}
             </tbody>
@@ -176,7 +175,7 @@ export default function PlanificacionPage(){
             <div className={`progress-bar ${horasCitas>=metaCitas? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasCitas/metaCitas)*100)}%`}}>{horasCitas}/{metaCitas}</div>
           </div>
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-          <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
+          <button className="btn btn-primary btn-sm" onClick={()=>guardar(false)} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
           <div className="form-text small">{dirty? 'Cambios pendientes de guardar.':'Sin cambios.'}</div>
         </div>
   <div className="mt-3 small text-muted">Click en celda: ciclo PROSPECCION → CITAS → SMNYL → vacío. Letra mostrada: inicial de actividad.</div>
@@ -185,5 +184,59 @@ export default function PlanificacionPage(){
     </div>}
   {loading && <div>Cargando...</div>}
   {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
+  {modal && data && <AppModal title={`Bloque ${modal.hour}:00`} icon="calendar-event" onClose={closeModal}>
+    <BloqueEditor modal={modal} prospectos={prospectosSemana} onSave={b=>{ upsertBloque(b); closeModal() }} onDelete={()=>{ upsertBloque(null); closeModal() }} />
+  </AppModal>}
+  </div>
+}
+
+function BloqueEditor({ modal, prospectos, onSave, onDelete }: { modal:{day:number; hour:string; blk?:BloquePlanificacion}; prospectos:Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>; onSave:(b:BloquePlanificacion|null)=>void; onDelete:()=>void }){
+  const dias = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
+  const [tipo,setTipo]=useState< 'PROSPECCION'|'CITAS'|'SMNYL' | ''>(modal.blk? modal.blk.activity: '')
+  const [prospectoId,setProspectoId]=useState<number | ''>(modal.blk?.prospecto_id || '')
+  const [notas,setNotas]=useState(modal.blk?.notas || '')
+  const isCita = tipo==='CITAS'
+  const guardar=()=>{
+    if(!tipo){ onSave(null); return }
+    if(!isCita && !notas.trim()) return alert('Notas obligatorias para este tipo')
+    const base: BloquePlanificacion = {day:modal.day, hour:modal.hour, activity:tipo, origin:'manual'}
+    if(isCita){
+      if(prospectoId){
+        const p = prospectos.find(p=> p.id===prospectoId)
+        if(p) Object.assign(base,{prospecto_id:p.id, prospecto_nombre:p.nombre, prospecto_estado:p.estado})
+      }
+    } else {
+      base.notas = notas.trim()
+    }
+    onSave(base)
+  }
+  return <div className="small">
+    <div className="mb-2 fw-semibold">{dias[modal.day]} {modal.hour}:00</div>
+    <div className="mb-2">
+      <label className="form-label small mb-1">Tipo</label>
+  <select className="form-select form-select-sm" value={tipo} onChange={e=>{ setTipo(e.target.value as 'PROSPECCION'|'CITAS'|'SMNYL'|''); if(e.target.value!=='CITAS') setProspectoId('') }}>
+        <option value="">(Vacío)</option>
+        <option value="PROSPECCION">Prospecto</option>
+        <option value="CITAS">Cita</option>
+        <option value="SMNYL">SMNYL</option>
+      </select>
+    </div>
+    {isCita && <div className="mb-2">
+      <label className="form-label small mb-1">Prospecto (opcional)</label>
+      <select className="form-select form-select-sm" value={prospectoId} onChange={e=> setProspectoId(e.target.value? Number(e.target.value): '')}>
+        <option value="">(Sin vincular)</option>
+        {prospectos.map(p=> <option key={p.id} value={p.id}>{p.nombre}</option>)}
+      </select>
+    </div>}
+    {!isCita && tipo && <div className="mb-2">
+      <label className="form-label small mb-1">Notas (obligatorias)</label>
+      <textarea rows={3} className="form-control form-control-sm" value={notas} onChange={e=> setNotas(e.target.value)} />
+    </div>}
+    {modal.blk && modal.blk.origin==='auto' && modal.blk.activity==='CITAS' && modal.blk.prospecto_nombre && <div className="alert alert-info p-2 small">Cita auto de prospecto {modal.blk.prospecto_nombre}</div>}
+    <div className="d-flex gap-2 mt-3">
+      <button className="btn btn-primary btn-sm" onClick={guardar}>Guardar</button>
+      <button className="btn btn-outline-secondary btn-sm" onClick={()=> onSave(null)}>Vaciar</button>
+      <button className="btn btn-outline-danger btn-sm ms-auto" onClick={onDelete}>Eliminar</button>
+    </div>
   </div>
 }

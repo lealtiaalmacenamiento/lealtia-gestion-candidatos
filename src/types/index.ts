@@ -120,6 +120,7 @@ export interface BloquePlanificacion {
   prospecto_id?: number
   prospecto_nombre?: string
   prospecto_estado?: ProspectoEstado
+  notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
 }
 
 export interface PlanificacionSemana {

@@ -1,10 +1,11 @@
 import type { ProspectoEstado } from '@/types'
 
+// Usamos clases Bootstrap (no Tailwind) para asegurar visibilidad
 export const ESTADO_CLASSES: Record<ProspectoEstado, string> = {
-  pendiente: 'bg-gray-100 text-gray-800',
-  seguimiento: 'bg-yellow-300 text-gray-900',
-  con_cita: 'bg-green-500 text-white',
-  descartado: 'bg-red-600 text-white'
+  pendiente: 'bg-light text-dark border',
+  seguimiento: 'bg-warning text-dark',
+  con_cita: 'bg-success text-white',
+  descartado: 'bg-danger text-white'
 }
 
 export const ESTADO_LABEL: Record<ProspectoEstado, string> = {
