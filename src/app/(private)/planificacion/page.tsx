@@ -199,13 +199,13 @@ export default function PlanificacionPage(){
     </div>}
   {loading && <div>Cargando...</div>}
   {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
-  {modal && data && <AppModal title={`Bloque ${modal.hour}:00`} icon="calendar-event" onClose={closeModal}>
-    <BloqueEditor modal={modal} prospectos={prospectosDisponibles} onSave={b=>{ upsertBloque(b); closeModal() }} onDelete={()=>{ upsertBloque(null); closeModal() }} />
+  {modal && data && <AppModal title={(()=>{ const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+modal.day); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); return `${['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'][modal.day]} ${dia}/${mes} ${modal.hour}:00` })()} icon="calendar-event" onClose={closeModal}>
+    <BloqueEditor modal={modal} semanaBase={semanaDesdeNumero(anio, semana as number).inicio} prospectos={prospectosDisponibles} onSave={b=>{ upsertBloque(b); closeModal() }} onDelete={()=>{ upsertBloque(null); closeModal() }} />
   </AppModal>}
   </div>
 }
 
-function BloqueEditor({ modal, prospectos, onSave, onDelete }: { modal:{day:number; hour:string; blk?:BloquePlanificacion}; prospectos:Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>; onSave:(b:BloquePlanificacion|null)=>void; onDelete:()=>void }){
+function BloqueEditor({ modal, semanaBase, prospectos, onSave, onDelete }: { modal:{day:number; hour:string; blk?:BloquePlanificacion}; semanaBase: Date; prospectos:Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>; onSave:(b:BloquePlanificacion|null)=>void; onDelete:()=>void }){
   const dias = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
   const [tipo,setTipo]=useState< 'PROSPECCION'|'CITAS'|'SMNYL' | ''>(modal.blk? modal.blk.activity: '')
   const [prospectoId,setProspectoId]=useState<number | ''>(modal.blk?.prospecto_id || '')
@@ -228,8 +228,16 @@ function BloqueEditor({ modal, prospectos, onSave, onDelete }: { modal:{day:numb
     }
     onSave(base)
   }
+  // Datos detallados del prospecto de la cita auto si aplica
+  let prospectoAuto: {id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string} | undefined
+  if(modal.blk?.activity==='CITAS' && modal.blk.origin==='auto' && modal.blk.prospecto_id){
+    prospectoAuto = prospectos.find(p=>p.id===modal.blk?.prospecto_id)
+  }
+  const fechaBloque = new Date(semanaBase); fechaBloque.setUTCDate(fechaBloque.getUTCDate()+modal.day)
+  const diaNum = fechaBloque.getUTCDate().toString().padStart(2,'0')
+  const mesNum = (fechaBloque.getUTCMonth()+1).toString().padStart(2,'0')
   return <div className="small">
-    <div className="mb-2 fw-semibold">{dias[modal.day]} {modal.hour}:00</div>
+    <div className="mb-2 fw-semibold">{dias[modal.day]} {diaNum}/{mesNum} {modal.hour}:00</div>
     <div className="mb-2">
       <label className="form-label small mb-1">Tipo</label>
   <select className="form-select form-select-sm" value={tipo} onChange={e=>{ setTipo(e.target.value as 'PROSPECCION'|'CITAS'|'SMNYL'|''); if(e.target.value!=='CITAS') setProspectoId('') }}>
@@ -250,7 +258,13 @@ function BloqueEditor({ modal, prospectos, onSave, onDelete }: { modal:{day:numb
       <label className="form-label small mb-1">Notas (obligatorias{isCita && !prospectoId? ' si no hay prospecto':''})</label>
       <textarea rows={3} className="form-control form-control-sm" value={notas} onChange={e=> setNotas(e.target.value)} />
     </div>}
-    {modal.blk && modal.blk.origin==='auto' && modal.blk.activity==='CITAS' && modal.blk.prospecto_nombre && <div className="alert alert-info p-2 small">Cita auto de prospecto {modal.blk.prospecto_nombre}</div>}
+    {modal.blk && modal.blk.origin==='auto' && modal.blk.activity==='CITAS' && modal.blk.prospecto_nombre && <div className="alert alert-info p-2 small">
+      <div className="fw-semibold">Cita auto vinculada</div>
+      <div><strong>Nombre:</strong> {modal.blk.prospecto_nombre}</div>
+      {prospectoAuto?.telefono && <div><strong>Tel:</strong> {prospectoAuto.telefono}</div>}
+      {prospectoAuto?.estado && <div><strong>Estado:</strong> {prospectoAuto.estado}</div>}
+      {prospectoAuto?.notas && <div className="text-truncate"><strong>Notas:</strong> {prospectoAuto.notas}</div>}
+    </div>}
     <div className="d-flex gap-2 mt-3">
       <button className="btn btn-primary btn-sm" onClick={guardar}>Guardar</button>
       <button className="btn btn-outline-secondary btn-sm" onClick={()=> onSave(null)}>Vaciar</button>
