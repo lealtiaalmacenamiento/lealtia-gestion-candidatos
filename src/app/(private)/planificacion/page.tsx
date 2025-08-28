@@ -38,6 +38,8 @@ export default function PlanificacionPage(){
     const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
     if(planRes.ok) plan = await planRes.json()
     if(plan){
+      // Normalizar horas a 'HH'
+  plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0')}))
       // Citas de la semana seleccionada
       let citas: Array<{id:number; fecha_cita:string; nombre:string; estado:string; notas?:string; telefono?:string}> = []
       const citasRes = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
