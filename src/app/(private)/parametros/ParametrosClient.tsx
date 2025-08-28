@@ -27,10 +27,10 @@ export default function ParametrosClient(){
   const [editEfcRow, setEditEfcRow] = useState<Partial<Efc>|null>(null);
   const [loading, setLoading] = useState(true);
   const [notif, setNotif] = useState<{msg:string; type:'success'|'danger'|'info'|'warning'}|null>(null);
-  const [openMes, setOpenMes] = useState(true);
-  const [openEfc, setOpenEfc] = useState(true);
+  const [openMes, setOpenMes] = useState(false);
+  const [openEfc, setOpenEfc] = useState(false);
   // Fase 2 metas
-  const [openFase2,setOpenFase2]=useState(true)
+  const [openFase2,setOpenFase2]=useState(false)
   const [metaProspectos,setMetaProspectos]=useState<number|null>(null)
   const [metaCitas,setMetaCitas]=useState<number|null>(null)
   const [savingFase2,setSavingFase2]=useState(false)
