@@ -16,7 +16,7 @@ export default function PlanificacionPage(){
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
   // Semana puede ser un número ISO o 'ALL' para vista anual
-  const [semana,setSemana]=useState<number|"ALL">('ALL')
+  const [semana,setSemana]=useState<number|"ALL">(semanaActual.semana)
   const [agenteId,setAgenteId]=useState('')
   const [data,setData]=useState<PlanificacionResponse|null>(null)
   const [loading,setLoading]=useState(false)
@@ -86,13 +86,10 @@ export default function PlanificacionPage(){
     else {
       const idx = ACTIVIDADES.indexOf(existing.activity as typeof ACTIVIDADES[number])
       const next = ACTIVIDADES[(idx+1)%ACTIVIDADES.length]
-      // Si volvió al primer ciclo, permitir vaciar
       if(idx===ACTIVIDADES.length-1){ nuevos = data.bloques.filter(b=> !(b.day===day && b.hour===hour)) }
       else { nuevos = data.bloques.map(b=> b===existing? {...b,activity:next}:b) }
     }
-    setData({...data,bloques:nuevos})
-    // Guardar de inmediato y refetch para sincronizar con citas
-    setTimeout(()=> fetchData(), 200)
+    setData(prev=> prev? {...prev,bloques:nuevos}:prev)
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -176,6 +173,7 @@ export default function PlanificacionPage(){
           </div>
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string')}>Guardar</button>
+          <div className="form-text small">Los cambios en la grilla requieren Guardar para persistir.</div>
         </div>
   <div className="mt-3 small text-muted">Click en celda: ciclo PROSPECCION → CITAS → SMNYL → vacío. Letra mostrada: inicial de actividad.</div>
   {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> `${b.day}/${b.hour}`).join(', ')}</div>}

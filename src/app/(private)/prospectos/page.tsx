@@ -14,12 +14,13 @@ export default function ProspectosPage() {
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
   // Semana puede ser número ISO o 'ALL' para todo el año
-  const [semana,setSemana]=useState<number|"ALL">('ALL')
+  const [semana,setSemana]=useState<number|"ALL">(semanaActual.semana)
   const [prospectos,setProspectos]=useState<Prospecto[]>([])
   const [loading,setLoading]=useState(false)
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
-  const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado, fecha_cita:'' })
+  const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado, fecha_cita:'', fecha_cita_fecha:'', fecha_cita_hora:'' })
+  const [errorMsg,setErrorMsg]=useState<string>('')
   const [agenteId,setAgenteId]=useState<string>('')
   const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
   const debounceRef = useRef<number|null>(null)
@@ -55,17 +56,15 @@ export default function ProspectosPage() {
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaProspectos(m.metaProspectos)) },[])
 
-  const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!form.nombre.trim()) return; const body: Record<string,unknown>={...form};
-    if(body.fecha_cita){
-      const fc=String(body.fecha_cita)
-      if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)){
-        // Convertir a ISO UTC preservando la hora local elegida
-        body.fecha_cita=new Date(fc).toISOString()
-      }
-    } else {
-      delete body.fecha_cita
+  const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
+    if(form.fecha_cita_fecha && form.fecha_cita_hora){
+      const combo = `${form.fecha_cita_fecha}T${form.fecha_cita_hora}:00`
+      body.fecha_cita = new Date(combo).toISOString()
     }
-    const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(r.ok){setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:''}); fetchAll()} }
+    const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:'',fecha_cita_fecha:'',fecha_cita_hora:''}); fetchAll() }
+    else { try { const j=await r.json(); setErrorMsg(j.error||'Error'); } catch { setErrorMsg('Error al guardar') } }
+  }
 
   const update=(id:number, patch:Partial<Prospecto>)=> {
     // debounce mínimo
@@ -74,9 +73,9 @@ export default function ProspectosPage() {
       const toSend:Record<string,unknown>={...patch}
       if(patch.fecha_cita){
         const fc=String(patch.fecha_cita)
-        if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) toSend.fecha_cita=new Date(fc).toISOString()
+        if(/^\d{4}-\d{2}-\d{2}T\d{2}:00$/.test(fc)) toSend.fecha_cita=new Date(fc).toISOString()
       }
-      fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')) } })
+      fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(async r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')) } else { try { const j=await r.json(); alert(j.error||'Error'); } catch { alert('Error') } } })
     },300)
   }
 
@@ -133,9 +132,11 @@ export default function ProspectosPage() {
         <div className="col-sm-2"><input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} placeholder="Teléfono" className="form-control"/></div>
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
         <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-  <div className="col-sm-2"><input type="datetime-local" step={3600} value={form.fecha_cita} onChange={e=>{ let v=e.target.value; if(/\d{2}:\d{2}$/.test(v)){ const [date, time]=v.split('T'); const [hh]=time.split(':'); v=`${date}T${hh}:00`; } setForm(f=>({...f,fecha_cita:v}))}} className="form-control"/></div>
+        <div className="col-sm-1"><input type="date" value={form.fecha_cita_fecha} onChange={e=>setForm(f=>({...f,fecha_cita_fecha:e.target.value}))} className="form-control"/></div>
+        <div className="col-sm-1"><select className="form-select" value={form.fecha_cita_hora} onChange={e=>setForm(f=>({...f,fecha_cita_hora:e.target.value}))}><option value="">(Hora)</option>{Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={String(h).padStart(2,'0')}>{String(h).padStart(2,'0')}:00</option>)}</select></div>
       </div>
       <div className="mt-2"><button className="btn btn-primary btn-sm" disabled={loading}>Agregar</button></div>
+      {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
     <div className="table-responsive">
       <table className="table table-sm align-middle">
@@ -151,11 +152,17 @@ export default function ProspectosPage() {
                 {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </td>
-            <td style={{minWidth:160}}>
-              {(()=>{ const toLocalInput=(iso:string)=>{ const d=new Date(iso); const pad=(n:number)=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }; const val = p.fecha_cita? toLocalInput(p.fecha_cita):''; return <>
-                <input type="datetime-local" step={3600} value={val} onChange={e=>{ let v=e.target.value; if(v){ const [date,time]=v.split('T'); const [hh]=time.split(':'); v=`${date}T${hh}:00`; } update(p.id,{fecha_cita:v||null})}} className="form-control form-control-sm mb-1"/>
-                {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit', minute:'2-digit'})}</div>}
-              </> })()}
+            <td style={{minWidth:170}}>
+              {(()=>{ const dIso=p.fecha_cita? new Date(p.fecha_cita): null; const pad=(n:number)=>String(n).padStart(2,'0'); const dateVal=dIso? `${dIso.getFullYear()}-${pad(dIso.getMonth()+1)}-${pad(dIso.getDate())}`:''; const hourVal=dIso? pad(dIso.getHours()):''; return <div className="d-flex gap-1 flex-column">
+                <div className="d-flex gap-1">
+                  <input type="date" value={dateVal} onChange={e=>{ const newDate=e.target.value; if(!newDate){ update(p.id,{fecha_cita:null}); return } if(hourVal){ update(p.id,{fecha_cita:`${newDate}T${hourVal}:00`}) } }} className="form-control form-control-sm"/>
+                  <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ update(p.id,{fecha_cita:null}); return } if(dateVal){ update(p.id,{fecha_cita:`${dateVal}T${h}:00`}) } }}>
+                    <option value="">--</option>
+                    {Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={pad(h)}>{pad(h)}:00</option>)}
+                  </select>
+                </div>
+                {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit'})}</div>}
+              </div> })()}
             </td>
             <td><button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm">×</button></td>
           </tr>)}
