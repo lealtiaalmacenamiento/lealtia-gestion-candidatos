@@ -106,11 +106,11 @@ export default function PlanificacionPage(){
           {Array.from({length:3},(_,i)=>semanaActual.anio-1+i).map(y=> <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
-      <div>
+      <div style={{minWidth:230}}>
         <label className="form-label small mb-1">Semana</label>
-        <select className="form-select form-select-sm" value={semana} onChange={e=>{ const v=e.target.value; setSemana(v==='ALL'?'ALL':Number(v)) }}>
+        <select className="form-select form-select-sm" style={{minWidth:230}} value={semana} onChange={e=>{ const v=e.target.value; setSemana(v==='ALL'?'ALL':Number(v)) }} title={semana!=='ALL'? (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} ${formatearRangoSemana(r)}`})(): 'Todo el año'}>
           <option value="ALL">Todo el año</option>
-          {Array.from({length:53},(_,i)=>i+1).map(w=> { const r=semanaDesdeNumero(anio,w); return <option key={w} value={w}>{w} ({formatearRangoSemana(r)})</option>})}
+          {Array.from({length:53},(_,i)=>i+1).map(w=> { const r=semanaDesdeNumero(anio,w); const label = `${w} (${formatearRangoSemana(r)})`; return <option key={w} value={w}>{label}</option>})}
         </select>
       </div>
       {semana!=='ALL' && <div className="small mt-3">Rango: {formatearRangoSemana(semanaDesdeNumero(anio, semana as number))}</div>}
