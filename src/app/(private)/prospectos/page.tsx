@@ -133,7 +133,7 @@ export default function ProspectosPage() {
         <div className="col-sm-2"><input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} placeholder="Teléfono" className="form-control"/></div>
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
         <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-  <div className="col-sm-2"><input type="datetime-local" value={form.fecha_cita} onChange={e=>setForm(f=>({...f,fecha_cita:e.target.value}))} className="form-control"/></div>
+  <div className="col-sm-2"><input type="datetime-local" step={3600} value={form.fecha_cita} onChange={e=>{ let v=e.target.value; if(/\d{2}:\d{2}$/.test(v)){ const [date, time]=v.split('T'); const [hh]=time.split(':'); v=`${date}T${hh}:00`; } setForm(f=>({...f,fecha_cita:v}))}} className="form-control"/></div>
       </div>
       <div className="mt-2"><button className="btn btn-primary btn-sm" disabled={loading}>Agregar</button></div>
     </form>
@@ -153,7 +153,7 @@ export default function ProspectosPage() {
             </td>
             <td style={{minWidth:160}}>
               {(()=>{ const toLocalInput=(iso:string)=>{ const d=new Date(iso); const pad=(n:number)=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }; const val = p.fecha_cita? toLocalInput(p.fecha_cita):''; return <>
-                <input type="datetime-local" value={val} onChange={e=>update(p.id,{fecha_cita:e.target.value||null})} className="form-control form-control-sm mb-1"/>
+                <input type="datetime-local" step={3600} value={val} onChange={e=>{ let v=e.target.value; if(v){ const [date,time]=v.split('T'); const [hh]=time.split(':'); v=`${date}T${hh}:00`; } update(p.id,{fecha_cita:v||null})}} className="form-control form-control-sm mb-1"/>
                 {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit', minute:'2-digit'})}</div>}
               </> })()}
             </td>

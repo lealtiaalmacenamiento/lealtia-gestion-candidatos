@@ -67,13 +67,33 @@ export async function POST(req: Request) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(fecha_cita)) {
       // fecha sola -> medianoche local convertida a UTC
       fecha_cita = new Date(fecha_cita+'T00:00').toISOString()
-    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(fecha_cita)) {
-      // ya viene en ISO UTC (desde frontend convertido)
+    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(fecha_cita)) {
+      // ya viene en ISO UTC (desde frontend convertido) con o sin milisegundos
     } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fecha_cita)) {
       // (fallback) datetime-local crudo (raro ahora) -> convertir
       fecha_cita = new Date(fecha_cita).toISOString()
     } else {
       fecha_cita = undefined
+    }
+  }
+
+  // Validaciones adicionales fecha_cita: hora cerrada y no solapada con otra cita del mismo agente
+  if (fecha_cita) {
+    const dt = new Date(fecha_cita)
+    if (dt.getUTCMinutes() !== 0 || dt.getUTCSeconds() !== 0) {
+      return NextResponse.json({ error: 'La cita debe ser en una hora cerrada (minutos 00).' }, { status: 400 })
+    }
+    // Normalizar a inicio de hora UTC para búsqueda
+    const startHour = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), dt.getUTCHours(), 0, 0))
+    const endHour = new Date(startHour); endHour.setUTCHours(endHour.getUTCHours() + 1)
+    const { data: overlaps, error: overlapError } = await supabase.from('prospectos')
+      .select('id')
+      .eq('agente_id', usuario.id)
+      .gte('fecha_cita', startHour.toISOString())
+      .lt('fecha_cita', endHour.toISOString())
+    if (overlapError) return NextResponse.json({ error: overlapError.message }, { status: 500 })
+    if (overlaps && overlaps.length > 0) {
+      return NextResponse.json({ error: 'Ya existe una cita agendada en ese horario.' }, { status: 409 })
     }
   }
 
