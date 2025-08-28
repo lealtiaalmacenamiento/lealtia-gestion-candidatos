@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   const body = await req.json()
   const emailAgenteRaw: unknown = body.email_agente
   const emailAgente = typeof emailAgenteRaw === 'string' ? emailAgenteRaw.trim().toLowerCase() : ''
-  delete body.email_agente // evitar insertar columna inexistente en candidatos
+  // email_agente se conserva para insertar en columna (asegúrate de haber agregado la columna en BD)
   // Validación mínima de campos requeridos
   const requeridos: Array<keyof typeof body> = ['candidato', 'mes', 'efc']
   const faltan = requeridos.filter(k => !body[k] || (typeof body[k] === 'string' && body[k].trim() === ''))

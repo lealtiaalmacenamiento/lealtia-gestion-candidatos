@@ -28,6 +28,8 @@ export interface Candidato {
   pre_escuela_sesion_unica_de_arranque?: string
   fecha_limite_para_presentar_curricula_cdp?: string
   inicio_escuela_fundamental?: string
+  // Nuevo: email del agente (candidato) para creación de usuario
+  email_agente?: string
 }
 
 /** Usuarios */
