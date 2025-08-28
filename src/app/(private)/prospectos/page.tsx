@@ -24,6 +24,7 @@ export default function ProspectosPage() {
   const [errorMsg,setErrorMsg]=useState<string>('')
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const [horasOcupadas,setHorasOcupadas]=useState<Record<string,string[]>>({}) // fecha -> ['08','09']
+  const [citaDrafts,setCitaDrafts]=useState<Record<number,{fecha?:string; hora?:string}>>({})
 
   const precargarHoras = async(fecha:string)=>{
     // Reutiliza lista actual filtrando por la fecha para evitar llamada pesada
@@ -175,16 +176,23 @@ export default function ProspectosPage() {
               </select>
             </td>
             <td style={{minWidth:170}}>
-              {(()=>{ const dIso=p.fecha_cita? new Date(p.fecha_cita): null; const pad=(n:number)=>String(n).padStart(2,'0'); const dateVal=dIso? `${dIso.getFullYear()}-${pad(dIso.getMonth()+1)}-${pad(dIso.getDate())}`:''; const hourVal=dIso? pad(dIso.getHours()):''; return <div className="d-flex gap-1 flex-column">
-                <div className="d-flex gap-1">
-                  <input type="date" value={dateVal} onChange={e=>{ const newDate=e.target.value; if(!newDate){ update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return } if(hourVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch) } }} className="form-control form-control-sm"/>
-                  <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return } if(dateVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}>={fecha_cita:`${dateVal}T${h}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch) } }}>
-                    <option value="">--</option>
-                    {Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={pad(h)}>{pad(h)}:00</option>)}
-                  </select>
-                </div>
-                {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit'})}</div>}
-              </div> })()}
+              {(()=>{ const dIso=p.fecha_cita? new Date(p.fecha_cita): null; const pad=(n:number)=>String(n).padStart(2,'0');
+                const draft = citaDrafts[p.id] || {}
+                const dateVal = dIso? `${dIso.getFullYear()}-${pad(dIso.getMonth()+1)}-${pad(dIso.getDate())}`: (draft.fecha||'')
+                const hourVal = dIso? pad(dIso.getHours()): (draft.hora||'')
+                const setDraft=(partial: {fecha?:string; hora?:string})=> setCitaDrafts(prev=> ({...prev, [p.id]: {...prev[p.id], ...partial}}))
+                return <div className="d-flex gap-1 flex-column">
+                  <div className="d-flex gap-1">
+                    <input type="date" value={dateVal} onChange={e=>{ const newDate=e.target.value; if(!newDate){ setDraft({fecha:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
+                      setDraft({fecha:newDate}); if(hourVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }} className="form-control form-control-sm"/>
+                    <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ setDraft({hora:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
+                      setDraft({hora:h}); if(dateVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}>={fecha_cita:`${dateVal}T${h}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }}>
+                      <option value="">--</option>
+                      {Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={pad(h)}>{pad(h)}:00</option>)}
+                    </select>
+                  </div>
+                  {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit'})}</div>}
+                </div> })()}
             </td>
             <td><button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm">×</button></td>
           </tr>)}

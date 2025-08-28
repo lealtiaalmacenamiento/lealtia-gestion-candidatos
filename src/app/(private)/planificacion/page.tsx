@@ -198,12 +198,15 @@ function BloqueEditor({ modal, prospectos, onSave, onDelete }: { modal:{day:numb
   const isCita = tipo==='CITAS'
   const guardar=()=>{
     if(!tipo){ onSave(null); return }
-    if(!isCita && !notas.trim()) return alert('Notas obligatorias para este tipo')
+  if(!isCita && !notas.trim()) return alert('Notas obligatorias para este tipo')
+  if(isCita && !prospectoId && !notas.trim()) return alert('Notas obligatorias si la cita no está vinculada a un prospecto')
     const base: BloquePlanificacion = {day:modal.day, hour:modal.hour, activity:tipo, origin:'manual'}
     if(isCita){
       if(prospectoId){
         const p = prospectos.find(p=> p.id===prospectoId)
         if(p) Object.assign(base,{prospecto_id:p.id, prospecto_nombre:p.nombre, prospecto_estado:p.estado})
+      } else {
+        base.notas = notas.trim()
       }
     } else {
       base.notas = notas.trim()
@@ -228,8 +231,8 @@ function BloqueEditor({ modal, prospectos, onSave, onDelete }: { modal:{day:numb
         {prospectos.map(p=> <option key={p.id} value={p.id}>{p.nombre}</option>)}
       </select>
     </div>}
-    {!isCita && tipo && <div className="mb-2">
-      <label className="form-label small mb-1">Notas (obligatorias)</label>
+    {((!isCita && tipo) || (isCita && !prospectoId)) && <div className="mb-2">
+      <label className="form-label small mb-1">Notas (obligatorias{isCita && !prospectoId? ' si no hay prospecto':''})</label>
       <textarea rows={3} className="form-control form-control-sm" value={notas} onChange={e=> setNotas(e.target.value)} />
     </div>}
     {modal.blk && modal.blk.origin==='auto' && modal.blk.activity==='CITAS' && modal.blk.prospecto_nombre && <div className="alert alert-info p-2 small">Cita auto de prospecto {modal.blk.prospecto_nombre}</div>}
