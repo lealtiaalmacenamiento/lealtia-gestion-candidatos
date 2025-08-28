@@ -200,7 +200,7 @@ export default function PlanificacionPage(){
           <button className="btn btn-primary btn-sm" onClick={()=>guardar(false)} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
           <div className="form-text small">{dirty? 'Cambios pendientes de guardar.':'Sin cambios.'}</div>
         </div>
-  {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> `${b.day}/${b.hour}`).join(', ')}</div>}
+  {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> { const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+b.day); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); const nombre=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'][b.day]; return `${nombre} ${dia}/${mes} ${b.hour}:00`; }).join(', ')}</div>}
       </div>
     </div>}
   {loading && <div>Cargando...</div>}
