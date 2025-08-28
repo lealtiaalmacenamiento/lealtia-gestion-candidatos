@@ -113,7 +113,6 @@ export default function PlanificacionPage(){
           {Array.from({length:53},(_,i)=>i+1).map(w=> { const r=semanaDesdeNumero(anio,w); const label = `${w} (${formatearRangoSemana(r)})`; return <option key={w} value={w}>{label}</option>})}
         </select>
       </div>
-      {semana!=='ALL' && <div className="small mt-3">Rango: {formatearRangoSemana(semanaDesdeNumero(anio, semana as number))}</div>}
       {superuser && <div>
         <label className="form-label small mb-1">Agente ID</label>
         <input placeholder="Agente ID" value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-control form-control-sm w-auto"/>

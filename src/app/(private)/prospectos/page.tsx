@@ -83,7 +83,6 @@ export default function ProspectosPage() {
           {Array.from({length:53},(_,i)=> i+1).map(w=> { const r = semanaDesdeNumero(anio, w); const range = formatearRangoSemana(r); return <option key={w} value={w}>{w} ({range})</option> })}
         </select>
       </div>
-      <div className="small mt-3">Rango: {semana!=='ALL'? formatearRangoSemana(semanaDesdeNumero(anio, semana as number)) : 'Año completo'}</div>
     </div>
     {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
       <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto">
