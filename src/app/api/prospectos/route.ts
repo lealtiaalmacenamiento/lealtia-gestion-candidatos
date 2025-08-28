@@ -65,12 +65,15 @@ export async function POST(req: Request) {
   // Aceptar 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm'
   if (fecha_cita) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(fecha_cita)) {
-      // Normalizar sin hora a inicio de día UTC para consistencia
-      fecha_cita = new Date(fecha_cita + 'T00:00:00Z').toISOString()
+      // fecha sola: interpretarla como local a medianoche
+      const d = new Date(fecha_cita+'T00:00')
+      fecha_cita = d.toISOString()
     } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fecha_cita)) {
-      fecha_cita = new Date(fecha_cita + ':00Z').toISOString()
+      // Interpretar como hora local (no añadir Z manualmente)
+      const d = new Date(fecha_cita)
+      fecha_cita = d.toISOString()
     } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(fecha_cita)) {
-      // ya ISO completo
+      // ya ISO válido
     } else {
       fecha_cita = undefined
     }

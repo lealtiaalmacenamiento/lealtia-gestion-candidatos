@@ -29,7 +29,7 @@ export async function PATCH(req: Request) {
     const fc = String(body.fecha_cita)
     if (!fc) fields.fecha_cita = null
     else if (/^\d{4}-\d{2}-\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc + 'T00:00:00Z').toISOString()
-    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc + ':00Z').toISOString()
+  else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc).toISOString()
     else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(fc)) fields.fecha_cita = fc
     else fields.fecha_cita = null
   }

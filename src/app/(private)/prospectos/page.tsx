@@ -61,7 +61,7 @@ export default function ProspectosPage() {
     // debounce mínimo
     window.clearTimeout(debounceRef.current||0)
     debounceRef.current = window.setTimeout(()=>{
-      fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)}).then(r=>{ if(r.ok) fetchAll() })
+  fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)}).then(r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')) } })
     },300)
   }
 

@@ -60,6 +60,14 @@ export default function PlanificacionPage(){
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
 
+  // Escuchar eventos de actualización de citas desde la vista de prospectos
+  useEffect(()=>{
+    const handler=()=>{ fetchData() }
+    window.addEventListener('prospectos:cita-updated', handler)
+    return ()=> window.removeEventListener('prospectos:cita-updated', handler)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[semana, anio, agenteId])
+
   // Refresco periódico de citas cada 60s para mantener sincronía con cambios en prospectos
   useEffect(()=>{
     if(semana==='ALL') return
