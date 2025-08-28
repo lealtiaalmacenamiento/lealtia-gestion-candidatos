@@ -57,7 +57,18 @@ export async function crearUsuarioAgenteAuto({ email, nombre }: CrearAgenteOpts)
   if (authRes.error) { out.error = 'Auth: ' + authRes.error.message; return out }
   const authId = authRes.data?.user?.id
   const ins = await admin.from('usuarios').insert([{ email, nombre, rol: 'agente', activo: true, must_change_password: true, id_auth: authId }]).select('*').single()
-  if (ins.error) { out.error = 'DB usuarios: ' + ins.error.message; return out }
+  if (ins.error) {
+    // Rollback auth user to evitar huérfanos
+    if (authId) {
+      try { await admin.auth.admin.deleteUser(authId) } catch {}
+    }
+    if (ins.error.message && /duplicate key value/.test(ins.error.message)) {
+      out.error = 'PK duplicada: posible des-sincronización de la secuencia (reseed).'
+    } else {
+      out.error = 'DB usuarios: ' + ins.error.message
+    }
+    return out
+  }
   out.created = true
   out.passwordTemporal = tempPassword
   await logAccion('alta_usuario_auto_candidato', { usuario: email, tabla_afectada: 'usuarios', snapshot: { email, nombre, rol: 'agente' } })
