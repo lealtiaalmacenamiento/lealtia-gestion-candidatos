@@ -5,26 +5,11 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
-import { buildAltaUsuarioEmail, sendMail } from '@/lib/mailer'
+import { crearUsuarioAgenteAuto } from '@/lib/autoAgente'
 
 // Forzar runtime Node.js (necesario para nodemailer / auth admin)
 export const runtime = 'nodejs'
 
-// Utilidades para creación automática de usuario agente
-function randomTempPassword() {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
-  const lower = 'abcdefghijkmnopqrstuvwxyz'
-  const digits = '23456789'
-  const specials = '!@$%*?'
-  const all = upper+lower+digits+specials
-  const pick = (src: string)=> src[Math.floor(Math.random()*src.length)]
-  let base = pick(upper)+pick(lower)+pick(digits)+pick(specials)
-  for(let i=0;i<8;i++) base += pick(all)
-  return base.split('').sort(()=>Math.random()-0.5).join('')
-}
-function isStrongPassword(pw: string) {
-  return pw.length >= 8 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /\d/.test(pw)
-}
 
 const supabase = getServiceClient()
 
@@ -113,36 +98,11 @@ export async function POST(req: Request) {
   body.proceso = deriv.proceso
 
   // 1) Intentar creación de usuario agente (antes de insertar candidato) para poder abortar si falla gravemente
-  const agenteMeta: { created?: boolean; existed?: boolean; error?: string } = {}
+  const agenteMeta: { created?: boolean; existed?: boolean; passwordTemporal?: string; correoEnviado?: boolean; correoError?: string; error?: string } = {}
   if (emailAgente && /.+@.+\..+/.test(emailAgente)) {
-    try {
-      const existente = await supabase.from('usuarios').select('id,rol').eq('email', emailAgente).maybeSingle()
-      if (existente.error) throw new Error(existente.error.message)
-      if (existente.data) {
-        agenteMeta.existed = true
-      } else {
-        const tempPassword = randomTempPassword()
-        if(!isStrongPassword(tempPassword)) throw new Error('Password temporal inválida generada')
-        const authRes = await (supabase as any).auth.admin.createUser({ email: emailAgente, password: tempPassword, email_confirm: true })
-        if (authRes.error) throw new Error('Auth: ' + authRes.error.message)
-        const authId = authRes.data?.user?.id
-        const ins = await supabase.from('usuarios').insert([{ email: emailAgente, rol: 'agente', activo: true, must_change_password: true, id_auth: authId }]).select('*').single()
-        if (ins.error) throw new Error('DB usuarios: ' + ins.error.message)
-        agenteMeta.created = true
-        await logAccion('alta_usuario_auto_candidato', { usuario: usuario.email, tabla_afectada: 'usuarios', snapshot: { email: emailAgente, rol: 'agente' } })
-        // Enviar correo (no aborta si falla)
-        try {
-          const { subject, html, text } = buildAltaUsuarioEmail(emailAgente, tempPassword)
-          await sendMail({ to: emailAgente, subject, html, text })
-        } catch (mailErr) {
-          agenteMeta.error = 'Fallo envío correo: ' + (mailErr instanceof Error ? mailErr.message : String(mailErr))
-        }
-      }
-    } catch (agErr) {
-      agenteMeta.error = agErr instanceof Error ? agErr.message : String(agErr)
-      // En este punto seguimos (no abortamos creación de candidato) pero registramos warning
-      console.warn('[api/candidatos] usuario agente no creado:', agenteMeta.error)
-    }
+  const r = await crearUsuarioAgenteAuto({ email: emailAgente, nombre: body.candidato })
+  Object.assign(agenteMeta, r)
+  if (r.error) console.warn('[api/candidatos] usuario agente no creado:', r.error)
   }
 
   // 2) Insertar candidato
