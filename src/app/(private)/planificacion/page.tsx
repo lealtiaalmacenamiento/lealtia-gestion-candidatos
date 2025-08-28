@@ -51,11 +51,8 @@ export default function PlanificacionPage(){
   sinCita = raw.map((p: {id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string})=> ({id:p.id, nombre:p.nombre, estado:p.estado as ProspectoEstado, notas:p.notas, telefono:p.telefono}))
       }
 
-      // Combinar lista disponible
-      const map = new Map<number,{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>()
-      citas.forEach(c=> map.set(c.id,{id:c.id,nombre:c.nombre,estado:c.estado as ProspectoEstado,notas:c.notas,telefono:c.telefono}))
-      sinCita.forEach(s=> { if(!map.has(s.id)) map.set(s.id,s) })
-      setProspectosDisponibles(Array.from(map.values()))
+  // Solo prospectos sin cita (pendiente/seguimiento) para agendar
+  setProspectosDisponibles(sinCita)
 
       // Integrar citas a bloques auto
       const rango = semanaDesdeNumero(anio, semana as number)
@@ -100,7 +97,13 @@ export default function PlanificacionPage(){
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaCitas(m.metaCitas)) },[])
 
-  const openModal=(day:number,hour:string, blk?:BloquePlanificacion)=>{ setModal({day,hour,blk}) }
+  const openModal=(day:number,hour:string, blk?:BloquePlanificacion)=>{ 
+    // Si abrimos un bloque de CITAS existente con prospecto ya con cita, aseguramos que aparezca en el select
+    if(blk?.activity==='CITAS' && blk.prospecto_id){
+      setProspectosDisponibles(prev=> prev.find(p=>p.id===blk.prospecto_id)? prev : [...prev, {id:blk.prospecto_id!, nombre:blk.prospecto_nombre||`#${blk.prospecto_id}`, estado: (blk.prospecto_estado||'con_cita') as ProspectoEstado}])
+    }
+    setModal({day,hour,blk}) 
+  }
   const closeModal=()=> setModal(null)
 
   const upsertBloque=(b:BloquePlanificacion|null)=>{
