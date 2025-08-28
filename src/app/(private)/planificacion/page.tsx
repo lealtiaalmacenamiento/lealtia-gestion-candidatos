@@ -146,7 +146,8 @@ export default function PlanificacionPage(){
       agente_id: superuser && agenteId? Number(agenteId): undefined,
       semana_iso: semana as number,
       anio: anio,
-      bloques: data.bloques,
+      // Sólo enviamos manuales; autos se reconstruyen
+      bloques: data.bloques.filter(b=> b.origin !== 'auto'),
       prima_anual_promedio: data.prima_anual_promedio,
       porcentaje_comision: data.porcentaje_comision
     }
