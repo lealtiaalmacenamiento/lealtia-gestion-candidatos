@@ -12,6 +12,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const semana = url.searchParams.get('semana') // puede estar vacío para "todo el año"
   const anio = url.searchParams.get('anio')
+  const id = url.searchParams.get('id')
   const estado = url.searchParams.get('estado') as ProspectoEstado | null
   const soloConCita = url.searchParams.get('solo_con_cita') === '1'
   const soloSinCita = url.searchParams.get('solo_sin_cita') === '1'
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
 
   let query = supabase.from('prospectos').select('*').order('id', { ascending: true })
   if (agenteIdParam) query = query.eq('agente_id', Number(agenteIdParam))
+  if (id) query = query.eq('id', Number(id))
   if (anio) query = query.eq('anio', Number(anio))
   if (estado) query = query.eq('estado', estado)
   if (soloConCita) query = query.not('fecha_cita','is',null)

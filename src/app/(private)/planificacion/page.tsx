@@ -229,10 +229,22 @@ function BloqueEditor({ modal, semanaBase, prospectos, onSave, onDelete }: { mod
     onSave(base)
   }
   // Datos detallados del prospecto de la cita auto si aplica
-  let prospectoAuto: {id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string} | undefined
-  if(modal.blk?.activity==='CITAS' && modal.blk.origin==='auto' && modal.blk.prospecto_id){
-    prospectoAuto = prospectos.find(p=>p.id===modal.blk?.prospecto_id)
-  }
+  const [detalle,setDetalle]=useState<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}|null>(null)
+  useEffect(()=>{
+    if(modal.blk?.activity==='CITAS' && modal.blk.prospecto_id){
+      const local = prospectos.find(p=> p.id===modal.blk!.prospecto_id)
+      if(local){ setDetalle(local) }
+      // fetch explícito para asegurar teléfono y notas
+      fetch(`/api/prospectos?id=${modal.blk.prospecto_id}`).then(r=> r.ok? r.json():null).then(d=>{
+        if(Array.isArray(d) && d[0]){
+          const p=d[0]
+          setDetalle({id:p.id, nombre:p.nombre, estado:p.estado, notas:p.notas||undefined, telefono:p.telefono||undefined})
+        }
+      }).catch(()=>{})
+    } else {
+      setDetalle(null)
+    }
+  },[modal.blk, prospectos])
   const fechaBloque = new Date(semanaBase); fechaBloque.setUTCDate(fechaBloque.getUTCDate()+modal.day)
   const diaNum = fechaBloque.getUTCDate().toString().padStart(2,'0')
   const mesNum = (fechaBloque.getUTCMonth()+1).toString().padStart(2,'0')
@@ -258,12 +270,12 @@ function BloqueEditor({ modal, semanaBase, prospectos, onSave, onDelete }: { mod
       <label className="form-label small mb-1">Notas (obligatorias{isCita && !prospectoId? ' si no hay prospecto':''})</label>
       <textarea rows={3} className="form-control form-control-sm" value={notas} onChange={e=> setNotas(e.target.value)} />
     </div>}
-    {modal.blk && modal.blk.origin==='auto' && modal.blk.activity==='CITAS' && modal.blk.prospecto_nombre && <div className="alert alert-info p-2 small">
-      <div className="fw-semibold">Cita auto vinculada</div>
-      <div><strong>Nombre:</strong> {modal.blk.prospecto_nombre}</div>
-      {prospectoAuto?.telefono && <div><strong>Tel:</strong> {prospectoAuto.telefono}</div>}
-      {prospectoAuto?.estado && <div><strong>Estado:</strong> {prospectoAuto.estado}</div>}
-      {prospectoAuto?.notas && <div className="text-truncate"><strong>Notas:</strong> {prospectoAuto.notas}</div>}
+    {modal.blk && modal.blk.activity==='CITAS' && modal.blk.prospecto_nombre && detalle && <div className="alert alert-info p-2 small">
+      <div className="fw-semibold mb-1">Prospecto</div>
+      <div className="mb-1"><strong>Nombre:</strong> {detalle.nombre}</div>
+      <div className="mb-1"><strong>Teléfono:</strong> {detalle.telefono || '—'}</div>
+      <div className="mb-1"><strong>Estado:</strong> {detalle.estado}</div>
+      <div className="mb-0"><strong>Notas:</strong> {detalle.notas || '—'}</div>
     </div>}
     <div className="d-flex gap-2 mt-3">
       <button className="btn btn-primary btn-sm" onClick={guardar}>Guardar</button>
