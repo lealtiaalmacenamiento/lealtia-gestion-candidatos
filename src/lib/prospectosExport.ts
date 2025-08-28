@@ -4,6 +4,9 @@ async function loadJSPDF() { return (await import('jspdf')).jsPDF }
 async function loadAutoTable() { return (await import('jspdf-autotable')).default }
 
 function pct(part:number,total:number){ if(!total) return '0%'; return ((part/total)*100).toFixed(1)+'%' }
+const MX_TZ='America/Mexico_City'
+function formatFechaCita(iso?:string|null){ if(!iso) return ''; try { const d=new Date(iso); return new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}).format(d) } catch { return iso||'' } }
+function nowMX(){ return new Intl.DateTimeFormat('es-MX',{ timeZone: MX_TZ, dateStyle:'short', timeStyle:'medium'}).format(new Date()) }
 async function fetchLogoDataUrl(): Promise<string|undefined>{
   try {
   const url = (typeof process !== 'undefined' ? (process.env?.NEXT_PUBLIC_MAIL_LOGO_URL || process.env?.MAIL_LOGO_URL) : undefined)
@@ -33,13 +36,13 @@ export async function exportProspectosPDF(
   doc.setFontSize(12)
   doc.text(titulo, logo? 48:14, 12)
   doc.setFontSize(8)
-  doc.text('Generado: '+ new Date().toLocaleString('es-MX'), logo? 48:14, 17)
+  doc.text('Generado (CDMX): '+ nowMX(), logo? 48:14, 17)
   doc.setFontSize(9)
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
   const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas', ...(agrupado? ['Agente']: []) ]
-  const body = prospectos.map(p=> { const ep = p as ExtendedProspecto; return [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, p.fecha_cita||'', (p.notas||'').slice(0,80), ...(agrupado? [agentesMap[ep.agente_id ?? -1] || '']: []) ] })
+  const body = prospectos.map(p=> { const ep = p as ExtendedProspecto; return [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80), ...(agrupado? [agentesMap[ep.agente_id ?? -1] || '']: []) ] })
   // @ts-expect-error autotable plugin
   doc.autoTable({ startY: logo? 24: 20, head: [head], body, styles:{ fontSize:7 }, headStyles:{ fillColor:[7,46,64] } })
     interface DocMaybeAuto { lastAutoTable?: { finalY?: number } }
@@ -162,6 +165,64 @@ export async function exportProspectosPDF(
     const body2 = Object.values(porAgente).map(r=> [r.agente, r.total, r.por_estado.pendiente, r.por_estado.seguimiento, r.por_estado.con_cita, r.por_estado.descartado])
     // @ts-expect-error autotable plugin
     doc.autoTable({ startY:y, head:[head2], body:body2, styles:{fontSize:7}, headStyles:{ fillColor:[7,46,64] } })
+    // Global charts if requested (agrupado scenario)
+    if(opts?.chartEstados){
+      const docWith2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
+      y = (docWith2.lastAutoTable?.finalY || y) + 8
+      doc.setFontSize(10); doc.text('Resumen Global',14,y); y+=4
+      const lines = [
+        `Total: ${resumen.total}`,
+        `Pendiente: ${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`,
+        `Seguimiento: ${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`,
+        `Con cita: ${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`,
+        `Descartado: ${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`
+      ]
+      lines.forEach(l=> { doc.text(l,14,y); y+=4 })
+      const dataEntries: Array<[string, number, string]> = [
+        ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
+        ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
+        ['con_cita', resumen.por_estado.con_cita||0, '#198754'],
+        ['descartado', resumen.por_estado.descartado||0, '#dc3545']
+      ]
+      const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
+      const chartY = y + 2
+      const baseX = 14
+      const barW = 18
+      const gap = 6
+      const baseY = chartY + 40
+      doc.setFontSize(8)
+      dataEntries.forEach((d,i)=>{
+        const [key,val,color]=d
+        const h = (val/maxV)*30
+        const x = baseX + i*(barW+gap)
+        const yBar = baseY - h
+        const hex = color.startsWith('#')? color.substring(1): color
+        const r = parseInt(hex.substring(0,2),16)
+        const g = parseInt(hex.substring(2,4),16)
+        const b = parseInt(hex.substring(4,6),16)
+        doc.setFillColor(r,g,b)
+        doc.rect(x,yBar,barW,h,'F')
+        doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
+        doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
+      })
+      y = baseY + 10
+      if(opts.chartEstadosPie){
+        try {
+          const canvas = document.createElement('canvas')
+          const size=120; canvas.width=size; canvas.height=size
+          const ctx=canvas.getContext('2d')
+          if(ctx){
+            const totalVal = dataEntries.reduce((s,d)=> s+d[1],0)||1
+            let start=-Math.PI/2
+            dataEntries.forEach(d=>{ const portion=d[1]/totalVal; const end=start+portion*Math.PI*2; ctx.beginPath(); ctx.moveTo(size/2,size/2); ctx.arc(size/2,size/2,size/2,start,end); ctx.closePath(); ctx.fillStyle=d[2]; ctx.fill(); start=end })
+            const exportCanvas=document.createElement('canvas')
+            exportCanvas.width=size+140; exportCanvas.height=size
+            const ex=exportCanvas.getContext('2d')
+            if(ex){ ex.fillStyle='#fff'; ex.fillRect(0,0,exportCanvas.width,exportCanvas.height); ex.drawImage(canvas,0,0); dataEntries.forEach((d,i)=>{ ex.fillStyle=d[2]; ex.fillRect(size+10,8+i*16,12,12); ex.fillStyle='#000'; const percent=((d[1]/(totalVal))*100).toFixed(1)+'%'; ex.fillText(`${d[0]} (${percent})`, size+28,18+i*16) }); const dataUrl=exportCanvas.toDataURL('image/png'); doc.addImage(dataUrl,'PNG',14,y,80,80); y+=86 }
+          }
+        } catch {}
+      }
+    }
   }
   doc.save('prospectos.pdf')
 }

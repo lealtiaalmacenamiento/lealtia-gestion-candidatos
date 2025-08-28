@@ -136,7 +136,7 @@ export default function ProspectosPage() {
     const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })()
     const agName = agrupado? 'Todos' : (agentes.find(a=> String(a.id)===agenteId)?.nombre || agentes.find(a=> String(a.id)===agenteId)?.email || '')
     const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`
-  exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: !agrupado, chartEstadosPie: !agrupado })
+  exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, chartEstadosPie: true })
   }}>PDF</button>
     </div>}
   <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
