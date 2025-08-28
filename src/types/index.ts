@@ -30,6 +30,15 @@ export interface Candidato {
   inicio_escuela_fundamental?: string
   // Nuevo: email del agente (candidato) para creación de usuario
   email_agente?: string
+  // Meta devuelta por backend al crear (no persistida): estado creación usuario agente
+  _agente_meta?: {
+    created?: boolean
+    existed?: boolean
+    passwordTemporal?: string
+    correoEnviado?: boolean
+    correoError?: string
+    error?: string
+  }
 }
 
 /** Usuarios */
