@@ -163,6 +163,9 @@ function ConsultaCandidatosInner() {
       setAgenteMeta(j._agente_meta || { ok: true })
       // Actualizar en memoria
       setData(d => d.map(x => x.id_candidato === selectedForAgente.id_candidato ? { ...x, email_agente: email } : x))
+      if (!j._agente_meta?.error) {
+        setTimeout(()=>{ setSelectedForAgente(null) }, 1200)
+      }
     } catch (er) {
       setAgenteMeta({ error: er instanceof Error ? er.message : 'Error' })
     } finally {
@@ -299,7 +302,11 @@ function ConsultaCandidatosInner() {
                         disabled={deleting === c.id_candidato}
                       >Editar</button>
                       <a className="btn btn-sm btn-outline-secondary me-1" href={`/api/candidatos/${c.id_candidato}?export=pdf`} target="_blank" rel="noopener noreferrer">PDF</a>
-            {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)}>Asignar agente</button>}
+                      <button
+                        className={`btn btn-sm ${c.email_agente ? 'btn-outline-warning' : 'btn-outline-success'} me-1`}
+                        onClick={()=>openAgenteModal(c)}
+                        title={c.email_agente ? 'Cambiar email agente' : 'Asignar email agente'}
+                      >{c.email_agente ? 'Cambiar agente' : 'Asignar agente'}</button>
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => setPendingDelete(c)}
@@ -353,7 +360,8 @@ function ConsultaCandidatosInner() {
         >
           <form onSubmit={submitAgente} className="needs-validation" noValidate>
             <div className="mb-3 small">
-              <strong>Candidato:</strong> {selectedForAgente.candidato || '—'} (ID {selectedForAgente.id_candidato})
+              <strong>Candidato:</strong> {selectedForAgente.candidato || '—'} (ID {selectedForAgente.id_candidato})<br />
+              {selectedForAgente.email_agente && <span className="text-muted">Actual: {selectedForAgente.email_agente}</span>}
             </div>
             <div className="mb-3">
               <label className="form-label">Email del agente</label>
