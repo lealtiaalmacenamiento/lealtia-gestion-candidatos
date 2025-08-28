@@ -115,6 +115,7 @@ export interface BloquePlanificacion {
   day: number // 0=Lunes ISO? (usaremos 0=lunes..6=domingo para consistencia)
   hour: string // '05'..'23'
   activity: 'PROSPECCION' | 'CITAS' | 'SMNYL'
+  origin?: 'auto' | 'manual'
 }
 
 export interface PlanificacionSemana {

@@ -15,16 +15,48 @@ export default function PlanificacionPage(){
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
-  const [semana,setSemana]=useState(semanaActual.semana)
+  // Semana puede ser un número ISO o 'ALL' para vista anual
+  const [semana,setSemana]=useState<number|"ALL">('ALL')
   const [agenteId,setAgenteId]=useState('')
   const [data,setData]=useState<PlanificacionResponse|null>(null)
   const [loading,setLoading]=useState(false)
   const agenteQuery = superuser && agenteId ? '&agente_id='+agenteId : ''
   const [metaCitas,setMetaCitas]=useState(5)
 
-  const fetchData=async()=>{ setLoading(true); const r=await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`); if(r.ok) setData(await r.json()); setLoading(false) }
+  const fetchData=async()=>{ 
+    if(semana==='ALL'){ setData(null); return }
+    setLoading(true); 
+    const r=await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`); 
+    if(r.ok) setData(await r.json()); 
+    setLoading(false) 
+  }
+
+  const fetchCitas=async()=>{
+    if(semana==='ALL') return
+    const r = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
+    if(!r.ok) return
+    const citas: Array<{id:number; fecha_cita:string}> = await r.json()
+    if(!data) return
+    // Marcar bloques CITAS (origin auto) sin pisar manuales existentes
+    const rango = semanaDesdeNumero(anio, semana)
+    const nuevos = [...data.bloques.filter(b=> b.origin!=='auto')]
+    for(const c of citas){
+      const dt = new Date(c.fecha_cita)
+      const day = Math.floor((Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate()) - Date.UTC(rango.inicio.getUTCFullYear(),rango.inicio.getUTCMonth(),rango.inicio.getUTCDate()))/86400000)
+      if(day<0 || day>6) continue
+      const hour = dt.getUTCHours().toString().padStart(2,'0')
+      // Solo si no existe bloque manual para ese slot
+      if(!nuevos.find(b=>b.day===day && b.hour===hour)){
+        nuevos.push({day, hour, activity:'CITAS', origin:'auto'})
+      }
+    }
+    setData(d=> d? {...d, bloques:nuevos}: d)
+  }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
+
+  useEffect(()=>{ if(data) fetchCitas() // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[data, semana, anio, agenteId])
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaCitas(m.metaCitas)) },[])
 
@@ -48,9 +80,10 @@ export default function PlanificacionPage(){
 
   const guardar = async()=>{
     if(!data) return
+    if(semana==='ALL') return
     const body={
       agente_id: superuser && agenteId? Number(agenteId): undefined,
-      semana_iso: semana,
+      semana_iso: semana as number,
       anio: anio,
       bloques: data.bloques,
       prima_anual_promedio: data.prima_anual_promedio,
@@ -65,29 +98,35 @@ export default function PlanificacionPage(){
     <div className="d-flex flex-wrap gap-2 align-items-end mb-3">
       <div>
         <label className="form-label small mb-1">Año</label>
-        <input type="number" className="form-control form-control-sm" value={anio} onChange={e=>setAnio(Number(e.target.value)||anio)} />
+        <select className="form-select form-select-sm" value={anio} onChange={e=>setAnio(Number(e.target.value))}>
+          {Array.from({length:3},(_,i)=>semanaActual.anio-1+i).map(y=> <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
       <div>
-        <label className="form-label small mb-1">Semana ISO</label>
-        <input type="number" className="form-control form-control-sm" value={semana} onChange={e=>{const v=Number(e.target.value); if(v>=1 && v<=53) setSemana(v)}} />
+        <label className="form-label small mb-1">Semana</label>
+        <select className="form-select form-select-sm" value={semana} onChange={e=>{ const v=e.target.value; setSemana(v==='ALL'?'ALL':Number(v)) }}>
+          <option value="ALL">Todo el año</option>
+          {Array.from({length:53},(_,i)=>i+1).map(w=> <option key={w} value={w}>{w}</option>)}
+        </select>
       </div>
-      <div className="small mt-3">Rango: {formatearRangoSemana(semanaDesdeNumero(anio, semana))}</div>
+      {semana!=='ALL' && <div className="small mt-3">Rango: {formatearRangoSemana(semanaDesdeNumero(anio, semana as number))}</div>}
       {superuser && <div>
         <label className="form-label small mb-1">Agente ID</label>
         <input placeholder="Agente ID" value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-control form-control-sm w-auto"/>
       </div>}
     </div>
-    {data && <div className="row">
+  {semana==='ALL' && <div className="alert alert-info py-2 small">Vista anual: seleccione una semana para editar planificación detallada.</div>}
+  {data && semana!=='ALL' && <div className="row">
       <div className="col-lg-9 mb-3">
         <div className="table-responsive border rounded shadow-sm">
           <table className="table table-sm mb-0 align-middle text-center" style={{minWidth:900}}>
-            <thead className="table-light"><tr><th style={{width:70}}>Hora</th>{['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map((d,i)=> <th key={d}>{d}<div className="small text-muted">{semanaDesdeNumero(anio, semana).inicio.getUTCDate()+i}</div></th>)}</tr></thead>
+            <thead className="table-light"><tr><th style={{width:70}}>Hora</th>{['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map((d,i)=> { const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+i); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); return <th key={d}>{d}<div className="small text-muted">{dia}/{mes}</div></th>})}</tr></thead>
             <tbody>
               {HORAS.map(h=> <tr key={h}> <th className="bg-light fw-normal">{h}:00</th>
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
-                  const color = blk? blk.activity==='CITAS'? 'bg-success text-white': blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark':''
-                  return <td key={day} style={{cursor:'pointer'}} onClick={()=>toggle(day,h)} className={color}>{blk? blk.activity[0]: ''}</td>
+                  const color = blk? blk.activity==='CITAS'? (blk.origin==='auto'? 'bg-success bg-opacity-75 text-white':'bg-success text-white'): blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark':''
+                  return <td key={day} style={{cursor:'pointer'}} onClick={()=>toggle(day,h)} className={color} title={blk && blk.origin==='auto'? 'Cita agendada (auto)': undefined}>{blk? blk.activity[0]: ''}</td>
                 })}
               </tr>)}
             </tbody>
@@ -104,7 +143,7 @@ export default function PlanificacionPage(){
             <div className={`progress-bar ${horasCitas>=metaCitas? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasCitas/metaCitas)*100)}%`}}>{horasCitas}/{metaCitas}</div>
           </div>
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-          <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading}>Guardar</button>
+          <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string')}>Guardar</button>
         </div>
         <div className="mt-3 small text-muted">Click en celda: ciclo PROSPECCION → CITAS → SMNYL → vacío. Letra mostrada: inicial de actividad.</div>
       </div>
