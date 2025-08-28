@@ -20,12 +20,17 @@ export default function Header() {
   // Navegación contextual por módulo
   // (Se removió navegación contextual, rol ya no utilizado)
   const moduleLinks: { href: string; label: string; icon?: string; roles?: string[] }[] = []
-  if (pathname.startsWith('/candidatos') || pathname.startsWith('/eliminarcandidatos')) {
-    // Pedido: eliminar enlaces de candidatos y eliminados -> no añadimos nada
-  } else if (pathname.startsWith('/usuarios')) {
-    // Pedido: eliminar enlaces de usuarios -> no añadimos
-  } else if (pathname.startsWith('/parametros')) {
-    // Pedido: eliminar enlaces de parámetros -> no añadimos
+  if (user) {
+    const superuser = user.rol === 'superusuario' || user.rol === 'admin'
+    // Fase 2 menús
+    if (user.rol === 'agente') {
+      moduleLinks.push({ href: '/prospectos', label: 'Prospectos', icon: 'people-fill' })
+      moduleLinks.push({ href: '/planificacion', label: 'Planificación', icon: 'calendar-week' })
+    } else if (superuser) {
+      moduleLinks.push({ href: '/prospectos', label: 'Prospectos', icon: 'people-fill' })
+      moduleLinks.push({ href: '/planificacion', label: 'Planificación', icon: 'calendar-week' })
+      // Accesos existentes (candidatos, usuarios, parámetros) conservados de forma implícita navegando manualmente
+    }
   }
 
   return (
