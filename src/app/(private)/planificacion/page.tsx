@@ -27,9 +27,8 @@ export default function PlanificacionPage(){
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const [modal,setModal]=useState<null|{day:number; hour:string; blk?:BloquePlanificacion}>(null)
   const [prospectosDisponibles,setProspectosDisponibles]=useState<Array<{id:number; nombre:string; estado:ProspectoEstado; notas?:string; telefono?:string}>>([])
-  const saveDebounce = useRef<number | null>(null)
-  const lastSavedManualRef = useRef<string>('') // hash JSON de bloques manuales guardados
-  const [autoSaveEnabled,setAutoSaveEnabled]=useState(false) // desactivado por defecto
+  // Autosave eliminado
+  const lastSavedManualRef = useRef<string>('') // para evitar refetch innecesario post-guardado
   const localManualRef = useRef<BloquePlanificacion[]>([])
   const agenteQuery = superuser && agenteId ? `&agente_id=${agenteId}` : ''
   const [metaCitas,setMetaCitas]=useState(5)
@@ -145,11 +144,6 @@ export default function PlanificacionPage(){
   setData(updated)
   localManualRef.current = updated.bloques.filter(b=> b.origin!=='auto')
     setDirty(true)
-    // autosave debounce
-    if(autoSaveEnabled){
-      window.clearTimeout(saveDebounce.current)
-      saveDebounce.current = window.setTimeout(()=>{ guardar(true) }, 1500) as unknown as number
-    }
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -160,13 +154,11 @@ export default function PlanificacionPage(){
   },[data])
   const ganancia = horasCitas * ( (data?.prima_anual_promedio||0) * ((data?.porcentaje_comision||0)/100) )
 
-  const guardar = async(auto=false)=>{
-  if(!data) return 
+  const guardar = async()=>{
+    if(!data) return 
     if(semana==='ALL') return
-    // Evitar guardar si autosave y no hay cambios reales en bloques manuales
     const manual = data.bloques.filter(b=> b.origin!=='auto').sort((a,b)=> a.day-b.day || a.hour.localeCompare(b.hour) || a.activity.localeCompare(b.activity))
     const hash = JSON.stringify(manual)
-    if(auto && hash===lastSavedManualRef.current && !dirty) return
     const body={
       agente_id: superuser && agenteId? Number(agenteId): undefined,
       semana_iso: semana as number,
@@ -179,13 +171,13 @@ export default function PlanificacionPage(){
     const r=await fetch('/api/planificacion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     if(r.ok){
       setDirty(false)
-      if(!auto) setToast({msg:'Planificación guardada', type:'success'})
+      setToast({msg:'Planificación guardada', type:'success'})
   lastSavedManualRef.current = hash
   localManualRef.current = manual
   // Refrescar (forzado) para mergear correctamente tras persistir
   setTimeout(()=> fetchData(true,'postsave'), 400)
     } else {
-      if(!auto) setToast({msg:'Error al guardar', type:'error'})
+      setToast({msg:'Error al guardar', type:'error'})
     }
   }
 
@@ -249,12 +241,8 @@ export default function PlanificacionPage(){
             <div className={`progress-bar ${horasCitas>=metaCitas? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasCitas/metaCitas)*100)}%`}}>{horasCitas}/{metaCitas}</div>
           </div>
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-          <button className="btn btn-primary btn-sm" onClick={()=>guardar(false)} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
+          <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
           <div className="form-text small">{dirty? 'Cambios pendientes de guardar.':'Sin cambios.'}</div>
-          <div className="form-check form-switch mt-2 small">
-            <input className="form-check-input" type="checkbox" id="autosaveSwitch" checked={autoSaveEnabled} onChange={e=> setAutoSaveEnabled(e.target.checked)} />
-            <label className="form-check-label" htmlFor="autosaveSwitch">Auto-guardado</label>
-          </div>
         </div>
   {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> { const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+b.day); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); const nombre=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'][b.day]; return `${nombre} ${dia}/${mes} ${b.hour}:00`; }).join(', ')}</div>}
       </div>
