@@ -51,6 +51,10 @@ export default function ProspectosPage() {
   const [soloConCita,setSoloConCita]=useState(false)
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
 
+  const applyEstadoFiltro = (estado: ProspectoEstado | '') => {
+    setEstadoFiltro(prev => prev === estado ? '' : estado)
+  }
+
   const fetchAgentes = async()=>{
     if(!superuser) return
     const r = await fetch('/api/agentes')
@@ -139,9 +143,9 @@ export default function ProspectosPage() {
       </div>
       {agg && <div className="d-flex flex-column gap-2 small">
         <div className="d-flex flex-wrap gap-2 align-items-center">
-          <span className="badge bg-secondary">Total {agg.total}</span>
-          {Object.entries(agg.por_estado).map(([k,v])=> <span key={k} className="badge bg-light text-dark border">{ESTADO_LABEL[k as ProspectoEstado]} {v}</span>)}
-          <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')}>{agg.total>=metaProspectos? `Meta ${metaProspectos} ok`:`<${metaProspectos} prospectos`}</span>
+          <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title="Todos">Total {agg.total}</button>
+          {Object.entries(agg.por_estado).map(([k,v])=> { const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}}>{ESTADO_LABEL[k as ProspectoEstado]} {v}</button>})}
+          <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')} title="Progreso a meta">{agg.total>=metaProspectos? `Meta ${metaProspectos} ok`:`<${metaProspectos} prospectos`}</span>
           <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos ${semana==='ALL'?'Año': 'Semana '+semana}`)}>PDF</button>
         </div>
         <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>
