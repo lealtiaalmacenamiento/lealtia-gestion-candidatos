@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
 import { exportProspectosPDF } from '@/lib/prospectosExport'
+import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 interface Aggregate { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean }
@@ -19,6 +20,7 @@ export default function ProspectosPage() {
   const [agenteId,setAgenteId]=useState<string>('')
   const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
   const debounceRef = useRef<number|null>(null)
+  const [metaProspectos,setMetaProspectos]=useState(30)
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
 
   const fetchAgentes = async()=>{
@@ -44,6 +46,8 @@ export default function ProspectosPage() {
 
   useEffect(()=>{ fetchAll(); if(superuser) fetchAgentes() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[estadoFiltro, agenteId])
+
+  useEffect(()=> { fetchFase2Metas().then(m=> setMetaProspectos(m.metaProspectos)) },[])
 
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!form.nombre.trim()) return; const body: Record<string,unknown>={...form}; if(!body.fecha_cita) delete body.fecha_cita; const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(r.ok){setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:''}); fetchAll()} }
 
@@ -75,11 +79,11 @@ export default function ProspectosPage() {
         <div className="d-flex flex-wrap gap-2 align-items-center">
           <span className="badge bg-secondary">Total {agg.total}</span>
           {Object.entries(agg.por_estado).map(([k,v])=> <span key={k} className="badge bg-light text-dark border">{ESTADO_LABEL[k as ProspectoEstado]} {v}</span>)}
-          <span className={"badge "+ (agg.cumplimiento_30? 'bg-success':'bg-warning text-dark')}>{agg.cumplimiento_30? 'Meta 30 ok':'<30 prospectos'}</span>
+          <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')}>{agg.total>=metaProspectos? `Meta ${metaProspectos} ok`:`<${metaProspectos} prospectos`}</span>
           <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos Semana ${semanaActual.semana}`)}>PDF</button>
         </div>
-        <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={30}>
-          <div className={`progress-bar ${agg.total>=30? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/30)*100)}%`}}>{agg.total}/30</div>
+        <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>
+          <div className={`progress-bar ${agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/metaProspectos)*100)}%`}}>{agg.total}/{metaProspectos}</div>
         </div>
       </div>}
     </div>

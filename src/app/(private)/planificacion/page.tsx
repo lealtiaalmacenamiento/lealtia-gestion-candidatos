@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import type { BloquePlanificacion } from '@/types'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
+import { fetchFase2Metas } from '@/lib/fase2Params'
 
 interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:number; anio:number; bloques:BloquePlanificacion[]; prima_anual_promedio:number; porcentaje_comision:number }
 
@@ -17,10 +18,13 @@ export default function PlanificacionPage(){
   const [data,setData]=useState<PlanificacionResponse|null>(null)
   const [loading,setLoading]=useState(false)
   const agenteQuery = superuser && agenteId ? '&agente_id='+agenteId : ''
+  const [metaCitas,setMetaCitas]=useState(5)
 
   const fetchData=async()=>{ setLoading(true); const r=await fetch(`/api/planificacion?semana=${semanaActual.semana}&anio=${semanaActual.anio}${agenteQuery}`); if(r.ok) setData(await r.json()); setLoading(false) }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId])
+
+  useEffect(()=> { fetchFase2Metas().then(m=> setMetaCitas(m.metaCitas)) },[])
 
   const toggle=(day:number,hour:string)=>{
     if(!data) return
@@ -38,7 +42,6 @@ export default function PlanificacionPage(){
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
-  const metaCitas = 5
   const ganancia = horasCitas * ( (data?.prima_anual_promedio||0) * ((data?.porcentaje_comision||0)/100) )
 
   const guardar = async()=>{
