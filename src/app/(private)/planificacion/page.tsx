@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
-import type { BloquePlanificacion } from '@/types'
+import type { BloquePlanificacion, ProspectoEstado } from '@/types'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 
@@ -33,7 +33,7 @@ export default function PlanificacionPage(){
     if(plan){
       const citasRes = await fetch(`/api/prospectos/citas?semana=${semana}&anio=${anio}${agenteQuery}`)
       if(citasRes.ok){
-        const citas: Array<{id:number; fecha_cita:string}> = await citasRes.json()
+        const citas: Array<{id:number; fecha_cita:string; nombre:string; estado:string; notas?:string; telefono?:string}> = await citasRes.json()
         const rango = semanaDesdeNumero(anio, semana as number)
   const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
         const manual = plan.bloques.filter(b=> b.origin !== 'auto')
@@ -45,7 +45,10 @@ export default function PlanificacionPage(){
           if(day<0 || day>6) continue
           const hour = dt.getHours().toString().padStart(2,'0')
           if(!manual.find(b=> b.day===day && b.hour===hour)){
-            manual.push({day, hour, activity:'CITAS', origin:'auto'})
+            manual.push({day, hour, activity:'CITAS', origin:'auto', prospecto_id:c.id, prospecto_nombre:c.nombre, prospecto_estado:c.estado as ProspectoEstado})
+          } else {
+            // Actualizar metadata si existe bloque CITAS manual en mismo slot
+            manual.forEach(b=> { if(b.day===day && b.hour===hour && b.activity==='CITAS') Object.assign(b,{prospecto_id:c.id, prospecto_nombre:c.nombre, prospecto_estado:c.estado as ProspectoEstado}) })
           }
         }
         plan = {...plan, bloques: manual}
@@ -56,6 +59,14 @@ export default function PlanificacionPage(){
   }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
+
+  // Refresco periódico de citas cada 60s para mantener sincronía con cambios en prospectos
+  useEffect(()=>{
+    if(semana==='ALL') return
+    const id = setInterval(()=> fetchData(), 60000)
+    return ()=> clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[semana, anio, agenteId])
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaCitas(m.metaCitas)) },[])
 
@@ -72,6 +83,8 @@ export default function PlanificacionPage(){
       else { nuevos = data.bloques.map(b=> b===existing? {...b,activity:next}:b) }
     }
     setData({...data,bloques:nuevos})
+    // Guardar de inmediato y refetch para sincronizar con citas
+    setTimeout(()=> fetchData(), 200)
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -129,7 +142,15 @@ export default function PlanificacionPage(){
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
                   const color = blk? blk.activity==='CITAS'? (blk.origin==='auto'? 'bg-success bg-opacity-75 text-white':'bg-success text-white'): blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark':''
-                  return <td key={day} style={{cursor:'pointer'}} onClick={()=>toggle(day,h)} className={color} title={blk && blk.origin==='auto'? 'Cita agendada (auto)': undefined}>{blk? blk.activity[0]: ''}</td>
+                  const onCellClick=()=>{
+                    if(blk && blk.activity==='CITAS' && blk.origin==='auto' && blk.prospecto_id){
+                      const detalle = `Prospecto #${blk.prospecto_id}\nNombre: ${blk.prospecto_nombre||''}\nEstado: ${blk.prospecto_estado||''}`
+                      alert(detalle)
+                    } else {
+                      toggle(day,h)
+                    }
+                  }
+                  return <td key={day} style={{cursor:'pointer'}} onClick={onCellClick} className={color} title={blk && blk.origin==='auto'? (blk.prospecto_nombre? blk.prospecto_nombre:'Cita agendada (auto)'): undefined}>{blk? blk.activity[0]: ''}</td>
                 })}
               </tr>)}
             </tbody>

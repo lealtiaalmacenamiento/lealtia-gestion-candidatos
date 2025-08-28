@@ -18,7 +18,8 @@ export async function GET(req: Request){
   const inicioISO = rango.inicio.toISOString()
   const finPlus1 = new Date(rango.fin); finPlus1.setUTCDate(finPlus1.getUTCDate()+1)
   const finISO = finPlus1.toISOString()
-  let q = supabase.from('prospectos').select('id,fecha_cita').not('fecha_cita','is',null)
+  // Traer datos básicos del prospecto para mostrar en planificación
+  let q = supabase.from('prospectos').select('id,nombre,estado,fecha_cita,notas,telefono,agente_id').not('fecha_cita','is',null)
     .gte('fecha_cita', inicioISO).lt('fecha_cita', finISO)
   if(agenteId) q = q.eq('agente_id', Number(agenteId))
   const { data, error } = await q

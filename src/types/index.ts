@@ -116,6 +116,10 @@ export interface BloquePlanificacion {
   hour: string // '05'..'23'
   activity: 'PROSPECCION' | 'CITAS' | 'SMNYL'
   origin?: 'auto' | 'manual'
+  // Metadata opcional cuando proviene de una cita de prospecto
+  prospecto_id?: number
+  prospecto_nombre?: string
+  prospecto_estado?: ProspectoEstado
 }
 
 export interface PlanificacionSemana {
