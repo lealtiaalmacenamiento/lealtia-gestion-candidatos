@@ -8,7 +8,7 @@ import { fetchFase2Metas } from '@/lib/fase2Params'
 interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:number; anio:number; bloques:BloquePlanificacion[]; prima_anual_promedio:number; porcentaje_comision:number }
 
 const ACTIVIDADES = ['PROSPECCION','CITAS','SMNYL'] as const
-const HORAS = Array.from({length:17},(_ ,i)=> (5+i).toString().padStart(2,'0')) // 05..21
+const HORAS_BASE = Array.from({length:17},(_ ,i)=> (5+i).toString().padStart(2,'0')) // 05..21 rango base
 
 export default function PlanificacionPage(){
   const { user } = useAuth()
@@ -35,13 +35,13 @@ export default function PlanificacionPage(){
       if(citasRes.ok){
         const citas: Array<{id:number; fecha_cita:string}> = await citasRes.json()
         const rango = semanaDesdeNumero(anio, semana as number)
-        const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
+  const mondayLocal = new Date(rango.inicio.getUTCFullYear(), rango.inicio.getUTCMonth(), rango.inicio.getUTCDate())
         const manual = plan.bloques.filter(b=> b.origin !== 'auto')
         for(const c of citas){
           const dt = new Date(c.fecha_cita)
             // Calcular día basado en hora local del navegador
           const citaLocalMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
-          const day = Math.round((citaLocalMidnight.getTime() - mondayLocal.getTime())/86400000)
+          const day = Math.floor((citaLocalMidnight.getTime() - mondayLocal.getTime())/86400000)
           if(day<0 || day>6) continue
           const hour = dt.getHours().toString().padStart(2,'0')
           if(!manual.find(b=> b.day===day && b.hour===hour)){
@@ -75,6 +75,11 @@ export default function PlanificacionPage(){
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
+  const horasPlan = useMemo(()=>{
+    const set = new Set(HORAS_BASE)
+    if(data) data.bloques.forEach(b=> set.add(b.hour))
+    return Array.from(set).sort()
+  },[data])
   const ganancia = horasCitas * ( (data?.prima_anual_promedio||0) * ((data?.porcentaje_comision||0)/100) )
 
   const guardar = async()=>{
@@ -121,7 +126,7 @@ export default function PlanificacionPage(){
           <table className="table table-sm mb-0 align-middle text-center" style={{minWidth:900}}>
             <thead className="table-light"><tr><th style={{width:70}}>Hora</th>{['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map((d,i)=> { const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+i); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); return <th key={d}>{d}<div className="small text-muted">{dia}/{mes}</div></th>})}</tr></thead>
             <tbody>
-              {HORAS.map(h=> <tr key={h}> <th className="bg-light fw-normal">{h}:00</th>
+              {horasPlan.map(h=> <tr key={h}> <th className="bg-light fw-normal">{h}:00</th>
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
                   const color = blk? blk.activity==='CITAS'? (blk.origin==='auto'? 'bg-success bg-opacity-75 text-white':'bg-success text-white'): blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark':''
@@ -144,7 +149,8 @@ export default function PlanificacionPage(){
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string')}>Guardar</button>
         </div>
-        <div className="mt-3 small text-muted">Click en celda: ciclo PROSPECCION → CITAS → SMNYL → vacío. Letra mostrada: inicial de actividad.</div>
+  <div className="mt-3 small text-muted">Click en celda: ciclo PROSPECCION → CITAS → SMNYL → vacío. Letra mostrada: inicial de actividad.</div>
+  {data.bloques.some(b=>b.origin==='auto') && <div className="mt-2 small">Citas auto: {data.bloques.filter(b=>b.origin==='auto').map(b=> `${b.day}/${b.hour}`).join(', ')}</div>}
       </div>
     </div>}
     {loading && <div>Cargando...</div>}
