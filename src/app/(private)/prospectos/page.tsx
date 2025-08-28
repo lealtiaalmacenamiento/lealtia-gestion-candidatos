@@ -155,8 +155,8 @@ export default function ProspectosPage() {
             <td style={{minWidth:170}}>
               {(()=>{ const dIso=p.fecha_cita? new Date(p.fecha_cita): null; const pad=(n:number)=>String(n).padStart(2,'0'); const dateVal=dIso? `${dIso.getFullYear()}-${pad(dIso.getMonth()+1)}-${pad(dIso.getDate())}`:''; const hourVal=dIso? pad(dIso.getHours()):''; return <div className="d-flex gap-1 flex-column">
                 <div className="d-flex gap-1">
-                  <input type="date" value={dateVal} onChange={e=>{ const newDate=e.target.value; if(!newDate){ update(p.id,{fecha_cita:null}); return } if(hourVal){ update(p.id,{fecha_cita:`${newDate}T${hourVal}:00`}) } }} className="form-control form-control-sm"/>
-                  <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ update(p.id,{fecha_cita:null}); return } if(dateVal){ update(p.id,{fecha_cita:`${dateVal}T${h}:00`}) } }}>
+                  <input type="date" value={dateVal} onChange={e=>{ const newDate=e.target.value; if(!newDate){ update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return } if(hourVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch) } }} className="form-control form-control-sm"/>
+                  <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return } if(dateVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}>={fecha_cita:`${dateVal}T${h}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch) } }}>
                     <option value="">--</option>
                     {Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={pad(h)}>{pad(h)}:00</option>)}
                   </select>

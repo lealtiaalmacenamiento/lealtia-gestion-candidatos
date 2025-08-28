@@ -6,7 +6,7 @@ export async function fetchFase2Metas(): Promise<Fase2Metas> {
     const url = `/api/parametros?tipo=fase2`
     const res = await fetch(url)
     if (!res.ok) throw new Error('resp no ok')
-    const json = await res.json() as { data?: Array<{ clave?: string; valor?: unknown }> }
+  const json = await res.json() as { success?: boolean; data?: Array<{ clave?: string; valor?: unknown }> }
     const base: Fase2Metas = { metaProspectos: 30, metaCitas: 5 }
     for (const p of json.data || []) {
       if (p.clave === 'meta_prospectos_semana') {
