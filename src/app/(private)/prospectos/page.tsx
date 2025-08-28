@@ -13,7 +13,8 @@ export default function ProspectosPage() {
   const { user } = useAuth()
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
-  const [semana,setSemana]=useState(semanaActual.semana)
+  // Semana puede ser número ISO o 'ALL' para todo el año
+  const [semana,setSemana]=useState<number|"ALL">('ALL')
   const [prospectos,setProspectos]=useState<Prospecto[]>([])
   const [loading,setLoading]=useState(false)
   const [agg,setAgg]=useState<Aggregate|null>(null)
@@ -37,7 +38,8 @@ export default function ProspectosPage() {
 
   const fetchAll=async()=>{
     setLoading(true)
-  const params = new URLSearchParams({ semana:String(semana), anio:String(anio) })
+  const params = new URLSearchParams({ anio:String(anio) })
+    if (semana !== 'ALL') params.set('semana', String(semana))
     if (estadoFiltro) params.set('estado', estadoFiltro)
     if (superuser && agenteId) params.set('agente_id', agenteId)
   if (soloConCita) params.set('solo_con_cita','1')
@@ -70,20 +72,25 @@ export default function ProspectosPage() {
     <div className="d-flex flex-wrap gap-3 align-items-end mb-2">
       <div>
         <label className="form-label small mb-1">Año</label>
-        <input type="number" className="form-control form-control-sm" value={anio} onChange={e=>setAnio(Number(e.target.value)||anio)} />
+        <select className="form-select form-select-sm" value={anio} onChange={e=>setAnio(Number(e.target.value))}>
+          {Array.from({length:3},(_,i)=>semanaActual.anio-1+i).map(y=> <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
       <div>
-        <label className="form-label small mb-1">Semana ISO (vacío = todo el año)</label>
-        <input type="number" className="form-control form-control-sm" value={semana} onChange={e=>{const raw=e.target.value; if(raw===''){setSemana(semanaActual.semana); return;} const v=Number(raw); if(v>=1 && v<=53) setSemana(v)}} placeholder="" />
+        <label className="form-label small mb-1">Semana</label>
+        <select className="form-select form-select-sm" value={semana} onChange={e=>{ const v=e.target.value; setSemana(v==='ALL'?'ALL':Number(v)) }}>
+          <option value="ALL">Todo el año</option>
+          {Array.from({length:53},(_,i)=> i+1).map(w=> { const r = semanaDesdeNumero(anio, w); const range = formatearRangoSemana(r); return <option key={w} value={w}>{w} ({range})</option> })}
+        </select>
       </div>
-      <div className="small mt-3">Rango: {semana? formatearRangoSemana(semanaDesdeNumero(anio, semana)) : 'Año completo'}</div>
+      <div className="small mt-3">Rango: {semana!=='ALL'? formatearRangoSemana(semanaDesdeNumero(anio, semana as number)) : 'Año completo'}</div>
     </div>
     {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
       <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto">
         <option value="">(Seleccionar agente)</option>
         {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
       </select>
-  {agenteId && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=>exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, `Prospectos Semana ${semana}`)}>PDF</button>}
+  {agenteId && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=>exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, `Prospectos ${semana==='ALL'?'Año': 'Semana '+semana}`)}>PDF</button>}
     </div>}
   <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
       <select value={estadoFiltro} onChange={e=>setEstadoFiltro(e.target.value as ProspectoEstado|'' )} className="form-select w-auto">
@@ -99,7 +106,7 @@ export default function ProspectosPage() {
           <span className="badge bg-secondary">Total {agg.total}</span>
           {Object.entries(agg.por_estado).map(([k,v])=> <span key={k} className="badge bg-light text-dark border">{ESTADO_LABEL[k as ProspectoEstado]} {v}</span>)}
           <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')}>{agg.total>=metaProspectos? `Meta ${metaProspectos} ok`:`<${metaProspectos} prospectos`}</span>
-          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos Semana ${semana}`)}>PDF</button>
+          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> exportProspectosPDF(prospectos, agg, `Prospectos ${semana==='ALL'?'Año': 'Semana '+semana}`)}>PDF</button>
         </div>
         <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>
           <div className={`progress-bar ${agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/metaProspectos)*100)}%`}}>{agg.total}/{metaProspectos}</div>

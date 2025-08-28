@@ -110,7 +110,7 @@ export default function PlanificacionPage(){
         <label className="form-label small mb-1">Semana</label>
         <select className="form-select form-select-sm" value={semana} onChange={e=>{ const v=e.target.value; setSemana(v==='ALL'?'ALL':Number(v)) }}>
           <option value="ALL">Todo el año</option>
-          {Array.from({length:53},(_,i)=>i+1).map(w=> <option key={w} value={w}>{w}</option>)}
+          {Array.from({length:53},(_,i)=>i+1).map(w=> { const r=semanaDesdeNumero(anio,w); return <option key={w} value={w}>{w} ({formatearRangoSemana(r)})</option>})}
         </select>
       </div>
       {semana!=='ALL' && <div className="small mt-3">Rango: {formatearRangoSemana(semanaDesdeNumero(anio, semana as number))}</div>}
