@@ -28,9 +28,9 @@ export async function PATCH(req: Request) {
   if (body.fecha_cita !== undefined) {
     const fc = String(body.fecha_cita)
     if (!fc) fields.fecha_cita = null
-    else if (/^\d{4}-\d{2}-\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc + 'T00:00:00Z').toISOString()
-  else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc).toISOString()
-    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(fc)) fields.fecha_cita = fc
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc + 'T00:00').toISOString()
+    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(fc)) fields.fecha_cita = fc // ya UTC
+    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc).toISOString()
     else fields.fecha_cita = null
   }
   if (Object.keys(fields).length === 0) return NextResponse.json({ error: 'Sin cambios' }, { status: 400 })

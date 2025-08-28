@@ -55,13 +55,28 @@ export default function ProspectosPage() {
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaProspectos(m.metaProspectos)) },[])
 
-  const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!form.nombre.trim()) return; const body: Record<string,unknown>={...form}; if(!body.fecha_cita) delete body.fecha_cita; const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(r.ok){setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:''}); fetchAll()} }
+  const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!form.nombre.trim()) return; const body: Record<string,unknown>={...form};
+    if(body.fecha_cita){
+      const fc=String(body.fecha_cita)
+      if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)){
+        // Convertir a ISO UTC preservando la hora local elegida
+        body.fecha_cita=new Date(fc).toISOString()
+      }
+    } else {
+      delete body.fecha_cita
+    }
+    const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(r.ok){setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:''}); fetchAll()} }
 
   const update=(id:number, patch:Partial<Prospecto>)=> {
     // debounce mínimo
     window.clearTimeout(debounceRef.current||0)
     debounceRef.current = window.setTimeout(()=>{
-  fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)}).then(r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')) } })
+      const toSend:Record<string,unknown>={...patch}
+      if(patch.fecha_cita){
+        const fc=String(patch.fecha_cita)
+        if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) toSend.fecha_cita=new Date(fc).toISOString()
+      }
+      fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')) } })
     },300)
   }
 
