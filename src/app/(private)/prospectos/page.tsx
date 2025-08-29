@@ -156,7 +156,7 @@ export default function ProspectosPage() {
         <option value="">(Seleccionar agente)</option>
         {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
       </select>
-  <button type="button" disabled={!prospectos.length} className="btn btn-outline-secondary btn-sm" onClick={()=>{
+  <button type="button" disabled={!prospectos.length} className="btn btn-outline-secondary btn-sm" onClick={async ()=>{
     const agrupado = superuser && !agenteId
     const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
     const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })()
@@ -171,12 +171,30 @@ export default function ProspectosPage() {
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
-    // Deltas por agente: usamos diferencia simple vs semana previa global si disponible (aplicamos proporción según share previo?) -> simplificación: solo totales y con_cita globales no se dividen, se omiten per agent si no hay prevAgg
+    // Calcular deltas reales por agente contra semana anterior
     let perAgentDeltas: Record<number,{ totalDelta:number; citasDelta:number }> | undefined
-    if(prevAgg && agg){
-      perAgentDeltas = {}
-      // Sin datos previos por agente, distribuimos delta proporcional a participación actual (approx) -> opcional. Dejamos '-' si no se desea estimar.
-      // Aquí marcamos undefined para no falsear datos (usuario verá '-')
+    if(prevAgg && agg && semana !== 'ALL'){
+      const prevWeek = (semana as number) - 1
+      if(prevWeek >= 1){
+        perAgentDeltas = {}
+        const agentIds = Object.keys(grouped)
+        try {
+          const prevResponses = await Promise.all(agentIds.map(async id=>{
+            const params = new URLSearchParams({ anio:String(anio), semana:String(prevWeek), agente_id:String(id) })
+            try { const r = await fetch('/api/prospectos/aggregate?'+params.toString()); if(r.ok) return { id, data: await r.json() as Aggregate }; } catch {/*ignore*/}
+            return { id, data: null as Aggregate|null }
+          }))
+          for(const {id,data} of prevResponses){
+            if(!data){ continue } // sin datos previos mostramos '-'
+            const currentList = grouped[Number(id)] || []
+            const currentTotal = currentList.length
+            const currentCitas = currentList.filter(p=> p.estado==='con_cita').length
+            const prevTotal = data.total || 0
+            const prevCitas = data.por_estado?.con_cita || 0
+            perAgentDeltas[Number(id)] = { totalDelta: currentTotal - prevTotal, citasDelta: currentCitas - prevCitas }
+          }
+        } catch { /* ignorar errores de delta */ }
+      }
     }
     exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas })
   } else {
