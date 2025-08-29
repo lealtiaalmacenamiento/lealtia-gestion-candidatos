@@ -51,7 +51,6 @@ export async function exportProspectosPDF(
     chartEstados?: boolean
     metaProspectos?: number
     metaCitas?: number
-    incluirFunnel?: boolean
   forceLogoBlanco?: boolean
   }
 ){
@@ -116,7 +115,6 @@ export async function exportProspectosPDF(
     metaProspectos = metaProspectos * distinctAgentsCount
     metaCitas = metaCitas * distinctAgentsCount
   }
-  const incluirFunnel = opts?.incluirFunnel !== false // por defecto sí
   const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas', ...(agrupado? ['Agente']: []) ]
   const body = prospectos.map(p=> { const ep = p as ExtendedProspecto; return [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80), ...(agrupado? [agentesMap[ep.agente_id ?? -1] || '']: []) ] })
   // @ts-expect-error autotable plugin
@@ -189,39 +187,6 @@ export async function exportProspectosPDF(
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
       y += 26
-      // Funnel
-      if(incluirFunnel){
-        const fY = y
-        const pendiente = resumen.por_estado.pendiente||0
-        const seguimiento = resumen.por_estado.seguimiento||0
-        const conCita = resumen.por_estado.con_cita||0
-        const anchoBase = 90
-        const baseXf = 14
-        const totalF = pendiente + seguimiento + conCita || 1
-        const escala = (v:number)=> (v/totalF)*anchoBase
-        const pasos: Array<[string, number, string]> = [
-          ['Pendiente', pendiente, '#0d6efd'],
-          ['Seguimiento', seguimiento, '#6f42c1'],
-          ['Con cita', conCita, '#198754']
-        ]
-        doc.setFontSize(8); doc.text('Funnel', baseXf, fY)
-        let curY = fY + 2
-        pasos.forEach((p,i)=>{
-          const [label, val, color] = p
-          const w = Math.max(10, escala(val))
-          const hex = color.substring(1)
-          const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16)
-          doc.setFillColor(r,g,b)
-          doc.rect(baseXf, curY, w, 8, 'F')
-          doc.setTextColor(255,255,255)
-          doc.setFontSize(7)
-          doc.text(`${label} ${val} (${pct(val,totalF)})`, baseXf+2, curY+5)
-          doc.setTextColor(0,0,0)
-          curY += 10
-          if(i < pasos.length-1){ doc.setFontSize(8); doc.text('↓', baseXf+ w/2, curY-2) }
-        })
-        y = curY + 2
-      }
     }
   } else {
     const porAgente: Record<string,ResumenAgente> = {}
@@ -291,33 +256,6 @@ export async function exportProspectosPDF(
       y += 10
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, y)
       y += 14
-      if(incluirFunnel){
-        const pendiente = resumen.por_estado.pendiente||0
-        const seguimiento = resumen.por_estado.seguimiento||0
-        const conCita = resumen.por_estado.con_cita||0
-        const totalF = pendiente + seguimiento + conCita || 1
-        const pasos: Array<[string, number, string]> = [
-          ['Pendiente', pendiente, '#0d6efd'],
-          ['Seguimiento', seguimiento, '#6f42c1'],
-          ['Con cita', conCita, '#198754']
-        ]
-        doc.setFontSize(8); doc.text('Funnel', baseX, y)
-        let curY = y + 2
-        const escala = (v:number)=> (v/totalF)*90
-        pasos.forEach((p,i)=>{
-          const [label,val,color]=p
-          const w = Math.max(10, escala(val))
-            const hex=color.substring(1)
-            const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16)
-            doc.setFillColor(r,g,b)
-            doc.rect(baseX, curY, w, 8, 'F')
-            doc.setTextColor(255,255,255); doc.setFontSize(7); doc.text(`${label} ${val} (${pct(val,totalF)})`, baseX+2, curY+5)
-            doc.setTextColor(0,0,0)
-            curY += 10
-            if(i<pasos.length-1) doc.text('↓', baseX + w/2, curY-2)
-        })
-        y = curY + 2
-      }
     }
   }
   // Footer with pagination
