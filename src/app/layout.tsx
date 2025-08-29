@@ -17,8 +17,12 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="es" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
-        {/* Favicon usando logo rueda blanca */}
+        {/* Favicons (múltiples variantes por compatibilidad) */}
         <link rel="icon" type="image/png" href="/Logo%20lealtia%20rueda%20blanca.png" />
+        <link rel="icon" type="image/png" href="/Logo lealtia rueda blanca.png" />
+        <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+        <link rel="apple-touch-icon" href="/Logo%20lealtia%20rueda%20blanca.png" />
+        <meta name="theme-color" content="#072E40" />
       </head>
       <body>
         {showBanner && (
