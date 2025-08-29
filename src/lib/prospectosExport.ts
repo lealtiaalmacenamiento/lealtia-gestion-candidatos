@@ -149,7 +149,7 @@ export async function exportProspectosPDF(
   }
   let y = contentStartY
   if(!agrupado){
-    const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas' ]
+  const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas' ]
     const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,120) ])
     const tableStartY = contentStartY
     // @ts-expect-error autotable plugin
@@ -158,16 +158,26 @@ export async function exportProspectosPDF(
       head: [head],
       body,
   styles:{ fontSize:7, cellPadding:1.5, overflow:'linebreak' },
-      headStyles:{ fillColor:[7,46,64], fontSize:8 },
+      headStyles:{ fillColor:[7,46,64], fontSize:8, textColor:[255,255,255], halign:'center' },
       alternateRowStyles:{ fillColor:[245,247,248] },
       theme:'grid',
       // Ajuste de anchos: considerar desplazamiento si se incluye ID
   columnStyles: (()=>{ const s: Record<number,{ cellWidth?: number; halign?: 'left'|'center'|'right'; overflow?: 'linebreak'|'ellipsize'|'visible' }> = {}; let base=0; if(incluirId) { s[0]={ cellWidth: 12, halign:'center' } ; base=1 }
-        s[base+0] = { cellWidth: 46, halign:'left' } // Nombre
-        s[base+1] = { cellWidth: 28, halign:'center' } // Teléfono
-        s[base+2] = { cellWidth: 24, halign:'center' } // Estado
-        s[base+3] = { cellWidth: 30, halign:'center' } // Fecha Cita
-        s[base+4] = { cellWidth: 60, overflow:'linebreak', halign:'left' } // Notas
+        if(incluirId){
+          // Total 182mm: 12 + 40 + 26 + 22 + 28 + 54 = 182
+          s[base+0] = { cellWidth: 40, halign:'left' } // Nombre
+          s[base+1] = { cellWidth: 26, halign:'center' } // Teléfono
+          s[base+2] = { cellWidth: 22, halign:'center' } // Estado
+          s[base+3] = { cellWidth: 28, halign:'center' } // Fecha Cita
+          s[base+4] = { cellWidth: 54, overflow:'linebreak', halign:'left' } // Notas
+        } else {
+          // Total 182mm: 42 + 26 + 22 + 28 + 64 = 182
+          s[base+0] = { cellWidth: 42, halign:'left' } // Nombre
+          s[base+1] = { cellWidth: 26, halign:'center' } // Teléfono
+          s[base+2] = { cellWidth: 22, halign:'center' } // Estado
+          s[base+3] = { cellWidth: 28, halign:'center' } // Fecha Cita
+          s[base+4] = { cellWidth: 64, overflow:'linebreak', halign:'left' } // Notas
+        }
         return s })(),
       margin: { top: headerHeight + 6, left: 14, right: 14 },
       didDrawPage: () => {
@@ -317,6 +327,24 @@ export async function exportProspectosPDF(
         ...(includeAgentDeltaResumen? [ deltas? (deltas.totalDelta>=0? '+'+deltas.totalDelta: String(deltas.totalDelta)):'-', deltas? (deltas.citasDelta>=0? '+'+deltas.citasDelta: String(deltas.citasDelta)):'-' ]: [])
       ]
     })
+    // Totales al final
+    const totals = Object.values(porAgente).reduce((acc, r)=>{
+      acc.total += r.total
+      acc.pendiente += r.por_estado.pendiente
+      acc.seguimiento += r.por_estado.seguimiento
+      acc.con_cita += r.por_estado.con_cita
+      acc.descartado += r.por_estado.descartado
+      return acc
+    }, { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0 })
+    const footerRows = [ [
+      'TOTAL',
+      totals.total,
+      totals.pendiente,
+      totals.seguimiento,
+      totals.con_cita,
+      totals.descartado,
+      ...(includeAgentDeltaResumen? ['','']: [])
+    ] ]
   // @ts-expect-error autotable plugin
       doc.autoTable({
     startY:y,
@@ -329,6 +357,8 @@ export async function exportProspectosPDF(
   margin: { top: headerHeight + 6, left: 14, right: 14 },
   // Alinear: "Agente" a la izquierda, el resto centrado (incluyendo columnas delta si existen)
   columnStyles: { 0:{ halign:'left' }, 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' }, 5:{ halign:'center' }, 6:{ halign:'center' }, 7:{ halign:'center' } },
+  foot: footerRows,
+  footStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontStyle:'bold' },
   didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
   })
     const afterResumenTable = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y
@@ -484,8 +514,9 @@ export async function exportProspectosPDF(
         startY: cy,
         head:[headPlan],
         body: bodyPlan,
-        styles:{fontSize:7, cellPadding:1, overflow:'linebreak'}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
-        columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 20 }, 2: { cellWidth: 28 }, 3: { cellWidth: 120, overflow:'linebreak' } },
+  styles:{fontSize:7, cellPadding:1, overflow:'linebreak'}, headStyles:{ fillColor:[7,46,64], fontSize:8, textColor:[255,255,255], halign:'center' }, theme:'grid',
+  // 20 + 18 + 30 + 114 = 182
+  columnStyles: { 0: { cellWidth: 20, halign:'center' }, 1: { cellWidth: 18, halign:'center' }, 2: { cellWidth: 30, halign:'left' }, 3: { cellWidth: 114, overflow:'linebreak', halign:'left' } },
         margin: { top: headerHeight + 6, left: 14, right: 14 },
         didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
       })
