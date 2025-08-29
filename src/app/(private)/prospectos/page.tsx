@@ -210,7 +210,7 @@ export default function ProspectosPage() {
                       {Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={pad(h)}>{pad(h)}:00</option>)}
                     </select>
                   </div>
-                  {p.fecha_cita && <div className="small text-muted">{(()=>{ try { return new Intl.DateTimeFormat('es-MX',{ timeZone: MX_TZ, weekday:'long', hour:'2-digit', hour12:false }).format(new Date(p.fecha_cita)) } catch { return '' } })()}</div>}
+                  {/* Texto detalle de día/ hora ocultado según solicitud */}
                 </div> })()}
             </td>
             <td><button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm">×</button></td>
