@@ -199,15 +199,7 @@ export async function exportProspectosPDF(
       const em = opts.extendedMetrics
       doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Métricas avanzadas',14,y)
       y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
-      const lines: string[] = []
-      lines.push(`Conv. Pend->Seg: ${(em.conversionPendienteSeguimiento*100).toFixed(1)}%`)
-      lines.push(`Conv. Seg->Cita: ${(em.conversionSeguimientoCita*100).toFixed(1)}%`)
-      lines.push(`Descartado: ${(em.ratioDescartado*100).toFixed(1)}%`)
-      if(em.promedioDiasPrimeraCita!=null) lines.push(`Prom. días a 1ra cita: ${em.promedioDiasPrimeraCita.toFixed(1)}`)
-      if(em.forecastSemanaTotal!=null) lines.push(`Proyección semana: ${em.forecastSemanaTotal}`)
-  // Deltas se mostrarán en la tabla, no como líneas de texto
-      lines.forEach(l=> { doc.text(l,14,y); y+=4 })
-      // Distribución horas (compacta)
+      // Distribución horas (compacta) (se deja aparte de la tabla)
       const horas = Object.entries(em.citasPorHora).sort((a,b)=> a[0].localeCompare(b[0]))
       if(horas.length){
         y+=2; doc.setFont('helvetica','bold'); doc.text('Citas por hora:',14,y); doc.setFont('helvetica','normal'); y+=4
@@ -220,7 +212,7 @@ export async function exportProspectosPDF(
       }
       // Tabla compacta de métricas clave
       const includeDelta = !!opts?.prevWeekDelta
-      const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeDelta? ['Δ Total','Δ Citas']: []) ]
+      const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeDelta? ['Cambio prospectos','Cambio citas']: []) ]
       const row = [
         (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
         (em.conversionSeguimientoCita*100).toFixed(1)+'%',
@@ -316,7 +308,7 @@ export async function exportProspectosPDF(
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
         const includeAgentDelta = !!opts?.perAgentDeltas
-        const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeAgentDelta? ['Δ Total','Δ Citas']: [])]
+  const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeAgentDelta? ['Cambio prospectos','Cambio citas']: [])]
         // @ts-expect-error autotable plugin
         doc.autoTable({
           startY: y,
