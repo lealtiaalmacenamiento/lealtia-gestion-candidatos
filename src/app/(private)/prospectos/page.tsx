@@ -171,7 +171,14 @@ export default function ProspectosPage() {
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
-  exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename })
+    // Deltas por agente: usamos diferencia simple vs semana previa global si disponible (aplicamos proporción según share previo?) -> simplificación: solo totales y con_cita globales no se dividen, se omiten per agent si no hay prevAgg
+    let perAgentDeltas: Record<number,{ totalDelta:number; citasDelta:number }> | undefined
+    if(prevAgg && agg){
+      perAgentDeltas = {}
+      // Sin datos previos por agente, distribuimos delta proporcional a participación actual (approx) -> opcional. Dejamos '-' si no se desea estimar.
+      // Aquí marcamos undefined para no falsear datos (usuario verá '-')
+    }
+    exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas })
   } else {
     const extended = computeExtendedMetrics(prospectos,{ diaSemanaActual })
   exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename })

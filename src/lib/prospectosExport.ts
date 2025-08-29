@@ -57,6 +57,7 @@ export async function exportProspectosPDF(
   prevWeekDelta?: PreviousWeekDelta
   perAgentExtended?: Record<number,ExtendedMetrics>
   filename?: string
+  perAgentDeltas?: Record<number,{ totalDelta:number; citasDelta:number }>
   }
 ){
   if(!prospectos.length) return
@@ -204,11 +205,7 @@ export async function exportProspectosPDF(
       lines.push(`Descartado: ${(em.ratioDescartado*100).toFixed(1)}%`)
       if(em.promedioDiasPrimeraCita!=null) lines.push(`Prom. días a 1ra cita: ${em.promedioDiasPrimeraCita.toFixed(1)}`)
       if(em.forecastSemanaTotal!=null) lines.push(`Proyección semana: ${em.forecastSemanaTotal}`)
-      if(opts.prevWeekDelta){
-        const d = opts.prevWeekDelta
-        lines.push(`Δ Total vs sem. ant.: ${d.totalDelta>=0? '+':''}${d.totalDelta}`)
-        lines.push(`Δ Citas vs sem. ant.: ${d.conCitaDelta>=0? '+':''}${d.conCitaDelta}`)
-      }
+  // Deltas se mostrarán en la tabla, no como líneas de texto
       lines.forEach(l=> { doc.text(l,14,y); y+=4 })
       // Distribución horas (compacta)
       const horas = Object.entries(em.citasPorHora).sort((a,b)=> a[0].localeCompare(b[0]))
@@ -222,13 +219,18 @@ export async function exportProspectosPDF(
         em.riesgoSeguimientoSinCita.forEach(rg=> { doc.text(`${rg.nombre} (${rg.dias}d)`,14,y); y+=4 })
       }
       // Tabla compacta de métricas clave
-      const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana']
+      const includeDelta = !!opts?.prevWeekDelta
+      const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeDelta? ['Δ Total','Δ Citas']: []) ]
       const row = [
         (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
         (em.conversionSeguimientoCita*100).toFixed(1)+'%',
         (em.ratioDescartado*100).toFixed(1)+'%',
         em.promedioDiasPrimeraCita!=null? em.promedioDiasPrimeraCita.toFixed(1):'-',
-        em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
+        em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-',
+        ...(includeDelta? [
+          (opts.prevWeekDelta!.totalDelta>=0? '+':'')+String(opts.prevWeekDelta!.totalDelta),
+          (opts.prevWeekDelta!.conCitaDelta>=0? '+':'')+String(opts.prevWeekDelta!.conCitaDelta)
+        ]: [])
       ]
       // @ts-expect-error autotable
       doc.autoTable({ startY: y+2, head:[header], body:[row], styles:{fontSize:7, cellPadding:1}, headStyles:{fillColor:[7,46,64]}, theme:'grid' })
@@ -313,20 +315,26 @@ export async function exportProspectosPDF(
       if(opts?.perAgentExtended){
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
-        const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana']
+        const includeAgentDelta = !!opts?.perAgentDeltas
+        const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeAgentDelta? ['Δ Total','Δ Citas']: [])]
         // @ts-expect-error autotable plugin
         doc.autoTable({
           startY: y,
           head:[header],
           body: Object.entries(opts.perAgentExtended).map(([agId, em])=>{
             const agName = agentesMap[Number(agId)] || agId
+            const deltas = includeAgentDelta? opts.perAgentDeltas?.[Number(agId)] : undefined
             return [
               agName,
               (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
               (em.conversionSeguimientoCita*100).toFixed(1)+'%',
               (em.ratioDescartado*100).toFixed(1)+'%',
               em.promedioDiasPrimeraCita!=null? em.promedioDiasPrimeraCita.toFixed(1):'-',
-              em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
+              em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-',
+              ...(includeAgentDelta? [
+                deltas? (deltas.totalDelta>=0? '+':'')+deltas.totalDelta : '-',
+                deltas? (deltas.citasDelta>=0? '+':'')+deltas.citasDelta : '-'
+              ]: [])
             ]
           }),
           styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid'
