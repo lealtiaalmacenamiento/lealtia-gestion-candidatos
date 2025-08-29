@@ -136,6 +136,7 @@ export async function exportProspectosPDF(
   }
   const { headerHeight, contentStartY } = drawHeader()
   doc.setFontSize(9)
+  const GAP = 6
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
@@ -154,7 +155,7 @@ export async function exportProspectosPDF(
     interface DocMaybeAuto { lastAutoTable?: { finalY?: number } }
     const docWith = doc as unknown as DocMaybeAuto
   let y = docWith.lastAutoTable?.finalY || tableStartY
-  y += 6
+  y += GAP
   doc.setFontSize(10)
   doc.setFont('helvetica','bold'); doc.text('Resumen',14,y); doc.setFont('helvetica','normal')
   y += 4
@@ -172,7 +173,7 @@ export async function exportProspectosPDF(
     doc.setFontSize(8)
     cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10);
       if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-  y = cy + cardH + 6
+  y = cy + cardH + GAP
   if(opts?.chartEstados){
       // Simple bar chart for estados
       const chartY = y + 4
@@ -204,7 +205,7 @@ export async function exportProspectosPDF(
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
         doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
       })
-      y = baseY + 10
+  y = baseY + GAP
       // Añadir progreso contra metas debajo del chart
       // Progreso Prospectos
       const progY = y
@@ -218,7 +219,7 @@ export async function exportProspectosPDF(
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
-      y += 26
+  y += 20
     }
     // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
     if(opts?.extendedMetrics){
@@ -253,7 +254,7 @@ export async function exportProspectosPDF(
       // @ts-expect-error autotable
       doc.autoTable({ startY: y+2, head:[header], body:[row], styles:{fontSize:7, cellPadding:1}, headStyles:{fillColor:[7,46,64]}, theme:'grid' })
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-      y = (withAuto.lastAutoTable?.finalY || y) + 6
+  y = (withAuto.lastAutoTable?.finalY || y) + GAP
     }
   } else {
     const porAgente: Record<string,ResumenAgente> = {}
@@ -285,7 +286,7 @@ export async function exportProspectosPDF(
     // Global charts if requested (agrupado scenario)
   if(opts?.chartEstados){
       const docWith2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
-      y = (docWith2.lastAutoTable?.finalY || y) + 8
+  y = (docWith2.lastAutoTable?.finalY || y) + GAP
       // Removido bloque listado "Resumen Global" para usar tarjetas unificadas
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
@@ -314,7 +315,7 @@ export async function exportProspectosPDF(
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
         doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
       })
-  y = baseY + 12
+  y = baseY + GAP
       // Progresos globales
       const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
         const pctVal = meta? Math.min(1, val/meta): 0
@@ -341,7 +342,7 @@ export async function exportProspectosPDF(
       const cardW = 80; const cardH=12
       doc.setFontSize(8)
   cards.forEach((c)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); cy += cardH+4 })
-      y = Math.max(y, cy) + 4
+  y = Math.max(y, cy) + GAP
   // Métricas por agente agrupado
       if(opts?.perAgentExtended){
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
@@ -371,7 +372,7 @@ export async function exportProspectosPDF(
           styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid'
         })
         const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-  y = (withAuto.lastAutoTable?.finalY || y) + 6
+  y = (withAuto.lastAutoTable?.finalY || y) + GAP
       }
 
       // Resumen de planificación semanal por agente (si se proporcionó)
@@ -391,7 +392,7 @@ export async function exportProspectosPDF(
   const cardW=44, cardH=12; let cx=14; let cy=y
         doc.setFontSize(8)
         cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-        y = cy + cardH + 6
+  y = cy + cardH + GAP
         doc.setFontSize(7)
         const headPlan = ['Agente','Prospección','Citas','SMNYL','Total']
         // @ts-expect-error autotable
@@ -399,7 +400,7 @@ export async function exportProspectosPDF(
           agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.citas), String(sum.smnyl), String(sum.total)
         ]), styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid' })
         const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
-  y = (withAuto2.lastAutoTable?.finalY || y) + 6
+  y = (withAuto2.lastAutoTable?.finalY || y) + GAP
       }
     }
   }
@@ -413,7 +414,7 @@ export async function exportProspectosPDF(
     const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['Citas', String(plan.summary.citas)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
   const cardW=44, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
     cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-    cy += cardH + 6
+  cy += cardH + GAP
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
     const blocksSorted = [...plan.bloques].sort((a,b)=> a.day===b.day? a.hour.localeCompare(b.hour): a.day-b.day)
     if(blocksSorted.length){
