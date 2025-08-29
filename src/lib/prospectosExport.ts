@@ -153,7 +153,21 @@ export async function exportProspectosPDF(
     const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80) ])
     const tableStartY = contentStartY
     // @ts-expect-error autotable plugin
-    doc.autoTable({ startY: tableStartY, head: [head], body, styles:{ fontSize:7, cellPadding:1.5 }, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
+    doc.autoTable({
+      startY: tableStartY,
+      head: [head],
+      body,
+      styles:{ fontSize:7, cellPadding:1.5 },
+      headStyles:{ fillColor:[7,46,64], fontSize:8 },
+      alternateRowStyles:{ fillColor:[245,247,248] },
+      theme:'grid',
+      margin: { top: headerHeight + 6, left: 14, right: 14 },
+      didDrawPage: () => {
+        // Redibujar encabezado por página de la tabla
+        drawHeader()
+        doc.setTextColor(0,0,0)
+      }
+    })
     interface DocMaybeAuto { lastAutoTable?: { finalY?: number } }
     const docWith = doc as unknown as DocMaybeAuto
     y = (docWith.lastAutoTable?.finalY || tableStartY) + GAP
@@ -254,7 +268,16 @@ export async function exportProspectosPDF(
         ]: [])
       ]
       // @ts-expect-error autotable
-      doc.autoTable({ startY: y+2, head:[header], body:[row], styles:{fontSize:7, cellPadding:1}, headStyles:{fillColor:[7,46,64]}, theme:'grid' })
+      doc.autoTable({
+        startY: y+2,
+        head:[header],
+        body:[row],
+        styles:{fontSize:7, cellPadding:1},
+        headStyles:{fillColor:[7,46,64]},
+  theme:'grid',
+  margin: { top: headerHeight + 6, left: 14, right: 14 },
+  didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+      })
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
   y = (withAuto.lastAutoTable?.finalY || y) + GAP
     }
@@ -286,7 +309,17 @@ export async function exportProspectosPDF(
       ]
     })
   // @ts-expect-error autotable plugin
-  doc.autoTable({ startY:y, head:[head2], body:body2, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
+  doc.autoTable({
+    startY:y,
+    head:[head2],
+    body:body2,
+    styles:{fontSize:7, cellPadding:1.5},
+    headStyles:{ fillColor:[7,46,64], fontSize:8 },
+    alternateRowStyles:{ fillColor:[245,247,248] },
+  theme:'grid',
+  margin: { top: headerHeight + 6, left: 14, right: 14 },
+  didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+  })
     const afterResumenTable = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y
     y = afterResumenTable + GAP
     // Global charts if requested (agrupado scenario)
@@ -370,7 +403,9 @@ export async function exportProspectosPDF(
               ]: [])
             ]
           }),
-          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid'
+          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
         })
         const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
   y = (withAuto.lastAutoTable?.finalY || y) + GAP
@@ -397,9 +432,16 @@ export async function exportProspectosPDF(
         doc.setFontSize(7)
         const headPlan = ['Agente','Prospección','Citas','SMNYL','Total']
         // @ts-expect-error autotable
-        doc.autoTable({ startY:y, head:[headPlan], body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
-          agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.citas), String(sum.smnyl), String(sum.total)
-        ]), styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid' })
+        doc.autoTable({
+          startY:y,
+          head:[headPlan],
+          body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
+            agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.citas), String(sum.smnyl), String(sum.total)
+          ]),
+          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
         const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
   y = (withAuto2.lastAutoTable?.finalY || y) + GAP
       }
@@ -425,7 +467,14 @@ export async function exportProspectosPDF(
         (b.prospecto_nombre? b.prospecto_nombre: '') + (b.notas? (b.prospecto_nombre? ' - ':'')+ b.notas: '')
       ])
       // @ts-expect-error autotable
-      doc.autoTable({ startY: cy, head:[headPlan], body: bodyPlan, styles:{fontSize:7, cellPadding:1}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid' })
+      doc.autoTable({
+        startY: cy,
+        head:[headPlan],
+        body: bodyPlan,
+        styles:{fontSize:7, cellPadding:1}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
+        margin: { top: headerHeight + 6, left: 14, right: 14 },
+        didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+      })
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
   y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
       y = y2
@@ -435,12 +484,8 @@ export async function exportProspectosPDF(
   const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()
   for(let i=1;i<=pageCount;i++){
     doc.setPage(i)
-    doc.setFillColor(255,255,255); doc.rect(0,0,210,headerHeight,'F')
-    // Redibujar header
-  drawHeader()
-    // Ajustar desplazamiento inicial de autotable en nuevas páginas (plugin ya maneja, pero alineamos visualmente)
-    // Footer
-    doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292)
+    // Footer únicamente (el header ya se dibuja por página en las tablas y cuando se crean páginas manuales)
+    doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292); doc.setTextColor(0,0,0)
   }
   // Nombre de archivo dinámico
   const desired = opts?.filename || titulo.replace(/\s+/g,'_').toLowerCase()+'.pdf'
