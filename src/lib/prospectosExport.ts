@@ -33,7 +33,15 @@ export async function exportProspectosPDF(
   prospectos: Prospecto[],
   resumen: { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean },
   titulo: string,
-  opts?: { incluirId?: boolean; agrupadoPorAgente?: boolean; agentesMap?: Record<number,string>; chartEstados?: boolean; chartEstadosPie?: boolean }
+  opts?: {
+    incluirId?: boolean
+    agrupadoPorAgente?: boolean
+    agentesMap?: Record<number,string>
+    chartEstados?: boolean
+    metaProspectos?: number
+    metaCitas?: number
+    incluirFunnel?: boolean
+  }
 ){
   if(!prospectos.length) return
   const jsPDF = await loadJSPDF(); await loadAutoTable()
@@ -55,6 +63,9 @@ export async function exportProspectosPDF(
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
+  const metaProspectos = opts?.metaProspectos ?? 30
+  const metaCitas = opts?.metaCitas ?? 5
+  const incluirFunnel = opts?.incluirFunnel !== false // por defecto sí
   const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas', ...(agrupado? ['Agente']: []) ]
   const body = prospectos.map(p=> { const ep = p as ExtendedProspecto; return [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80), ...(agrupado? [agentesMap[ep.agente_id ?? -1] || '']: []) ] })
   // @ts-expect-error autotable plugin
@@ -112,74 +123,53 @@ export async function exportProspectosPDF(
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
         doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
       })
-      // Pie alongside
-      if(opts.chartEstadosPie){
-        try {
-          const canvas = document.createElement('canvas'); const size=80; canvas.width=size; canvas.height=size
-          const ctx = canvas.getContext('2d');
-          if(ctx){ const totalVal=dataEntries.reduce((s,d)=>s+d[1],0)||1; let start=-Math.PI/2; dataEntries.forEach(d=>{ const portion=d[1]/totalVal; const end=start+portion*Math.PI*2; ctx.beginPath(); ctx.moveTo(size/2,size/2); ctx.arc(size/2,size/2,size/2,start,end); ctx.closePath(); ctx.fillStyle=d[2]; ctx.fill(); start=end })
-            // Legend right side
-            ctx.font='7px Arial'; dataEntries.forEach((d,i)=>{ ctx.fillStyle=d[2]; ctx.fillRect(size+4,4+i*14,10,10); ctx.fillStyle='#000'; const percent=((d[1]/totalVal)*100).toFixed(1)+'%'; ctx.fillText(`${d[0]} ${percent}`, size+18,12+i*14) })
-            const exportCanvas=document.createElement('canvas'); exportCanvas.width=size+110; exportCanvas.height=size; const ex=exportCanvas.getContext('2d'); if(ex){ ex.fillStyle='#fff'; ex.fillRect(0,0,exportCanvas.width,exportCanvas.height); ex.drawImage(canvas,0,0); const dataUrl=exportCanvas.toDataURL('image/png'); doc.addImage(dataUrl,'PNG',baseX+95, chartY, 60, 50) }
-          }
-        } catch {}
-      }
       y = baseY + 10
-      if(opts.chartEstadosPie){
-        // Pie chart (canvas -> image)
-        try {
-          const canvas = document.createElement('canvas')
-          const size = 120; canvas.width = size; canvas.height = size
-          const ctx = canvas.getContext('2d')
-          if(ctx){
-            const totalVal = dataEntries.reduce((s,d)=> s+d[1],0) || 1
-            let start = -Math.PI/2
-            dataEntries.forEach(d=>{
-              const portion = d[1]/totalVal
-              const end = start + portion * Math.PI *2
-              ctx.beginPath()
-              ctx.moveTo(size/2,size/2)
-              ctx.arc(size/2,size/2,size/2,start,end)
-              ctx.closePath()
-              ctx.fillStyle = d[2]
-              ctx.fill()
-              start = end
-            })
-            // Legend
-            const legendX = size + 10
-            ctx.font = '10px Arial'
-            dataEntries.forEach((d,i)=>{
-              ctx.fillStyle = d[2]
-              ctx.fillRect(legendX, 8 + i*16, 12, 12)
-              ctx.fillStyle = '#000'
-              const percent = ((d[1]/totalVal)*100).toFixed(1)+'%'
-              ctx.fillText(`${d[0]} (${percent})`, legendX + 16, 18 + i*16)
-            })
-            const exportCanvas = document.createElement('canvas')
-            exportCanvas.width = size + 140
-            exportCanvas.height = size
-            const exCtx = exportCanvas.getContext('2d')
-            if(exCtx){
-              exCtx.fillStyle = '#fff'
-              exCtx.fillRect(0,0,exportCanvas.width, exportCanvas.height)
-              exCtx.drawImage(canvas,0,0)
-              exCtx.drawImage(canvas,0,0)
-              exCtx.drawImage(canvas,0,0)
-              // Redraw legend elements (simpler to just copy from original by drawing legend separately not triple draw; correct approach: replicate above)
-              // Actually replicate legend properly
-              dataEntries.forEach((d,i)=>{
-                exCtx.fillStyle = d[2]
-                exCtx.fillRect(size + 10, 8 + i*16, 12, 12)
-                exCtx.fillStyle = '#000'
-                const percent = ((d[1]/totalVal)*100).toFixed(1)+'%'
-                exCtx.fillText(`${d[0]} (${percent})`, size + 28, 18 + i*16)
-              })
-              const dataUrl = exportCanvas.toDataURL('image/png')
-              doc.addImage(dataUrl,'PNG',14,y,80,80)
-            }
-          }
-          y += 86
-        } catch {/* ignore pie errors */}
+      // Añadir progreso contra metas debajo del chart
+      // Progreso Prospectos
+      const progY = y
+      const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
+        const pctVal = meta? Math.min(1, val/meta): 0
+        const barWTotal = 80; const barH = 6
+        doc.setFontSize(7); doc.text(`${label}: ${val}/${meta}`, baseX, pxY-1)
+        doc.setDrawColor(200); doc.rect(baseX, pxY, barWTotal, barH)
+        doc.setFillColor(7,46,64); doc.rect(baseX, pxY, barWTotal*pctVal, barH, 'F')
+        doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
+      }
+      drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
+      drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
+      y += 26
+      // Funnel
+      if(incluirFunnel){
+        const fY = y
+        const pendiente = resumen.por_estado.pendiente||0
+        const seguimiento = resumen.por_estado.seguimiento||0
+        const conCita = resumen.por_estado.con_cita||0
+        const anchoBase = 90
+        const baseXf = 14
+        const totalF = pendiente + seguimiento + conCita || 1
+        const escala = (v:number)=> (v/totalF)*anchoBase
+        const pasos: Array<[string, number, string]> = [
+          ['Pendiente', pendiente, '#0d6efd'],
+          ['Seguimiento', seguimiento, '#6f42c1'],
+          ['Con cita', conCita, '#198754']
+        ]
+        doc.setFontSize(8); doc.text('Funnel', baseXf, fY)
+        let curY = fY + 2
+        pasos.forEach((p,i)=>{
+          const [label, val, color] = p
+          const w = Math.max(10, escala(val))
+          const hex = color.substring(1)
+          const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16)
+          doc.setFillColor(r,g,b)
+          doc.rect(baseXf, curY, w, 8, 'F')
+          doc.setTextColor(255,255,255)
+          doc.setFontSize(7)
+          doc.text(`${label} ${val} (${pct(val,totalF)})`, baseXf+2, curY+5)
+          doc.setTextColor(0,0,0)
+          curY += 10
+          if(i < pasos.length-1){ doc.setFontSize(8); doc.text('↓', baseXf+ w/2, curY-2) }
+        })
+        y = curY + 2
       }
     }
   } else {
@@ -236,22 +226,46 @@ export async function exportProspectosPDF(
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
         doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
       })
-      y = baseY + 10
-      if(opts.chartEstadosPie){
-        try {
-          const canvas = document.createElement('canvas')
-          const size=120; canvas.width=size; canvas.height=size
-          const ctx=canvas.getContext('2d')
-          if(ctx){
-            const totalVal = dataEntries.reduce((s,d)=> s+d[1],0)||1
-            let start=-Math.PI/2
-            dataEntries.forEach(d=>{ const portion=d[1]/totalVal; const end=start+portion*Math.PI*2; ctx.beginPath(); ctx.moveTo(size/2,size/2); ctx.arc(size/2,size/2,size/2,start,end); ctx.closePath(); ctx.fillStyle=d[2]; ctx.fill(); start=end })
-            const exportCanvas=document.createElement('canvas')
-            exportCanvas.width=size+140; exportCanvas.height=size
-            const ex=exportCanvas.getContext('2d')
-            if(ex){ ex.fillStyle='#fff'; ex.fillRect(0,0,exportCanvas.width,exportCanvas.height); ex.drawImage(canvas,0,0); dataEntries.forEach((d,i)=>{ ex.fillStyle=d[2]; ex.fillRect(size+10,8+i*16,12,12); ex.fillStyle='#000'; const percent=((d[1]/(totalVal))*100).toFixed(1)+'%'; ex.fillText(`${d[0]} (${percent})`, size+28,18+i*16) }); const dataUrl=exportCanvas.toDataURL('image/png'); doc.addImage(dataUrl,'PNG',14,y,80,80); y+=86 }
-          }
-        } catch {}
+      y = baseY + 14
+      // Progresos globales
+      const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
+        const pctVal = meta? Math.min(1, val/meta): 0
+        const barWTotal = 80; const barH = 6
+        doc.setFontSize(7); doc.text(`${label}: ${val}/${meta}`, baseX, pxY-1)
+        doc.setDrawColor(200); doc.rect(baseX, pxY, barWTotal, barH)
+        doc.setFillColor(7,46,64); doc.rect(baseX, pxY, barWTotal*pctVal, barH, 'F')
+        doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
+      }
+      drawProgress('Meta prospectos', resumen.total, metaProspectos, y)
+      y += 10
+      drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, y)
+      y += 14
+      if(incluirFunnel){
+        const pendiente = resumen.por_estado.pendiente||0
+        const seguimiento = resumen.por_estado.seguimiento||0
+        const conCita = resumen.por_estado.con_cita||0
+        const totalF = pendiente + seguimiento + conCita || 1
+        const pasos: Array<[string, number, string]> = [
+          ['Pendiente', pendiente, '#0d6efd'],
+          ['Seguimiento', seguimiento, '#6f42c1'],
+          ['Con cita', conCita, '#198754']
+        ]
+        doc.setFontSize(8); doc.text('Funnel', baseX, y)
+        let curY = y + 2
+        const escala = (v:number)=> (v/totalF)*90
+        pasos.forEach((p,i)=>{
+          const [label,val,color]=p
+          const w = Math.max(10, escala(val))
+            const hex=color.substring(1)
+            const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16)
+            doc.setFillColor(r,g,b)
+            doc.rect(baseX, curY, w, 8, 'F')
+            doc.setTextColor(255,255,255); doc.setFontSize(7); doc.text(`${label} ${val} (${pct(val,totalF)})`, baseX+2, curY+5)
+            doc.setTextColor(0,0,0)
+            curY += 10
+            if(i<pasos.length-1) doc.text('↓', baseX + w/2, curY-2)
+        })
+        y = curY + 2
       }
     }
   }
