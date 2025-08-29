@@ -17,10 +17,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="es" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
-        {/* Favicons (múltiples variantes por compatibilidad) */}
-  <link rel="icon" type="image/png" href="/favicon.png" />
-  <link rel="icon" type="image/png" href="/Logolealtiaruedablanca.png" />
-  <link rel="apple-touch-icon" href="/Logolealtiaruedablanca.png" />
+  {/* Favicon principal (.ico) */}
+  <link rel="icon" href="/favicon.ico" sizes="any" />
         <meta name="theme-color" content="#072E40" />
       </head>
       <body>
