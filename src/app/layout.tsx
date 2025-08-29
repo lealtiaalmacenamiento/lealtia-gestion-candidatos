@@ -18,10 +18,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
     <html lang="es" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Favicons (múltiples variantes por compatibilidad) */}
-        <link rel="icon" type="image/png" href="/Logo%20lealtia%20rueda%20blanca.png" />
-        <link rel="icon" type="image/png" href="/Logo lealtia rueda blanca.png" />
-        <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-        <link rel="apple-touch-icon" href="/Logo%20lealtia%20rueda%20blanca.png" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="icon" type="image/png" href="/Logolealtiaruedablanca.png" />
+  <link rel="apple-touch-icon" href="/Logolealtiaruedablanca.png" />
         <meta name="theme-color" content="#072E40" />
       </head>
       <body>

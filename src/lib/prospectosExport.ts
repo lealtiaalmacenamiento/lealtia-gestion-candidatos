@@ -20,11 +20,9 @@ async function fetchLogoDataUrl(): Promise<string|undefined>{
   if(typeof process !== 'undefined') candidates.push(process.env?.NEXT_PUBLIC_MAIL_LOGO_URL, process.env?.MAIL_LOGO_URL)
   // Variantes codificadas y sin codificar (espacios) para mayor tolerancia.
   candidates.push(
-    '/Logo%20lealtia%20rueda%20blanca.png','/Logo lealtia rueda blanca.png',
-    '/Logo%20lealtia%20rueda%20blanca.svg','/Logo lealtia rueda blanca.svg',
-    '/Logo%20lealtia%20rueda%20blanca.webp','/Logo lealtia rueda blanca.webp',
-    '/logo-blanco.png','/logo-blanco.svg','/logo_white.png','/logo_white.svg',
-    '/Logo%20lealtia.png','/Logo lealtia.png',
+    '/Logolealtiaruedablanca.png','/Logolealtiaruedablanca.svg','/Logolealtiaruedablanca.webp',
+    '/Logolealtia.png','/Logolealtia.svg','/Logolealtia.webp',
+    '/favicon.png','/logo-blanco.png','/logo_white.png',
     '/file.svg','/logo.png','/logo.svg'
   )
   for(const url of candidates.filter(Boolean) as string[]){
