@@ -29,6 +29,13 @@ export default function ProspectosPage() {
   const [horasOcupadas,setHorasOcupadas]=useState<Record<string,string[]>>({}) // fecha -> ['08','09']
   const [citaDrafts,setCitaDrafts]=useState<Record<number,{fecha?:string; hora?:string}>>({})
 
+  const hoy = new Date()
+  const isPastDateHour = (fecha:string, hour:string)=>{
+    // fecha yyyy-mm-dd en horario local
+    const [y,m,d] = fecha.split('-').map(Number)
+    const dt = new Date(y, m-1, d, Number(hour), 0, 0)
+    return dt.getTime() < hoy.getTime()
+  }
   const precargarHoras = async(fecha:string)=>{
     // Reutiliza lista actual filtrando por la fecha para evitar llamada pesada
     // Si ya tenemos la fecha en cache, no refetch
@@ -134,6 +141,25 @@ export default function ProspectosPage() {
   }
 
   const eliminar=(id:number)=>{ if(!confirm('Eliminar prospecto?')) return; fetch('/api/prospectos/'+id,{method:'DELETE'}).then(r=>{ if(r.ok) fetchAll() }) }
+  const borrarCita = async(p:Prospecto)=>{
+    if(!p.fecha_cita) return
+    if(!confirm('¿Borrar cita? Se eliminará también el bloque en planificación.')) return
+    const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = { fecha_cita: null }
+    if(p.estado==='con_cita') patch.estado='pendiente'
+    fetch('/api/prospectos/'+p.id,{method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch)}).then(async r=>{
+      if(r.ok){
+        // Eliminar bloque auto de planificación correspondiente
+        try {
+          if(semana !== 'ALL'){
+            const semanaIso = semana as number
+            const params = { prospecto_id: p.id, semana_iso: semanaIso, anio: anio, agente_id: p.agente_id }
+            await fetch('/api/planificacion/remove_cita',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(params)})
+          }
+        } catch {/* ignore */}
+        fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); setToast({msg:'Cita eliminada', type:'success'})
+      } else { try { const j=await r.json(); setToast({msg:j.error||'Error', type:'error'}) } catch { setToast({msg:'Error', type:'error'}) } }
+    })
+  }
 
   return <div className="container py-4">
     <h2 className="fw-semibold mb-3">Prospectos</h2>
@@ -293,18 +319,22 @@ export default function ProspectosPage() {
                 const setDraft=(partial: {fecha?:string; hora?:string})=> setCitaDrafts(prev=> ({...prev, [p.id]: {...prev[p.id], ...partial}}))
                 return <div className="d-flex gap-1 flex-column">
                   <div className="d-flex gap-1">
-                    <input type="date" value={dateVal} onChange={e=>{ const newDate=e.target.value; if(!newDate){ setDraft({fecha:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
-                      setDraft({fecha:newDate}); if(hourVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }} className="form-control form-control-sm"/>
+                    <input type="date" value={dateVal} min={new Date().toISOString().slice(0,10)} onChange={e=>{ const newDate=e.target.value; if(!newDate){ setDraft({fecha:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
+                      setDraft({fecha:newDate}); if(hourVal && !isPastDateHour(newDate, hourVal)){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }} className="form-control form-control-sm"/>
                     <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ setDraft({hora:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
+                      if(dateVal && isPastDateHour(dateVal, h)) { setToast({msg:'Hora en el pasado', type:'error'}); return }
                       setDraft({hora:h}); if(dateVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}>={fecha_cita:`${dateVal}T${h}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }}>
                       <option value="">--</option>
-                      {Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={pad(h)}>{pad(h)}:00</option>)}
+                      {Array.from({length:24},(_,i)=> i).map(h=> { const hh=pad(h); const disabled = dateVal? isPastDateHour(dateVal, hh): false; return <option key={h} value={hh} disabled={disabled}>{hh}:00{disabled?' (pasado)':''}</option>})}
                     </select>
                   </div>
                   {/* Texto detalle de día/ hora ocultado según solicitud */}
                 </div> })()}
             </td>
-            <td><button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm">×</button></td>
+            <td className="text-nowrap">
+              {p.fecha_cita && <button onClick={()=>borrarCita(p)} className="btn btn-outline-warning btn-sm me-1" title="Borrar cita">Borrar cita</button>}
+              <button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm" title="Eliminar prospecto">Eliminar</button>
+            </td>
           </tr>)}
           {(!loading && prospectos.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">No hay prospectos para los filtros actuales.</td></tr>}
         </tbody>
