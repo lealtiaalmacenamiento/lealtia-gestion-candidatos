@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
 import { exportProspectosPDF } from '@/lib/prospectosExport'
+import { computeExtendedMetrics, computePreviousWeekDelta } from '@/lib/prospectosMetrics'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
 
@@ -19,6 +20,7 @@ export default function ProspectosPage() {
   const [prospectos,setProspectos]=useState<Prospecto[]>([])
   const [loading,setLoading]=useState(false)
   const [agg,setAgg]=useState<Aggregate|null>(null)
+  const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
   const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado, fecha_cita:'', fecha_cita_fecha:'', fecha_cita_hora:'' })
   const [errorMsg,setErrorMsg]=useState<string>('')
@@ -76,6 +78,16 @@ export default function ProspectosPage() {
     if (r.ok) setProspectos(await r.json())
     const r2 = await fetch('/api/prospectos/aggregate?'+params.toString())
     if (r2.ok) setAgg(await r2.json())
+    // Cargar semana previa si aplica
+    if(semana !== 'ALL'){
+      const prev = (semana as number) - 1
+      if(prev >= 1){
+        const p2 = new URLSearchParams({ anio:String(anio), semana:String(prev) })
+        if (superuser && agenteId) p2.set('agente_id', agenteId)
+        const rPrev = await fetch('/api/prospectos/aggregate?'+p2.toString())
+        if(rPrev.ok) setPrevAgg(await rPrev.json()); else setPrevAgg(null)
+      } else setPrevAgg(null)
+    } else setPrevAgg(null)
     setLoading(false)
   }
 
@@ -150,7 +162,16 @@ export default function ProspectosPage() {
     const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })()
     const agName = agrupado? 'Todos' : (agentes.find(a=> String(a.id)===agenteId)?.nombre || agentes.find(a=> String(a.id)===agenteId)?.email || '')
     const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`
-  exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true })
+  const hoy = new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay()
+  if(agrupado){
+    const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
+    const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
+    for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
+    exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined })
+  } else {
+    const extended = computeExtendedMetrics(prospectos,{ diaSemanaActual })
+    exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined })
+  }
   }}>PDF</button>
     </div>}
   <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
@@ -163,7 +184,7 @@ export default function ProspectosPage() {
           <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title="Todos">Total {agg.total}</button>
           {Object.entries(agg.por_estado).map(([k,v])=> { const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}}>{ESTADO_LABEL[k as ProspectoEstado]} {v}</button>})}
           <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')} title="Progreso a meta">{agg.total>=metaProspectos? `Meta ${metaProspectos} ok`:`<${metaProspectos} prospectos`}</span>
-          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = agentes.find(a=> String(a.id)===agenteId)?.nombre || agentes.find(a=> String(a.id)===agenteId)?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; exportProspectosPDF(prospectos, agg, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, metaCitas, forceLogoBlanco:true}) }}>PDF</button>
+          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = agentes.find(a=> String(a.id)===agenteId)?.nombre || agentes.find(a=> String(a.id)===agenteId)?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const extended = computeExtendedMetrics(prospectos,{ diaSemanaActual }); exportProspectosPDF(prospectos, agg!, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, metaCitas, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined }) }}>PDF</button>
         </div>
         {(!superuser || (superuser && agenteId)) && <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>
           <div className={`progress-bar ${agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/metaProspectos)*100)}%`}}>{agg.total}/{metaProspectos}</div>

@@ -1,4 +1,5 @@
 import type { Prospecto } from '@/types'
+import type { ExtendedMetrics, PreviousWeekDelta } from './prospectosMetrics'
 import { formatFechaHoraCDMX } from '@/lib/datetime'
 
 async function loadJSPDF() { return (await import('jspdf')).jsPDF }
@@ -52,6 +53,9 @@ export async function exportProspectosPDF(
     metaProspectos?: number
     metaCitas?: number
   forceLogoBlanco?: boolean
+  extendedMetrics?: ExtendedMetrics
+  prevWeekDelta?: PreviousWeekDelta
+  perAgentExtended?: Record<number,ExtendedMetrics>
   }
 ){
   if(!prospectos.length) return
@@ -141,7 +145,7 @@ export async function exportProspectosPDF(
     cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10);
       if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
     y = cy + cardH + 8
-    if(opts?.chartEstados){
+  if(opts?.chartEstados){
       // Simple bar chart for estados
       const chartY = y + 4
       const dataEntries: Array<[string, number, string]> = [
@@ -187,6 +191,25 @@ export async function exportProspectosPDF(
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
       y += 26
+      // Métricas avanzadas (agente individual)
+      if(opts?.extendedMetrics){
+        const em = opts.extendedMetrics
+        doc.setFontSize(10); doc.text('Métricas avanzadas', 120, 30)
+        doc.setFontSize(7)
+        const lines: string[] = []
+        lines.push(`Conv. Pend->Seg: ${(em.conversionPendienteSeguimiento*100).toFixed(1)}%`)
+        lines.push(`Conv. Seg->Cita: ${(em.conversionSeguimientoCita*100).toFixed(1)}%`)
+        lines.push(`Descartado: ${(em.ratioDescartado*100).toFixed(1)}%`)
+        if(em.promedioDiasPrimeraCita!=null) lines.push(`Prom. días 1ra cita: ${em.promedioDiasPrimeraCita.toFixed(1)}`)
+        if(em.forecastSemanaTotal!=null) lines.push(`Forecast semana: ${em.forecastSemanaTotal}`)
+        if(opts.prevWeekDelta){
+          const d = opts.prevWeekDelta
+          lines.push(`Δ Total vs sem ant: ${d.totalDelta>=0? '+':''}${d.totalDelta}`)
+          lines.push(`Δ Citas: ${d.conCitaDelta>=0? '+':''}${d.conCitaDelta}`)
+        }
+        let ly = 36
+        lines.forEach(l=> { doc.text(l,120, ly); ly+=4 })
+      }
     }
   } else {
     const porAgente: Record<string,ResumenAgente> = {}
@@ -203,7 +226,7 @@ export async function exportProspectosPDF(
   // @ts-expect-error autotable plugin
   doc.autoTable({ startY:y, head:[head2], body:body2, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
     // Global charts if requested (agrupado scenario)
-    if(opts?.chartEstados){
+  if(opts?.chartEstados){
       const docWith2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
       y = (docWith2.lastAutoTable?.finalY || y) + 8
       doc.setFontSize(10); doc.text('Resumen Global',14,y); y+=4
@@ -256,6 +279,31 @@ export async function exportProspectosPDF(
       y += 10
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, y)
       y += 14
+      // Métricas por agente agrupado
+      if(opts?.perAgentExtended){
+        doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
+        doc.setFontSize(7)
+        const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Forecast']
+        // @ts-expect-error autotable plugin
+        doc.autoTable({
+          startY: y,
+          head:[header],
+          body: Object.entries(opts.perAgentExtended).map(([agId, em])=>{
+            const agName = agentesMap[Number(agId)] || agId
+            return [
+              agName,
+              (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
+              (em.conversionSeguimientoCita*100).toFixed(1)+'%',
+              (em.ratioDescartado*100).toFixed(1)+'%',
+              em.promedioDiasPrimeraCita!=null? em.promedioDiasPrimeraCita.toFixed(1):'-',
+              em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
+            ]
+          }),
+          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid'
+        })
+        const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
+        y = (withAuto.lastAutoTable?.finalY || y) + 8
+      }
     }
   }
   // Footer with pagination
