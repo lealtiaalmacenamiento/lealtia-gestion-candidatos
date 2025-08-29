@@ -191,24 +191,34 @@ export async function exportProspectosPDF(
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
       y += 26
-      // Métricas avanzadas (agente individual)
-      if(opts?.extendedMetrics){
-        const em = opts.extendedMetrics
-        doc.setFontSize(10); doc.text('Métricas avanzadas', 120, 30)
-        doc.setFontSize(7)
-        const lines: string[] = []
-        lines.push(`Conv. Pend->Seg: ${(em.conversionPendienteSeguimiento*100).toFixed(1)}%`)
-        lines.push(`Conv. Seg->Cita: ${(em.conversionSeguimientoCita*100).toFixed(1)}%`)
-        lines.push(`Descartado: ${(em.ratioDescartado*100).toFixed(1)}%`)
-        if(em.promedioDiasPrimeraCita!=null) lines.push(`Prom. días 1ra cita: ${em.promedioDiasPrimeraCita.toFixed(1)}`)
-        if(em.forecastSemanaTotal!=null) lines.push(`Forecast semana: ${em.forecastSemanaTotal}`)
-        if(opts.prevWeekDelta){
-          const d = opts.prevWeekDelta
-          lines.push(`Δ Total vs sem ant: ${d.totalDelta>=0? '+':''}${d.totalDelta}`)
-          lines.push(`Δ Citas: ${d.conCitaDelta>=0? '+':''}${d.conCitaDelta}`)
-        }
-        let ly = 36
-        lines.forEach(l=> { doc.text(l,120, ly); ly+=4 })
+    }
+    // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
+    if(opts?.extendedMetrics){
+      const em = opts.extendedMetrics
+      doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Métricas avanzadas',14,y)
+      y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
+      const lines: string[] = []
+      lines.push(`Conv. Pend->Seg: ${(em.conversionPendienteSeguimiento*100).toFixed(1)}%`)
+      lines.push(`Conv. Seg->Cita: ${(em.conversionSeguimientoCita*100).toFixed(1)}%`)
+      lines.push(`Descartado: ${(em.ratioDescartado*100).toFixed(1)}%`)
+      if(em.promedioDiasPrimeraCita!=null) lines.push(`Prom. días a 1ra cita: ${em.promedioDiasPrimeraCita.toFixed(1)}`)
+      if(em.forecastSemanaTotal!=null) lines.push(`Proyección semana: ${em.forecastSemanaTotal}`)
+      if(opts.prevWeekDelta){
+        const d = opts.prevWeekDelta
+        lines.push(`Δ Total vs sem. ant.: ${d.totalDelta>=0? '+':''}${d.totalDelta}`)
+        lines.push(`Δ Citas vs sem. ant.: ${d.conCitaDelta>=0? '+':''}${d.conCitaDelta}`)
+      }
+      lines.forEach(l=> { doc.text(l,14,y); y+=4 })
+      // Distribución horas (compacta)
+      const horas = Object.entries(em.citasPorHora).sort((a,b)=> a[0].localeCompare(b[0]))
+      if(horas.length){
+        y+=2; doc.setFont('helvetica','bold'); doc.text('Citas por hora:',14,y); doc.setFont('helvetica','normal'); y+=4
+        const chunk: string[] = []
+        horas.forEach(([h,c],i)=>{ chunk.push(`${h}:00=${c}`); if(chunk.length===6 || i===horas.length-1){ doc.text(chunk.join('  '),14,y); y+=4; chunk.length=0 } })
+      }
+      if(em.riesgoSeguimientoSinCita.length){
+        y+=2; doc.setFont('helvetica','bold'); doc.text('En riesgo (seguimiento sin cita):',14,y); y+=4; doc.setFont('helvetica','normal')
+        em.riesgoSeguimientoSinCita.forEach(rg=> { doc.text(`${rg.nombre} (${rg.dias}d)`,14,y); y+=4 })
       }
     }
   } else {
@@ -279,11 +289,26 @@ export async function exportProspectosPDF(
       y += 10
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, y)
       y += 14
+      // Resumen Global en tarjetas (estilo agente)
+      const cards: Array<[string,string]> = [
+        ['Total', String(resumen.total)],
+        ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
+        ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
+        ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
+        ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
+        ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
+      ]
+  const cx=110; let cy= y - 60 // posicionar a la derecha del chart si cabe, sino bajar
+      if(cy < 40) cy = y
+      const cardW = 80; const cardH=12
+      doc.setFontSize(8)
+  cards.forEach((c)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); cy += cardH+4 })
+      y = Math.max(y, cy) + 4
       // Métricas por agente agrupado
       if(opts?.perAgentExtended){
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
-        const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Forecast']
+        const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana']
         // @ts-expect-error autotable plugin
         doc.autoTable({
           startY: y,
