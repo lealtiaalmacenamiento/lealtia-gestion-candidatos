@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import AppModal from '@/components/ui/AppModal'
 import type { BloquePlanificacion } from '@/types'
 import Notification from '@/components/ui/Notification'
 import { useAuth } from '@/context/AuthProvider'
@@ -59,6 +60,9 @@ export default function ProspectosPage() {
   const [metaProspectos,setMetaProspectos]=useState(30)
   const [metaCitas,setMetaCitas]=useState(5)
   const [soloConCita,setSoloConCita]=useState(false)
+  interface BloqueLite { day:number; hour:string; activity:string; origin?:string }
+  interface PlanLite { bloques?: BloqueLite[] }
+  const [conflicto,setConflicto]=useState<null|{prospecto:Prospecto; fechaLocal:string; horaLocal:string; semana:number; anio:number; day:number; plan:PlanLite; bloque:BloqueLite}> (null)
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
 
   const applyEstadoFiltro = (estado: ProspectoEstado | '') => {
@@ -122,7 +126,7 @@ export default function ProspectosPage() {
     else { try { const j=await r.json(); setErrorMsg(j.error||'Error'); setToast({msg:j.error||'Error', type:'error'}) } catch { setErrorMsg('Error al guardar'); setToast({msg:'Error al guardar', type:'error'}) } }
   }
 
-  const update=(id:number, patch:Partial<Prospecto>)=> {
+  const update=(id:number, patch:Partial<Prospecto>, meta?: { prospecto: Prospecto; fechaLocal?: string; horaLocal?: string })=> {
     // debounce mínimo
     window.clearTimeout(debounceRef.current||0)
     debounceRef.current = window.setTimeout(()=>{
@@ -135,11 +139,35 @@ export default function ProspectosPage() {
           toSend.fecha_cita = buildUTCFromMX(fecha, hora)
         }
       }
-  fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(async r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); setToast({msg:'Actualizado', type:'success'}) } else { try { const j=await r.json(); setToast({msg:j.error||'Error', type:'error'}) } catch { setToast({msg:'Error', type:'error'}) } } })
+  fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(async r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); setToast({msg:'Actualizado', type:'success'})
+          // Detectar conflicto solo si acabamos de asignar cita (no al borrar)
+          if(patch.fecha_cita && meta?.fechaLocal && meta?.horaLocal){
+            try {
+              const fechaLocal = meta.fechaLocal; const horaLocal = meta.horaLocal
+              const fechaObj = new Date(fechaLocal+'T'+horaLocal+':00')
+              const { semana: semIso, anio: anioIso } = obtenerSemanaIso(fechaObj)
+              // Obtener planificación de esa semana
+              const params = new URLSearchParams({ semana:String(semIso), anio:String(anioIso), agente_id: String(meta.prospecto.agente_id) })
+              const rPlan = await fetch('/api/planificacion?'+params.toString())
+              if(rPlan.ok){
+                const plan = await rPlan.json()
+                // Calcular day index (0 lunes) usando semanaDesdeNumero
+                const rango = semanaDesdeNumero(anioIso, semIso)
+                const mondayUTC = rango.inicio
+                const localMid = new Date(fechaObj.getFullYear(), fechaObj.getMonth(), fechaObj.getDate())
+                const dayIdx = Math.floor( (localMid.getTime() - new Date(mondayUTC.getUTCFullYear(), mondayUTC.getUTCMonth(), mondayUTC.getUTCDate()).getTime()) / 86400000 )
+                const blk = plan.bloques?.find((b: BloqueLite)=> b.day===dayIdx && b.hour===horaLocal)
+                if(blk && blk.origin!== 'auto' && (blk.activity==='PROSPECCION' || blk.activity==='SMNYL')){
+                  setConflicto({prospecto: meta.prospecto, fechaLocal, horaLocal, semana: semIso, anio: anioIso, day: dayIdx, plan, bloque: blk})
+                }
+              }
+            } catch {/*ignore*/}
+          }
+        } else { try { const j=await r.json(); setToast({msg:j.error||'Error', type:'error'}) } catch { setToast({msg:'Error', type:'error'}) } } })
     },300)
   }
 
-  const eliminar=(id:number)=>{ if(!confirm('Eliminar prospecto?')) return; fetch('/api/prospectos/'+id,{method:'DELETE'}).then(r=>{ if(r.ok) fetchAll() }) }
+  // Eliminación completa de prospectos deshabilitada (solo borrar cita) según requerimiento.
   const borrarCita = async(p:Prospecto)=>{
     if(!p.fecha_cita) return
     if(!confirm('¿Borrar cita? Se eliminará también el bloque en planificación.')) return
@@ -319,10 +347,10 @@ export default function ProspectosPage() {
                 return <div className="d-flex gap-1 flex-column">
                   <div className="d-flex gap-1">
                     <input type="date" value={dateVal} min={new Date().toISOString().slice(0,10)} onChange={e=>{ const newDate=e.target.value; if(!newDate){ setDraft({fecha:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
-                      setDraft({fecha:newDate}); if(hourVal && !isPastDateHour(newDate, hourVal)){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }} className="form-control form-control-sm"/>
+                      setDraft({fecha:newDate}); if(hourVal && !isPastDateHour(newDate, hourVal)){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch,{ prospecto:p, fechaLocal:newDate, horaLocal:hourVal }); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }} className="form-control form-control-sm"/>
                     <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ setDraft({hora:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
                       if(dateVal && isPastDateHour(dateVal, h)) { setToast({msg:'Hora en el pasado', type:'error'}); return }
-                      setDraft({hora:h}); if(dateVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}>={fecha_cita:`${dateVal}T${h}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }}>
+                      setDraft({hora:h}); if(dateVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}>={fecha_cita:`${dateVal}T${h}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch,{ prospecto:p, fechaLocal:dateVal, horaLocal:h }); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }}>
                       <option value="">--</option>
                       {Array.from({length:24},(_,i)=> i).map(h=> { const hh=pad(h); const disabled = dateVal? isPastDateHour(dateVal, hh): false; return <option key={h} value={hh} disabled={disabled}>{hh}:00{disabled?' (pasado)':''}</option>})}
                     </select>
@@ -331,8 +359,7 @@ export default function ProspectosPage() {
                 </div> })()}
             </td>
             <td className="text-nowrap">
-              {p.fecha_cita && <button onClick={()=>borrarCita(p)} className="btn btn-outline-warning btn-sm me-1" title="Borrar cita">Borrar cita</button>}
-              <button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm" title="Eliminar prospecto">Eliminar</button>
+              {p.fecha_cita && <button onClick={()=>borrarCita(p)} className="btn btn-sm btn-warning text-dark" title="Borrar cita">Borrar cita</button>}
             </td>
           </tr>)}
           {(!loading && prospectos.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">No hay prospectos para los filtros actuales.</td></tr>}
@@ -341,5 +368,28 @@ export default function ProspectosPage() {
       {loading && <div className="p-3">Cargando...</div>}
     </div>
     {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
+    {conflicto && <AppModal title="Conflicto de bloque" icon="exclamation-triangle" onClose={()=> setConflicto(null)}>
+      <div className="small">
+        <p className="mb-3">Existe un bloque <strong>{conflicto.bloque.activity}</strong> en la planificación para <strong>{conflicto.fechaLocal}</strong> a las <strong>{conflicto.horaLocal}:00</strong>. ¿Reemplazarlo por la cita del prospecto <strong>{conflicto.prospecto.nombre}</strong>?</p>
+        <div className="d-flex gap-2">
+          <button className="btn btn-primary btn-sm" onClick={async ()=>{
+            try {
+              const plan = conflicto.plan || { bloques: [] }
+              const bloques = (plan.bloques||[]).filter(b=> !(b.day===conflicto.day && b.hour===conflicto.horaLocal))
+              bloques.push({ day:conflicto.day, hour:conflicto.horaLocal, activity:'CITAS', origin:'manual' })
+              const body = { agente_id: conflicto.prospecto.agente_id, semana_iso: conflicto.semana, anio: conflicto.anio, bloques }
+              await fetch('/api/planificacion',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+              setConflicto(null)
+              window.dispatchEvent(new CustomEvent('prospectos:cita-updated'))
+              setToast({msg:'Bloque reemplazado por cita', type:'success'})
+            } catch {
+              setToast({msg:'Error al reemplazar bloque', type:'error'})
+              setConflicto(null)
+            }
+          }}>Reemplazar bloque</button>
+          <button className="btn btn-outline-secondary btn-sm" onClick={()=> setConflicto(null)}>Mantener</button>
+        </div>
+      </div>
+    </AppModal>}
   </div>
 }

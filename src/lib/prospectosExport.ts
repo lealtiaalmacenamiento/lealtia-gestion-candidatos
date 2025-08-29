@@ -95,23 +95,58 @@ export async function exportProspectosPDF(
     } catch { /* ignorar problemas de canvas */ }
   }
   const generadoEn = nowMX()
+  // Ajuste dinámico de título para nombres largos de agente
   const drawHeader = ()=>{
+    const baseX = logo? 50:12
+    const marginRight = 8
+    const maxWidth = 210 - baseX - marginRight
+    let headerHeight = 22
     doc.setFillColor(7,46,64)
-    doc.rect(0,0,210,22,'F')
+    doc.rect(0,0,210,headerHeight,'F')
     if(logo && logoW && logoH){
-      try { doc.addImage(logo,'PNG',10,(22-logoH)/2,logoW,logoH) } catch {/*ignore*/}
+      try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH) } catch {/*ignore*/}
     } else {
-      // Fallback texto si no hay logo
       doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14)
     }
     doc.setTextColor(255,255,255)
-    doc.setFont('helvetica','bold'); doc.setFontSize(13)
-    doc.text(titulo, logo? 50:12, 11)
+    // Intentar en una sola línea reduciendo tamaño
+    let fontSize = 13
+    doc.setFont('helvetica','bold')
+    let width = 0
+    while(fontSize>=8){ doc.setFontSize(fontSize); width = doc.getTextWidth(titulo); if(width <= maxWidth) break; fontSize-- }
+    let lines: string[] = []
+    if(width > maxWidth){
+      // Necesitamos envolver manualmente
+      const words = titulo.split(/\s+/)
+      let current = ''
+      words.forEach(w=>{
+        const test = current? current+' '+w: w
+        const testW = doc.getTextWidth(test)
+        if(testW <= maxWidth) current = test; else { if(current) lines.push(current); current = w }
+      })
+      if(current) lines.push(current)
+    } else {
+      lines = [titulo]
+    }
+    // Si demasiadas líneas, reducir font más (máx 3 líneas)
+    while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); // recompute wrapping
+      const words = titulo.split(/\s+/)
+      lines = []
+      let current = ''
+      words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w } })
+      if(current) lines.push(current)
+    }
+    const lineHeight = fontSize + 2
+    const neededHeight = 6 + lines.length*lineHeight + 6 // margen + líneas + espacio fecha
+    if(neededHeight > headerHeight){ headerHeight = neededHeight; doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F'); if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH) } catch {/*ignore*/} } }
+    let y = 8 + fontSize/2
+    lines.forEach(l=>{ doc.text(l, baseX, y); y += lineHeight })
     doc.setFontSize(8); doc.setFont('helvetica','normal')
-    doc.text('Generado (CDMX): '+ generadoEn, logo? 50:12, 17)
+    doc.text('Generado (CDMX): '+ generadoEn, baseX, y)
     doc.setTextColor(0,0,0)
+    return headerHeight
   }
-  drawHeader()
+  const headerHeight = drawHeader()
   doc.setFontSize(9)
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
@@ -411,15 +446,10 @@ export async function exportProspectosPDF(
   const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()
   for(let i=1;i<=pageCount;i++){
     doc.setPage(i)
-    // Redibujar header (para páginas >1 ya estaba el contenido, sobreponemos barra)
-    const ySnapshot = 0
-    doc.setFillColor(255,255,255); doc.rect(0,ySnapshot,210,22,'F') // limpiar área
-    // reutilizamos mismo header
-  // Redibujamos manualmente header (drawHeader en closure)
-    doc.setFillColor(7,46,64); doc.rect(0,0,210,22,'F')
-  if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(22-logoH)/2,logoW,logoH) } catch {/* ignore */} }
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(titulo, logo?50:12,11)
-    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.text('Generado (CDMX): '+ generadoEn, logo?50:12,17); doc.setTextColor(0,0,0)
+    // Limpiar y redibujar header coherente con ajuste dinámico
+    doc.setFillColor(255,255,255); doc.rect(0,0,210,headerHeight,'F')
+    // Redibujar usando misma función (puede recalcular altura si cambia paginado)
+    drawHeader()
     // Footer
     doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292)
   }
