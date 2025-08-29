@@ -203,7 +203,8 @@ export async function exportProspectosPDF(
       ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
       ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
     ]
-    const cardW = 60; const cardH=12; let cx=14; let cy=y
+  // 3 tarjetas por fila dentro de 182mm útiles: 3*56 + 2*6 = 180 <= 182
+  const cardW = 56; const cardH=12; let cx=14; let cy=y
     doc.setFontSize(8)
     cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10);
       if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
@@ -219,8 +220,8 @@ export async function exportProspectosPDF(
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
   const baseX = 14
-  const barW = 18
-      const gap = 6
+  const barW = 16
+  const gap = 6
   const baseY = chartY + 40
       doc.setFontSize(8)
       dataEntries.forEach((d,i)=>{
@@ -367,8 +368,8 @@ export async function exportProspectosPDF(
     if(opts?.chartEstados){
       const chartTop = y
       const baseX = 14
-      const barW = 18
-      const barGap = 6
+  const barW = 16
+  const barGap = 6
       const chartHeight = 42 // altura destino (30 barras + labels + margen)
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
@@ -467,7 +468,8 @@ export async function exportProspectosPDF(
           ['Total bloques', String(totalAgg.total)]
         ]
   // 4 tarjetas en una fila: ajustar ancho para no exceder 210mm (14 + 4*W + 3*gap <= 210)
-  const cardW=44, cardH=12; let cx=14; let cy=y
+  // 4 tarjetas por fila: 4*42 + 3*6 = 186 -> bajamos a 41: 4*41 + 18 = 182
+  const cardW=41, cardH=12; let cx=14; let cy=y
         doc.setFontSize(8)
         cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   y = cy + cardH + GAP
@@ -496,7 +498,8 @@ export async function exportProspectosPDF(
     const plan = opts.singleAgentPlanning
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
     const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['Citas', String(plan.summary.citas)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
-  const cardW=44, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
+  // 4 tarjetas por fila: usar 41mm para caber en 182mm con 3 gaps de 6mm
+  const cardW=41, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
     cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   cy += cardH + GAP
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
