@@ -212,7 +212,7 @@ export async function exportProspectosPDF(
       }
       // Tabla compacta de métricas clave
       const includeDelta = !!opts?.prevWeekDelta
-      const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeDelta? ['Cambio prospectos','Cambio citas']: []) ]
+  const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeDelta? ['Prospectos vs semana anterior','Citas vs semana anterior']: []) ]
       const row = [
         (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
         (em.conversionSeguimientoCita*100).toFixed(1)+'%',
@@ -239,8 +239,21 @@ export async function exportProspectosPDF(
       bucket.total++
       if(bucket.por_estado[p.estado] !== undefined) bucket.por_estado[p.estado]++
     }
-    const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado']
-    const body2 = Object.values(porAgente).map(r=> [r.agente, r.total, r.por_estado.pendiente, r.por_estado.seguimiento, r.por_estado.con_cita, r.por_estado.descartado])
+    const includeAgentDeltaResumen = !!opts?.perAgentDeltas
+    const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado', ...(includeAgentDeltaResumen? ['Prospectos vs semana anterior','Citas vs semana anterior']: [])]
+    const body2 = Object.entries(porAgente).map(([agNameKey, r])=> {
+      const agId = Object.entries(agentesMap).find(([,name])=> name===agNameKey)?.[0]
+      const deltas = includeAgentDeltaResumen && agId? opts?.perAgentDeltas?.[Number(agId)] : undefined
+      return [
+        r.agente,
+        r.total,
+        r.por_estado.pendiente,
+        r.por_estado.seguimiento,
+        r.por_estado.con_cita,
+        r.por_estado.descartado,
+        ...(includeAgentDeltaResumen? [ deltas? (deltas.totalDelta>=0? '+'+deltas.totalDelta: String(deltas.totalDelta)):'-', deltas? (deltas.citasDelta>=0? '+'+deltas.citasDelta: String(deltas.citasDelta)):'-' ]: [])
+      ]
+    })
   // @ts-expect-error autotable plugin
   doc.autoTable({ startY:y, head:[head2], body:body2, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
     // Global charts if requested (agrupado scenario)
@@ -308,7 +321,7 @@ export async function exportProspectosPDF(
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
         const includeAgentDelta = !!opts?.perAgentDeltas
-  const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeAgentDelta? ['Cambio prospectos','Cambio citas']: [])]
+  const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeAgentDelta? ['Prospectos vs semana anterior','Citas vs semana anterior']: [])]
         // @ts-expect-error autotable plugin
         doc.autoTable({
           startY: y,
