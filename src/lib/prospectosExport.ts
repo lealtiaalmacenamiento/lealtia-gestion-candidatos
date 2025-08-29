@@ -15,15 +15,20 @@ function nowMX(){
   return `${fecha} ${hora}`
 }
 async function fetchLogoDataUrl(): Promise<string|undefined>{
-  try {
-  const url = (typeof process !== 'undefined' ? (process.env?.NEXT_PUBLIC_MAIL_LOGO_URL || process.env?.MAIL_LOGO_URL) : undefined)
-    if(!url) return
-    const resp = await fetch(url)
-    if(!resp.ok) return
-    const blob = await resp.blob()
-    const b64 = await new Promise<string>((resolve,reject)=>{ const fr=new FileReader(); fr.onload=()=>resolve(String(fr.result)); fr.onerror=reject; fr.readAsDataURL(blob) })
-    return b64
-  } catch { return }
+  // Intenta URL de entorno; fallback a /file.svg si existe.
+  const candidates: (string|undefined)[] = []
+  if(typeof process !== 'undefined') candidates.push(process.env?.NEXT_PUBLIC_MAIL_LOGO_URL, process.env?.MAIL_LOGO_URL)
+  candidates.push('/file.svg','/logo.png','/logo.svg')
+  for(const url of candidates.filter(Boolean) as string[]){
+    try {
+      const resp = await fetch(url)
+      if(!resp.ok) continue
+      const blob = await resp.blob()
+      const b64 = await new Promise<string>((resolve,reject)=>{ const fr=new FileReader(); fr.onload=()=>resolve(String(fr.result)); fr.onerror=reject; fr.readAsDataURL(blob) })
+      return b64
+    } catch {/* intentar siguiente */}
+  }
+  return
 }
 
 interface ResumenAgente { agente?: string; total:number; por_estado: Record<string,number> }
@@ -47,24 +52,30 @@ export async function exportProspectosPDF(
   const jsPDF = await loadJSPDF(); await loadAutoTable()
   const doc = new jsPDF()
   const logo = await fetchLogoDataUrl()
-  // Header bar
-  doc.setFillColor(7,46,64)
-  doc.rect(0,0,210,22,'F')
-  if(logo){ try { doc.addImage(logo,'PNG',10,4,34,14) } catch {/*ignorar*/} }
-  doc.setTextColor(255,255,255)
-  doc.setFont('helvetica','bold')
-  doc.setFontSize(13)
-  doc.text(titulo, logo? 50:12, 11)
-  doc.setFontSize(8)
-  doc.setFont('helvetica','normal')
-  doc.text('Generado (CDMX): '+ nowMX(), logo? 50:12, 17)
-  doc.setTextColor(0,0,0)
+  const generadoEn = nowMX()
+  const drawHeader = ()=>{
+    doc.setFillColor(7,46,64)
+    doc.rect(0,0,210,22,'F')
+    if(logo){ try { doc.addImage(logo,'PNG',10,4,34,14) } catch {/*ignore*/} }
+    doc.setTextColor(255,255,255)
+    doc.setFont('helvetica','bold'); doc.setFontSize(13)
+    doc.text(titulo, logo? 50:12, 11)
+    doc.setFontSize(8); doc.setFont('helvetica','normal')
+    doc.text('Generado (CDMX): '+ generadoEn, logo? 50:12, 17)
+    doc.setTextColor(0,0,0)
+  }
+  drawHeader()
   doc.setFontSize(9)
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
-  const metaProspectos = opts?.metaProspectos ?? 30
-  const metaCitas = opts?.metaCitas ?? 5
+  let metaProspectos = opts?.metaProspectos ?? 30
+  let metaCitas = opts?.metaCitas ?? 5
+  const distinctAgentsCount = agrupado ? new Set(prospectos.map(p=> (p as ExtendedProspecto).agente_id)).size || 1 : 1
+  if(agrupado){
+    metaProspectos = metaProspectos * distinctAgentsCount
+    metaCitas = metaCitas * distinctAgentsCount
+  }
   const incluirFunnel = opts?.incluirFunnel !== false // por defecto sí
   const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas', ...(agrupado? ['Agente']: []) ]
   const body = prospectos.map(p=> { const ep = p as ExtendedProspecto; return [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80), ...(agrupado? [agentesMap[ep.agente_id ?? -1] || '']: []) ] })
@@ -135,8 +146,8 @@ export async function exportProspectosPDF(
         doc.setFillColor(7,46,64); doc.rect(baseX, pxY, barWTotal*pctVal, barH, 'F')
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
-      drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
-      drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
+  drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
+  drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
       y += 26
       // Funnel
       if(incluirFunnel){
@@ -236,9 +247,9 @@ export async function exportProspectosPDF(
         doc.setFillColor(7,46,64); doc.rect(baseX, pxY, barWTotal*pctVal, barH, 'F')
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
-      drawProgress('Meta prospectos', resumen.total, metaProspectos, y)
+  drawProgress('Meta prospectos', resumen.total, metaProspectos, y)
       y += 10
-      drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, y)
+  drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, y)
       y += 14
       if(incluirFunnel){
         const pendiente = resumen.por_estado.pendiente||0
@@ -272,7 +283,18 @@ export async function exportProspectosPDF(
   // Footer with pagination
   const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()
   for(let i=1;i<=pageCount;i++){
-    doc.setPage(i); doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292)
+    doc.setPage(i)
+    // Redibujar header (para páginas >1 ya estaba el contenido, sobreponemos barra)
+    const ySnapshot = 0
+    doc.setFillColor(255,255,255); doc.rect(0,ySnapshot,210,22,'F') // limpiar área
+    // reutilizamos mismo header
+  // Redibujamos manualmente header (drawHeader en closure)
+    doc.setFillColor(7,46,64); doc.rect(0,0,210,22,'F')
+    if(logo){ try { doc.addImage(logo,'PNG',10,4,34,14) } catch {/* ignore */} }
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(titulo, logo?50:12,11)
+    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.text('Generado (CDMX): '+ generadoEn, logo?50:12,17); doc.setTextColor(0,0,0)
+    // Footer
+    doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292)
   }
   doc.save('prospectos.pdf')
 }
