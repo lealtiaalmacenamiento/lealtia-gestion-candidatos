@@ -29,12 +29,11 @@ export default function ProspectosPage() {
   const [horasOcupadas,setHorasOcupadas]=useState<Record<string,string[]>>({}) // fecha -> ['08','09']
   const [citaDrafts,setCitaDrafts]=useState<Record<number,{fecha?:string; hora?:string}>>({})
 
-  const hoy = new Date()
   const isPastDateHour = (fecha:string, hour:string)=>{
-    // fecha yyyy-mm-dd en horario local
+    const now = new Date()
     const [y,m,d] = fecha.split('-').map(Number)
-    const dt = new Date(y, m-1, d, Number(hour), 0, 0)
-    return dt.getTime() < hoy.getTime()
+    const dt = new Date(y, m-1, d, Number(hour), 0, 0, 0)
+    return dt.getTime() < now.getTime()-60000 // margen 1 min
   }
   const precargarHoras = async(fecha:string)=>{
     // Reutiliza lista actual filtrando por la fecha para evitar llamada pesada

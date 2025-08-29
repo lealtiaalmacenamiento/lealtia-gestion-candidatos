@@ -223,9 +223,11 @@ export default function PlanificacionPage(){
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
                   const color = blk? blk.activity==='CITAS'? (blk.origin==='auto'? 'bg-success bg-opacity-75 text-white':'bg-success text-white'): blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark':''
                   const label = blk? (blk.activity==='CITAS'? (blk.prospecto_nombre? `Cita ${blk.prospecto_nombre}`:'Cita'): blk.activity==='PROSPECCION'? 'Prospecto':'SMNYL') : ''
-                  // Bloqueo pasado
-                  const base=semanaDesdeNumero(anio, semana as number).inicio; const cellDate=new Date(base); cellDate.setUTCDate(base.getUTCDate()+day); cellDate.setHours(Number(h),0,0,0)
-                  const isPast = cellDate.getTime() < Date.now() - 60000 // margen 1m
+                  const base=semanaDesdeNumero(anio, semana as number).inicio
+                  // Construir fecha local evitando mezcla UTC/local
+                  const cellDate = new Date(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()+day, Number(h), 0, 0, 0)
+                  const now = new Date()
+                  const isPast = cellDate.getTime() < now.getTime() - 60000
                   const disabledCls = isPast ? ' opacity-50 position-relative' : ''
                   const blockClick = isPast ? undefined : ()=>openModal(day,h,blk)
                   return <td key={day} style={{cursor: isPast? 'not-allowed':'pointer', fontSize:'0.7rem'}} onClick={blockClick} className={color+disabledCls} title={isPast? 'Pasado' : label}>{label}{isPast && !label && <span style={{fontSize:'0.55rem'}}>—</span>}</td>
@@ -281,8 +283,8 @@ function BloqueEditor({ modal, semanaBase, prospectos, onSave, onDelete }: { mod
   const isCita = tipo==='CITAS'
   const guardar=()=>{
     if(!tipo){ onSave(null); return }
-  // Bloquear guardar en pasado
-  const target = new Date(semanaBase); target.setUTCDate(semanaBase.getUTCDate()+modal.day); target.setHours(Number(modal.hour),0,0,0)
+  // Bloquear guardar en pasado (recalcular con lógica local consistente)
+  const target = new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour), 0,0,0)
   if(target.getTime() < Date.now()-60000){ alert('No se puede editar un bloque en el pasado'); return }
   if(!isCita && !notas.trim()) return alert('Notas obligatorias para este tipo')
   if(isCita && !prospectoId && !notas.trim()) return alert('Notas obligatorias si la cita no está vinculada a un prospecto')
@@ -349,7 +351,7 @@ function BloqueEditor({ modal, semanaBase, prospectos, onSave, onDelete }: { mod
       <div className="mb-0"><strong>Notas:</strong> {detalle.notas || '—'}</div>
     </div>}
     <div className="d-flex gap-2 mt-3">
-  <button className="btn btn-primary btn-sm" onClick={guardar} disabled={(()=>{ const t=new Date(semanaBase); t.setUTCDate(semanaBase.getUTCDate()+modal.day); t.setHours(Number(modal.hour),0,0,0); return t.getTime()<Date.now()-60000 })()}>Guardar</button>
+  <button className="btn btn-primary btn-sm" onClick={guardar} disabled={(()=>{ const t=new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour),0,0,0); return t.getTime()<Date.now()-60000 })()}>Guardar</button>
       <button className="btn btn-outline-secondary btn-sm" onClick={()=> onSave(null)}>Vaciar</button>
       <button className="btn btn-outline-danger btn-sm ms-auto" onClick={onDelete}>Eliminar</button>
     </div>
