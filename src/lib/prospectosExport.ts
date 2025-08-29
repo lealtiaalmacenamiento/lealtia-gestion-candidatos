@@ -363,7 +363,8 @@ export async function exportProspectosPDF(
           ['SMNYL', String(totalAgg.smnyl)],
           ['Total bloques', String(totalAgg.total)]
         ]
-        const cardW=50, cardH=12; let cx=14; let cy=y
+  // 4 tarjetas en una fila: ajustar ancho para no exceder 210mm (14 + 4*W + 3*gap <= 210)
+  const cardW=44, cardH=12; let cx=14; let cy=y
         doc.setFontSize(8)
         cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
         y = cy + cardH + 6
@@ -386,7 +387,7 @@ export async function exportProspectosPDF(
     const plan = opts.singleAgentPlanning
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
     const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['Citas', String(plan.summary.citas)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
-    const cardW=50, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
+  const cardW=44, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
     cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
     cy += cardH + 6
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
