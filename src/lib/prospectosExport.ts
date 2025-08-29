@@ -352,22 +352,27 @@ export async function exportProspectosPDF(
 
       // Resumen de planificación semanal por agente (si se proporcionó)
       if(opts?.planningSummaries){
-        doc.setFontSize(10); doc.text('Planificación semanal por agente (bloques)',14,y); y+=4
+        const totalAgg = Object.values(opts.planningSummaries).reduce((acc,cur)=>{ acc.prospeccion+=cur.prospeccion; acc.citas+=cur.citas; acc.smnyl+=cur.smnyl; acc.total+=cur.total; return acc },{prospeccion:0,citas:0,smnyl:0,total:0})
+        // Salto de página si poco espacio
+        if(y > 200){ doc.addPage(); drawHeader(); y=30 }
+        doc.setFontSize(10); doc.text('Planificación semanal (resumen y detalle por agente)',14,y); y+=4
+        // Tarjetas resumen total
+        const cardsPlan: Array<[string,string]> = [
+          ['Prospección', String(totalAgg.prospeccion)],
+          ['Citas', String(totalAgg.citas)],
+          ['SMNYL', String(totalAgg.smnyl)],
+          ['Total bloques', String(totalAgg.total)]
+        ]
+        const cardW=50, cardH=12; let cx=14; let cy=y
+        doc.setFontSize(8)
+        cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
+        y = cy + cardH + 6
         doc.setFontSize(7)
         const headPlan = ['Agente','Prospección','Citas','SMNYL','Total']
         // @ts-expect-error autotable
-        doc.autoTable({
-          startY:y,
-          head:[headPlan],
-          body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
-            agentesMap[Number(agId)]||agId,
-            String(sum.prospeccion),
-            String(sum.citas),
-            String(sum.smnyl),
-            String(sum.total)
-          ]),
-          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid'
-        })
+        doc.autoTable({ startY:y, head:[headPlan], body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
+          agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.citas), String(sum.smnyl), String(sum.total)
+        ]), styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid' })
         const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
         y = (withAuto2.lastAutoTable?.finalY || y) + 8
       }
@@ -376,18 +381,12 @@ export async function exportProspectosPDF(
 
   // Sección de planificación para reporte individual de agente
   if(!agrupado && opts?.singleAgentPlanning){
+    if(y > 200){ doc.addPage(); drawHeader(); y=30 }
     let y2 = y
     const plan = opts.singleAgentPlanning
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
-    // Resumen tarjetas
-    const cardsPlan: Array<[string,string]> = [
-      ['Prospección', String(plan.summary.prospeccion)],
-      ['Citas', String(plan.summary.citas)],
-      ['SMNYL', String(plan.summary.smnyl)],
-      ['Total bloques', String(plan.summary.total)]
-    ]
-    const cardW=50, cardH=12; let cx=14; let cy=y2
-    doc.setFontSize(8)
+    const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['Citas', String(plan.summary.citas)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
+    const cardW=50, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
     cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
     cy += cardH + 6
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
