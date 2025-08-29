@@ -131,9 +131,10 @@ export async function exportProspectosPDF(
     doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize)
     doc.text('Generado (CDMX): '+ generadoEn, baseX, dateY)
     doc.setTextColor(0,0,0)
-    return headerHeight
+    const contentStartY = headerHeight + 6 // margen uniforme
+    return { headerHeight, contentStartY }
   }
-  const headerHeight = drawHeader()
+  const { headerHeight, contentStartY } = drawHeader()
   doc.setFontSize(9)
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
@@ -147,7 +148,7 @@ export async function exportProspectosPDF(
   }
   const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas', ...(agrupado? ['Agente']: []) ]
   const body = prospectos.map(p=> { const ep = p as ExtendedProspecto; return [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80), ...(agrupado? [agentesMap[ep.agente_id ?? -1] || '']: []) ] })
-  const tableStartY = headerHeight + 2
+  const tableStartY = contentStartY
   // @ts-expect-error autotable plugin
   doc.autoTable({ startY: tableStartY, head: [head], body, styles:{ fontSize:7, cellPadding:1.5 }, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
     interface DocMaybeAuto { lastAutoTable?: { finalY?: number } }
@@ -171,7 +172,7 @@ export async function exportProspectosPDF(
     doc.setFontSize(8)
     cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10);
       if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-    y = cy + cardH + 8
+  y = cy + cardH + 6
   if(opts?.chartEstados){
       // Simple bar chart for estados
       const chartY = y + 4
@@ -313,7 +314,7 @@ export async function exportProspectosPDF(
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
         doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
       })
-      y = baseY + 14
+  y = baseY + 12
       // Progresos globales
       const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
         const pctVal = meta? Math.min(1, val/meta): 0
@@ -370,7 +371,7 @@ export async function exportProspectosPDF(
           styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid'
         })
         const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-        y = (withAuto.lastAutoTable?.finalY || y) + 8
+  y = (withAuto.lastAutoTable?.finalY || y) + 6
       }
 
       // Resumen de planificación semanal por agente (si se proporcionó)
@@ -398,7 +399,7 @@ export async function exportProspectosPDF(
           agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.citas), String(sum.smnyl), String(sum.total)
         ]), styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid' })
         const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
-        y = (withAuto2.lastAutoTable?.finalY || y) + 8
+  y = (withAuto2.lastAutoTable?.finalY || y) + 6
       }
     }
   }
@@ -426,7 +427,7 @@ export async function exportProspectosPDF(
       // @ts-expect-error autotable
       doc.autoTable({ startY: cy, head:[headPlan], body: bodyPlan, styles:{fontSize:7, cellPadding:1}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid' })
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-      y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
+  y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
       y = y2
     }
   }
