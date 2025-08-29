@@ -59,23 +59,26 @@ export async function exportProspectosPDF(
   const jsPDF = await loadJSPDF(); await loadAutoTable()
   const doc = new jsPDF()
   let logo = await fetchLogoDataUrl()
+  let logoW = 0, logoH = 0
   if(logo){
     try {
       const img = new Image(); img.src = logo
       await new Promise(res=> { img.onload = res })
-      const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height
+      const naturalW = img.width || 1
+      const naturalH = img.height || 1
+      const maxW = 42, maxH = 16 // área disponible en header
+      const scale = Math.min(maxW / naturalW, maxH / naturalH, 1)
+      logoW = Math.round(naturalW * scale)
+      logoH = Math.round(naturalH * scale)
+      const canvas = document.createElement('canvas'); canvas.width = naturalW; canvas.height = naturalH
       const ctx = canvas.getContext('2d')
       if(ctx){
         ctx.drawImage(img,0,0)
         const data = ctx.getImageData(0,0,canvas.width,canvas.height)
-        // Calcular brillo promedio
         let sum=0, count=0
-        for(let i=0;i<data.data.length;i+=40){ // muestreo cada 10 pix (4*10)
-          const r=data.data[i], g=data.data[i+1], b=data.data[i+2], a=data.data[i+3]
-          if(a>10){ sum += (0.299*r + 0.587*g + 0.114*b); count++ }
-        }
+        for(let i=0;i<data.data.length;i+=40){ const r=data.data[i], g=data.data[i+1], b=data.data[i+2], a=data.data[i+3]; if(a>10){ sum += (0.299*r + 0.587*g + 0.114*b); count++ } }
         const avg = count? sum/count : 255
-        const needWhite = opts?.forceLogoBlanco || avg < 120 // si es oscuro lo volvemos blanco
+        const needWhite = opts?.forceLogoBlanco || avg < 120
         if(needWhite){
           for(let i=0;i<data.data.length;i+=4){ if(data.data[i+3] > 10){ data.data[i]=255; data.data[i+1]=255; data.data[i+2]=255 } }
           ctx.putImageData(data,0,0)
@@ -88,8 +91,8 @@ export async function exportProspectosPDF(
   const drawHeader = ()=>{
     doc.setFillColor(7,46,64)
     doc.rect(0,0,210,22,'F')
-    if(logo){
-      try { doc.addImage(logo,'PNG',10,4,34,14) } catch {/*ignore*/}
+    if(logo && logoW && logoH){
+      try { doc.addImage(logo,'PNG',10,(22-logoH)/2,logoW,logoH) } catch {/*ignore*/}
     } else {
       // Fallback texto si no hay logo
       doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14)
@@ -327,7 +330,7 @@ export async function exportProspectosPDF(
     // reutilizamos mismo header
   // Redibujamos manualmente header (drawHeader en closure)
     doc.setFillColor(7,46,64); doc.rect(0,0,210,22,'F')
-  if(logo){ try { doc.addImage(logo,'PNG',10,4,34,14) } catch {/* ignore */} }
+  if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(22-logoH)/2,logoW,logoH) } catch {/* ignore */} }
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(titulo, logo?50:12,11)
     doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.text('Generado (CDMX): '+ generadoEn, logo?50:12,17); doc.setTextColor(0,0,0)
     // Footer
