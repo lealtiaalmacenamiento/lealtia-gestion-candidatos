@@ -135,10 +135,10 @@ export async function exportProspectosPDF(
   if(!agrupado){
     // Summary cards (2 columns)
     const cards: Array<[string,string]> = [
-      ['Total', String(resumen.total)],
+  ['Prospectos totales', String(resumen.total)],
       ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
       ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
-      ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
+  ['Con cita agendada', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
       ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
       ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
     ]
