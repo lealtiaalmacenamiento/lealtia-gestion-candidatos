@@ -8,6 +8,7 @@ const MX_TZ='America/Mexico_City'
 function formatFechaCita(iso?:string|null){
   if(!iso) return ''
   try {
+    // Asegurar que se interprete como UTC (Date ya lo hace si termina en Z) y luego formatear en CDMX sin segundos
     const d=new Date(iso)
     const fecha = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, day:'2-digit', month:'2-digit'}).format(d)
     const hora = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', minute:'2-digit', hour12:false}).format(d)

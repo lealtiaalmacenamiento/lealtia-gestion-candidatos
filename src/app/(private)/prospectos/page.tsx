@@ -83,10 +83,19 @@ export default function ProspectosPage() {
 
   useEffect(()=> { fetchFase2Metas().then(m=> setMetaProspectos(m.metaProspectos)) },[])
 
+  // Timezone helpers (CDMX). Desde 2022 sin DST: offset fijo -06.
+  const MX_TZ = 'America/Mexico_City'
+  const MX_UTC_OFFSET = 6 // UTC = local + 6 (cuando local es CDMX hora estándar)
+  const buildUTCFromMX = (fecha:string,hora:string)=>{ // fecha YYYY-MM-DD, hora HH
+    const [y,m,d] = fecha.split('-').map(Number)
+    const h = Number(hora)
+    return new Date(Date.UTC(y, m-1, d, h + MX_UTC_OFFSET, 0, 0)).toISOString()
+  }
+  const formatMXDate = (iso:string)=>{ try { return new Intl.DateTimeFormat('en-CA',{timeZone:MX_TZ, year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date(iso)) } catch { return '' } }
+  const formatMXHour = (iso:string)=>{ try { return new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', hour12:false}).format(new Date(iso)) } catch { return '' } }
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
     if(form.fecha_cita_fecha && form.fecha_cita_hora){
-      const combo = `${form.fecha_cita_fecha}T${form.fecha_cita_hora}:00`
-      body.fecha_cita = new Date(combo).toISOString()
+      body.fecha_cita = buildUTCFromMX(form.fecha_cita_fecha, form.fecha_cita_hora)
     }
     const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:'',fecha_cita_fecha:'',fecha_cita_hora:''}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
@@ -100,7 +109,11 @@ export default function ProspectosPage() {
       const toSend:Record<string,unknown>={...patch}
       if(patch.fecha_cita){
         const fc=String(patch.fecha_cita)
-        if(/^\d{4}-\d{2}-\d{2}T\d{2}:00$/.test(fc)) toSend.fecha_cita=new Date(fc).toISOString()
+        if(/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00$/.test(fc)){
+          const [fecha, hFull] = fc.split('T')
+          const hora = hFull.slice(0,2)
+          toSend.fecha_cita = buildUTCFromMX(fecha, hora)
+        }
       }
   fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(async r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); setToast({msg:'Actualizado', type:'success'}) } else { try { const j=await r.json(); setToast({msg:j.error||'Error', type:'error'}) } catch { setToast({msg:'Error', type:'error'}) } } })
     },300)
@@ -182,10 +195,10 @@ export default function ProspectosPage() {
               </select>
             </td>
             <td style={{minWidth:170}}>
-              {(()=>{ const dIso=p.fecha_cita? new Date(p.fecha_cita): null; const pad=(n:number)=>String(n).padStart(2,'0');
+              {(()=>{ const pad=(n:number)=>String(n).padStart(2,'0');
                 const draft = citaDrafts[p.id] || {}
-                const dateVal = dIso? `${dIso.getFullYear()}-${pad(dIso.getMonth()+1)}-${pad(dIso.getDate())}`: (draft.fecha||'')
-                const hourVal = dIso? pad(dIso.getHours()): (draft.hora||'')
+                const dateVal = p.fecha_cita? formatMXDate(p.fecha_cita): (draft.fecha||'')
+                const hourVal = p.fecha_cita? formatMXHour(p.fecha_cita): (draft.hora||'')
                 const setDraft=(partial: {fecha?:string; hora?:string})=> setCitaDrafts(prev=> ({...prev, [p.id]: {...prev[p.id], ...partial}}))
                 return <div className="d-flex gap-1 flex-column">
                   <div className="d-flex gap-1">
@@ -197,7 +210,7 @@ export default function ProspectosPage() {
                       {Array.from({length:24},(_,i)=> i).map(h=> <option key={h} value={pad(h)}>{pad(h)}:00</option>)}
                     </select>
                   </div>
-                  {p.fecha_cita && <div className="small text-muted">{new Date(p.fecha_cita).toLocaleString('es-MX',{weekday:'long', hour:'2-digit'})}</div>}
+                  {p.fecha_cita && <div className="small text-muted">{(()=>{ try { return new Intl.DateTimeFormat('es-MX',{ timeZone: MX_TZ, weekday:'long', hour:'2-digit', hour12:false }).format(new Date(p.fecha_cita)) } catch { return '' } })()}</div>}
                 </div> })()}
             </td>
             <td><button onClick={()=>eliminar(p.id)} className="btn btn-outline-danger btn-sm">×</button></td>

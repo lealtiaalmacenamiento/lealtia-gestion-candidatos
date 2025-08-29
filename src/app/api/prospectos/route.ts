@@ -69,16 +69,23 @@ export async function POST(req: Request) {
   if (estadoRaw && ['pendiente','seguimiento','con_cita','descartado'].includes(estadoRaw)) estado = estadoRaw as ProspectoEstado
 
   let fecha_cita: string | undefined = body.fecha_cita
-  // Aceptar 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm'
+  // Normalización: el frontend ahora envía siempre ISO UTC cuando hay fecha+hora.
+  // Permitimos también YYYY-MM-DD (se tratará como 00:00 MX)
   if (fecha_cita) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(fecha_cita)) {
-      // fecha sola -> medianoche local convertida a UTC
-      fecha_cita = new Date(fecha_cita+'T00:00').toISOString()
+      // Interpretar fecha en MX 00:00 => convertir a UTC sumando 6h
+      const [y,m,d] = fecha_cita.split('-').map(Number)
+      const utc = new Date(Date.UTC(y, m-1, d, 6, 0, 0))
+      fecha_cita = utc.toISOString()
     } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(fecha_cita)) {
-      // ya viene en ISO UTC (desde frontend convertido) con o sin milisegundos
+      // ya es ISO UTC -> usar tal cual
     } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fecha_cita)) {
-      // (fallback) datetime-local crudo (raro ahora) -> convertir
-      fecha_cita = new Date(fecha_cita).toISOString()
+      // asume hora en MX sin Z => parse y sumar offset 6h a UTC
+      const [fecha, hm] = fecha_cita.split('T')
+      const [y,m,d] = fecha.split('-').map(Number)
+      const h = Number(hm.slice(0,2))
+      const utc = new Date(Date.UTC(y,m-1,d,h+6,0,0))
+      fecha_cita = utc.toISOString()
     } else {
       fecha_cita = undefined
     }

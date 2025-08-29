@@ -28,9 +28,17 @@ export async function PATCH(req: Request) {
   if (body.fecha_cita !== undefined) {
     const fc = String(body.fecha_cita)
     if (!fc) fields.fecha_cita = null
-    else if (/^\d{4}-\d{2}-\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc + 'T00:00').toISOString()
-  else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(fc)) fields.fecha_cita = fc // ya UTC (con o sin ms)
-    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) fields.fecha_cita = new Date(fc).toISOString()
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(fc)) {
+      const [y,m,d] = fc.split('-').map(Number)
+      fields.fecha_cita = new Date(Date.UTC(y,m-1,d,6,0,0)).toISOString()
+    }
+    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(fc)) fields.fecha_cita = fc
+    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fc)) {
+      const [fecha, hm] = fc.split('T')
+      const [y,m,d] = fecha.split('-').map(Number)
+      const h = Number(hm.slice(0,2))
+      fields.fecha_cita = new Date(Date.UTC(y,m-1,d,h+6,0,0)).toISOString()
+    }
     else fields.fecha_cita = null
   }
   if (Object.keys(fields).length === 0) return NextResponse.json({ error: 'Sin cambios' }, { status: 400 })
