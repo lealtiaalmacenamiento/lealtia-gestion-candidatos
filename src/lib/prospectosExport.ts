@@ -147,15 +147,17 @@ export async function exportProspectosPDF(
     metaProspectos = metaProspectos * distinctAgentsCount
     metaCitas = metaCitas * distinctAgentsCount
   }
-  const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas', ...(agrupado? ['Agente']: []) ]
-  const body = prospectos.map(p=> { const ep = p as ExtendedProspecto; return [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80), ...(agrupado? [agentesMap[ep.agente_id ?? -1] || '']: []) ] })
-  const tableStartY = contentStartY
-  // @ts-expect-error autotable plugin
-  doc.autoTable({ startY: tableStartY, head: [head], body, styles:{ fontSize:7, cellPadding:1.5 }, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
+  let y = contentStartY
+  if(!agrupado){
+    const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas' ]
+    const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80) ])
+    const tableStartY = contentStartY
+    // @ts-expect-error autotable plugin
+    doc.autoTable({ startY: tableStartY, head: [head], body, styles:{ fontSize:7, cellPadding:1.5 }, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
     interface DocMaybeAuto { lastAutoTable?: { finalY?: number } }
     const docWith = doc as unknown as DocMaybeAuto
-  let y = docWith.lastAutoTable?.finalY || tableStartY
-  y += GAP
+    y = (docWith.lastAutoTable?.finalY || tableStartY) + GAP
+  }
   doc.setFontSize(10)
   doc.setFont('helvetica','bold'); doc.text('Resumen',14,y); doc.setFont('helvetica','normal')
   y += 4
@@ -257,6 +259,9 @@ export async function exportProspectosPDF(
   y = (withAuto.lastAutoTable?.finalY || y) + GAP
     }
   } else {
+    // Reporte agrupado: iniciar con tarjetas de planificación si existen planningSummaries, si no después tabla por agente
+    // Inserta un pequeño offset si directo tras header
+    y += 2
     const porAgente: Record<string,ResumenAgente> = {}
     for(const p of prospectos){
       const ep = p as ExtendedProspecto
