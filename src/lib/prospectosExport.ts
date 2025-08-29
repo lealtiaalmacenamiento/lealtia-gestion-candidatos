@@ -56,6 +56,7 @@ export async function exportProspectosPDF(
   extendedMetrics?: ExtendedMetrics
   prevWeekDelta?: PreviousWeekDelta
   perAgentExtended?: Record<number,ExtendedMetrics>
+  filename?: string
   }
 ){
   if(!prospectos.length) return
@@ -220,6 +221,19 @@ export async function exportProspectosPDF(
         y+=2; doc.setFont('helvetica','bold'); doc.text('En riesgo (seguimiento sin cita):',14,y); y+=4; doc.setFont('helvetica','normal')
         em.riesgoSeguimientoSinCita.forEach(rg=> { doc.text(`${rg.nombre} (${rg.dias}d)`,14,y); y+=4 })
       }
+      // Tabla compacta de métricas clave
+      const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana']
+      const row = [
+        (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
+        (em.conversionSeguimientoCita*100).toFixed(1)+'%',
+        (em.ratioDescartado*100).toFixed(1)+'%',
+        em.promedioDiasPrimeraCita!=null? em.promedioDiasPrimeraCita.toFixed(1):'-',
+        em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
+      ]
+      // @ts-expect-error autotable
+      doc.autoTable({ startY: y+2, head:[header], body:[row], styles:{fontSize:7, cellPadding:1}, headStyles:{fillColor:[7,46,64]}, theme:'grid' })
+      const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
+      y = (withAuto.lastAutoTable?.finalY || y) + 6
     }
   } else {
     const porAgente: Record<string,ResumenAgente> = {}
@@ -239,15 +253,7 @@ export async function exportProspectosPDF(
   if(opts?.chartEstados){
       const docWith2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
       y = (docWith2.lastAutoTable?.finalY || y) + 8
-      doc.setFontSize(10); doc.text('Resumen Global',14,y); y+=4
-      const lines = [
-        `Total: ${resumen.total}`,
-        `Pendiente: ${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`,
-        `Seguimiento: ${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`,
-        `Con cita: ${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`,
-        `Descartado: ${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`
-      ]
-      lines.forEach(l=> { doc.text(l,14,y); y+=4 })
+      // Removido bloque listado "Resumen Global" para usar tarjetas unificadas
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
         ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
@@ -295,16 +301,15 @@ export async function exportProspectosPDF(
         ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
         ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
         ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
-        ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
-        ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
-      ]
+        ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`]
+      ] // Omitimos Cumplimiento 30 en vista global agrupada
   const cx=110; let cy= y - 60 // posicionar a la derecha del chart si cabe, sino bajar
       if(cy < 40) cy = y
       const cardW = 80; const cardH=12
       doc.setFontSize(8)
   cards.forEach((c)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); cy += cardH+4 })
       y = Math.max(y, cy) + 4
-      // Métricas por agente agrupado
+  // Métricas por agente agrupado
       if(opts?.perAgentExtended){
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
@@ -347,5 +352,7 @@ export async function exportProspectosPDF(
     // Footer
     doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292)
   }
-  doc.save('prospectos.pdf')
+  // Nombre de archivo dinámico
+  const desired = opts?.filename || titulo.replace(/\s+/g,'_').toLowerCase()+'.pdf'
+  doc.save(desired)
 }
