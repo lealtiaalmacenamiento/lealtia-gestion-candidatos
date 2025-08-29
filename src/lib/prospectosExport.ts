@@ -18,7 +18,7 @@ async function fetchLogoDataUrl(): Promise<string|undefined>{
   // Intenta URL de entorno; fallback a varias rutas en /public
   const candidates: (string|undefined)[] = []
   if(typeof process !== 'undefined') candidates.push(process.env?.NEXT_PUBLIC_MAIL_LOGO_URL, process.env?.MAIL_LOGO_URL)
-  candidates.push('/logo-blanco.png','/logo-blanco.svg','/logo_white.png','/logo_white.svg','/file.svg','/logo.png','/logo.svg')
+  candidates.push('/Logo%20lealtia%20rueda%20blanca.png','/Logo%20lealtia%20rueda%20blanca.svg','/Logo%20lealtia%20rueda%20blanca.webp','/logo-blanco.png','/logo-blanco.svg','/logo_white.png','/logo_white.svg','/Logo%20lealtia.png','/file.svg','/logo.png','/logo.svg')
   for(const url of candidates.filter(Boolean) as string[]){
     try {
       const resp = await fetch(url)

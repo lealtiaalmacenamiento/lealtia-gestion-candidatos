@@ -16,6 +16,10 @@ export default function RootLayout({ children }: RootLayoutProps) {
   const bannerLabel = isDevelop ? 'DEVELOP' : env === 'preview' ? `PREVIEW:${process.env.VERCEL_GIT_COMMIT_REF}` : 'LOCAL'
   return (
     <html lang="es" data-scroll-behavior="smooth" suppressHydrationWarning>
+      <head>
+        {/* Favicon usando logo rueda blanca */}
+        <link rel="icon" type="image/png" href="/Logo%20lealtia%20rueda%20blanca.png" />
+      </head>
       <body>
         {showBanner && (
           <div style={{
