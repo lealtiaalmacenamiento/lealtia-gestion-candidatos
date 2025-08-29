@@ -113,6 +113,19 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const { data, error } = await supabase.from('candidatos').update(body).eq('id_candidato', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Sincronizar nombre del usuario agente si existe y se cambió el nombre del candidato original usado para crearlo
+  try {
+    const nuevoNombre = (body as any).candidato
+    const emailAgente = (existenteData as any).email_agente || (body as any).email_agente
+    if (emailAgente && nuevoNombre && nuevoNombre !== (existenteData as any).candidato) {
+      // Actualizar nombre en usuarios sólo si el usuario agente existe
+      const { data: userAg, error: userErr } = await supabase.from('usuarios').select('id,nombre').eq('email', emailAgente).maybeSingle()
+      if(!userErr && userAg){
+        await supabase.from('usuarios').update({ nombre: nuevoNombre }).eq('id', userAg.id)
+      }
+    }
+  } catch {/* ignore sync errors */}
+
   await logAccion('edicion_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: Number(id), snapshot: existenteData })
 
   // Adjuntar meta de agente si aplica sin romper clientes existentes
