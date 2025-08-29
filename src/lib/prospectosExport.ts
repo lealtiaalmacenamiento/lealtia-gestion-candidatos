@@ -15,10 +15,10 @@ function nowMX(){
   return `${fecha} ${hora}`
 }
 async function fetchLogoDataUrl(): Promise<string|undefined>{
-  // Intenta URL de entorno; fallback a /file.svg si existe.
+  // Intenta URL de entorno; fallback a varias rutas en /public
   const candidates: (string|undefined)[] = []
   if(typeof process !== 'undefined') candidates.push(process.env?.NEXT_PUBLIC_MAIL_LOGO_URL, process.env?.MAIL_LOGO_URL)
-  candidates.push('/file.svg','/logo.png','/logo.svg')
+  candidates.push('/logo-blanco.png','/logo-blanco.svg','/logo_white.png','/logo_white.svg','/file.svg','/logo.png','/logo.svg')
   for(const url of candidates.filter(Boolean) as string[]){
     try {
       const resp = await fetch(url)
@@ -53,9 +53,8 @@ export async function exportProspectosPDF(
   const jsPDF = await loadJSPDF(); await loadAutoTable()
   const doc = new jsPDF()
   let logo = await fetchLogoDataUrl()
-  if(logo && opts?.forceLogoBlanco){
+  if(logo){
     try {
-      // Recolorear a blanco: para cada píxel con alpha > 0, poner RGB = 255
       const img = new Image(); img.src = logo
       await new Promise(res=> { img.onload = res })
       const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height
@@ -63,17 +62,32 @@ export async function exportProspectosPDF(
       if(ctx){
         ctx.drawImage(img,0,0)
         const data = ctx.getImageData(0,0,canvas.width,canvas.height)
-        for(let i=0;i<data.data.length;i+=4){ if(data.data[i+3] > 10){ data.data[i]=255; data.data[i+1]=255; data.data[i+2]=255 } }
-        ctx.putImageData(data,0,0)
-        logo = canvas.toDataURL('image/png')
+        // Calcular brillo promedio
+        let sum=0, count=0
+        for(let i=0;i<data.data.length;i+=40){ // muestreo cada 10 pix (4*10)
+          const r=data.data[i], g=data.data[i+1], b=data.data[i+2], a=data.data[i+3]
+          if(a>10){ sum += (0.299*r + 0.587*g + 0.114*b); count++ }
+        }
+        const avg = count? sum/count : 255
+        const needWhite = opts?.forceLogoBlanco || avg < 120 // si es oscuro lo volvemos blanco
+        if(needWhite){
+          for(let i=0;i<data.data.length;i+=4){ if(data.data[i+3] > 10){ data.data[i]=255; data.data[i+1]=255; data.data[i+2]=255 } }
+          ctx.putImageData(data,0,0)
+          logo = canvas.toDataURL('image/png')
+        }
       }
-    } catch { /* ignorar recolor errors */ }
+    } catch { /* ignorar problemas de canvas */ }
   }
   const generadoEn = nowMX()
   const drawHeader = ()=>{
     doc.setFillColor(7,46,64)
     doc.rect(0,0,210,22,'F')
-  if(logo){ try { doc.addImage(logo,'PNG',10,4,34,14) } catch {/*ignore*/} }
+    if(logo){
+      try { doc.addImage(logo,'PNG',10,4,34,14) } catch {/*ignore*/}
+    } else {
+      // Fallback texto si no hay logo
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14)
+    }
     doc.setTextColor(255,255,255)
     doc.setFont('helvetica','bold'); doc.setFontSize(13)
     doc.text(titulo, logo? 50:12, 11)
