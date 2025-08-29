@@ -58,6 +58,8 @@ export async function exportProspectosPDF(
   perAgentExtended?: Record<number,ExtendedMetrics>
   filename?: string
   perAgentDeltas?: Record<number,{ totalDelta:number; citasDelta:number }>
+  planningSummaries?: Record<number,{ prospeccion:number; citas:number; smnyl:number; total:number }>
+  singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; citas:number; smnyl:number; total:number } }
   }
 ){
   if(!prospectos.length) return
@@ -347,6 +349,62 @@ export async function exportProspectosPDF(
         const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
         y = (withAuto.lastAutoTable?.finalY || y) + 8
       }
+
+      // Resumen de planificación semanal por agente (si se proporcionó)
+      if(opts?.planningSummaries){
+        doc.setFontSize(10); doc.text('Planificación semanal por agente (bloques)',14,y); y+=4
+        doc.setFontSize(7)
+        const headPlan = ['Agente','Prospección','Citas','SMNYL','Total']
+        // @ts-expect-error autotable
+        doc.autoTable({
+          startY:y,
+          head:[headPlan],
+          body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
+            agentesMap[Number(agId)]||agId,
+            String(sum.prospeccion),
+            String(sum.citas),
+            String(sum.smnyl),
+            String(sum.total)
+          ]),
+          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid'
+        })
+        const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
+        y = (withAuto2.lastAutoTable?.finalY || y) + 8
+      }
+    }
+  }
+
+  // Sección de planificación para reporte individual de agente
+  if(!agrupado && opts?.singleAgentPlanning){
+    let y2 = y
+    const plan = opts.singleAgentPlanning
+    doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
+    // Resumen tarjetas
+    const cardsPlan: Array<[string,string]> = [
+      ['Prospección', String(plan.summary.prospeccion)],
+      ['Citas', String(plan.summary.citas)],
+      ['SMNYL', String(plan.summary.smnyl)],
+      ['Total bloques', String(plan.summary.total)]
+    ]
+    const cardW=50, cardH=12; let cx=14; let cy=y2
+    doc.setFontSize(8)
+    cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
+    cy += cardH + 6
+    const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+    const blocksSorted = [...plan.bloques].sort((a,b)=> a.day===b.day? a.hour.localeCompare(b.hour): a.day-b.day)
+    if(blocksSorted.length){
+      const headPlan = ['Día','Hora','Actividad','Detalle']
+      const bodyPlan = blocksSorted.map(b=> [
+        DAY_NAMES[b.day]||String(b.day),
+        b.hour+':00',
+        b.activity==='PROSPECCION'? 'Prospección': (b.activity==='CITAS'? 'Citas': b.activity),
+        (b.prospecto_nombre? b.prospecto_nombre: '') + (b.notas? (b.prospecto_nombre? ' - ':'')+ b.notas: '')
+      ])
+      // @ts-expect-error autotable
+      doc.autoTable({ startY: cy, head:[headPlan], body: bodyPlan, styles:{fontSize:7, cellPadding:1}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid' })
+      const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
+      y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
+      y = y2
     }
   }
   // Footer with pagination

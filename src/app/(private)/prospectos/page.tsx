@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { BloquePlanificacion } from '@/types'
 import Notification from '@/components/ui/Notification'
 import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
@@ -171,6 +172,24 @@ export default function ProspectosPage() {
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
+    // Obtener planificación por agente (en paralelo)
+    let planningSummaries: Record<number,{ prospeccion:number; citas:number; smnyl:number; total:number }> | undefined
+    try {
+      const weekNum = semana==='ALL'? undefined : (semana as number)
+      if(weekNum){
+        const responses = await Promise.all(Object.keys(grouped).map(async id=>{
+          const params = new URLSearchParams({ agente_id:String(id), semana:String(weekNum), anio:String(anio) })
+          try { const r = await fetch('/api/planificacion?'+params.toString()); if(r.ok) return { id:Number(id), data: await r.json() }; } catch {/*ignore*/}
+          return { id:Number(id), data:null }
+        }))
+        planningSummaries = {}
+        for(const {id,data} of responses){ if(data){
+          const counts = { prospeccion:0, citas:0, smnyl:0 }
+          for(const b of (data.bloques||[])){ if(b.activity==='PROSPECCION') counts.prospeccion++; else if(b.activity==='CITAS') counts.citas++; else if(b.activity==='SMNYL') counts.smnyl++; }
+          planningSummaries[id] = { ...counts, total: counts.prospeccion+counts.citas+counts.smnyl }
+        }}
+      }
+    } catch {/* ignore planning errors */}
     // Calcular deltas reales por agente contra semana anterior
     let perAgentDeltas: Record<number,{ totalDelta:number; citasDelta:number }> | undefined
     if(prevAgg && agg && semana !== 'ALL'){
@@ -196,7 +215,7 @@ export default function ProspectosPage() {
         } catch { /* ignorar errores de delta */ }
       }
     }
-    exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas })
+  exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries })
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
@@ -206,7 +225,21 @@ export default function ProspectosPage() {
       return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 }
     })()
     const extended = computeExtendedMetrics(filtered,{ diaSemanaActual })
-  exportProspectosPDF(filtered, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename })
+    // Planificación single agente
+  let singleAgentPlanning: { bloques:BloquePlanificacion[]; summary:{ prospeccion:number; citas:number; smnyl:number; total:number } } | undefined
+    try {
+      if(agenteId && semana!=='ALL'){
+        const params = new URLSearchParams({ agente_id:String(agenteId), semana:String(semana), anio:String(anio) })
+        const rPlan = await fetch('/api/planificacion?'+params.toString())
+        if(rPlan.ok){
+          const data = await rPlan.json()
+          const counts = { prospeccion:0, citas:0, smnyl:0 }
+          for(const b of (data.bloques||[])){ if(b.activity==='PROSPECCION') counts.prospeccion++; else if(b.activity==='CITAS') counts.citas++; else if(b.activity==='SMNYL') counts.smnyl++; }
+          singleAgentPlanning = { bloques: data.bloques||[], summary: { ...counts, total: counts.prospeccion+counts.citas+counts.smnyl } }
+        }
+      }
+    } catch {/*ignore*/}
+  exportProspectosPDF(filtered, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, metaCitas, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning })
   }
   }}>PDF</button>
     </div>}
