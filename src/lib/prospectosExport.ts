@@ -150,17 +150,25 @@ export async function exportProspectosPDF(
   let y = contentStartY
   if(!agrupado){
     const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas' ]
-    const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,80) ])
+    const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,120) ])
     const tableStartY = contentStartY
     // @ts-expect-error autotable plugin
     doc.autoTable({
       startY: tableStartY,
       head: [head],
       body,
-      styles:{ fontSize:7, cellPadding:1.5 },
+      styles:{ fontSize:7, cellPadding:1.5, overflow:'linebreak' },
       headStyles:{ fillColor:[7,46,64], fontSize:8 },
       alternateRowStyles:{ fillColor:[245,247,248] },
       theme:'grid',
+      // Ajuste de anchos: considerar desplazamiento si se incluye ID
+      columnStyles: (()=>{ const s: Record<number,unknown> = {}; let base=0; if(incluirId) { s[0]={ cellWidth: 12 } ; base=1 }
+        s[base+0] = { cellWidth: 46 } // Nombre
+        s[base+1] = { cellWidth: 28 } // Teléfono
+        s[base+2] = { cellWidth: 24 } // Estado
+        s[base+3] = { cellWidth: 30 } // Fecha Cita
+        s[base+4] = { cellWidth: 60, overflow:'linebreak' } // Notas
+        return s })(),
       margin: { top: headerHeight + 6, left: 14, right: 14 },
       didDrawPage: () => {
         // Redibujar encabezado por página de la tabla
@@ -471,7 +479,8 @@ export async function exportProspectosPDF(
         startY: cy,
         head:[headPlan],
         body: bodyPlan,
-        styles:{fontSize:7, cellPadding:1}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
+        styles:{fontSize:7, cellPadding:1, overflow:'linebreak'}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
+        columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 20 }, 2: { cellWidth: 28 }, 3: { cellWidth: 120, overflow:'linebreak' } },
         margin: { top: headerHeight + 6, left: 14, right: 14 },
         didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
       })

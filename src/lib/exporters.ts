@@ -166,9 +166,10 @@ export async function exportCandidatoPDF(c: Candidato) {
     startY: contentStartY,
     head: [['Campo','Valor']],
     body: rows,
-    styles:{ fontSize:8 },
+    styles:{ fontSize:8, overflow:'linebreak' },
     theme:'grid',
     headStyles:{ fillColor:[7,46,64], fontSize:8 },
+    columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 140, overflow:'linebreak' } },
     margin: { top: headerHeight + 6, left: 14, right: 14 },
     didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
   })
