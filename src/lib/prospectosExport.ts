@@ -159,7 +159,7 @@ export async function exportProspectosPDF(
     y = (docWith.lastAutoTable?.finalY || tableStartY) + GAP
   }
   doc.setFontSize(10)
-  doc.setFont('helvetica','bold'); doc.text('Resumen',14,y); doc.setFont('helvetica','normal')
+  doc.setFont('helvetica','bold'); doc.text(agrupado? 'Resumen por agente':'Resumen',14,y); doc.setFont('helvetica','normal')
   y += 4
   if(!agrupado){
     // Summary cards (2 columns)
@@ -259,9 +259,8 @@ export async function exportProspectosPDF(
   y = (withAuto.lastAutoTable?.finalY || y) + GAP
     }
   } else {
-    // Reporte agrupado: iniciar con tarjetas de planificación si existen planningSummaries, si no después tabla por agente
-    // Inserta un pequeño offset si directo tras header
-    y += 2
+    // Reporte agrupado
+    // Tabla resumen por agente
     const porAgente: Record<string,ResumenAgente> = {}
     for(const p of prospectos){
       const ep = p as ExtendedProspecto
@@ -288,11 +287,15 @@ export async function exportProspectosPDF(
     })
   // @ts-expect-error autotable plugin
   doc.autoTable({ startY:y, head:[head2], body:body2, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, alternateRowStyles:{ fillColor:[245,247,248] }, theme:'grid' })
+    const afterResumenTable = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y
+    y = afterResumenTable + GAP
     // Global charts if requested (agrupado scenario)
-  if(opts?.chartEstados){
-      const docWith2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
-  y = (docWith2.lastAutoTable?.finalY || y) + GAP
-      // Removido bloque listado "Resumen Global" para usar tarjetas unificadas
+    if(opts?.chartEstados){
+      const chartTop = y
+      const baseX = 14
+      const barW = 18
+      const barGap = 6
+      const chartHeight = 42 // altura destino (30 barras + labels + margen)
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
         ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
@@ -300,54 +303,47 @@ export async function exportProspectosPDF(
         ['descartado', resumen.por_estado.descartado||0, '#dc3545']
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
-      const chartY = y + 2
-      const baseX = 14
-      const barW = 18
-      const gap = 6
-      const baseY = chartY + 40
       doc.setFontSize(8)
       dataEntries.forEach((d,i)=>{
-        const [key,val,color]=d
+        const [key,val,color] = d
         const h = (val/maxV)*30
-        const x = baseX + i*(barW+gap)
-        const yBar = baseY - h
-        const hex = color.startsWith('#')? color.substring(1): color
-        const r = parseInt(hex.substring(0,2),16)
-        const g = parseInt(hex.substring(2,4),16)
-        const b = parseInt(hex.substring(4,6),16)
+        const x = baseX + i*(barW+barGap)
+        const yBar = chartTop + 30 - h
+        const hex = color.replace('#','')
+        const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
         doc.setFillColor(r,g,b)
         doc.rect(x,yBar,barW,h,'F')
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
-        doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
+        doc.text(key.replace('_',' '), x+barW/2, chartTop+32, {align:'center'})
       })
-  y = baseY + GAP
-      // Progresos globales
-      const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
-        const pctVal = meta? Math.min(1, val/meta): 0
-        const barWTotal = 80; const barH = 6
-        doc.setFontSize(7); doc.text(`${label}: ${val}/${meta}`, baseX, pxY-1)
-        doc.setDrawColor(200); doc.rect(baseX, pxY, barWTotal, barH)
-        doc.setFillColor(7,46,64); doc.rect(baseX, pxY, barWTotal*pctVal, barH, 'F')
-        doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
+      // Progresos bajo chart
+      const progressTop = chartTop + chartHeight
+      const drawProgress = (label:string, val:number, meta:number, lineY:number)=>{
+        const pctVal = meta? Math.min(1,val/meta):0
+        const totalW=80, h=6
+        doc.setFontSize(7); doc.text(`${label}: ${val}/${meta}`, baseX, lineY-1)
+        doc.setDrawColor(200); doc.rect(baseX, lineY, totalW, h)
+        doc.setFillColor(7,46,64); doc.rect(baseX, lineY, totalW*pctVal, h, 'F')
+        doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+totalW/2, lineY+h-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
-  drawProgress('Meta prospectos', resumen.total, metaProspectos, y)
-      y += 10
-  drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, y)
-      y += 14
-      // Resumen Global en tarjetas (estilo agente)
+      drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
+      drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progressTop+12)
+      const chartBlockBottom = progressTop + 20
+      // Cards a la derecha
       const cards: Array<[string,string]> = [
         ['Total', String(resumen.total)],
         ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
         ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
         ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
         ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`]
-      ] // Omitimos Cumplimiento 30 en vista global agrupada
-  const cx=110; let cy= y - 60 // posicionar a la derecha del chart si cabe, sino bajar
-      if(cy < 40) cy = y
-      const cardW = 80; const cardH=12
+      ]
+      const cardX = 110
+      let cardY = chartTop
+      const cardW = 80, cardH = 12
       doc.setFontSize(8)
-  cards.forEach((c)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); cy += cardH+4 })
-  y = Math.max(y, cy) + GAP
+      cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
+      y = Math.max(chartBlockBottom, cardY) + GAP
+    }
   // Métricas por agente agrupado
       if(opts?.perAgentExtended){
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
@@ -408,8 +404,6 @@ export async function exportProspectosPDF(
   y = (withAuto2.lastAutoTable?.finalY || y) + GAP
       }
     }
-  }
-
   // Sección de planificación para reporte individual de agente
   if(!agrupado && opts?.singleAgentPlanning){
     if(y > 200){ doc.addPage(); drawHeader(); y=30 }
