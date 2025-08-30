@@ -1,5 +1,6 @@
-import type { Candidato } from '@/types'
+import type { Candidato, Prospecto, BloquePlanificacion } from '@/types'
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
+import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 // Lazy dynamic imports para no inflar el bundle inicial
 async function loadXLSX() { return (await import('xlsx')).default }
@@ -158,9 +159,21 @@ export async function exportCandidatoPDF(c: Candidato) {
     fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
     fecha_creacion_ct: c.fecha_creacion_ct
   })
-  push('Proceso', etiquetaProceso(proceso) || '')
+  const procesoLabel = etiquetaProceso(proceso) || ''
+  push('Proceso', procesoLabel)
   push('Fecha creación CT', c.fecha_creacion_ct || '')
   push('Fecha tent. examen', c.fecha_tentativa_de_examen || '')
+  // Información adicional del candidato
+  if (c.email_agente) push('Email agente', c.email_agente)
+  if (typeof c.seg_gmm === 'number') push('Seguro GMM', c.seg_gmm)
+  if (typeof c.seg_vida === 'number') push('Seguro Vida', c.seg_vida)
+  if (c.periodo_para_registro_y_envio_de_documentos) push('Período registro/envío docs', c.periodo_para_registro_y_envio_de_documentos)
+  if (c.capacitacion_cedula_a1) push('Capacitación cédula A1', c.capacitacion_cedula_a1)
+  if (c.periodo_para_ingresar_folio_oficina_virtual) push('Período folio oficina virtual', c.periodo_para_ingresar_folio_oficina_virtual)
+  if (c.periodo_para_playbook) push('Período playbook', c.periodo_para_playbook)
+  if (c.pre_escuela_sesion_unica_de_arranque) push('Pre-escuela sesión arranque', c.pre_escuela_sesion_unica_de_arranque)
+  if (c.fecha_limite_para_presentar_curricula_cdp) push('Fecha límite curricula CDP', c.fecha_limite_para_presentar_curricula_cdp)
+  if (c.inicio_escuela_fundamental) push('Inicio escuela fundamental', c.inicio_escuela_fundamental)
   // @ts-expect-error autoTable inyectada por plugin
   doc.autoTable({
     startY: contentStartY,
@@ -173,6 +186,148 @@ export async function exportCandidatoPDF(c: Candidato) {
     margin: { top: headerHeight + 6, left: 14, right: 14 },
     didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
   })
+
+  // Sección: Resumen prospectos y planificación (si es posible obtener agente y datos)
+  type AutoTableDoc = typeof doc & { lastAutoTable?: { finalY?: number } }
+  const atDoc = doc as AutoTableDoc
+  let lastY: number | undefined = atDoc.lastAutoTable?.finalY || contentStartY
+  try {
+    // Intentar ubicar agente por email
+  const emailAgente: string | undefined = c.email_agente || undefined
+    let agenteId: number | undefined = undefined
+    if (emailAgente) {
+      const rAg = await fetch('/api/agentes')
+      if (rAg.ok) {
+        const agentes: Array<{ id:number; email:string; nombre?:string|null }> = await rAg.json()
+        const found = agentes.find(a => a.email?.toLowerCase() === emailAgente.toLowerCase())
+        if (found) agenteId = found.id
+      }
+    }
+    if (agenteId) {
+      const { anio, semana } = obtenerSemanaIso(new Date())
+      const params = new URLSearchParams({ agente_id: String(agenteId), anio: String(anio), semana: String(semana) })
+      // Aggregate resumen
+      const [rAgg, rCitas, rPlan] = await Promise.all([
+        fetch('/api/prospectos/aggregate?' + params.toString()),
+        (()=>{ const p2 = new URLSearchParams(params); p2.set('solo_con_cita','1'); return fetch('/api/prospectos?' + p2.toString()) })(),
+        fetch('/api/planificacion?' + params.toString())
+      ])
+
+      // Construir tablas si hay datos
+      let resumen: { total:number; por_estado: Record<string,number> } | undefined
+      if (rAgg.ok) {
+        const j = await rAgg.json()
+        if (j && typeof j.total === 'number' && j.por_estado) resumen = { total: j.total, por_estado: j.por_estado }
+      }
+      let citas: Prospecto[] = []
+      if (rCitas.ok) {
+        const arr = await rCitas.json()
+        if (Array.isArray(arr)) {
+          citas = (arr as Prospecto[]).filter(p=> p.fecha_cita).sort((a,b)=> String(a.fecha_cita).localeCompare(String(b.fecha_cita))).slice(0,5)
+        }
+      }
+      let plan: { bloques: BloquePlanificacion[]; prima_anual_promedio?: number; porcentaje_comision?: number } | undefined
+      if (rPlan.ok) {
+        const j = await rPlan.json()
+        if (j && Array.isArray(j.bloques)) plan = j
+      }
+
+      // Dibujar bloque de proceso destacado
+      if (procesoLabel) {
+        const badgeY = (lastY || contentStartY) + 6
+        const text = 'Proceso actual: ' + procesoLabel
+        doc.setFont('helvetica','bold'); doc.setFontSize(10)
+        const w = Math.min(190, doc.getTextWidth(text) + 10)
+        doc.setFillColor(230,245,255)
+        doc.setDrawColor(7,46,64)
+        doc.roundedRect(12, badgeY, w, 8, 2, 2, 'FD')
+        doc.setTextColor(7,46,64)
+        doc.text(text, 16, badgeY + 5)
+        doc.setTextColor(0,0,0)
+        lastY = badgeY + 12
+      }
+
+      // Tabla Resumen Prospectos
+      if (resumen) {
+        const body: Array<[string,string]> = [
+          ['Prospectos totales', String(resumen.total)],
+          ['Pendiente', String(resumen.por_estado?.pendiente ?? 0)],
+          ['Seguimiento', String(resumen.por_estado?.seguimiento ?? 0)],
+          ['Con cita', String(resumen.por_estado?.con_cita ?? 0)],
+          ['Descartado', String(resumen.por_estado?.descartado ?? 0)]
+        ]
+        // @ts-expect-error autoTable inyectada por plugin
+        doc.autoTable({
+          startY: (lastY || contentStartY) + 2,
+          head: [['Resumen de prospectos (semana actual)','Valor']],
+          body,
+          styles: { fontSize:8 },
+          theme:'grid',
+          headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
+  lastY = (atDoc.lastAutoTable?.finalY) || lastY
+      }
+
+      // Tabla Próximas citas
+      if (citas.length) {
+        const head = [['Fecha (MX)','Nombre','Estado']]
+        const fmtMX = (iso?: string|null) => {
+          if (!iso) return ''
+          try {
+            const d = new Date(iso)
+            const fecha = new Intl.DateTimeFormat('es-MX',{ timeZone:'America/Mexico_City', day:'2-digit', month:'2-digit' }).format(d)
+            const hora = new Intl.DateTimeFormat('es-MX',{ timeZone:'America/Mexico_City', hour:'2-digit', minute:'2-digit', hour12:false }).format(d)
+            return `${fecha} ${hora}`
+          } catch { return String(iso) }
+        }
+        const body = citas.map(p=> [ fmtMX(p.fecha_cita||null), p.nombre, p.estado ])
+        // @ts-expect-error autoTable inyectada por plugin
+        doc.autoTable({
+          startY: (lastY || contentStartY) + 6,
+          head: [['Próximas citas (semana actual)',' ',' '], head[0]],
+          body,
+          styles: { fontSize:8, overflow:'linebreak' },
+          theme:'grid',
+          headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 100 }, 2: { cellWidth: 40 } },
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
+  lastY = (atDoc.lastAutoTable?.finalY) || lastY
+      }
+
+      // Tabla Planificación (resumen)
+      if (plan && Array.isArray(plan.bloques) && plan.bloques.length) {
+        const counts: Record<'PROSPECCION'|'CITAS'|'SMNYL', number> = { PROSPECCION:0, CITAS:0, SMNYL:0 }
+        for (const b of plan.bloques as BloquePlanificacion[]) {
+          if (b.activity === 'PROSPECCION' || b.activity === 'CITAS' || b.activity === 'SMNYL') counts[b.activity]++
+        }
+        const resumenBody: Array<[string,string]> = [
+          ['Bloques PROSPECCION', String(counts.PROSPECCION)],
+          ['Bloques CITAS', String(counts.CITAS)],
+          ['Bloques SMNYL', String(counts.SMNYL)],
+        ]
+        // @ts-expect-error autoTable
+        doc.autoTable({
+          startY: (lastY || contentStartY) + 6,
+          head: [['Resumen planificación (semana actual)','Valor']],
+          body: resumenBody,
+          styles: { fontSize:8 },
+          theme:'grid',
+          headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
+  lastY = (atDoc.lastAutoTable?.finalY) || lastY
+      }
+    }
+  } catch {
+    // silencioso: si no se puede obtener, omitimos secciones extra
+  }
 
   // Footer de paginación uniforme
   const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()
