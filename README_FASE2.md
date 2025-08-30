@@ -1,5 +1,7 @@
 ## Fase 2 (Prospectos & Planificación)
 
+<!-- noop: trigger Vercel deploy (2025-08-29) -->
+
 Resumen rápido de endpoints y estructuras añadidas.
 
 Tablas:
