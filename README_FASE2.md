@@ -24,7 +24,9 @@ UI:
 
 Export PDF: botón en Prospectos (usa jsPDF + autotable). Nombre prospectos.pdf.
 
+Completado:
+- Selector de agente con listado de nombres (en /prospectos para superusuarios/admin).
+
 Próximos (no implementados todavía):
-- Selector de agente con listado nombres.
 - Realtime (suscripciones) y validaciones frontend adicionales.
 - Mejoras visuales.
