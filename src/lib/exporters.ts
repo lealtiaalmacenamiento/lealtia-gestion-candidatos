@@ -103,7 +103,7 @@ export async function exportCandidatoPDF(c: Candidato) {
     } catch { /* ignore */ }
   }
   const generadoEn = nowMX()
-  const drawHeader = ()=>{
+  const drawHeader = (opts?: { procesoLabel?: string })=>{
     const baseX = logo? 50:12
     const marginRight = 8
     const maxWidth = 210 - baseX - marginRight
@@ -136,18 +136,25 @@ export async function exportCandidatoPDF(c: Candidato) {
     const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize
     doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize)
     doc.text('Generado (CDMX): '+ generadoEn, baseX, dateY)
+    // Proceso actual mostrado en el header, debajo de la fecha
+    if (opts?.procesoLabel) {
+      const procY = dateY + 6
+      doc.setFont('helvetica','bold'); doc.setFontSize(9)
+      const text = 'Proceso actual: ' + opts.procesoLabel
+      const w = Math.min(190, doc.getTextWidth(text) + 8)
+      doc.setFillColor(230,245,255)
+      doc.setDrawColor(7,46,64)
+      doc.roundedRect(baseX - 2, procY - 5, w, 9, 2, 2, 'FD')
+      doc.setTextColor(7,46,64)
+      doc.text(text, baseX + 2, procY + 2)
+      doc.setTextColor(0,0,0)
+      headerHeight = Math.max(headerHeight, procY + 6)
+    }
     doc.setTextColor(0,0,0)
     return { headerHeight, contentStartY: headerHeight + 6 }
   }
 
-  const { headerHeight, contentStartY } = drawHeader()
-  doc.setFontSize(10)
-  const rows: Array<[string,string]> = []
-  const push = (k: string, v: unknown) => rows.push([k, v == null ? '' : String(v)])
-  push('CT', c.ct)
-  push('Candidato', c.candidato)
-  push('Cédula A1', c.mes)
-  push('EFC', c.efc)
+  // Calcular proceso para mostrarlo en el header
   const { proceso } = calcularDerivados({
     periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
     capacitacion_cedula_a1: c.capacitacion_cedula_a1,
@@ -160,31 +167,40 @@ export async function exportCandidatoPDF(c: Candidato) {
     fecha_creacion_ct: c.fecha_creacion_ct
   })
   const procesoLabel = etiquetaProceso(proceso) || ''
-  push('Proceso', procesoLabel)
-  push('Fecha creación CT', c.fecha_creacion_ct || '')
+  const { headerHeight, contentStartY } = drawHeader({ procesoLabel })
+  doc.setFontSize(10)
+  // Tabla Datos de candidato (orden y etiquetas solicitadas)
+  const rows: Array<[string,string]> = []
+  const push = (k: string, v: unknown) => rows.push([k, v == null ? '' : String(v)])
+  push('clave temporal', c.ct)
+  push('Nombre de candidato', c.candidato)
+  push('Email de agente', c.email_agente || '')
+  push('Fecha de creación clave temporal', c.fecha_creacion_ct || '')
+  push('Cédula A1', c.mes)
+  push('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', c.periodo_para_registro_y_envio_de_documentos || '')
+  push('Capacitación A1', c.capacitacion_cedula_a1 || '')
   push('Fecha tent. examen', c.fecha_tentativa_de_examen || '')
-  // Información adicional del candidato
-  if (c.email_agente) push('Email agente', c.email_agente)
+  push('EFC', c.efc)
+  push('Período folio oficina virtual', c.periodo_para_ingresar_folio_oficina_virtual || '')
+  push('Período playbook', c.periodo_para_playbook || '')
+  push('Pre-escuela sesión arranque', c.pre_escuela_sesion_unica_de_arranque || '')
+  push('Fecha límite curricula CDP', c.fecha_limite_para_presentar_curricula_cdp || '')
+  push('Inicio escuela fundamental', c.inicio_escuela_fundamental || '')
   if (typeof c.seg_gmm === 'number') push('Seguro GMM', c.seg_gmm)
   if (typeof c.seg_vida === 'number') push('Seguro Vida', c.seg_vida)
-  if (c.periodo_para_registro_y_envio_de_documentos) push('Período registro/envío docs', c.periodo_para_registro_y_envio_de_documentos)
-  if (c.capacitacion_cedula_a1) push('Capacitación cédula A1', c.capacitacion_cedula_a1)
-  if (c.periodo_para_ingresar_folio_oficina_virtual) push('Período folio oficina virtual', c.periodo_para_ingresar_folio_oficina_virtual)
-  if (c.periodo_para_playbook) push('Período playbook', c.periodo_para_playbook)
-  if (c.pre_escuela_sesion_unica_de_arranque) push('Pre-escuela sesión arranque', c.pre_escuela_sesion_unica_de_arranque)
-  if (c.fecha_limite_para_presentar_curricula_cdp) push('Fecha límite curricula CDP', c.fecha_limite_para_presentar_curricula_cdp)
-  if (c.inicio_escuela_fundamental) push('Inicio escuela fundamental', c.inicio_escuela_fundamental)
+  push('fecha de creacion de candidato', c.fecha_de_creacion || '')
+  push('ultima actualización de candidato', c.ultima_actualizacion || '')
   // @ts-expect-error autoTable inyectada por plugin
   doc.autoTable({
     startY: contentStartY,
-    head: [['Campo','Valor']],
+    head: [['Datos de candidato',' ']],
     body: rows,
     styles:{ fontSize:8, overflow:'linebreak' },
     theme:'grid',
     headStyles:{ fillColor:[7,46,64], fontSize:8 },
-    columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 140, overflow:'linebreak' } },
+    columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 110, overflow:'linebreak' } },
     margin: { top: headerHeight + 6, left: 14, right: 14 },
-    didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+    didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
   })
 
   // Sección: Resumen prospectos y planificación (si es posible obtener agente y datos)
@@ -232,20 +248,7 @@ export async function exportCandidatoPDF(c: Candidato) {
         if (j && Array.isArray(j.bloques)) plan = j
       }
 
-      // Dibujar bloque de proceso destacado
-      if (procesoLabel) {
-        const badgeY = (lastY || contentStartY) + 6
-        const text = 'Proceso actual: ' + procesoLabel
-        doc.setFont('helvetica','bold'); doc.setFontSize(10)
-        const w = Math.min(190, doc.getTextWidth(text) + 10)
-        doc.setFillColor(230,245,255)
-        doc.setDrawColor(7,46,64)
-        doc.roundedRect(12, badgeY, w, 8, 2, 2, 'FD')
-        doc.setTextColor(7,46,64)
-        doc.text(text, 16, badgeY + 5)
-        doc.setTextColor(0,0,0)
-        lastY = badgeY + 12
-      }
+  // Proceso actual ya se muestra en el header
 
       // Tabla Resumen Prospectos
       if (resumen) {
@@ -266,7 +269,7 @@ export async function exportCandidatoPDF(c: Candidato) {
           headStyles:{ fillColor:[7,46,64], fontSize:8 },
           columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
-          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+          didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
         })
   lastY = (atDoc.lastAutoTable?.finalY) || lastY
       }
@@ -294,7 +297,7 @@ export async function exportCandidatoPDF(c: Candidato) {
           headStyles:{ fillColor:[7,46,64], fontSize:8 },
           columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 100 }, 2: { cellWidth: 40 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
-          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+          didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
         })
   lastY = (atDoc.lastAutoTable?.finalY) || lastY
       }
@@ -320,7 +323,7 @@ export async function exportCandidatoPDF(c: Candidato) {
           headStyles:{ fillColor:[7,46,64], fontSize:8 },
           columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
-          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+          didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
         })
   lastY = (atDoc.lastAutoTable?.finalY) || lastY
       }
@@ -338,5 +341,7 @@ export async function exportCandidatoPDF(c: Candidato) {
     doc.text('Lealtia',14,292)
     doc.setTextColor(0,0,0)
   }
-  doc.save(`candidato_${c.id_candidato}.pdf`)
+  const nombreC = (c.candidato || '').trim() || `ID_${c.id_candidato}`
+  const safe = nombreC.normalize('NFD').replace(/[^\p{L}\p{N}\s._-]+/gu,'').replace(/\s+/g,'_')
+  doc.save(`Ficha_de_candidato_${safe}.pdf`)
 }
