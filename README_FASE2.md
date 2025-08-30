@@ -2,6 +2,8 @@
 
 <!-- noop: trigger Vercel deploy (2025-08-29) -->
 
+<!-- redeploy: trigger Vercel build (2025-08-29-2) -->
+
 Resumen rápido de endpoints y estructuras añadidas.
 
 Tablas:
