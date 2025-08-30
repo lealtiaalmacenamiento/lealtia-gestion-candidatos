@@ -8,7 +8,7 @@ interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?:
 import BasePage from '@/components/BasePage';
 import AppModal from '@/components/ui/AppModal';
 import { useAuth } from '@/context/AuthProvider';
-import { exportCandidatoPDF } from '@/lib/exporters'
+import { exportCandidatoPDF, exportCandidatosExcel } from '@/lib/exporters'
 
 // Tipos
 type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct'>;
@@ -194,40 +194,15 @@ function ConsultaCandidatosInner() {
     }
   };
 
-  // Exportar a Excel (xlsx simple generado en cliente)
-  const exportExcel = () => {
-    // Construimos CSV y lo marcamos como .xls para apertura rápida en Excel.
-    const headers = columns.map(c=>c.label).join(',');
-    const rows = filtered.map(c => columns.map(col => {
-      const k = col.key as keyof Candidato | 'dias_desde_creacion_ct';
-      if (k === 'dias_desde_creacion_ct') return calcDias(c.fecha_creacion_ct);
-      return sanitizeCsv(c[k]);
-    }).join(','));
-    const csv = [headers, ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `candidatos_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  // Exportar a Excel real (.xlsx) usando librería; evita problemas de acentos
+  const exportExcelXlsx = React.useCallback(() => {
+    if (!filtered.length) return;
+    exportCandidatosExcel(filtered);
+  }, [filtered]);
 
   // 'proceso' ya se adjunta en fetchData vía calcularDerivados
 
-  function calcDias(fecha?: string) {
-    if (!fecha) return '';
-    const t = Date.parse(fecha);
-    if (!t) return '';
-    const diff = Date.now() - t;
-    return Math.floor(diff / 86400000); // días
-  }
-
-  function sanitizeCsv(val: unknown) {
-    if (val == null) return '';
-    const s = String(val).replace(/"/g,'""');
-    if (s.search(/[",\n]/) >= 0) return '"'+s+'"';
-    return s;
-  }
+  // (utilidades CSV eliminadas; ahora generamos XLSX y se mantiene codificación correcta)
 
   return (
   <BasePage title="Consulta de candidatos">
@@ -239,8 +214,12 @@ function ConsultaCandidatosInner() {
           <a href="/consulta_candidatos" className="btn-close" aria-label="Cerrar" title="Cerrar"></a>
         </div>
       )}
-      <div className="d-flex justify-content-end align-items-center gap-3 mb-2">
-        <button className="btn btn-outline-secondary btn-sm" onClick={fetchData} disabled={loading}>{loading ? '...' : 'Recargar'}</button>
+      <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
+        <div></div>
+        <div className="d-flex align-items-center gap-2">
+          <button className="btn btn-outline-secondary btn-sm" onClick={fetchData} disabled={loading}>{loading ? '...' : 'Recargar'}</button>
+          <button className="btn btn-outline-success btn-sm" onClick={exportExcelXlsx} disabled={loading || filtered.length===0} title="Exportar listado a Excel">Exportar Excel</button>
+        </div>
       </div>
       {loading && (
         <div className="table-responsive fade-in-scale">
@@ -322,9 +301,7 @@ function ConsultaCandidatosInner() {
           </table>
           <div className="d-flex justify-content-between align-items-center mt-2 small">
             <div className="text-muted">Mostrando {filtered.length} de {data.length} registros cargados.</div>
-            <div className="d-flex gap-2">
-              <button className="btn btn-sm btn-outline-success" onClick={exportExcel} title="Exportar listado a Excel">Exportar Excel</button>
-            </div>
+            <div></div>
           </div>
         </div>
       )}

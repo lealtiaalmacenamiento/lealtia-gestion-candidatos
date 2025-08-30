@@ -107,9 +107,9 @@ export async function exportCandidatoPDF(c: Candidato) {
   }
   const generadoEn = nowMX()
   const drawHeader = (opts?: { procesoLabel?: string })=>{
-    const baseX = logo? 50:12
-    const marginRight = 8
-    const maxWidth = 210 - baseX - marginRight
+    const centerX = 105
+    const sideMargin = 12
+    const maxWidth = 210 - sideMargin*2
     let headerHeight = 22
     // Calcular font size y líneas para el título
     let fontSize = 13
@@ -132,14 +132,14 @@ export async function exportCandidatoPDF(c: Candidato) {
     doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F')
     // Logo
     if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH) } catch {/*ignore*/} } else { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14) }
-    // Título
+  // Título (centrado)
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(fontSize)
-    lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, baseX, baseline) })
-    // Fecha
+  lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, centerX, baseline, { align: 'center' }) })
+  // Fecha (centrada)
     const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize
     doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize)
     doc.setTextColor(255,255,255)
-    doc.text(U('Generado (CDMX): ') + generadoEn, baseX, dateY)
+  doc.text(U('Generado (CDMX): ') + generadoEn, centerX, dateY, { align: 'center' })
     // Proceso actual mostrado DENTRO del header (sin recuadro azul claro)
     if (opts?.procesoLabel) {
       const procY = dateY + 6
@@ -162,7 +162,7 @@ export async function exportCandidatoPDF(c: Candidato) {
         return lines
       })()
       procLines.forEach((l: string, i: number) => {
-        doc.text(l, baseX, procY + i*procLine)
+        doc.text(l, centerX, procY + i*procLine, { align: 'center' })
       })
       headerHeight = Math.max(headerHeight, procY + procLines.length*procLine + 4)
     }
