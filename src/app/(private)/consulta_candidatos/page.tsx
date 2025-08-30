@@ -8,6 +8,7 @@ interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?:
 import BasePage from '@/components/BasePage';
 import AppModal from '@/components/ui/AppModal';
 import { useAuth } from '@/context/AuthProvider';
+import { exportCandidatoPDF } from '@/lib/exporters'
 
 // Tipos
 type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct'>;
@@ -303,7 +304,10 @@ function ConsultaCandidatosInner() {
                         onClick={() => handleEdit(c.id_candidato)}
                         disabled={deleting === c.id_candidato}
                       >Editar</button>
-                      <a className="btn btn-sm btn-outline-secondary me-1" href={`/api/candidatos/${c.id_candidato}?export=pdf`} target="_blank" rel="noopener noreferrer">PDF</a>
+                      <button
+                        className="btn btn-sm btn-outline-secondary me-1"
+                        onClick={() => exportCandidatoPDF(c)}
+                      >PDF</button>
             {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
                       <button
                         className="btn btn-sm btn-danger"
