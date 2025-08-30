@@ -30,6 +30,7 @@ export default function ProspectosPage() {
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const [horasOcupadas,setHorasOcupadas]=useState<Record<string,string[]>>({}) // fecha -> ['08','09']
   const [citaDrafts,setCitaDrafts]=useState<Record<number,{fecha?:string; hora?:string}>>({})
+  const bcRef = useRef<BroadcastChannel|null>(null)
 
   const isPastDateHour = (fecha:string, hour:string)=>{
     const now = new Date()
@@ -108,6 +109,21 @@ export default function ProspectosPage() {
 
   useEffect(()=> { fetchFase2Metas().then(m=> { setMetaProspectos(m.metaProspectos); setMetaCitas(m.metaCitas) }) },[])
 
+  // BroadcastChannel fallback (cross-tab) para sincronizar si Realtime no llega
+  useEffect(()=>{
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window){
+        const bc = new BroadcastChannel('prospectos-sync')
+        bcRef.current = bc
+        bc.onmessage = (ev: MessageEvent)=>{
+          if(ev.data === 'prospectos:cita-updated') fetchAll()
+        }
+        return ()=> { try { bc.close() } catch {} bcRef.current=null }
+      }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[superuser, agenteId, anio, semana, estadoFiltro, soloConCita])
+
   // Timezone helpers (CDMX). Desde 2022 sin DST: offset fijo -06.
   const MX_TZ = 'America/Mexico_City'
   const MX_UTC_OFFSET = 6 // UTC = local + 6 (cuando local es CDMX hora estándar)
@@ -140,7 +156,7 @@ export default function ProspectosPage() {
           toSend.fecha_cita = buildUTCFromMX(fecha, hora)
         }
       }
-  fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(async r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); setToast({msg:'Actualizado', type:'success'})
+  fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(async r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); try{ bcRef.current?.postMessage('prospectos:cita-updated') } catch {}; setToast({msg:'Actualizado', type:'success'})
           // Detectar conflicto solo si acabamos de asignar cita (no al borrar)
           if(patch.fecha_cita && meta?.fechaLocal && meta?.horaLocal){
             try {
@@ -214,7 +230,7 @@ export default function ProspectosPage() {
             await fetch('/api/planificacion/remove_cita',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(params)})
           }
         } catch {/* ignore */}
-        fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); setToast({msg:'Cita eliminada', type:'success'})
+  fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); try{ bcRef.current?.postMessage('prospectos:cita-updated') } catch {}; setToast({msg:'Cita eliminada', type:'success'})
       } else { try { const j=await r.json(); setToast({msg:j.error||'Error', type:'error'}) } catch { setToast({msg:'Error', type:'error'}) } }
     })
   }

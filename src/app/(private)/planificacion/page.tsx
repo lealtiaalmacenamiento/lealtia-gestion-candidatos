@@ -35,6 +35,7 @@ export default function PlanificacionPage(){
   const agenteQuery = superuser && agenteId ? `&agente_id=${agenteId}` : ''
   const [metaCitas,setMetaCitas]=useState(5)
   const [persistirAutos,setPersistirAutos]=useState(false)
+  const bcRef = useRef<BroadcastChannel|null>(null)
 
   const fetchData = async (force=false, trigger: 'manual'|'interval'|'postsave'='manual') => {
     if(semana==='ALL'){ setData(null); return }
@@ -119,6 +120,15 @@ export default function PlanificacionPage(){
   useEffect(()=>{
     const handler=()=>{ fetchData(true,'interval') }
     window.addEventListener('prospectos:cita-updated', handler)
+    // BroadcastChannel fallback cross-tab
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window){
+        const bc = new BroadcastChannel('prospectos-sync')
+        bcRef.current = bc
+        bc.onmessage = (ev: MessageEvent)=>{ if(ev.data==='prospectos:cita-updated') handler() }
+        return ()=> { window.removeEventListener('prospectos:cita-updated', handler); try { bc.close() } catch {}; bcRef.current=null }
+      }
+    } catch { /* ignore */ }
     return ()=> window.removeEventListener('prospectos:cita-updated', handler)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[semana, anio, agenteId])
@@ -167,6 +177,33 @@ export default function PlanificacionPage(){
   setData(updated)
   localManualRef.current = updated.bloques.filter(b=> b.origin!=='auto')
     setDirty(true)
+    // Sincronización inmediata con prospectos al crear/quitar CITAS manuales en la celda actual
+    try {
+      const base = semanaDesdeNumero(anio, semana as number).inicio
+      const toISO = (day:number, hour:string)=>{
+        // CDMX sin DST: offset -06 => UTC = local + 6
+        const MX_UTC_OFFSET = 6
+        return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()+day, Number(hour)+MX_UTC_OFFSET, 0, 0)).toISOString()
+      }
+      const prev = modal?.blk
+      const prevIsCita = !!(prev && prev.activity==='CITAS' && prev.prospecto_id)
+      const newIsCita = !!(b && b.activity==='CITAS' && b.prospecto_id)
+      // Si había cita vinculada y ahora se vacía o cambia a otro prospecto/tipo => limpiar en prospectos
+      if(prevIsCita && (!newIsCita || (b!.prospecto_id !== prev!.prospecto_id))){
+        const pid = prev!.prospecto_id!
+        fetch(`/api/prospectos/${pid}`,{ method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fecha_cita: null, estado: 'pendiente' }) })
+          .then(()=> { window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); try{ bcRef.current?.postMessage('prospectos:cita-updated') } catch {} })
+          .catch(()=>{})
+      }
+      // Si ahora hay cita vinculada => asignar/actualizar fecha
+      if(newIsCita){
+        const pid = b!.prospecto_id!
+        const iso = toISO(b!.day, b!.hour)
+        fetch(`/api/prospectos/${pid}`,{ method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fecha_cita: iso, estado: 'con_cita' }) })
+          .then(()=> { window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); try{ bcRef.current?.postMessage('prospectos:cita-updated') } catch {} })
+          .catch(()=>{})
+      }
+    } catch { /* ignore side-effect errors */ }
   }
 
   const horasCitas = data?.bloques.filter(b=>b.activity==='CITAS').length || 0
@@ -225,7 +262,7 @@ export default function PlanificacionPage(){
             updates.push(fetch(`/api/prospectos/${pid}`,{ method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fecha_cita: null, estado: 'pendiente' }) }))
           }
         }
-        if(updates.length){ await Promise.allSettled(updates); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')) }
+  if(updates.length){ await Promise.allSettled(updates); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); try{ bcRef.current?.postMessage('prospectos:cita-updated') } catch {} }
       } catch { /* ignore sync errors */ }
     } else {
       setToast({msg:'Error al guardar', type:'error'})
