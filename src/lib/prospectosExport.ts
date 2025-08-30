@@ -262,6 +262,8 @@ export async function exportProspectosPDF(
       const em = opts.extendedMetrics
       // Línea separadora sutil y extra espacio antes del título
       doc.setDrawColor(230); doc.line(14, y, 196, y); y += 4
+      // Si queda poco espacio en la página, forzar salto antes del título
+  if(y > 240){ doc.addPage(); const hdr = drawHeader(); y = hdr.contentStartY }
       doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Métricas avanzadas',14,y)
       y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
       // Distribución horas (compacta) (se deja aparte de la tabla)
