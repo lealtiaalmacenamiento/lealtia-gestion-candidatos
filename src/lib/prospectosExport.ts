@@ -417,7 +417,8 @@ export async function exportProspectosPDF(
       const cardW = 80, cardH = 12
       doc.setFontSize(8)
       cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
-  y = Math.max(chartBlockBottom, cardY) + GAP + 4
+  // Añadir más espacio antes del siguiente bloque para que 'Métricas avanzadas' no quede pegado
+  y = Math.max(chartBlockBottom, cardY) + GAP + 12
     }
   // Métricas por agente agrupado
       if(opts?.perAgentExtended){
