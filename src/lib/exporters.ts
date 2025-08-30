@@ -27,16 +27,33 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
       fecha_creacion_ct: c.fecha_creacion_ct
     })
+    const proc = etiquetaProceso(proceso) || ''
     return {
       ID: c.id_candidato,
       CT: c.ct,
-      Candidato: c.candidato,
-      'Cédula A1': c.mes,
-      EFC: c.efc,
-  Proceso: etiquetaProceso(proceso) || '',
+      Candidato: c.candidato || '',
+      'Email agente': c.email_agente || '',
       'Fecha creación CT': c.fecha_creacion_ct || '',
-      'Días desde creación CT': dias_desde_ct ?? '',
-      'Fecha tent. examen': c.fecha_tentativa_de_examen || ''
+      Proceso: proc,
+      'Cédula A1': c.mes || '',
+      'Periodo registro/envío': c.periodo_para_registro_y_envio_de_documentos || '',
+      'Capacitación A1': c.capacitacion_cedula_a1 || '',
+      'Fecha tentativa examen': c.fecha_tentativa_de_examen || '',
+      EFC: c.efc || '',
+      'Periodo folio OV': c.periodo_para_ingresar_folio_oficina_virtual || '',
+      'Periodo Playbook': c.periodo_para_playbook || '',
+      'Pre Escuela': c.pre_escuela_sesion_unica_de_arranque || '',
+      'Currícula CDP': c.fecha_limite_para_presentar_curricula_cdp || '',
+      'Inicio Escuela': c.inicio_escuela_fundamental || '',
+      'SEG GMM': typeof c.seg_gmm === 'number' ? c.seg_gmm : '',
+      'SEG VIDA': typeof c.seg_vida === 'number' ? c.seg_vida : '',
+      Creado: c.fecha_de_creacion || '',
+      Actualizado: c.ultima_actualizacion || '',
+      Creador: c.usuario_creador || '',
+      'Actualizó': c.usuario_que_actualizo || '',
+      Eliminado: c.eliminado ? 'Sí' : 'No',
+      'Fecha eliminación': c.fecha_eliminacion || '',
+      'Días desde creación CT': dias_desde_ct ?? ''
     }
   })
   const ws = XLSX.utils.json_to_sheet(data)
