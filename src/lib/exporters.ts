@@ -3,7 +3,12 @@ import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 // Lazy dynamic imports para no inflar el bundle inicial
-async function loadXLSX() { return (await import('xlsx')).default }
+type XLSXModule = typeof import('xlsx')
+async function loadXLSX(): Promise<XLSXModule> {
+  const mod = await import('xlsx')
+  const candidate = (mod as { default?: XLSXModule }).default
+  return (candidate ?? (mod as XLSXModule))
+}
 async function loadJSPDF() { return (await import('jspdf')).jsPDF }
 async function loadAutoTable() { return (await import('jspdf-autotable')).default }
 
@@ -124,47 +129,41 @@ export async function exportCandidatoPDF(c: Candidato) {
       if(current) lines.push(current)
     } else lines = [titulo]
     while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); const words = titulo.split(/\s+/); lines=[]; let current=''; words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w } }); if(current) lines.push(current) }
-    const lineHeight = fontSize + 2
-    const dateFontSize = 8
-    const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6
-    if(neededHeight > headerHeight) headerHeight = neededHeight
+  const lineHeight = fontSize + 2
+  const dateFontSize = 8
+  // Calcularemos height final con centrado vertical del bloque de texto
+  // Pre-cálculo de alturas del contenido para centrar verticalmente
+  const titleBlockH = lines.length*lineHeight
+  const dateBlockH = dateFontSize + 1
+  const procFont = 9
+  const procLine = procFont + 2
+  const procText = opts?.procesoLabel ? U('Proceso actual: ' + opts.procesoLabel) : ''
+  const procLines = procText ? (()=>{ const words=procText.split(/\s+/); const arr:string[]=[]; let cur=''; for(const w of words){ const t=cur?cur+' '+w:w; if(doc.getTextWidth(t) <= maxWidth) cur=t; else { if(cur) arr.push(cur); cur=w } } if(cur) arr.push(cur); return arr })() : []
+  const procBlockH = procLines.length ? (procLines.length*procLine) : 0
+  const contentH = titleBlockH + dateBlockH + (procBlockH? procBlockH : 0)
+  const basePad = 6
+  headerHeight = Math.max(headerHeight, contentH + basePad*2, logoH? (logoH + basePad*2) : 0)
+  const startY = Math.max(basePad, (headerHeight - contentH)/2)
+
   // Fondo
-    doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F')
+  doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F')
     // Logo
     if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH) } catch {/*ignore*/} } else { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14) }
   // Título (centrado)
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(fontSize)
-  lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, centerX, baseline, { align: 'center' }) })
+  lines.forEach((l,i)=>{ const baseline = startY + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, centerX, baseline, { align: 'center' }) })
   // Fecha (centrada)
-    const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize
+    const dateY = startY + titleBlockH + 1 + dateFontSize
     doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize)
     doc.setTextColor(255,255,255)
   doc.text(U('Generado (CDMX): ') + generadoEn, centerX, dateY, { align: 'center' })
-    // Proceso actual mostrado DENTRO del header (sin recuadro azul claro)
-    if (opts?.procesoLabel) {
-      const procY = dateY + 6
-      const procFont = 9
-      const procLine = procFont + 2
+    // Proceso actual dentro del header, centrado y cercano a la fecha
+    if (procLines.length) {
+      const procY = dateY + 4
       doc.setFont('helvetica','bold'); doc.setFontSize(procFont)
-      const text = U('Proceso actual: ' + opts.procesoLabel)
-      // Partir en líneas manualmente para evitar el uso de any
-      const procLines: string[] = (() => {
-        const words = text.split(/\s+/)
-        const lines: string[] = []
-        let current = ''
-        for (const w of words) {
-          const test = current ? current + ' ' + w : w
-          const wWidth = doc.getTextWidth(test)
-          if (wWidth <= maxWidth) current = test
-          else { if (current) lines.push(current); current = w }
-        }
-        if (current) lines.push(current)
-        return lines
-      })()
       procLines.forEach((l: string, i: number) => {
         doc.text(l, centerX, procY + i*procLine, { align: 'center' })
       })
-      headerHeight = Math.max(headerHeight, procY + procLines.length*procLine + 4)
     }
     doc.setTextColor(0,0,0)
     return { headerHeight, contentStartY: headerHeight + 6 }
