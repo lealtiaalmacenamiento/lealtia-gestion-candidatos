@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { getSupabaseClient } from '@/lib/supabaseClient'
 import Notification from '@/components/ui/Notification'
 import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
@@ -121,6 +122,23 @@ export default function PlanificacionPage(){
     return ()=> window.removeEventListener('prospectos:cita-updated', handler)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[semana, anio, agenteId])
+
+  // Realtime: cambios en prospectos refrescan planificacion (para integrar citas auto)
+  useEffect(()=>{
+    try {
+      const supa = getSupabaseClient()
+      const channel = supa.channel('planificacion-prospectos-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'prospectos' }, payload => {
+          const row = (payload.new || payload.old) as { agente_id?: number } | null
+          if(superuser && agenteId){ if(row?.agente_id && String(row.agente_id)!==String(agenteId)) return }
+          if(semana==='ALL') return
+          fetchData(false,'interval')
+        })
+        .subscribe()
+      return ()=> { supa.removeChannel(channel) }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[superuser, agenteId, semana, anio])
 
   // Refresco periódico de citas cada 60s para mantener sincronía con cambios en prospectos
   useEffect(()=>{

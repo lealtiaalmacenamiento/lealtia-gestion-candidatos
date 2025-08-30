@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { getSupabaseClient } from '@/lib/supabaseClient'
 import AppModal from '@/components/ui/AppModal'
 import type { BloquePlanificacion } from '@/types'
 import Notification from '@/components/ui/Notification'
@@ -167,6 +168,36 @@ export default function ProspectosPage() {
     },300)
   }
 
+  // Realtime: escuchar cambios en tabla prospectos del agente actual (o todos si superuser+agenteId)
+  useEffect(()=>{
+    try {
+      const supa = getSupabaseClient()
+      const channel = supa.channel('prospectos-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'prospectos' }, payload => {
+          // Si hay filtros por agente, evitamos refrescos innecesarios en otros agentes
+          const row = (payload.new || payload.old) as Partial<Prospecto> | undefined
+          if(superuser && agenteId){
+            if(row && 'agente_id' in row && Number(row.agente_id) !== Number(agenteId)) return
+          }
+          // Refrescar vista manteniendo filtros
+          fetchAll()
+        })
+        .subscribe()
+      return ()=> { supa.removeChannel(channel) }
+    } catch { /* ignore missing config at build */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[superuser, agenteId, anio, semana, estadoFiltro, soloConCita])
+
+  // Validaciones extra: formato teléfono y posible duplicado por nombre
+  const telefonoValido = (v:string)=> !v || /^\+?[0-9\s-]{7,15}$/.test(v)
+  const posibleDuplicado = (nombre:string)=> {
+    const n = nombre.trim().toLowerCase()
+    if(!n) return false
+    return prospectos.some(p=> p.nombre.trim().toLowerCase()===n)
+  }
+  const nombreDuplicado = posibleDuplicado(form.nombre)
+  const telefonoInvalido = !telefonoValido(form.telefono)
+
   // Eliminación completa de prospectos deshabilitada (solo borrar cita) según requerimiento.
   const borrarCita = async(p:Prospecto)=>{
     if(!p.fecha_cita) return
@@ -315,14 +346,20 @@ export default function ProspectosPage() {
     </div>
   <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
       <div className="row g-2">
-        <div className="col-sm-3"><input required value={form.nombre} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Nombre" className="form-control"/></div>
-        <div className="col-sm-2"><input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} placeholder="Teléfono" className="form-control"/></div>
+        <div className="col-sm-3">
+          <input required value={form.nombre} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Nombre" className="form-control"/>
+          {nombreDuplicado && <div className="form-text text-warning small">Nombre ya existe en la lista actual.</div>}
+        </div>
+        <div className="col-sm-2">
+          <input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} placeholder="Teléfono" className={`form-control ${telefonoInvalido? 'is-invalid':''}`}/>
+          {telefonoInvalido && <div className="invalid-feedback">Teléfono inválido. Use 7-15 dígitos, opcional +, espacios o guiones.</div>}
+        </div>
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
         <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
   <div className="col-sm-1"><input type="date" value={form.fecha_cita_fecha} onChange={e=>{ const fecha=e.target.value; setForm(f=>({...f,fecha_cita_fecha:fecha})); if(fecha) precargarHoras(fecha) }} className="form-control"/></div>
-  <div className="col-sm-1"><select className="form-select" value={form.fecha_cita_hora} onChange={e=>setForm(f=>({...f,fecha_cita_hora:e.target.value}))}><option value="">(Hora)</option>{Array.from({length:24},(_,i)=> i).map(h=> { const hh=String(h).padStart(2,'0'); const ocup = form.fecha_cita_fecha && horasOcupadas[form.fecha_cita_fecha]?.includes(hh); return <option key={h} value={hh} disabled={ocup}>{hh}:00{ocup?' (X)':''}</option>})}</select></div>
+  <div className="col-sm-1"><select className="form-select" value={form.fecha_cita_hora} onChange={e=>setForm(f=>({...f,fecha_cita_hora:e.target.value}))}><option value="">(Hora)</option>{Array.from({length:24},(_,i)=> i).map(h=> { const hh=String(h).padStart(2,'0'); const ocup = !!(form.fecha_cita_fecha && horasOcupadas[form.fecha_cita_fecha]?.includes(hh)); return <option key={h} value={hh} disabled={ocup}>{hh}:00{ocup?' (X)':''}</option>})}</select></div>
       </div>
-      <div className="mt-2"><button className="btn btn-primary btn-sm" disabled={loading}>Agregar</button></div>
+  <div className="mt-2"><button className="btn btn-primary btn-sm" disabled={loading || telefonoInvalido}>Agregar</button></div>
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
     <div className="table-responsive">

@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+  "start": "next start",
+  "lint": "eslint",
+  "typecheck": "tsc -p . --noEmit"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
