@@ -254,11 +254,14 @@ export async function exportProspectosPDF(
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
-  y += 20
+  // Más espacio tras barras de progreso para separar del siguiente bloque
+  y += 28
     }
     // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
     if(opts?.extendedMetrics){
       const em = opts.extendedMetrics
+      // Línea separadora sutil y extra espacio antes del título
+      doc.setDrawColor(230); doc.line(14, y, 196, y); y += 4
       doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Métricas avanzadas',14,y)
       y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
       // Distribución horas (compacta) (se deja aparte de la tabla)
