@@ -72,7 +72,7 @@ export async function exportCandidatoPDF(c: Candidato) {
     return
   }
 
-  const titulo = `Ficha de Candidato #${c.id_candidato}`
+  const titulo = `Ficha de Candidato ${((c.candidato||'').trim() || `ID ${c.id_candidato}`)}`
   let logo = await fetchLogoDataUrl()
   let logoW = 0, logoH = 0
   if(logo){
@@ -195,10 +195,11 @@ export async function exportCandidatoPDF(c: Candidato) {
     startY: contentStartY,
     head: [['Datos de candidato',' ']],
     body: rows,
-    styles:{ fontSize:8, overflow:'linebreak' },
+    styles:{ fontSize:8, overflow:'linebreak', cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
     theme:'grid',
     headStyles:{ fillColor:[7,46,64], fontSize:8 },
-    columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 110, overflow:'linebreak' } },
+    alternateRowStyles: { fillColor: [245,249,252] },
+    columnStyles: { 0: { cellWidth: 80, fontStyle: 'bold' }, 1: { cellWidth: 100, overflow:'linebreak' } },
     margin: { top: headerHeight + 6, left: 14, right: 14 },
     didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
   })
@@ -264,9 +265,10 @@ export async function exportCandidatoPDF(c: Candidato) {
           startY: (lastY || contentStartY) + 2,
           head: [['Resumen de prospectos (semana actual)','Valor']],
           body,
-          styles: { fontSize:8 },
+          styles: { fontSize:8, cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
           theme:'grid',
           headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          alternateRowStyles: { fillColor: [245,249,252] },
           columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
           didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
@@ -292,9 +294,10 @@ export async function exportCandidatoPDF(c: Candidato) {
           startY: (lastY || contentStartY) + 6,
           head: [['Próximas citas (semana actual)',' ',' '], head[0]],
           body,
-          styles: { fontSize:8, overflow:'linebreak' },
+          styles: { fontSize:8, overflow:'linebreak', cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
           theme:'grid',
           headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          alternateRowStyles: { fillColor: [245,249,252] },
           columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 100 }, 2: { cellWidth: 40 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
           didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
@@ -318,9 +321,10 @@ export async function exportCandidatoPDF(c: Candidato) {
           startY: (lastY || contentStartY) + 6,
           head: [['Resumen planificación (semana actual)','Valor']],
           body: resumenBody,
-          styles: { fontSize:8 },
+          styles: { fontSize:8, cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
           theme:'grid',
           headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          alternateRowStyles: { fillColor: [245,249,252] },
           columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
           didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
