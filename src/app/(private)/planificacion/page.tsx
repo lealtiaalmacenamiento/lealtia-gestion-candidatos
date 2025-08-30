@@ -117,7 +117,7 @@ export default function PlanificacionPage(){
 
   // Escuchar eventos de actualización de citas desde la vista de prospectos
   useEffect(()=>{
-    const handler=()=>{ fetchData() }
+    const handler=()=>{ fetchData(true,'interval') }
     window.addEventListener('prospectos:cita-updated', handler)
     return ()=> window.removeEventListener('prospectos:cita-updated', handler)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,7 +132,7 @@ export default function PlanificacionPage(){
           const row = (payload.new || payload.old) as { agente_id?: number } | null
           if(superuser && agenteId){ if(row?.agente_id && String(row.agente_id)!==String(agenteId)) return }
           if(semana==='ALL') return
-          fetchData(false,'interval')
+          fetchData(true,'interval')
         })
         .subscribe()
       return ()=> { supa.removeChannel(channel) }
@@ -181,6 +181,7 @@ export default function PlanificacionPage(){
     if(!data) return 
     if(semana==='ALL') return
     const manual = data.bloques.filter(b=> b.origin!=='auto').sort((a,b)=> a.day-b.day || a.hour.localeCompare(b.hour) || a.activity.localeCompare(b.activity))
+    const prevManual = (localManualRef.current||[]).slice()
     const hash = JSON.stringify(manual)
     const body={
       agente_id: superuser && agenteId? Number(agenteId): undefined,
@@ -200,6 +201,32 @@ export default function PlanificacionPage(){
   localManualRef.current = manual
   // Refrescar (forzado) para mergear correctamente tras persistir
   setTimeout(()=> fetchData(true,'postsave'), 400)
+      // Sincronizar prospectos si hay CITAS manuales vinculadas a prospectos
+      try {
+        const MX_UTC_OFFSET = 6
+        const base = semanaDesdeNumero(anio, semana as number).inicio
+        const toISO = (day:number, hour:string)=> new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()+day, Number(hour)+MX_UTC_OFFSET, 0, 0)).toISOString()
+        const prevByProspect = new Map<number,{day:number; hour:string}>
+        prevManual.filter(b=> b.activity==='CITAS' && !!b.prospecto_id).forEach(b=> prevByProspect.set(b.prospecto_id!, {day:b.day, hour:b.hour}))
+        const currByProspect = new Map<number,{day:number; hour:string}>
+        manual.filter(b=> b.activity==='CITAS' && !!b.prospecto_id).forEach(b=> currByProspect.set(b.prospecto_id!, {day:b.day, hour:b.hour}))
+        const updates: Array<Promise<Response>> = []
+        // Asignaciones nuevas o movidas
+        for (const [pid, when] of currByProspect.entries()){
+          const prev = prevByProspect.get(pid)
+          if(!prev || prev.day!==when.day || prev.hour!==when.hour){
+            const iso = toISO(when.day, when.hour)
+            updates.push(fetch(`/api/prospectos/${pid}`,{ method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fecha_cita: iso, estado: 'con_cita' }) }))
+          }
+        }
+        // Remociones
+  for (const [pid] of prevByProspect.entries()){
+          if(!currByProspect.has(pid)){
+            updates.push(fetch(`/api/prospectos/${pid}`,{ method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fecha_cita: null, estado: 'pendiente' }) }))
+          }
+        }
+        if(updates.length){ await Promise.allSettled(updates); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')) }
+      } catch { /* ignore sync errors */ }
     } else {
       setToast({msg:'Error al guardar', type:'error'})
     }
