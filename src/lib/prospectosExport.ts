@@ -417,7 +417,7 @@ export async function exportProspectosPDF(
       const cardW = 80, cardH = 12
       doc.setFontSize(8)
       cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
-      y = Math.max(chartBlockBottom, cardY) + GAP
+  y = Math.max(chartBlockBottom, cardY) + GAP + 4
     }
   // Métricas por agente agrupado
       if(opts?.perAgentExtended){
@@ -458,7 +458,11 @@ export async function exportProspectosPDF(
       if(opts?.planningSummaries){
         const totalAgg = Object.values(opts.planningSummaries).reduce((acc,cur)=>{ acc.prospeccion+=cur.prospeccion; acc.citas+=cur.citas; acc.smnyl+=cur.smnyl; acc.total+=cur.total; return acc },{prospeccion:0,citas:0,smnyl:0,total:0})
         // Salto de página si poco espacio
-        if(y > 200){ doc.addPage(); drawHeader(); y=30 }
+        if(y > 200){
+          doc.addPage()
+          const hdr = drawHeader()
+          y = hdr.contentStartY
+        }
         doc.setFontSize(10); doc.text('Planificación semanal (resumen y detalle por agente)',14,y); y+=4
         // Tarjetas resumen total
         const cardsPlan: Array<[string,string]> = [
@@ -493,8 +497,12 @@ export async function exportProspectosPDF(
     }
   // Sección de planificación para reporte individual de agente
   if(!agrupado && opts?.singleAgentPlanning){
-    if(y > 200){ doc.addPage(); drawHeader(); y=30 }
-    let y2 = y
+    if(y > 200){
+      doc.addPage()
+      const hdr2 = drawHeader()
+      y = hdr2.contentStartY
+    }
+  let y2 = y + 4
     const plan = opts.singleAgentPlanning
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
     const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['Citas', String(plan.summary.citas)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
