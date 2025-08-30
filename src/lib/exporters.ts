@@ -72,7 +72,10 @@ export async function exportCandidatoPDF(c: Candidato) {
     return
   }
 
-  const titulo = `Ficha de Candidato ${((c.candidato||'').trim() || `ID ${c.id_candidato}`)}`
+  // Helper para mayúsculas consistentes
+  const U = (v: unknown) => (v == null ? '' : String(v).toLocaleUpperCase('es-MX'))
+
+  const titulo = U(`Ficha de Candidato ${((c.candidato||'').trim() || `ID ${c.id_candidato}`)}`)
   let logo = await fetchLogoDataUrl()
   let logoW = 0, logoH = 0
   if(logo){
@@ -125,7 +128,7 @@ export async function exportCandidatoPDF(c: Candidato) {
     const dateFontSize = 8
     const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6
     if(neededHeight > headerHeight) headerHeight = neededHeight
-    // Fondo
+  // Fondo
     doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F')
     // Logo
     if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH) } catch {/*ignore*/} } else { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14) }
@@ -135,20 +138,33 @@ export async function exportCandidatoPDF(c: Candidato) {
     // Fecha
     const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize
     doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize)
-    doc.text('Generado (CDMX): '+ generadoEn, baseX, dateY)
-    // Proceso actual mostrado en el header, debajo de la fecha
+    doc.setTextColor(255,255,255)
+    doc.text(U('Generado (CDMX): ') + generadoEn, baseX, dateY)
+    // Proceso actual mostrado DENTRO del header (sin recuadro azul claro)
     if (opts?.procesoLabel) {
       const procY = dateY + 6
-      doc.setFont('helvetica','bold'); doc.setFontSize(9)
-      const text = 'Proceso actual: ' + opts.procesoLabel
-      const w = Math.min(190, doc.getTextWidth(text) + 8)
-      doc.setFillColor(230,245,255)
-      doc.setDrawColor(7,46,64)
-      doc.roundedRect(baseX - 2, procY - 5, w, 9, 2, 2, 'FD')
-      doc.setTextColor(7,46,64)
-      doc.text(text, baseX + 2, procY + 2)
-      doc.setTextColor(0,0,0)
-      headerHeight = Math.max(headerHeight, procY + 6)
+      const procFont = 9
+      const procLine = procFont + 2
+      doc.setFont('helvetica','bold'); doc.setFontSize(procFont)
+      const text = U('Proceso actual: ' + opts.procesoLabel)
+      // Partir en líneas manualmente para evitar el uso de any
+      const procLines: string[] = (() => {
+        const words = text.split(/\s+/)
+        const lines: string[] = []
+        let current = ''
+        for (const w of words) {
+          const test = current ? current + ' ' + w : w
+          const wWidth = doc.getTextWidth(test)
+          if (wWidth <= maxWidth) current = test
+          else { if (current) lines.push(current); current = w }
+        }
+        if (current) lines.push(current)
+        return lines
+      })()
+      procLines.forEach((l: string, i: number) => {
+        doc.text(l, baseX, procY + i*procLine)
+      })
+      headerHeight = Math.max(headerHeight, procY + procLines.length*procLine + 4)
     }
     doc.setTextColor(0,0,0)
     return { headerHeight, contentStartY: headerHeight + 6 }
@@ -166,12 +182,12 @@ export async function exportCandidatoPDF(c: Candidato) {
     fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
     fecha_creacion_ct: c.fecha_creacion_ct
   })
-  const procesoLabel = etiquetaProceso(proceso) || ''
+  const procesoLabel = U(etiquetaProceso(proceso) || '')
   const { headerHeight, contentStartY } = drawHeader({ procesoLabel })
   doc.setFontSize(10)
   // Tabla Datos de candidato (orden y etiquetas solicitadas)
   const rows: Array<[string,string]> = []
-  const push = (k: string, v: unknown) => rows.push([k, v == null ? '' : String(v)])
+  const push = (k: string, v: unknown) => rows.push([U(k), U(v)])
   push('clave temporal', c.ct)
   push('Nombre de candidato', c.candidato)
   push('Email de agente', c.email_agente || '')
@@ -193,11 +209,11 @@ export async function exportCandidatoPDF(c: Candidato) {
   // @ts-expect-error autoTable inyectada por plugin
   doc.autoTable({
     startY: contentStartY,
-    head: [['Datos de candidato',' ']],
+    head: [[U('Datos de candidato'), ' ']],
     body: rows,
     styles:{ fontSize:8, overflow:'linebreak', cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
     theme:'grid',
-    headStyles:{ fillColor:[7,46,64], fontSize:8 },
+    headStyles:{ fillColor:[7,46,64], fontSize:8, textColor: [255,255,255] },
     alternateRowStyles: { fillColor: [245,249,252] },
     columnStyles: { 0: { cellWidth: 80, fontStyle: 'bold' }, 1: { cellWidth: 100, overflow:'linebreak' } },
     margin: { top: headerHeight + 6, left: 14, right: 14 },
@@ -252,22 +268,22 @@ export async function exportCandidatoPDF(c: Candidato) {
   // Proceso actual ya se muestra en el header
 
       // Tabla Resumen Prospectos
-      if (resumen) {
+    if (resumen) {
         const body: Array<[string,string]> = [
-          ['Prospectos totales', String(resumen.total)],
-          ['Pendiente', String(resumen.por_estado?.pendiente ?? 0)],
-          ['Seguimiento', String(resumen.por_estado?.seguimiento ?? 0)],
-          ['Con cita', String(resumen.por_estado?.con_cita ?? 0)],
-          ['Descartado', String(resumen.por_estado?.descartado ?? 0)]
+      [U('Prospectos totales'), U(resumen.total)],
+      [U('Pendiente'), U(resumen.por_estado?.pendiente ?? 0)],
+      [U('Seguimiento'), U(resumen.por_estado?.seguimiento ?? 0)],
+      [U('Con cita'), U(resumen.por_estado?.con_cita ?? 0)],
+      [U('Descartado'), U(resumen.por_estado?.descartado ?? 0)]
         ]
         // @ts-expect-error autoTable inyectada por plugin
         doc.autoTable({
           startY: (lastY || contentStartY) + 2,
-          head: [['Resumen de prospectos (semana actual)','Valor']],
+      head: [[U('Resumen de prospectos (semana actual)'), U('Valor')]],
           body,
           styles: { fontSize:8, cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
           theme:'grid',
-          headStyles:{ fillColor:[7,46,64], fontSize:8 },
+      headStyles:{ fillColor:[7,46,64], fontSize:8, textColor: [255,255,255] },
           alternateRowStyles: { fillColor: [245,249,252] },
           columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
@@ -278,7 +294,7 @@ export async function exportCandidatoPDF(c: Candidato) {
 
       // Tabla Próximas citas
       if (citas.length) {
-        const head = [['Fecha (MX)','Nombre','Estado']]
+        const head = [[U('Fecha (MX)'),U('Nombre'),U('Estado')]]
         const fmtMX = (iso?: string|null) => {
           if (!iso) return ''
           try {
@@ -288,15 +304,15 @@ export async function exportCandidatoPDF(c: Candidato) {
             return `${fecha} ${hora}`
           } catch { return String(iso) }
         }
-        const body = citas.map(p=> [ fmtMX(p.fecha_cita||null), p.nombre, p.estado ])
+        const body = citas.map(p=> [ fmtMX(p.fecha_cita||null), U(p.nombre), U(p.estado) ])
         // @ts-expect-error autoTable inyectada por plugin
         doc.autoTable({
           startY: (lastY || contentStartY) + 6,
-          head: [['Próximas citas (semana actual)',' ',' '], head[0]],
+          head: [[U('Próximas citas (semana actual)'), ' ', ''], head[0]],
           body,
           styles: { fontSize:8, overflow:'linebreak', cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
           theme:'grid',
-          headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          headStyles:{ fillColor:[7,46,64], fontSize:8, textColor: [255,255,255] },
           alternateRowStyles: { fillColor: [245,249,252] },
           columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 100 }, 2: { cellWidth: 40 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
@@ -312,18 +328,18 @@ export async function exportCandidatoPDF(c: Candidato) {
           if (b.activity === 'PROSPECCION' || b.activity === 'CITAS' || b.activity === 'SMNYL') counts[b.activity]++
         }
         const resumenBody: Array<[string,string]> = [
-          ['Bloques PROSPECCION', String(counts.PROSPECCION)],
-          ['Bloques CITAS', String(counts.CITAS)],
-          ['Bloques SMNYL', String(counts.SMNYL)],
+          [U('Bloques PROSPECCION'), U(counts.PROSPECCION)],
+          [U('Bloques CITAS'), U(counts.CITAS)],
+          [U('Bloques SMNYL'), U(counts.SMNYL)],
         ]
         // @ts-expect-error autoTable
         doc.autoTable({
           startY: (lastY || contentStartY) + 6,
-          head: [['Resumen planificación (semana actual)','Valor']],
+          head: [[U('Resumen planificación (semana actual)'), U('Valor')]],
           body: resumenBody,
           styles: { fontSize:8, cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
           theme:'grid',
-          headStyles:{ fillColor:[7,46,64], fontSize:8 },
+          headStyles:{ fillColor:[7,46,64], fontSize:8, textColor: [255,255,255] },
           alternateRowStyles: { fillColor: [245,249,252] },
           columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
           margin: { top: headerHeight + 6, left: 14, right: 14 },
@@ -341,8 +357,8 @@ export async function exportCandidatoPDF(c: Candidato) {
   for(let i=1;i<=pageCount;i++){
     doc.setPage(i)
     doc.setFontSize(7); doc.setTextColor(120)
-    doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'})
-    doc.text('Lealtia',14,292)
+  doc.text(U(`Página ${i}/${pageCount}`), 200, 292, {align:'right'})
+  doc.text(U('Lealtia'),14,292)
     doc.setTextColor(0,0,0)
   }
   const nombreC = (c.candidato || '').trim() || `ID_${c.id_candidato}`
