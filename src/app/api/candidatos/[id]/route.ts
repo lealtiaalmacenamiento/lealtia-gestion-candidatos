@@ -132,7 +132,13 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   // fecha_creacion_ct y fecha_tentativa_de_examen: si vienen en body se guardan tal cual (yyyy-mm-dd)
   normalizeDateFields(body)
   const { data, error } = await supabase.from('candidatos').update(body).eq('id_candidato', id).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    const msg = String(error.message || '')
+    if (msg.includes('etapas_completadas')) {
+      return NextResponse.json({ error: 'Falta la columna etapas_completadas en BD. Aplica la migración 20250831_add_etapas_completadas_to_candidatos.sql.' }, { status: 409 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   // Sincronizar nombre del usuario agente si existe y se cambió el nombre del candidato original usado para crearlo
   try {
