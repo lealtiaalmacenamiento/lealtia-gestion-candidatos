@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createCandidato, getCedulaA1, getEfc, getCandidatoByCT } from '@/lib/api'
-import { calcularDerivados, parseRange, parseOneDate, parseAllRanges } from '@/lib/proceso'
+import { calcularDerivados, parseOneDate, parseAllRanges } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 
@@ -214,9 +214,13 @@ export default function NuevoCandidato() {
         const hoy = new Date(); const h = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()))
         if (!fte || fte.getTime() < h.getTime()) throw new Error('La fecha tentativa de examen debe ser hoy o una fecha posterior.')
       }
-      // Alertar por empalmes con rangos visibles
+  // Alertar por empalmes con rangos visibles (soporta múltiples segmentos)
   const overlaps: Array<{label:string; value?:string}> = []
-  const check = (label: string, raw?: string)=>{ const r = parseRange(raw); const f = parseOneDate(form.fecha_tentativa_de_examen||''); if (r && f && f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime()) overlaps.push({label, value: raw}) }
+  const check = (label: string, raw?: string)=>{
+    const f = parseOneDate(form.fecha_tentativa_de_examen||'')
+    const parts = parseAllRanges(raw)
+    if (f && parts.some(r => f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime())) overlaps.push({label, value: raw})
+  }
       check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', form.periodo_para_registro_y_envio_de_documentos)
       check('CAPACITACIÓN CÉDULA A1', form.capacitacion_cedula_a1)
       check('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL', form.periodo_para_ingresar_folio_oficina_virtual)
@@ -299,7 +303,6 @@ export default function NuevoCandidato() {
                   <label className="form-label fw-semibold small mb-1">CÉDULA A1 <span className="text-danger">*</span></label>
                   <select name="mes" className="form-select" value={form.mes} onChange={handleChange} required>
                     <option value="">Selecciona una opción</option>
-                    {meses.map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}
                     {meses.filter(isFutureCedula).map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}
                   </select>
                   <div className="form-text small">Al seleccionar el mes se llenarán automáticamente varias fechas.</div>
@@ -333,7 +336,6 @@ export default function NuevoCandidato() {
                   <label className="form-label fw-semibold small mb-1">EFC <span className="text-danger">*</span></label>
                   <select name="efc" className="form-select" value={form.efc} onChange={handleChange} required>
                     <option value="">Selecciona una opción</option>
-                    {efcs.map(e => <option key={e.id} value={e.efc}>{e.efc}</option>)}
                     {efcs.filter(isFutureEfc).map(e => <option key={e.id} value={e.efc}>{e.efc}</option>)}
                   </select>
                   <div className="form-text small">Al seleccionar la EFC se agregan más fechas.</div>

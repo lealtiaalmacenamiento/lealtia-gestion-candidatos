@@ -121,7 +121,9 @@ export function parseRange(raw?: string): Range | null {
 export function parseAllRanges(raw?: string): Range[] {
   if (!raw) return []
   const chunks = raw
-    .split(/\t+| {2,}|\s\|\s|,|;|\s{1}\u2022\s/)
+  // Cortamos por separadores comunes de múltiples segmentos sin romper fechas tipo dd/mm/aaaa
+  // Incluye: tabs, saltos de línea, pipes, comas, punto y coma, viñeta • y el conector " y "
+  .split(/[\r\n]+|\t+|\s\|\s|,|;|\s{1}\u2022\s|\s+y\s+/i)
     .map(s=>s.trim())
     .filter(Boolean)
   const out: Range[] = []
