@@ -325,7 +325,7 @@ function ConsultaCandidatosInner() {
                               <span>Completado</span>
                             </label>
                           )}
-                          {isEtapa && meta?.at && (
+                          {isEtapa && checked && meta?.at && (
                             <div className="form-text small">
                               Marcado el {formatDate(meta.at)} por {meta.by?.nombre || ''} {meta.by?.email ? `(${meta.by.email})` : ''}
                             </div>
