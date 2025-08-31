@@ -16,6 +16,19 @@ const supabase = getServiceClient()
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const verEliminados = url.searchParams.get('eliminados') === '1'
+  const ct = url.searchParams.get('ct')
+  if (ct) {
+    // Búsqueda rápida por CT (no eliminado)
+    const { data, error } = await supabase
+      .from('candidatos')
+      .select('*')
+      .eq('ct', ct)
+      .eq('eliminado', false)
+      .limit(1)
+      .maybeSingle()
+    if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data || null)
+  }
   const query = supabase
     .from('candidatos')
     .select('*')
@@ -68,17 +81,20 @@ export async function POST(req: Request) {
   }
 
   body.usuario_creador = usuario.email
-  // Registrar fecha_creacion_ct si existe CT y no viene ya (primer registro)
-  if (body.ct && !body.fecha_creacion_ct) body.fecha_creacion_ct = new Date().toISOString()
+  // Ya no se auto-asigna fecha_creacion_ct cuando viene CT; el cliente debe enviarla explícitamente.
+  // También se elimina la restricción de unicidad de fecha_tentativa_de_examen entre candidatos.
 
-  // Validar que fecha_tentativa_de_examen no empalme (ejemplo simple: no permitir misma fecha exacta que otro candidato no eliminado)
-  if (body.fecha_tentativa_de_examen) {
-    const { data: conflictos, error: errConf } = await supabase.from('candidatos')
-      .select('id_candidato, fecha_tentativa_de_examen')
-      .eq('fecha_tentativa_de_examen', body.fecha_tentativa_de_examen)
+  // Validar unicidad de CT (si viene informado)
+  if (body.ct && String(body.ct).trim() !== '') {
+    const { data: dup } = await supabase
+      .from('candidatos')
+      .select('id_candidato')
+      .eq('ct', body.ct)
       .eq('eliminado', false)
-    if (!errConf && conflictos && conflictos.length > 0) {
-      return NextResponse.json({ error: 'Empalme: la fecha tentativa de examen ya está asignada a otro candidato.' }, { status: 400 })
+      .limit(1)
+      .maybeSingle()
+    if (dup) {
+      return NextResponse.json({ error: 'CT ya está registrado en otro candidato.' }, { status: 409 })
     }
   }
 

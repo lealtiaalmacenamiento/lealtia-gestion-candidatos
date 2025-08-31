@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { createCandidato, getCedulaA1, getEfc } from '@/lib/api'
-import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
+import { createCandidato, getCedulaA1, getEfc, getCandidatoByCT } from '@/lib/api'
+import { calcularDerivados, parseRange, parseOneDate } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 
@@ -36,6 +36,7 @@ export default function NuevoCandidato() {
   const [saving, setSaving] = useState(false)
   const [notif, setNotif] = useState<{ type: 'success' | 'danger'; msg: string } | null>(null)
   const [form, setForm] = useState<FormState>(initialForm)
+  const [modal, setModal] = useState<{ title: string; html: React.ReactNode } | null>(null)
   const firstInputRef = useRef<HTMLInputElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
 
@@ -56,7 +57,7 @@ export default function NuevoCandidato() {
 
   const recomputeDerived = (draft: FormState): FormState => ({ ...draft, ...calcularDerivados(draft) })
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
   const nextVal = value
     // Convert ISO date (yyyy-mm-dd) from date input to dd/mm/aaaa for storage
@@ -64,7 +65,43 @@ export default function NuevoCandidato() {
       const updated = { ...prev, [name]: nextVal }
       return recomputeDerived(updated)
     })
-    if (name === 'mes') {
+    // CT duplicate check
+    if (name === 'ct' && value.trim()) {
+      try {
+        const existente = await getCandidatoByCT(value.trim())
+        if (existente) {
+          setModal({ title: 'CT ya registrado', html: (
+            <div>
+              <p>Existe un candidato con el mismo CT.</p>
+              <ul className="mb-0">
+                <li><strong>Nombre:</strong> {existente.candidato}</li>
+                <li><strong>CT:</strong> {existente.ct}</li>
+                <li><strong>Email:</strong> {('email_agente' in existente ? (existente as unknown as { email_agente?: string }).email_agente : '') || '—'}</li>
+              </ul>
+            </div>
+          ) })
+        }
+  } catch { /* noop */ }
+    }
+    // Date overlap notify immediately when selecting fecha_tentativa_de_examen
+    if (name === 'fecha_tentativa_de_examen' && value) {
+      const overlaps: string[] = []
+      const check = (label: string, raw?: string)=>{ const r = parseRange(raw); const f = parseOneDate(value||''); if (r && f && f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime()) overlaps.push(label) }
+      check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', form.periodo_para_registro_y_envio_de_documentos)
+      check('CAPACITACIÓN CÉDULA A1', form.capacitacion_cedula_a1)
+      check('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL', form.periodo_para_ingresar_folio_oficina_virtual)
+      check('PERIODO PARA PLAYBOOK', form.periodo_para_playbook)
+      check('PRE ESCUELA SESIÓN ÚNICA DE ARRANQUE', form.pre_escuela_sesion_unica_de_arranque)
+      check('FECHA LÍMITE PARA PRESENTAR CURRÍCULA CDP', form.fecha_limite_para_presentar_curricula_cdp)
+      check('INICIO ESCUELA FUNDAMENTAL', form.inicio_escuela_fundamental)
+      if (overlaps.length) {
+        setModal({ title: 'Aviso de empalme', html: (<div>
+          <p>La fecha tentativa de examen se empalma con:</p>
+          <ul className="mb-0">{overlaps.map(o=> <li key={o}>{o}</li>)}</ul>
+        </div>) })
+      }
+    }
+  if (name === 'mes') {
       const encontrado = meses.find(x => x.mes === value)
       setForm(prev => ({
         ...prev,
@@ -118,6 +155,53 @@ export default function NuevoCandidato() {
     setSaving(true)
     setNotif(null)
     try {
+      // Validar CT duplicado al guardar (bloquea)
+      if (form.ct && form.ct.trim()) {
+        try {
+          const existente = await getCandidatoByCT(form.ct.trim())
+          if (existente) {
+            setModal({ title: 'CT ya registrado', html: (
+              <div>
+                <p>Existe un candidato con el mismo CT:</p>
+                <ul className="mb-0">
+                  <li><strong>Nombre:</strong> {existente.candidato}</li>
+                  <li><strong>CT:</strong> {existente.ct}</li>
+                  <li><strong>Email:</strong> {('email_agente' in existente ? (existente as unknown as { email_agente?: string }).email_agente : '') || '—'}</li>
+                </ul>
+                <p className="mt-2 mb-0 text-danger">No puedes guardar con un CT duplicado.</p>
+              </div>
+            ) })
+            throw new Error('CT duplicado')
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message === 'CT duplicado') throw e
+          // si la consulta falla, seguimos para permitir guardar; el backend bloqueará si hay duplicado
+        }
+      }
+      // Reglas: si hay CT debe existir fecha_creacion_ct
+      if (form.ct && !form.fecha_creacion_ct) throw new Error('Debes seleccionar la fecha de creación de CT cuando ingresas un CT.')
+      // Si hay fecha tentativa, debe ser hoy o futura
+      if (form.fecha_tentativa_de_examen) {
+        const fte = parseOneDate(form.fecha_tentativa_de_examen)
+        const hoy = new Date(); const h = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()))
+        if (!fte || fte.getTime() < h.getTime()) throw new Error('La fecha tentativa de examen debe ser hoy o una fecha posterior.')
+      }
+      // Alertar por empalmes con rangos visibles
+      const overlaps: string[] = []
+      const check = (label: string, raw?: string)=>{ const r = parseRange(raw); const f = parseOneDate(form.fecha_tentativa_de_examen||''); if (r && f && f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime()) overlaps.push(label) }
+      check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', form.periodo_para_registro_y_envio_de_documentos)
+      check('CAPACITACIÓN CÉDULA A1', form.capacitacion_cedula_a1)
+      check('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL', form.periodo_para_ingresar_folio_oficina_virtual)
+      check('PERIODO PARA PLAYBOOK', form.periodo_para_playbook)
+      check('PRE ESCUELA SESIÓN ÚNICA DE ARRANQUE', form.pre_escuela_sesion_unica_de_arranque)
+      check('FECHA LÍMITE PARA PRESENTAR CURRÍCULA CDP', form.fecha_limite_para_presentar_curricula_cdp)
+      check('INICIO ESCUELA FUNDAMENTAL', form.inicio_escuela_fundamental)
+      if (overlaps.length) {
+        setModal({ title: 'Aviso de empalme', html: (<div>
+          <p>La fecha tentativa de examen se empalma con:</p>
+          <ul className="mb-0">{overlaps.map(o=> <li key={o}>{o}</li>)}</ul>
+        </div>) })
+      }
   // Forzado: seg_gmm y seg_vida deben iniciarse en 0 y no se muestran en el registro
   // Omitir campos derivados que no se guardan directamente
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -173,23 +257,16 @@ export default function NuevoCandidato() {
                   <input name="candidato" className="form-control" value={form.candidato} onChange={handleChange} placeholder="Nombre completo" required />
                 </div>
                 <div className="col-12">
-                  <label className="form-label fw-semibold small mb-1">EMAIL (AGENTE) <span className="text-danger">*</span></label>
-                  <input name="email_agente" type="email" className="form-control" value={form.email_agente} onChange={handleChange} placeholder="correo@dominio.com" required />
-                  <div className="form-text small">Se creará automáticamente un usuario con rol agente usando este correo.</div>
+                  <label className="form-label fw-semibold small mb-1">EMAIL (AGENTE)</label>
+                  <input name="email_agente" type="email" className="form-control" value={form.email_agente} onChange={handleChange} placeholder="correo@dominio.com" />
+                  <div className="form-text small">Opcional. Si lo ingresas, se intentará crear un usuario agente con este correo.</div>
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
                   <input type="date" name="fecha_creacion_ct" className="form-control" value={form.fecha_creacion_ct || ''} onChange={handleChange} />
                   <div className="form-text small">Selecciona la fecha en que se creó el CT.</div>
                 </div>
-                <div className="col-12">
-                  <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">DÍAS DESDE CT <span className="badge bg-secondary">auto</span></label>
-                  <input className="form-control bg-light" value={form.dias_desde_ct ?? ''} readOnly />
-                </div>
-                <div className="col-12">
-                  <label className="form-label fw-semibold small mb-1 d-flex align-items-center gap-1">PROCESO <span className="badge bg-secondary">auto</span></label>
-                  <input className="form-control bg-light" value={etiquetaProceso(form.proceso)} readOnly />
-                </div>
+                {/* Días desde CT y Proceso ocultos en registro */}
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">CÉDULA A1 <span className="text-danger">*</span></label>
                   <select name="mes" className="form-select" value={form.mes} onChange={handleChange} required>
@@ -218,6 +295,7 @@ export default function NuevoCandidato() {
                     name="fecha_tentativa_de_examen"
                     className="form-control"
                     value={form.fecha_tentativa_de_examen || ''}
+                    min={new Date().toISOString().slice(0,10)}
                     onChange={handleChange}
                   />
                   <div className="form-text small">Selecciona la fecha estimada del examen (opcional).</div>
@@ -258,6 +336,28 @@ export default function NuevoCandidato() {
                 <div className="col-12 pt-2">
                   <button type="submit" className="btn w-100 text-white" style={{ background:'#072e40' }} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
                 </div>
+                {modal && (
+                  <div className="mt-2">
+                    <div className="position-fixed top-0 start-0 w-100 h-100" style={{zIndex:1050}}>
+                      <div className="d-flex align-items-center justify-content-center h-100 bg-dark bg-opacity-50">
+                        <div className="bg-white rounded shadow" style={{maxWidth:520, width:'90%'}}>
+                          <div className="p-3 border-bottom d-flex align-items-center justify-content-between">
+                            <div className="fw-semibold">{modal.title}</div>
+                            <button type="button" className="btn btn-sm btn-link" onClick={()=>setModal(null)} aria-label="Cerrar">
+                              <i className="bi bi-x-lg"></i>
+                            </button>
+                          </div>
+                          <div className="p-3">
+                            {modal.html}
+                          </div>
+                          <div className="p-2 border-top text-end">
+                            <button type="button" className="btn btn-primary" onClick={()=>setModal(null)}>Entendido</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </form>
             )}
           </div>

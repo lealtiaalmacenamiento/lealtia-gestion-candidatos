@@ -14,7 +14,7 @@ export interface SnapshotFechas {
   fecha_creacion_ct?: string
 }
 
-interface Range { start: Date; end: Date }
+export interface Range { start: Date; end: Date }
 
 const MS_PER_DAY = 86400000
 
@@ -34,7 +34,7 @@ const MESES: Record<string, number> = {
   diciembre:12, dic:12
 }
 
-function parseOneDate(raw?: string): Date | null {
+export function parseOneDate(raw?: string): Date | null {
   if (!raw) return null
   const t = raw.trim()
   // yyyy-mm-dd
@@ -71,7 +71,7 @@ function parseOneDate(raw?: string): Date | null {
   return null
 }
 
-function parseRange(raw?: string): Range | null {
+export function parseRange(raw?: string): Range | null {
   if (!raw) return null
   const t = raw.trim()
   // Rango tipo "1 al 5 septiembre 2025" o "1-5 sep" (año opcional)

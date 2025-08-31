@@ -31,6 +31,20 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const body: CandidatoParcial = await req.json()
 
   const existenteData: CandidatoParcial = existente.data || {}
+  // Validar unicidad de CT si cambia o si viene definido
+  if (body.ct && body.ct !== existenteData.ct) {
+    const { data: dup } = await supabase
+      .from('candidatos')
+      .select('id_candidato')
+      .eq('ct', body.ct)
+      .eq('eliminado', false)
+      .neq('id_candidato', id)
+      .limit(1)
+      .maybeSingle()
+    if (dup) {
+      return NextResponse.json({ error: 'CT ya está registrado en otro candidato.' }, { status: 409 })
+    }
+  }
 
   // Normalizar email_agente si viene (después de cargar existenteData)
   let agenteMeta: any = undefined
@@ -81,17 +95,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     body.fecha_creacion_ct = new Date().toISOString()
   }
 
-  // Validación de empalme de fecha_tentativa_de_examen (mismo día)
-  if (body.fecha_tentativa_de_examen) {
-    const { data: conflictos, error: errConf } = await supabase.from('candidatos')
-      .select('id_candidato, fecha_tentativa_de_examen')
-      .eq('fecha_tentativa_de_examen', body.fecha_tentativa_de_examen)
-      .eq('eliminado', false)
-      .neq('id_candidato', id)
-    if (!errConf && conflictos && conflictos.length > 0) {
-      return NextResponse.json({ error: 'Empalme: fecha tentativa de examen ya asignada a otro candidato.' }, { status: 400 })
-    }
-  }
+  // Ya no se valida unicidad de fecha_tentativa_de_examen; múltiples candidatos pueden compartirla.
 
   // Si no existe trigger en BD que actualice ultima_actualizacion, lo hacemos aquí
   body.ultima_actualizacion = new Date().toISOString()
