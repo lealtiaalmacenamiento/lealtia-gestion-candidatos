@@ -17,12 +17,26 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const verEliminados = url.searchParams.get('eliminados') === '1'
   const ct = url.searchParams.get('ct')
+  const emailCand = url.searchParams.get('email_agente')
   if (ct) {
     // Búsqueda rápida por CT (no eliminado)
     const { data, error } = await supabase
       .from('candidatos')
       .select('*')
       .eq('ct', ct)
+      .eq('eliminado', false)
+      .limit(1)
+      .maybeSingle()
+    if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data || null)
+  }
+  if (emailCand) {
+    // Búsqueda por email (normalizado a minúsculas) en no eliminados
+    const email = emailCand.trim().toLowerCase()
+    const { data, error } = await supabase
+      .from('candidatos')
+      .select('*')
+      .eq('email_agente', email)
       .eq('eliminado', false)
       .limit(1)
       .maybeSingle()
@@ -52,6 +66,21 @@ export async function POST(req: Request) {
   const requeridos: Array<keyof typeof body> = ['candidato', 'mes', 'efc']
   const faltan = requeridos.filter(k => !body[k] || (typeof body[k] === 'string' && body[k].trim() === ''))
   if (faltan.length) return NextResponse.json({ error: `Faltan campos: ${faltan.join(', ')}` }, { status: 400 })
+
+  // Validación: email (email_agente) único (entre no eliminados)
+  if (emailAgente) {
+    const { data: dupEmail, error: errEmail } = await supabase
+      .from('candidatos')
+      .select('id_candidato, candidato, email_agente')
+      .eq('email_agente', emailAgente)
+      .eq('eliminado', false)
+      .limit(1)
+      .maybeSingle()
+    if (errEmail && errEmail.code !== 'PGRST116') return NextResponse.json({ error: errEmail.message }, { status: 500 })
+    if (dupEmail) {
+      return NextResponse.json({ error: `El correo ya pertenece al candidato "${dupEmail.candidato}" (ID ${dupEmail.id_candidato}).` }, { status: 409 })
+    }
+  }
 
   // Autocompletar desde cedula_a1
   if (body.mes) {
@@ -123,6 +152,8 @@ export async function POST(req: Request) {
 
   // 2) Insertar candidato
   normalizeDateFields(body)
+  // aseguramos que email_agente se guarde normalizado
+  if (emailAgente) body.email_agente = emailAgente
   const { data, error } = await supabase.from('candidatos').insert([body]).select().single()
   if (error) return NextResponse.json({ error: error.message, _agente_meta: agenteMeta }, { status: 500 })
 

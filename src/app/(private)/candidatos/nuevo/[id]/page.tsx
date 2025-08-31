@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { getCandidatoById, updateCandidato, getCedulaA1, getEfc, getCandidatoByCT } from '@/lib/api'
+import { getCandidatoById, updateCandidato, getCedulaA1, getEfc, getCandidatoByCT, getCandidatoByEmail } from '@/lib/api'
 import { calcularDerivados, etiquetaProceso, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
@@ -10,6 +10,7 @@ import BasePage from '@/components/BasePage'
 interface FormState {
   ct?: string;
   candidato?: string;
+  email_agente?: string;
   fecha_creacion_ct?: string;
   dias_desde_ct?: number; // derivado
   proceso?: string; // derivado
@@ -137,6 +138,23 @@ export default function EditarCandidato() {
         }
       } catch { /* noop */ }
     }
+  if (name === 'email_agente' && value.trim()) {
+      try {
+        const existente = await getCandidatoByEmail(value.trim())
+        if (existente && existente.id_candidato !== Number(params.id)) {
+          setModal({ title: 'Correo ya registrado', html: (
+            <div>
+              <p>Este correo ya pertenece a otro candidato.</p>
+              <ul className="mb-0">
+                <li><strong>Nombre:</strong> {existente.candidato}</li>
+        <li><strong>Email:</strong> {existente.email_agente}</li>
+                <li><strong>ID:</strong> {existente.id_candidato}</li>
+              </ul>
+            </div>
+          ) })
+        }
+      } catch { /* noop */ }
+    }
     // Avisar empalme en el cambio de fecha tentativa
     if (name === 'fecha_tentativa_de_examen' && value) {
   const overlaps: Array<{label:string; value?:string}> = []
@@ -232,10 +250,33 @@ export default function EditarCandidato() {
   // Omitir campos derivados que no existen físicamente en la tabla
   // Extraer y descartar campos derivados sin declararlos (para evitar warnings)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { dias_desde_ct: _d, proceso: _p, ...payload } = form
+  const { dias_desde_ct: _d, proceso: _p, ...payload } = form // payload incluye email_agente si fue editado
   await updateCandidato(Number(params.id), payload as Partial<Candidato>)
   router.push('/consulta_candidatos')
     } catch (err) {
+      if (err instanceof Error && err.message && err.message.includes('ux_candidatos_email_agente_not_deleted')) {
+        try {
+          if (form.email_agente && form.email_agente.trim()) {
+            const existente = await getCandidatoByEmail(form.email_agente.trim())
+            if (existente && existente.id_candidato !== Number(params.id)) {
+              setModal({ title: 'Correo ya registrado', html: (
+                <div>
+                  <p>Este correo ya pertenece a otro candidato:</p>
+                  <ul className="mb-0">
+                    <li><strong>Nombre:</strong> {existente.candidato}</li>
+                    <li><strong>Email:</strong> {existente.email_agente}</li>
+                    <li><strong>ID:</strong> {existente.id_candidato}</li>
+                  </ul>
+                  <p className="mt-2 mb-0 text-danger">No puedes guardar con un correo de candidato duplicado.</p>
+                </div>
+              ) })
+            }
+          }
+        } catch {/* ignore */}
+        setNotif({ type: 'danger', msg: 'El correo ya pertenece a otro candidato.' })
+        setSaving(false)
+        return
+      }
       const message = err instanceof Error ? err.message : 'No se pudo guardar'
       setNotif({ type: 'danger', msg: message })
     } finally { setSaving(false) }
@@ -270,6 +311,10 @@ export default function EditarCandidato() {
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
                 <input name="candidato" className="form-control" value={form.candidato || ''} onChange={handleChange} required />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">EMAIL (CANDIDATO)</label>
+                <input name="email_agente" type="email" className="form-control" value={form.email_agente || ''} onChange={handleChange} />
               </div>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>

@@ -29,6 +29,18 @@ export async function getCandidatoByCT(ct: string): Promise<Candidato | null> {
   return null
 }
 
+export async function getCandidatoByEmail(email: string): Promise<Candidato | null> {
+  const q = `/api/candidatos?email_agente=${encodeURIComponent(email.trim().toLowerCase())}`
+  const res = await fetch(q, { cache: 'no-store' })
+  if (res.status === 200) {
+    const data = await res.json()
+    return data as (Candidato | null)
+  }
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Error consultando email')
+  return null
+}
+
 export async function createCandidato(payload: Partial<Candidato>): Promise<Candidato> {
   const res = await fetch('/api/candidatos', {
     method: 'POST',

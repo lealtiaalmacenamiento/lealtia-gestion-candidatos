@@ -29,6 +29,10 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
 
   const body: CandidatoParcial = await req.json()
+  // Normalizar email_agente (correo candidato) si viene
+  if (typeof (body as any).email_agente === 'string') {
+    (body as any).email_agente = String((body as any).email_agente).trim().toLowerCase()
+  }
 
   const existenteData: CandidatoParcial = existente.data || {}
   // Validar unicidad de CT si cambia o si viene definido
@@ -48,6 +52,21 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
 
   // Normalizar email_agente si viene (después de cargar existenteData)
   let agenteMeta: any = undefined
+  // Validación: email del candidato (email_agente) único entre no eliminados (excluyendo el propio)
+  if ((body as any).email_agente && (body as any).email_agente !== (existenteData as any).email_agente) {
+    const { data: dupEmail, error: errEmail } = await supabase
+      .from('candidatos')
+      .select('id_candidato, candidato, email_agente')
+      .eq('email_agente', (body as any).email_agente)
+      .eq('eliminado', false)
+      .neq('id_candidato', id)
+      .limit(1)
+      .maybeSingle()
+    if (errEmail && errEmail.code !== 'PGRST116') return NextResponse.json({ error: errEmail.message }, { status: 500 })
+    if (dupEmail) {
+      return NextResponse.json({ error: `El correo ya pertenece al candidato "${dupEmail.candidato}" (ID ${dupEmail.id_candidato}).` }, { status: 409 })
+    }
+  }
   if (typeof body.email_agente === 'string') {
     const email = body.email_agente.trim().toLowerCase()
     const existenteEmail = (existenteData as any).email_agente as string | undefined

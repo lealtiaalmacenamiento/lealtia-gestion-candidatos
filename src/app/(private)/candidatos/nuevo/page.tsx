@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { createCandidato, getCedulaA1, getEfc, getCandidatoByCT } from '@/lib/api'
+import { createCandidato, getCedulaA1, getEfc, getCandidatoByCT, getCandidatoByEmail } from '@/lib/api'
 import { calcularDerivados, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
@@ -10,7 +10,7 @@ interface FormState {
   candidato: string;
   // Nueva fecha manual: fecha de creación CT
   fecha_creacion_ct?: string;
-  email_agente: string; // correo para crear usuario agente
+  email_agente: string; // correo del candidato (único) y para crear usuario agente
   mes: string;
   efc: string;
   fecha_tentativa_de_examen?: string; // entrada manual
@@ -95,7 +95,7 @@ export default function NuevoCandidato() {
       const updated = { ...prev, [name]: nextVal }
       return recomputeDerived(updated)
     })
-    // CT duplicate check
+  // CT duplicate check
     if (name === 'ct' && value.trim()) {
       try {
         const existente = await getCandidatoByCT(value.trim())
@@ -112,6 +112,24 @@ export default function NuevoCandidato() {
           ) })
         }
   } catch { /* noop */ }
+    }
+  // Email candidato duplicate check (email_agente)
+  if (name === 'email_agente' && value.trim()) {
+      try {
+        const existente = await getCandidatoByEmail(value.trim())
+        if (existente) {
+          setModal({ title: 'Correo ya registrado', html: (
+            <div>
+              <p>Este correo ya pertenece a otro candidato.</p>
+              <ul className="mb-0">
+                <li><strong>Nombre:</strong> {existente.candidato}</li>
+        <li><strong>Email:</strong> {existente.email_agente}</li>
+                <li><strong>ID:</strong> {existente.id_candidato}</li>
+              </ul>
+            </div>
+          ) })
+        }
+      } catch { /* noop */ }
     }
     // Date overlap notify immediately when selecting fecha_tentativa_de_examen
     if (name === 'fecha_tentativa_de_examen' && value) {
@@ -214,6 +232,28 @@ export default function NuevoCandidato() {
           // si la consulta falla, seguimos para permitir guardar; el backend bloqueará si hay duplicado
         }
       }
+    // Validar correo de candidato duplicado al guardar (bloquea)
+    if (form.email_agente && form.email_agente.trim()) {
+        try {
+      const existente = await getCandidatoByEmail(form.email_agente.trim())
+          if (existente) {
+            setModal({ title: 'Correo ya registrado', html: (
+              <div>
+                <p>Este correo ya pertenece a otro candidato:</p>
+                <ul className="mb-0">
+                  <li><strong>Nombre:</strong> {existente.candidato}</li>
+          <li><strong>Email:</strong> {existente.email_agente}</li>
+                  <li><strong>ID:</strong> {existente.id_candidato}</li>
+                </ul>
+                <p className="mt-2 mb-0 text-danger">No puedes guardar con un correo de candidato duplicado.</p>
+              </div>
+            ) })
+            throw new Error('Email candidato duplicado')
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message === 'Email candidato duplicado') throw e
+        }
+      }
       // Reglas: si hay CT debe existir fecha_creacion_ct
       if (form.ct && !form.fecha_creacion_ct) throw new Error('Debes seleccionar la fecha de creación de CT cuando ingresas un CT.')
       // Si hay fecha tentativa, debe ser hoy o futura
@@ -262,6 +302,30 @@ export default function NuevoCandidato() {
   cardRef.current.classList.add('fade-in-scale')
       }
     } catch (err) {
+      // Si fue un error por índice único de email, mostrar modal con el candidato existente
+      if (err instanceof Error && err.message && err.message.includes('ux_candidatos_email_agente_not_deleted')) {
+        try {
+          if (form.email_agente && form.email_agente.trim()) {
+            const existente = await getCandidatoByEmail(form.email_agente.trim())
+            if (existente) {
+              setModal({ title: 'Correo ya registrado', html: (
+                <div>
+                  <p>Este correo ya pertenece a otro candidato:</p>
+                  <ul className="mb-0">
+                    <li><strong>Nombre:</strong> {existente.candidato}</li>
+                    <li><strong>Email:</strong> {existente.email_agente}</li>
+                    <li><strong>ID:</strong> {existente.id_candidato}</li>
+                  </ul>
+                  <p className="mt-2 mb-0 text-danger">No puedes guardar con un correo de candidato duplicado.</p>
+                </div>
+              ) })
+            }
+          }
+        } catch {/* ignore follow-up error */}
+        setNotif({ type: 'danger', msg: 'El correo ya pertenece a otro candidato.' })
+        setSaving(false)
+        return
+      }
       const message = err instanceof Error ? err.message : 'No se pudo guardar'
       setNotif({ type: 'danger', msg: message })
     } finally {
@@ -299,9 +363,9 @@ export default function NuevoCandidato() {
                   <input name="candidato" className="form-control" value={form.candidato} onChange={handleChange} placeholder="Nombre completo" required />
                 </div>
                 <div className="col-12">
-                  <label className="form-label fw-semibold small mb-1">EMAIL (AGENTE)</label>
+                  <label className="form-label fw-semibold small mb-1">EMAIL (CANDIDATO)</label>
                   <input name="email_agente" type="email" className="form-control" value={form.email_agente} onChange={handleChange} placeholder="correo@dominio.com" />
-                  <div className="form-text small">Opcional. Si lo ingresas, se intentará crear un usuario agente con este correo.</div>
+                  <div className="form-text small">Se usará como correo del candidato y para crear el usuario agente automáticamente.</div>
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
