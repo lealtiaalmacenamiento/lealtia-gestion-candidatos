@@ -34,6 +34,19 @@ const MESES: Record<string, number> = {
   diciembre:12, dic:12
 }
 
+// Devuelve índice de mes (1-12) desde un texto como "enero", "ene", o dentro de una cadena compuesta.
+export function monthIndexFromText(text?: string): number | null {
+  if (!text) return null
+  const t = text.toLowerCase()
+  // Buscar primera coincidencia de palabras separadas que estén en el mapa de meses
+  const tokens = t.split(/[^a-záéíóúñ]+/i).filter(Boolean)
+  for (const tok of tokens) {
+    const mi = MESES[tok]
+    if (mi) return mi
+  }
+  return null
+}
+
 export function parseOneDate(raw?: string): Date | null {
   if (!raw) return null
   const t = raw.trim()
@@ -133,6 +146,112 @@ export function parseAllRanges(raw?: string): Range[] {
   }
   if (!out.length) {
     const r = parseRange(raw)
+    if (r) out.push(r)
+  }
+  return out
+}
+
+// =====================
+// Anclaje de año/mes
+// =====================
+export interface Anchor { anchorMonth: number; anchorYear: number }
+
+function pickYearClosest(monthIndex: number, anchor: Anchor): number {
+  // Elegimos entre Y-1, Y, Y+1 el que deja el mes más cercano al ancla (en meses absolutos)
+  const candidates = [anchor.anchorYear - 1, anchor.anchorYear, anchor.anchorYear + 1]
+  let bestYear = anchor.anchorYear
+  let bestAbs = Number.POSITIVE_INFINITY
+  for (const y of candidates) {
+    const diffMonths = (y - anchor.anchorYear) * 12 + (monthIndex - anchor.anchorMonth)
+    const abs = Math.abs(diffMonths)
+    if (abs < bestAbs) { bestAbs = abs; bestYear = y }
+  }
+  return bestYear
+}
+
+export function parseOneDateWithAnchor(raw?: string, anchor?: Anchor): Date | null {
+  if (!raw) return null
+  const t = raw.trim()
+  // Mantener comportamientos con año explícito
+  const iso = parseOneDate(t)
+  if (iso) return iso
+  // Formatos con nombre de mes sin año
+  const m2 = t.match(/^(\d{1,2})(?:\s+de)?\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{2,4}))?$/i)
+  if (m2) {
+    const [, dStr, mesStrRaw, yRaw] = m2
+    const mesKey = mesStrRaw.toLowerCase()
+    const mi = MESES[mesKey]
+    if (!mi) return null
+    let year: number
+    if (yRaw) {
+      year = Number(yRaw.length === 2 ? '20' + yRaw : yRaw)
+    } else {
+      year = anchor ? pickYearClosest(mi, anchor) : new Date().getUTCFullYear()
+    }
+    const di = Number(dStr)
+    if (di >= 1 && di <= 31) return new Date(Date.UTC(year, mi - 1, di))
+  }
+  return null
+}
+
+export function parseRangeWithAnchor(raw?: string, anchor?: Anchor): Range | null {
+  if (!raw) return null
+  const t = raw.trim()
+  // Rango "1-5 sep (año?)"
+  const rg = t.match(/^(\d{1,2})\s*(?:-|al)\s*(\d{1,2})\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{4}))?$/i)
+  if (rg) {
+    const [, d1, d2, mesStrRaw, yRaw] = rg
+    const mi = MESES[mesStrRaw.toLowerCase()]
+    if (mi) {
+      const year = yRaw ? Number(yRaw) : (anchor ? pickYearClosest(mi, anchor) : new Date().getUTCFullYear())
+      const di1 = Number(d1), di2 = Number(d2)
+      if (di1>=1 && di1<=31 && di2>=1 && di2<=31) {
+        const start = new Date(Date.UTC(year, mi-1, di1))
+        const end = new Date(Date.UTC(year, mi-1, di2))
+        if (end.getTime() < start.getTime()) return { start:end, end:start }
+        return { start, end }
+      }
+    }
+  }
+  // Día único con nombre de mes
+  const singleNamed = t.match(/^(\d{1,2})(?:\s+de)?\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{4}))?$/i)
+  if (singleNamed) {
+    const [, dStr, mesStrRaw, yRaw] = singleNamed
+    const mi = MESES[mesStrRaw.toLowerCase()]
+    if (mi) {
+      const year = yRaw ? Number(yRaw) : (anchor ? pickYearClosest(mi, anchor) : new Date().getUTCFullYear())
+      const di = Number(dStr)
+      if (di>=1 && di<=31) {
+        const dt = new Date(Date.UTC(year, mi-1, di))
+        return { start: dt, end: dt }
+      }
+    }
+  }
+  // Rango dd/mm - dd/mm (sin año explícito)
+  const parts = raw.split(/\s*-\s*|\sal\s/i).map(s=>s.trim()).filter(Boolean)
+  if (parts.length === 2) {
+    const a = parseOneDate(parts[0]) || (anchor ? parseOneDateWithAnchor(parts[0], anchor) : null)
+    const b = parseOneDate(parts[1]) || (anchor ? parseOneDateWithAnchor(parts[1], anchor) : null)
+    if (a && b) return { start: a, end: b }
+  }
+  const single = parseOneDate(raw) || (anchor ? parseOneDateWithAnchor(raw, anchor) : null)
+  if (single) return { start: single, end: single }
+  return null
+}
+
+export function parseAllRangesWithAnchor(raw?: string, anchor?: Anchor): Range[] {
+  if (!raw) return []
+  const chunks = raw
+    .split(/[\r\n]+|\t+|\s\|\s|,|;|\s{1}\u2022\s|\s+y\s+/i)
+    .map(s=>s.trim())
+    .filter(Boolean)
+  const out: Range[] = []
+  for (const c of chunks) {
+    const r = parseRangeWithAnchor(c, anchor)
+    if (r) out.push(r)
+  }
+  if (!out.length) {
+    const r = parseRangeWithAnchor(raw, anchor)
     if (r) out.push(r)
   }
   return out

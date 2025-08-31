@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createCandidato, getCedulaA1, getEfc, getCandidatoByCT } from '@/lib/api'
-import { calcularDerivados, parseOneDate, parseAllRanges } from '@/lib/proceso'
+import { calcularDerivados, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 
@@ -61,21 +61,27 @@ export default function NuevoCandidato() {
     const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
     const isFutureCedula = (m: CedulaA1) => {
       const t = todayUTC()
+      // Determinar ancla desde el propio mes del catálogo
+      const anchorMonth = monthIndexFromText(m.mes) || new Date().getUTCMonth()+1
+      const anchorYear = new Date().getUTCFullYear()
       const ranges = [
-        ...parseAllRanges(m.periodo_para_registro_y_envio_de_documentos),
-        ...parseAllRanges(m.capacitacion_cedula_a1)
+        ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear }),
+        ...parseAllRangesWithAnchor(m.capacitacion_cedula_a1, { anchorMonth, anchorYear })
       ]
       if (!ranges.length) return true
       return ranges.some(r => r.end.getTime() >= t)
     }
     const isFutureEfc = (e: Efc) => {
       const t = todayUTC()
+      // Ancla desde el nombre de la EFC (si contiene mes), si no usar mes seleccionado del formulario
+      const anchorMonth = monthIndexFromText(e.efc) || monthIndexFromText(form.mes) || new Date().getUTCMonth()+1
+      const anchorYear = new Date().getUTCFullYear()
       const ranges = [
-        ...parseAllRanges(e.periodo_para_ingresar_folio_oficina_virtual),
-        ...parseAllRanges(e.periodo_para_playbook),
-        ...parseAllRanges(e.pre_escuela_sesion_unica_de_arranque),
-        ...parseAllRanges(e.fecha_limite_para_presentar_curricula_cdp),
-        ...parseAllRanges(e.inicio_escuela_fundamental)
+        ...parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear }),
+        ...parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear }),
+        ...parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear }),
+        ...parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear }),
+        ...parseAllRangesWithAnchor(e.inicio_escuela_fundamental, { anchorMonth, anchorYear })
       ]
       if (!ranges.length) return true
       return ranges.some(r => r.end.getTime() >= t)
@@ -110,9 +116,11 @@ export default function NuevoCandidato() {
     // Date overlap notify immediately when selecting fecha_tentativa_de_examen
     if (name === 'fecha_tentativa_de_examen' && value) {
       const overlaps: Array<{label:string; value?:string}> = []
+      const anchorMonth = monthIndexFromText(form.mes) || new Date().getUTCMonth()+1
+      const anchorYear = new Date().getUTCFullYear()
       const check = (label: string, raw?: string)=>{
         const f = parseOneDate(value||'');
-        const parts = parseAllRanges(raw)
+        const parts = parseAllRangesWithAnchor(raw, { anchorMonth, anchorYear })
         if (f && parts.some(r => f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime())) overlaps.push({label, value: raw})
       }
       check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', form.periodo_para_registro_y_envio_de_documentos)
@@ -214,11 +222,13 @@ export default function NuevoCandidato() {
         const hoy = new Date(); const h = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()))
         if (!fte || fte.getTime() < h.getTime()) throw new Error('La fecha tentativa de examen debe ser hoy o una fecha posterior.')
       }
-  // Alertar por empalmes con rangos visibles (soporta múltiples segmentos)
+  // Alertar por empalmes con rangos visibles (soporta múltiples segmentos con ancla)
   const overlaps: Array<{label:string; value?:string}> = []
+  const anchorMonth = monthIndexFromText(form.mes) || new Date().getUTCMonth()+1
+  const anchorYear = new Date().getUTCFullYear()
   const check = (label: string, raw?: string)=>{
     const f = parseOneDate(form.fecha_tentativa_de_examen||'')
-    const parts = parseAllRanges(raw)
+    const parts = parseAllRangesWithAnchor(raw, { anchorMonth, anchorYear })
     if (f && parts.some(r => f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime())) overlaps.push({label, value: raw})
   }
       check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', form.periodo_para_registro_y_envio_de_documentos)

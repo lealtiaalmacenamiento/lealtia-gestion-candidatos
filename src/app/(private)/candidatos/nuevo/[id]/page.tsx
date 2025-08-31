@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { getCandidatoById, updateCandidato, getCedulaA1, getEfc, getCandidatoByCT } from '@/lib/api'
-import { calcularDerivados, etiquetaProceso, parseOneDate, parseAllRanges } from '@/lib/proceso'
+import { calcularDerivados, etiquetaProceso, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 // Modal de eliminación y lógica removidos según solicitud
@@ -91,21 +91,25 @@ export default function EditarCandidato() {
   const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
   const isFutureCedula = (m: CedulaA1) => {
     const t = todayUTC()
+    const anchorMonth = monthIndexFromText(m.mes) || new Date().getUTCMonth()+1
+    const anchorYear = new Date().getUTCFullYear()
     const ranges = [
-      ...parseAllRanges(m.periodo_para_registro_y_envio_de_documentos),
-      ...parseAllRanges(m.capacitacion_cedula_a1)
+      ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear }),
+      ...parseAllRangesWithAnchor(m.capacitacion_cedula_a1, { anchorMonth, anchorYear })
     ]
     if (!ranges.length) return true
     return ranges.some(r => r.end.getTime() >= t)
   }
   const isFutureEfc = (e: Efc) => {
     const t = todayUTC()
+    const anchorMonth = monthIndexFromText(e.efc) || monthIndexFromText(form.mes as string) || new Date().getUTCMonth()+1
+    const anchorYear = new Date().getUTCFullYear()
     const ranges = [
-      ...parseAllRanges(e.periodo_para_ingresar_folio_oficina_virtual),
-      ...parseAllRanges(e.periodo_para_playbook),
-      ...parseAllRanges(e.pre_escuela_sesion_unica_de_arranque),
-      ...parseAllRanges(e.fecha_limite_para_presentar_curricula_cdp),
-      ...parseAllRanges(e.inicio_escuela_fundamental)
+      ...parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear }),
+      ...parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear }),
+      ...parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear }),
+      ...parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear }),
+      ...parseAllRangesWithAnchor(e.inicio_escuela_fundamental, { anchorMonth, anchorYear })
     ]
     if (!ranges.length) return true
     return ranges.some(r => r.end.getTime() >= t)
@@ -136,7 +140,9 @@ export default function EditarCandidato() {
     // Avisar empalme en el cambio de fecha tentativa
     if (name === 'fecha_tentativa_de_examen' && value) {
   const overlaps: Array<{label:string; value?:string}> = []
-  const check = (label: string, raw?: string)=>{ const f = parseOneDate(value||''); const parts = parseAllRanges(raw); if (f && parts.some(r => f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime())) overlaps.push({label, value: raw}) }
+  const anchorMonth = monthIndexFromText(form.mes as string) || new Date().getUTCMonth()+1
+  const anchorYear = new Date().getUTCFullYear()
+  const check = (label: string, raw?: string)=>{ const f = parseOneDate(value||''); const parts = parseAllRangesWithAnchor(raw, { anchorMonth, anchorYear }); if (f && parts.some(r => f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime())) overlaps.push({label, value: raw}) }
       check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', (form.periodo_para_registro_y_envio_de_documentos as string) )
       check('CAPACITACIÓN CÉDULA A1', (form.capacitacion_cedula_a1 as string))
       check('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL', (form.periodo_para_ingresar_folio_oficina_virtual as string))
