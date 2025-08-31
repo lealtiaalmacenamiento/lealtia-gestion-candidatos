@@ -37,6 +37,9 @@ function ConsultaCandidatosInner() {
   // const [reloading, setReloading] = useState(false); // no usado actualmente
   const [deleting, setDeleting] = useState<number | null>(null);
   const [savingFlag, setSavingFlag] = useState<number | null>(null);
+  const [pendingUncheck, setPendingUncheck] = useState<{ c: CandidatoExt; key: keyof Candidato } | null>(null)
+  const [uncheckReason, setUncheckReason] = useState('')
+  const [unchecking, setUnchecking] = useState(false)
 
   const toggleEtapa = async (c: CandidatoExt, etapaKey: keyof Candidato) => {
     // Mapear etiqueta de etapa a clave de etapas_completadas
@@ -55,7 +58,13 @@ function ConsultaCandidatosInner() {
       setSavingFlag(c.id_candidato)
   const current = c.etapas_completadas || {}
   const currentCompleted = !!(current[key]?.completed)
-      const payload = { etapas_completadas: { [key]: { completed: !currentCompleted } } }
+      // Si se va a desmarcar, pedir confirmación con motivo
+      if (currentCompleted) {
+        setPendingUncheck({ c, key: etapaKey })
+        setUncheckReason('')
+        return
+      }
+      const payload = { etapas_completadas: { [key]: { completed: true } } }
       const res = await fetch(`/api/candidatos/${c.id_candidato}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Error actualizando etapa')
@@ -64,6 +73,35 @@ function ConsultaCandidatosInner() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error')
     } finally { setSavingFlag(null) }
+  }
+
+  const confirmUncheck = async () => {
+    if (!pendingUncheck) return
+    const { c, key: etapaKey } = pendingUncheck
+    const map: Record<string, string> = {
+      periodo_para_registro_y_envio_de_documentos: 'periodo_para_registro_y_envio_de_documentos',
+      capacitacion_cedula_a1: 'capacitacion_cedula_a1',
+      periodo_para_ingresar_folio_oficina_virtual: 'periodo_para_ingresar_folio_oficina_virtual',
+      periodo_para_playbook: 'periodo_para_playbook',
+      pre_escuela_sesion_unica_de_arranque: 'pre_escuela_sesion_unica_de_arranque',
+      fecha_limite_para_presentar_curricula_cdp: 'fecha_limite_para_presentar_curricula_cdp',
+      inicio_escuela_fundamental: 'inicio_escuela_fundamental'
+    }
+    const key = map[etapaKey as string]
+    if (!key) { setPendingUncheck(null); return }
+    if (!uncheckReason.trim()) return // requerido
+    try {
+      setUnchecking(true)
+      const payload = { etapas_completadas: { [key]: { completed: false } }, _etapa_uncheck: { key, reason: uncheckReason.trim() } }
+      const res = await fetch(`/api/candidatos/${c.id_candidato}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error actualizando etapa')
+      setData(d => d.map(x => x.id_candidato === c.id_candidato ? { ...(x as CandidatoExt), etapas_completadas: (j.etapas_completadas as Record<string, EtapaMeta> | undefined) } : x))
+      setPendingUncheck(null)
+      setUncheckReason('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally { setUnchecking(false) }
   }
 
   const fetchData = React.useCallback(async () => {
@@ -425,6 +463,27 @@ function ConsultaCandidatosInner() {
               </button>
             </div>
           </form>
+        </AppModal>
+      )}
+      {pendingUncheck && (
+        <AppModal
+          title="Confirmar desmarcar etapa"
+          icon="exclamation-triangle-fill"
+          width={520}
+          onClose={()=> !unchecking && setPendingUncheck(null)}
+          disableClose={unchecking}
+          footer={<>
+            <button type="button" className="btn btn-soft-secondary btn-sm" onClick={()=>!unchecking && setPendingUncheck(null)} disabled={unchecking}>Cancelar</button>
+            <button type="button" className="btn btn-danger btn-sm d-flex align-items-center gap-2" onClick={confirmUncheck} disabled={unchecking || !uncheckReason.trim()}>
+              {unchecking && <span className="spinner-border spinner-border-sm" />}
+              {unchecking ? 'Guardando…' : 'Sí, desmarcar'}
+            </button>
+          </>}
+        >
+          <p className="mb-2 small">Indica el motivo para desmarcar esta etapa. Se registrará en auditoría.</p>
+          <div className="mb-2">
+            <textarea className="form-control" rows={3} value={uncheckReason} onChange={e=>setUncheckReason(e.target.value)} placeholder="Motivo (requerido)" required disabled={unchecking} />
+          </div>
         </AppModal>
       )}
     </BasePage>

@@ -154,6 +154,23 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     // No exponer password temporal al cliente por seguridad
     delete agenteMeta.passwordTemporal
   }
+  // Si viene motivo de desmarcado, registrarlo en auditoría
+  try {
+    const bodyAny = body as any
+    if (bodyAny._etapa_uncheck && bodyAny._etapa_uncheck.key) {
+      await logAccion('etapa_desmarcada', {
+        usuario: usuario.email,
+        tabla_afectada: 'candidatos',
+        id_registro: Number(id),
+        snapshot: {
+          etapa: bodyAny._etapa_uncheck.key,
+          motivo: String(bodyAny._etapa_uncheck.reason || ''),
+          fecha: new Date().toISOString()
+        }
+      })
+    }
+  } catch { /* ignore logging errors */ }
+
   const responsePayload = agenteMeta ? { ...data, _agente_meta: agenteMeta } : data
   return NextResponse.json(responsePayload)
 }
