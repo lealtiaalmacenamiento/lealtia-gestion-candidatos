@@ -87,6 +87,32 @@ export default function EditarCandidato() {
 
   const recomputeDerived = (draft: FormState): FormState => ({ ...draft, ...calcularDerivados(draft) })
 
+  // Helpers para filtrar opciones futuras (misma lógica que en alta)
+  const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
+  const isFutureCedula = (m: CedulaA1) => {
+    const t = todayUTC()
+    const r1 = parseRange(m.periodo_para_registro_y_envio_de_documentos)
+    const r2 = parseRange(m.capacitacion_cedula_a1)
+    const ends: number[] = []
+    if (r1) ends.push(r1.end.getTime())
+    if (r2) ends.push(r2.end.getTime())
+    if (!ends.length) return true
+    return Math.max(...ends) >= t
+  }
+  const isFutureEfc = (e: Efc) => {
+    const t = todayUTC()
+    const ranges = [
+      parseRange(e.periodo_para_ingresar_folio_oficina_virtual),
+      parseRange(e.periodo_para_playbook),
+      parseRange(e.pre_escuela_sesion_unica_de_arranque),
+      parseRange(e.fecha_limite_para_presentar_curricula_cdp),
+      parseRange(e.inicio_escuela_fundamental)
+    ]
+    const ends = ranges.filter(Boolean).map(r=> (r as {end:Date}).end.getTime())
+    if (!ends.length) return true
+    return Math.max(...ends) >= t
+  }
+
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
   const nextVal: string = value
@@ -111,8 +137,8 @@ export default function EditarCandidato() {
     }
     // Avisar empalme en el cambio de fecha tentativa
     if (name === 'fecha_tentativa_de_examen' && value) {
-      const overlaps: string[] = []
-      const check = (label: string, raw?: string)=>{ const r = parseRange(raw); const f = parseOneDate(value||''); if (r && f && f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime()) overlaps.push(label) }
+      const overlaps: Array<{label:string; value?:string}> = []
+      const check = (label: string, raw?: string)=>{ const r = parseRange(raw); const f = parseOneDate(value||''); if (r && f && f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime()) overlaps.push({label, value: raw}) }
       check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', (form.periodo_para_registro_y_envio_de_documentos as string) )
       check('CAPACITACIÓN CÉDULA A1', (form.capacitacion_cedula_a1 as string))
       check('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL', (form.periodo_para_ingresar_folio_oficina_virtual as string))
@@ -123,7 +149,7 @@ export default function EditarCandidato() {
       if (overlaps.length) {
         setModal({ title: 'Aviso de empalme', html: (<div>
           <p>La fecha tentativa de examen se empalma con:</p>
-          <ul className="mb-0">{overlaps.map(o=> <li key={o}>{o}</li>)}</ul>
+          <ul className="mb-0">{overlaps.map(o=> <li key={o.label}><div className="fw-semibold">{o.label}</div><div className="text-muted small">{o.value || '—'}</div></li>)}</ul>
         </div>) })
       }
     }
@@ -250,7 +276,7 @@ export default function EditarCandidato() {
                 <label className="form-label fw-semibold small mb-1">CÉDULA A1 <span className="text-danger">*</span></label>
                 <select name="mes" className="form-select" value={form.mes || ''} onChange={handleChange} required>
                   <option value="">Selecciona una opción</option>
-                  {meses.map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}
+                  {meses.filter(isFutureCedula).map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}
                 </select>
               </div>
               <div className="col-12 mt-2"><hr className="my-0" /><div className="small text-uppercase text-secondary fw-semibold mt-2">Fechas derivadas del MES</div></div>
@@ -277,7 +303,7 @@ export default function EditarCandidato() {
                 <label className="form-label fw-semibold small mb-1">EFC <span className="text-danger">*</span></label>
                 <select name="efc" className="form-select" value={form.efc || ''} onChange={handleChange} required>
                   <option value="">Selecciona una opción</option>
-                  {efcs.map(e => <option key={e.id} value={e.efc}>{e.efc}</option>)}
+                  {efcs.filter(isFutureEfc).map(e => <option key={e.id} value={e.efc}>{e.efc}</option>)}
                 </select>
               </div>
               <div className="col-12 mt-2"><hr className="my-0" /><div className="small text-uppercase text-secondary fw-semibold mt-2">Fechas derivadas de la EFC</div></div>
