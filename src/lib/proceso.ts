@@ -117,6 +117,25 @@ export function parseRange(raw?: string): Range | null {
   return null
 }
 
+// Extrae múltiples rangos/fechas de un solo string cuando vienen concatenados (tabs o múltiples espacios)
+export function parseAllRanges(raw?: string): Range[] {
+  if (!raw) return []
+  const chunks = raw
+    .split(/\t+| {2,}|\s\|\s|,|;|\s{1}\u2022\s/)
+    .map(s=>s.trim())
+    .filter(Boolean)
+  const out: Range[] = []
+  for (const c of chunks) {
+    const r = parseRange(c)
+    if (r) out.push(r)
+  }
+  if (!out.length) {
+    const r = parseRange(raw)
+    if (r) out.push(r)
+  }
+  return out
+}
+
 export function diasDesdeCT(fecha_creacion_ct?: string): number | undefined {
   if (!fecha_creacion_ct) return undefined
   const base = parseOneDate(fecha_creacion_ct)

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createCandidato, getCedulaA1, getEfc, getCandidatoByCT } from '@/lib/api'
-import { calcularDerivados, parseRange, parseOneDate } from '@/lib/proceso'
+import { calcularDerivados, parseRange, parseOneDate, parseAllRanges } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 
@@ -61,26 +61,24 @@ export default function NuevoCandidato() {
     const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
     const isFutureCedula = (m: CedulaA1) => {
       const t = todayUTC()
-      const r1 = parseRange(m.periodo_para_registro_y_envio_de_documentos)
-      const r2 = parseRange(m.capacitacion_cedula_a1)
-      const ends: number[] = []
-      if (r1) ends.push(r1.end.getTime())
-      if (r2) ends.push(r2.end.getTime())
-      if (!ends.length) return true
-      return Math.max(...ends) >= t
+      const ranges = [
+        ...parseAllRanges(m.periodo_para_registro_y_envio_de_documentos),
+        ...parseAllRanges(m.capacitacion_cedula_a1)
+      ]
+      if (!ranges.length) return true
+      return ranges.some(r => r.end.getTime() >= t)
     }
     const isFutureEfc = (e: Efc) => {
       const t = todayUTC()
       const ranges = [
-        parseRange(e.periodo_para_ingresar_folio_oficina_virtual),
-        parseRange(e.periodo_para_playbook),
-        parseRange(e.pre_escuela_sesion_unica_de_arranque),
-        parseRange(e.fecha_limite_para_presentar_curricula_cdp),
-        parseRange(e.inicio_escuela_fundamental)
+        ...parseAllRanges(e.periodo_para_ingresar_folio_oficina_virtual),
+        ...parseAllRanges(e.periodo_para_playbook),
+        ...parseAllRanges(e.pre_escuela_sesion_unica_de_arranque),
+        ...parseAllRanges(e.fecha_limite_para_presentar_curricula_cdp),
+        ...parseAllRanges(e.inicio_escuela_fundamental)
       ]
-      const ends = ranges.filter(Boolean).map(r=> (r as {end:Date}).end.getTime())
-      if (!ends.length) return true
-      return Math.max(...ends) >= t
+      if (!ranges.length) return true
+      return ranges.some(r => r.end.getTime() >= t)
     }
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -111,8 +109,12 @@ export default function NuevoCandidato() {
     }
     // Date overlap notify immediately when selecting fecha_tentativa_de_examen
     if (name === 'fecha_tentativa_de_examen' && value) {
-      const overlaps: string[] = []
-      const check = (label: string, raw?: string)=>{ const r = parseRange(raw); const f = parseOneDate(value||''); if (r && f && f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime()) overlaps.push(label) }
+      const overlaps: Array<{label:string; value?:string}> = []
+      const check = (label: string, raw?: string)=>{
+        const f = parseOneDate(value||'');
+        const parts = parseAllRanges(raw)
+        if (f && parts.some(r => f.getTime()>=r.start.getTime() && f.getTime()<=r.end.getTime())) overlaps.push({label, value: raw})
+      }
       check('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', form.periodo_para_registro_y_envio_de_documentos)
       check('CAPACITACIÓN CÉDULA A1', form.capacitacion_cedula_a1)
       check('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL', form.periodo_para_ingresar_folio_oficina_virtual)
@@ -123,7 +125,7 @@ export default function NuevoCandidato() {
       if (overlaps.length) {
         setModal({ title: 'Aviso de empalme', html: (<div>
           <p>La fecha tentativa de examen se empalma con:</p>
-          <ul className="mb-0">{overlaps.map(o=> <li key={o}>{o}</li>)}</ul>
+          <ul className="mb-0">{overlaps.map(o=> <li key={o.label}><div className="fw-semibold">{o.label}</div><div className="text-muted small">{o.value || '—'}</div></li>)}</ul>
         </div>) })
       }
     }
