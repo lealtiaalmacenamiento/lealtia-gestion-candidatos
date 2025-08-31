@@ -253,7 +253,7 @@ function ConsultaCandidatosInner() {
             </thead>
             <tbody>
                   {filtered.map((c, idx) => (
-                <tr key={c.id_candidato} className={`${c.eliminado ? 'table-danger' : ''} dash-anim stagger-${(idx % 6)+1}`}> 
+                <tr key={c.id_candidato} className={`dash-anim stagger-${(idx % 6)+1}`}> 
                   {columns.map(col => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
