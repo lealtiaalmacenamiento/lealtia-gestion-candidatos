@@ -4,7 +4,8 @@ import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 
-interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string }
+interface EtapaMeta { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
+interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string; etapas_completadas?: Record<string, EtapaMeta> }
 import BasePage from '@/components/BasePage';
 import AppModal from '@/components/ui/AppModal';
 import { useAuth } from '@/context/AuthProvider';
@@ -35,6 +36,35 @@ function ConsultaCandidatosInner() {
   const abortRef = useRef<AbortController | null>(null);
   // const [reloading, setReloading] = useState(false); // no usado actualmente
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [savingFlag, setSavingFlag] = useState<number | null>(null);
+
+  const toggleEtapa = async (c: CandidatoExt, etapaKey: keyof Candidato) => {
+    // Mapear etiqueta de etapa a clave de etapas_completadas
+    const map: Record<string, string> = {
+      periodo_para_registro_y_envio_de_documentos: 'periodo_para_registro_y_envio_de_documentos',
+      capacitacion_cedula_a1: 'capacitacion_cedula_a1',
+      periodo_para_ingresar_folio_oficina_virtual: 'periodo_para_ingresar_folio_oficina_virtual',
+      periodo_para_playbook: 'periodo_para_playbook',
+      pre_escuela_sesion_unica_de_arranque: 'pre_escuela_sesion_unica_de_arranque',
+      fecha_limite_para_presentar_curricula_cdp: 'fecha_limite_para_presentar_curricula_cdp',
+      inicio_escuela_fundamental: 'inicio_escuela_fundamental'
+    }
+    const key = map[etapaKey as string]
+    if (!key) return
+    try {
+      setSavingFlag(c.id_candidato)
+  const current = c.etapas_completadas || {}
+  const currentCompleted = !!(current[key]?.completed)
+      const payload = { etapas_completadas: { [key]: { completed: !currentCompleted } } }
+      const res = await fetch(`/api/candidatos/${c.id_candidato}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error actualizando etapa')
+      // Actualizar en memoria con respuesta (incluye merge + metadatos)
+  setData(d => d.map(x => x.id_candidato === c.id_candidato ? { ...(x as CandidatoExt), etapas_completadas: (j.etapas_completadas as Record<string, EtapaMeta> | undefined) } : x))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally { setSavingFlag(null) }
+  }
 
   const fetchData = React.useCallback(async () => {
     abortRef.current?.abort();
@@ -104,15 +134,15 @@ function ConsultaCandidatosInner() {
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'proceso', label: 'Proceso' },
   { key: 'mes', label: 'Cédula A1', sortable: true },
-    { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
-    { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
+  { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
+  { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
     { key: 'fecha_tentativa_de_examen', label: 'Fecha tentativa examen', sortable: true },
     { key: 'efc', label: 'EFC', sortable: true },
-    { key: 'periodo_para_ingresar_folio_oficina_virtual', label: 'Periodo folio OV' },
-    { key: 'periodo_para_playbook', label: 'Periodo Playbook' },
-    { key: 'pre_escuela_sesion_unica_de_arranque', label: 'Pre Escuela' },
-    { key: 'fecha_limite_para_presentar_curricula_cdp', label: 'Currícula CDP' },
-    { key: 'inicio_escuela_fundamental', label: 'Inicio Escuela' },
+  { key: 'periodo_para_ingresar_folio_oficina_virtual', label: 'Periodo folio OV' },
+  { key: 'periodo_para_playbook', label: 'Periodo Playbook' },
+  { key: 'pre_escuela_sesion_unica_de_arranque', label: 'Pre Escuela' },
+  { key: 'fecha_limite_para_presentar_curricula_cdp', label: 'Currícula CDP' },
+  { key: 'inicio_escuela_fundamental', label: 'Inicio Escuela' },
     { key: 'seg_gmm', label: 'SEG GMM' },
     { key: 'seg_vida', label: 'SEG VIDA' },
   // columnas derivadas ya incluidas arriba (no duplicar)
@@ -269,10 +299,38 @@ function ConsultaCandidatosInner() {
                              : (col.key === 'proceso'
                                ? etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''
                               : value))));
+                    const etapaKeys = new Set([
+                      'periodo_para_registro_y_envio_de_documentos',
+                      'capacitacion_cedula_a1',
+                      'periodo_para_ingresar_folio_oficina_virtual',
+                      'periodo_para_playbook',
+                      'pre_escuela_sesion_unica_de_arranque',
+                      'fecha_limite_para_presentar_curricula_cdp',
+                      'inicio_escuela_fundamental'
+                    ])
+                    const isEtapa = etapaKeys.has(col.key as string)
+                    const etapas = (c as CandidatoExt).etapas_completadas || {}
+                    const etKey = col.key as string
+                    const checked = !!etapas[etKey]?.completed
+                    const meta = etapas[etKey]
                     const rawProceso = (c as unknown as { proceso?: string }).proceso || ''
                     return (
                       <td key={col.key} className={cls} title={col.key==='proceso' ? rawProceso : undefined}>
-                        <Cell v={display} />
+                        <div className="d-flex flex-column gap-1">
+                          <Cell v={display} />
+                          {isEtapa && (
+                            <label className="small d-flex align-items-center gap-2">
+                              <input type="checkbox" className="form-check-input" checked={checked} disabled={savingFlag===c.id_candidato || !!c.eliminado}
+                                onChange={()=>toggleEtapa(c, col.key as AnyColKey)} />
+                              <span>Completado</span>
+                            </label>
+                          )}
+                          {isEtapa && meta?.at && (
+                            <div className="form-text small">
+                              Marcado el {formatDate(meta.at)} por {meta.by?.nombre || ''} {meta.by?.email ? `(${meta.by.email})` : ''}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     )
                   })}

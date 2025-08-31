@@ -89,6 +89,23 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     }
   }
 
+  // Si viene un cambio de etapas_completadas desde el cliente, normalizamos metadatos
+  if (body.etapas_completadas && typeof body.etapas_completadas === 'object') {
+    const nowIso = new Date().toISOString()
+    const nombreUsuario = (usuario as any).nombre || undefined
+    const prev = (existenteData as any).etapas_completadas || {}
+    const merged: Record<string, any> = { ...prev }
+    for (const [k, v] of Object.entries(body.etapas_completadas as Record<string, any>)) {
+      const completed = !!(v as any)?.completed
+      merged[k] = {
+        completed,
+        by: { email: usuario.email, nombre: nombreUsuario },
+        at: nowIso
+      }
+    }
+    ;(body as any).etapas_completadas = merged
+  }
+
   body.usuario_que_actualizo = usuario.email
   // Si se agrega CT por primera vez y no había fecha_creacion_ct, la seteamos
   if (body.ct && !existenteData.ct && !existenteData.fecha_creacion_ct) {

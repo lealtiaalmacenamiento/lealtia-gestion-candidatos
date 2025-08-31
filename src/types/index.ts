@@ -30,6 +30,10 @@ export interface Candidato {
   inicio_escuela_fundamental?: string
   // Nuevo: email del agente (candidato) para creación de usuario
   email_agente?: string
+  // Estado de completado por etapa (MES/EFC) con metadatos de usuario/fecha
+  etapas_completadas?: {
+    [etapa: string]: { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
+  }
   // Meta devuelta por backend al crear (no persistida): estado creación usuario agente
   _agente_meta?: {
     created?: boolean
