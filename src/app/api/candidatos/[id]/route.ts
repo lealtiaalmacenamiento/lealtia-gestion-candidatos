@@ -131,6 +131,11 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   body.proceso = calcularDerivados(snap).proceso
   // fecha_creacion_ct y fecha_tentativa_de_examen: si vienen en body se guardan tal cual (yyyy-mm-dd)
   normalizeDateFields(body)
+  // Remover campos meta de cliente que no existen en la tabla antes de actualizar
+  const _uncheckMeta = (body as any)._etapa_uncheck
+  if (typeof (body as any)._etapa_uncheck !== 'undefined') {
+    delete (body as any)._etapa_uncheck
+  }
   const { data, error } = await supabase.from('candidatos').update(body).eq('id_candidato', id).select().single()
   if (error) {
     const msg = String(error.message || '')
@@ -162,7 +167,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   }
   // Si viene motivo de desmarcado, registrarlo en auditoría
   try {
-    const bodyAny = body as any
+    const bodyAny = { _etapa_uncheck: _uncheckMeta } as any
     if (bodyAny._etapa_uncheck && bodyAny._etapa_uncheck.key) {
       await logAccion('etapa_desmarcada', {
         usuario: usuario.email,
