@@ -118,7 +118,7 @@ export default function PlanificacionPage(){
 
   // Escuchar eventos de actualización de citas desde la vista de prospectos
   useEffect(()=>{
-    const handler=()=>{ fetchData(true,'interval') }
+    const handler=()=>{ if(dirty) return; fetchData(true,'interval') }
     window.addEventListener('prospectos:cita-updated', handler)
     // BroadcastChannel fallback cross-tab
     try {
@@ -131,7 +131,7 @@ export default function PlanificacionPage(){
     } catch { /* ignore */ }
     return ()=> window.removeEventListener('prospectos:cita-updated', handler)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[semana, anio, agenteId])
+  },[semana, anio, agenteId, dirty])
 
   // Realtime: cambios en prospectos refrescan planificacion (para integrar citas auto)
   useEffect(()=>{
@@ -142,13 +142,25 @@ export default function PlanificacionPage(){
           const row = (payload.new || payload.old) as { agente_id?: number } | null
           if(superuser && agenteId){ if(row?.agente_id && String(row.agente_id)!==String(agenteId)) return }
           if(semana==='ALL') return
+          if(dirty) return
           fetchData(true,'interval')
         })
         .subscribe()
       return ()=> { supa.removeChannel(channel) }
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[superuser, agenteId, semana, anio])
+  },[superuser, agenteId, semana, anio, dirty])
+
+  // Prevenir refresco/cierre de pestaña si hay cambios sin guardar
+  useEffect(()=>{
+    const beforeUnload = (e: BeforeUnloadEvent)=>{
+      if(!dirty) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return ()=> window.removeEventListener('beforeunload', beforeUnload)
+  },[dirty])
 
   // Refresco periódico de citas cada 60s para mantener sincronía con cambios en prospectos
   useEffect(()=>{
