@@ -33,23 +33,19 @@ export async function POST(req: Request) {
   if (!agente_id) return NextResponse.json({ error: 'agente_id requerido' }, { status: 400 })
   const semana_iso: number = body.semana_iso
   const anio: number = body.anio
-  const includeAutos = body.include_autos === 1 || body.include_autos === true || body.include_autos === '1'
+  // Siempre persistimos todos los bloques (manuales y auto)
   const isBloque = (b: unknown): b is BloquePlanificacion => {
     if (!b || typeof b !== 'object') return false
     const obj = b as Record<string, unknown>
     return typeof obj.day === 'number' && typeof obj.hour === 'string' && typeof obj.activity === 'string'
   }
-  // Sólo persistimos bloques manuales; los de origen auto (citas) se regeneran en GET
+  // Persistimos todos los bloques tal como fueron enviados
   const bloquesAll: BloquePlanificacion[] = Array.isArray(body.bloques) ? body.bloques.filter(isBloque) : []
-  let bloques: BloquePlanificacion[] = bloquesAll.filter(b=> b.origin !== 'auto')
-  if (includeAutos) {
-    // Adjuntamos también bloque auto CITAS para congelar snapshot
-    bloques = [...bloques, ...bloquesAll.filter(b=> b.origin === 'auto')]
-  }
+  const bloques: BloquePlanificacion[] = bloquesAll
   const prima = Number(body.prima_anual_promedio) || 30000
   const comision = Number(body.porcentaje_comision) || 35
   const upsert = { agente_id, semana_iso, anio, bloques, prima_anual_promedio: prima, porcentaje_comision: comision, updated_at: new Date().toISOString() }
   const { data, error } = await supabase.from('planificaciones').upsert(upsert, { onConflict: 'agente_id,anio,semana_iso' }).select().maybeSingle()
   if (error) return NextResponse.json({ error: error.message, detalle: 'upsert_planificacion' }, { status: 500 })
-  return NextResponse.json({ ...(data||upsert), debug: { enviados_total: bloquesAll.length, enviados_manual: bloquesAll.filter(b=> b.origin!=='auto').length, persistidos: bloques.length, includeAutos } })
+  return NextResponse.json({ ...(data||upsert), debug: { enviados_total: bloquesAll.length, persistidos: bloques.length } })
 }

@@ -34,7 +34,7 @@ export default function PlanificacionPage(){
   const localManualRef = useRef<BloquePlanificacion[]>([])
   const agenteQuery = superuser && agenteId ? `&agente_id=${agenteId}` : ''
   const [metaCitas,setMetaCitas]=useState(5)
-  const [persistirAutos,setPersistirAutos]=useState(false)
+  // Siempre se "congela" todo: manuales y auto; se elimina el switch.
   const bcRef = useRef<BroadcastChannel|null>(null)
 
   const fetchData = async (force=false, trigger: 'manual'|'interval'|'postsave'='manual') => {
@@ -224,9 +224,8 @@ export default function PlanificacionPage(){
       agente_id: superuser && agenteId? Number(agenteId): undefined,
       semana_iso: semana as number,
       anio: anio,
-      // Sólo enviamos manuales; autos se reconstruyen
-      bloques: persistirAutos ? data.bloques.map(b=> ({...b})) : data.bloques.filter(b=> b.origin !== 'auto').map(b=> ({...b, origin:'manual'})),
-      include_autos: persistirAutos? 1: 0,
+      // Enviar todos los bloques (manual y auto) para congelar siempre el snapshot
+      bloques: data.bloques.map(b=> ({...b})),
       prima_anual_promedio: data.prima_anual_promedio,
       porcentaje_comision: data.porcentaje_comision
     }
@@ -339,10 +338,7 @@ export default function PlanificacionPage(){
             <div className={`progress-bar ${horasCitas>=metaCitas? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasCitas/metaCitas)*100)}%`}}>{horasCitas}/{metaCitas}</div>
           </div>
           <div className="mb-3 fw-semibold">Ganancia estimada: ${ganancia.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-          <div className="form-check form-switch small mb-2">
-            <input className="form-check-input" type="checkbox" id="persistAutosChk" checked={persistirAutos} onChange={e=>setPersistirAutos(e.target.checked)} />
-            <label className="form-check-label" htmlFor="persistAutosChk">Congelar citas auto</label>
-          </div>
+          {/* Switch eliminado: ahora siempre se congelan todos los bloques (manual y auto) */}
           <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
           <div className="form-text small">{dirty? 'Cambios pendientes de guardar.':'Sin cambios.'}</div>
         </div>
