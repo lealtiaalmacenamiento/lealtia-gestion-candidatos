@@ -136,6 +136,11 @@ export default function ProspectosPage() {
   const formatMXHour = (iso:string)=>{ try { return new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', hour12:false}).format(new Date(iso)) } catch { return '' } }
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
     if(form.fecha_cita_fecha && form.fecha_cita_hora){
+      // Evitar guardar citas en el pasado al crear prospecto
+      if(isPastDateHour(form.fecha_cita_fecha, form.fecha_cita_hora)){
+        setErrorMsg('La fecha/hora de la cita no puede ser en el pasado');
+        return;
+      }
       body.fecha_cita = buildUTCFromMX(form.fecha_cita_fecha, form.fecha_cita_hora)
     }
     const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

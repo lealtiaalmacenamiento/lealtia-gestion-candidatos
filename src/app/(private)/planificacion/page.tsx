@@ -330,7 +330,6 @@ export default function PlanificacionPage(){
           <div className="mb-2 small">Horas CITAS: <strong>{horasCitas}</strong></div>
           <div className="mb-1 small text-muted">Manual Prospecto: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='PROSPECCION').length}</div>
           <div className="mb-2 small text-muted">Manual SMNYL: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
-          <details className="small mb-2"><summary>Debug bloques manuales</summary><pre style={{maxHeight:120,overflow:'auto'}}>{JSON.stringify(data.bloques.filter(b=>b.origin!=='auto'),null,2)}</pre></details>
           <div className="mb-2 small">Prima anual promedio <input type="number" className="form-control form-control-sm" value={data.prima_anual_promedio} onChange={e=>setData({...data,prima_anual_promedio:Number(e.target.value)})}/></div>
           <div className="mb-2 small">% Comisión <input type="number" className="form-control form-control-sm" value={data.porcentaje_comision} onChange={e=>setData({...data,porcentaje_comision:Number(e.target.value)})}/></div>
           <div className="mb-2 small">Meta CITAS semanal: {metaCitas}</div>
