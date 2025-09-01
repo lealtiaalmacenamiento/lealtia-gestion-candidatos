@@ -3,6 +3,7 @@ import './globals.css'; // Contiene bootstrap + bootstrap-icons
 import { AuthProvider } from '@/context/AuthProvider'
 import { PageTitleProvider } from '@/context/PageTitleContext'
 import React from 'react';
+import Footer from '@/components/Footer'
 
 interface RootLayoutProps {
   children: React.ReactNode;
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             <div style={{ marginTop: showBanner ? 28 : 0 }}>
               {children}
             </div>
+            <Footer />
           </PageTitleProvider>
         </AuthProvider>
       </body>

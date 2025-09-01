@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="At3lier Diballo">
+  <defs>
+    <style>
+      .title { fill: #ffffff; font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-weight: 800; }
+      .subtitle { fill: #ffffff; font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-weight: 600; letter-spacing: 1px; }
+    </style>
+  </defs>
+  <rect width="1200" height="300" fill="none"/>
+  <text x="50%" y="54%" text-anchor="middle" class="title" font-size="140">At3lier Diballo</text>
+</svg>
