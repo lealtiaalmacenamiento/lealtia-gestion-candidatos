@@ -25,10 +25,9 @@ export default function ProspectosPage() {
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
-  const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado, fecha_cita:'', fecha_cita_fecha:'', fecha_cita_hora:'' })
+  const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
   const [errorMsg,setErrorMsg]=useState<string>('')
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
-  const [horasOcupadas,setHorasOcupadas]=useState<Record<string,string[]>>({}) // fecha -> ['08','09']
   const [citaDrafts,setCitaDrafts]=useState<Record<number,{fecha?:string; hora?:string}>>({})
   const bcRef = useRef<BroadcastChannel|null>(null)
 
@@ -37,24 +36,6 @@ export default function ProspectosPage() {
     const [y,m,d] = fecha.split('-').map(Number)
     const dt = new Date(y, m-1, d, Number(hour), 0, 0, 0)
     return dt.getTime() < now.getTime()-60000 // margen 1 min
-  }
-  const precargarHoras = async(fecha:string)=>{
-    // Reutiliza lista actual filtrando por la fecha para evitar llamada pesada
-    // Si ya tenemos la fecha en cache, no refetch
-    if(horasOcupadas[fecha]) return
-    // Usamos fetchAll ya cargado (prospectos), si no contiene la fecha, hacemos fetch parcial
-    const existing = prospectos.filter(p=> p.fecha_cita && p.fecha_cita.startsWith(fecha))
-    let list = existing
-    if(list.length===0){
-      // Obtener año y semana de esa fecha para traer potenciales citas de ese intervalo
-      const d = new Date(fecha+ 'T00:00:00')
-      const { anio: a, semana: w } = obtenerSemanaIso(d)
-      const params = new URLSearchParams({ anio:String(a), semana:String(w), solo_con_cita:'1' })
-      const r = await fetch('/api/prospectos?'+params.toString())
-      if(r.ok){ const arr: Prospecto[] = await r.json(); list = arr.filter(p=> p.fecha_cita && p.fecha_cita.startsWith(fecha)) }
-    }
-    const horas = Array.from(new Set(list.map(p=> { const dt=new Date(p.fecha_cita!); return String(dt.getHours()).padStart(2,'0') })))
-    setHorasOcupadas(prev=> ({...prev,[fecha]:horas}))
   }
   const [agenteId,setAgenteId]=useState<string>('')
   const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
@@ -135,16 +116,9 @@ export default function ProspectosPage() {
   const formatMXDate = (iso:string)=>{ try { return new Intl.DateTimeFormat('en-CA',{timeZone:MX_TZ, year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date(iso)) } catch { return '' } }
   const formatMXHour = (iso:string)=>{ try { return new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', hour12:false}).format(new Date(iso)) } catch { return '' } }
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
-    if(form.fecha_cita_fecha && form.fecha_cita_hora){
-      // Evitar guardar citas en el pasado al crear prospecto
-      if(isPastDateHour(form.fecha_cita_fecha, form.fecha_cita_hora)){
-        setErrorMsg('La fecha/hora de la cita no puede ser en el pasado');
-        return;
-      }
-      body.fecha_cita = buildUTCFromMX(form.fecha_cita_fecha, form.fecha_cita_hora)
-    }
+    // Ya no se agenda cita durante el registro
     const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente',fecha_cita:'',fecha_cita_fecha:'',fecha_cita_hora:''}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
+    if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente'}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
     else { try { const j=await r.json(); setErrorMsg(j.error||'Error'); setToast({msg:j.error||'Error', type:'error'}) } catch { setErrorMsg('Error al guardar'); setToast({msg:'Error al guardar', type:'error'}) } }
   }
 
@@ -378,9 +352,7 @@ export default function ProspectosPage() {
           {telefonoInvalido && <div className="invalid-feedback">Teléfono inválido. Use 7-15 dígitos, opcional +, espacios o guiones.</div>}
         </div>
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
-        <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-  <div className="col-sm-1"><input type="date" value={form.fecha_cita_fecha} onChange={e=>{ const fecha=e.target.value; setForm(f=>({...f,fecha_cita_fecha:fecha})); if(fecha) precargarHoras(fecha) }} className="form-control"/></div>
-  <div className="col-sm-1"><select className="form-select" value={form.fecha_cita_hora} onChange={e=>setForm(f=>({...f,fecha_cita_hora:e.target.value}))}><option value="">(Hora)</option>{Array.from({length:24},(_,i)=> i).map(h=> { const hh=String(h).padStart(2,'0'); const ocup = !!(form.fecha_cita_fecha && horasOcupadas[form.fecha_cita_fecha]?.includes(hh)); return <option key={h} value={hh} disabled={ocup}>{hh}:00{ocup?' (X)':''}</option>})}</select></div>
+  <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
       </div>
   <div className="mt-2"><button className="btn btn-primary btn-sm" disabled={loading || telefonoInvalido}>Agregar</button></div>
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
