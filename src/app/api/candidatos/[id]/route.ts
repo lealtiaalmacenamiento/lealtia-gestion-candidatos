@@ -221,6 +221,30 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Si el candidato eliminado tenía usuario vinculado (email_agente) y su rol es 'agente', desactivarlo.
+  try {
+    const emailAgente = (existente.data as any)?.email_agente as string | undefined
+    if (emailAgente) {
+      const { data: userAg, error: userErr } = await supabase
+        .from('usuarios')
+        .select('id, rol, activo')
+        .eq('email', emailAgente)
+        .maybeSingle()
+      if (!userErr && userAg && String(userAg.rol).toLowerCase() === 'agente' && userAg.activo) {
+        const { error: updErr } = await supabase.from('usuarios').update({ activo: false }).eq('id', userAg.id)
+        if (!updErr) {
+          await logAccion('desactivacion_usuario_por_borrado_candidato', {
+            usuario: usuario.email,
+            tabla_afectada: 'usuarios',
+            id_registro: Number(userAg.id),
+            snapshot: { motivo: 'borrado_logico_candidato', id_candidato: Number(id), email: emailAgente }
+          })
+        }
+      }
+      // Si es supervisor u otro rol, no se desactiva según requerimiento
+    }
+  } catch { /* ignorar errores de desactivación */ }
+
   await logAccion('borrado_logico_candidato', { usuario: usuario.email, tabla_afectada: 'candidatos', id_registro: Number(id), snapshot: existente.data })
 
   return NextResponse.json({ success: true })
