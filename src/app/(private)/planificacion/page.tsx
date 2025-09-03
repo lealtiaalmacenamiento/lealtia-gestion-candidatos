@@ -375,8 +375,9 @@ function BloqueEditor({ modal, semanaBase, prospectos, onSave, onDelete }: { mod
   // Bloquear guardar en pasado (recalcular con lógica local consistente)
   const target = new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour), 0,0,0)
   if(target.getTime() < Date.now()-60000){ alert('No se puede editar un bloque en el pasado'); return }
-  if(!isCita && !notas.trim()) return alert('Notas obligatorias para este tipo')
-  if(isCita && !prospectoId && !notas.trim()) return alert('Notas obligatorias si la cita no está vinculada a un prospecto')
+  // Validación de notas desactivada: ya no son obligatorias para prospecto/SMNYL
+  // if(!isCita && !notas.trim()) return alert('Notas obligatorias para este tipo')
+  // if(isCita && !prospectoId && !notas.trim()) return alert('Notas obligatorias si la cita no está vinculada a un prospecto')
     const base: BloquePlanificacion = {day:modal.day, hour:modal.hour, activity:tipo, origin:'manual'}
     if(isCita){
       if(prospectoId){
@@ -429,7 +430,7 @@ function BloqueEditor({ modal, semanaBase, prospectos, onSave, onDelete }: { mod
       </select>
     </div>}
     {((!isCita && tipo) || (isCita && !prospectoId)) && <div className="mb-2">
-      <label className="form-label small mb-1">Notas (obligatorias{isCita && !prospectoId? ' si no hay prospecto':''})</label>
+      <label className="form-label small mb-1">Notas (opcional)</label>
       <textarea rows={3} className="form-control form-control-sm" value={notas} onChange={e=> setNotas(e.target.value)} />
     </div>}
     {modal.blk && modal.blk.activity==='CITAS' && modal.blk.prospecto_nombre && detalle && <div className="alert alert-info p-2 small">
