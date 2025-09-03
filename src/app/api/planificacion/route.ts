@@ -3,6 +3,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 import type { BloquePlanificacion } from '@/types'
+import { logAccion } from '@/lib/logger'
 
 const supabase = getServiceClient()
 
@@ -20,8 +21,11 @@ export async function GET(req: Request) {
   const anioQ = anio || w.anio
   const { data, error } = await supabase.from('planificaciones').select('*').eq('agente_id', agenteId).eq('semana_iso', semanaQ).eq('anio', anioQ).maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data) return NextResponse.json({ bloques: [], agente_id: agenteId, semana_iso: semanaQ, anio: anioQ, prima_anual_promedio: 30000, porcentaje_comision: 35 })
-  return NextResponse.json(data)
+  const payload = data || { bloques: [], agente_id: agenteId, semana_iso: semanaQ, anio: anioQ, prima_anual_promedio: 30000, porcentaje_comision: 35 }
+  try {
+    await logAccion('lectura_planificacion', { tabla_afectada: 'planificaciones', snapshot: { agente_id: agenteId, semana_iso: semanaQ, anio: anioQ } })
+  } catch {}
+  return NextResponse.json(payload)
 }
 
 export async function POST(req: Request) {
@@ -47,5 +51,9 @@ export async function POST(req: Request) {
   const upsert = { agente_id, semana_iso, anio, bloques, prima_anual_promedio: prima, porcentaje_comision: comision, updated_at: new Date().toISOString() }
   const { data, error } = await supabase.from('planificaciones').upsert(upsert, { onConflict: 'agente_id,anio,semana_iso' }).select().maybeSingle()
   if (error) return NextResponse.json({ error: error.message, detalle: 'upsert_planificacion' }, { status: 500 })
-  return NextResponse.json({ ...(data||upsert), debug: { enviados_total: bloquesAll.length, persistidos: bloques.length } })
+  const result = { ...(data||upsert), debug: { enviados_total: bloquesAll.length, persistidos: bloques.length } }
+  try {
+    await logAccion('upsert_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', id_registro: Number((data as { id?: number })?.id || 0), snapshot: result })
+  } catch {}
+  return NextResponse.json(result)
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { obtenerSemanaIso, semanaDesdeNumero } from '@/lib/semanaIso'
+import { logAccion } from '@/lib/logger'
 
 const supabase = getServiceClient()
 
@@ -41,5 +42,9 @@ export async function GET(req: Request) {
     if (e && counts[e] !== undefined) counts[e]++
   }
   // Ganancia estimada (cuando se necesite) considerará solo pendiente, seguimiento y con_cita
-  return NextResponse.json({ total, por_estado: counts, cumplimiento_30: total >= 30 })
+  const result = { total, por_estado: counts, cumplimiento_30: total >= 30 }
+  try {
+    await logAccion('aggregate_prospectos', { tabla_afectada: 'prospectos', snapshot: { filtros: { anio, semana, agenteIdParam, soloConCita }, resumen: result } })
+  } catch {}
+  return NextResponse.json(result)
 }

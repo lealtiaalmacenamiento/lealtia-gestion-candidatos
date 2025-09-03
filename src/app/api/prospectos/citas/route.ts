@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { semanaDesdeNumero } from '@/lib/semanaIso'
+import { logAccion } from '@/lib/logger'
 
 const supabase = getServiceClient()
 
@@ -24,5 +25,8 @@ export async function GET(req: Request){
   if(agenteId) q = q.eq('agente_id', Number(agenteId))
   const { data, error } = await q
   if(error) return NextResponse.json({error:error.message},{status:500})
+  try {
+    await logAccion('listado_citas', { tabla_afectada: 'prospectos', snapshot: { count: (data||[]).length, semana, anio, agenteId } })
+  } catch {}
   return NextResponse.json(data)
 }

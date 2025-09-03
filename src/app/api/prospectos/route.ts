@@ -3,6 +3,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { obtenerSemanaIso, semanaDesdeNumero } from '@/lib/semanaIso'
 import type { ProspectoEstado } from '@/types'
+import { logAccion } from '@/lib/logger'
 
 const supabase = getServiceClient()
 
@@ -50,6 +51,16 @@ export async function GET(req: Request) {
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Audit liviano del listado
+  try {
+    await logAccion('listado_prospectos', {
+      tabla_afectada: 'prospectos',
+      snapshot: {
+        count: (data || []).length,
+        filtros: { anio, semana, estado, soloConCita, soloSinCita, agenteIdParam }
+      }
+    })
+  } catch {}
   return NextResponse.json(data)
 }
 
@@ -125,5 +136,14 @@ export async function POST(req: Request) {
   }
   const { data, error } = await supabase.from('prospectos').insert([insert]).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Audit alta
+  try {
+    await logAccion('alta_prospecto', {
+      usuario: usuario.email,
+      tabla_afectada: 'prospectos',
+      id_registro: Number((data as { id?: number }).id || 0),
+      snapshot: data
+    })
+  } catch {}
   return NextResponse.json(data)
 }

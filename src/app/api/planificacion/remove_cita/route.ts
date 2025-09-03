@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { logAccion } from '@/lib/logger'
 
 const supabase = getServiceClient()
 
@@ -24,9 +25,13 @@ export async function POST(req: Request) {
   const bloques = (plan.bloques||[]) as Bloque[]
     const before = bloques.length
     const filtrados = bloques.filter(b=> !(b.origin==='auto' && b.activity==='CITAS' && b.prospecto_id===prospecto_id))
-    if(filtrados.length === before) return NextResponse.json({ success:true, removed:false })
+    if(filtrados.length === before) {
+      try { await logAccion('remove_cita_noop', { tabla_afectada: 'planificaciones', snapshot: { agente_id, semana_iso, anio, prospecto_id } }) } catch {}
+      return NextResponse.json({ success:true, removed:false })
+    }
     const { error: upErr } = await supabase.from('planificaciones').update({ bloques: filtrados, updated_at: new Date().toISOString() }).eq('id', plan.id)
     if(upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    try { await logAccion('remove_cita_bloques', { usuario: usuario.email, tabla_afectada: 'planificaciones', snapshot: { agente_id, semana_iso, anio, prospecto_id, eliminados: before - filtrados.length } }) } catch {}
     return NextResponse.json({ success:true, removed:true })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error? e.message: 'Error' }, { status: 500 })
