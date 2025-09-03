@@ -112,8 +112,8 @@ export async function POST(req: Request) {
     max: (historial && historial[historial.length-1]?.created_at) || null
   }
   const rows = (historial||[]).map(h => {
-    const pInfo = mapPros[h.prospecto_id as number]
-    const pName = pInfo?.nombre ? `${pInfo.nombre} (#${h.prospecto_id})` : `#${h.prospecto_id}`
+  const pInfo = mapPros[h.prospecto_id as number]
+  const pName = (pInfo?.nombre || '').toString()
     const owner = mapUsers[h.agente_id as number]
     const ownerLabel = owner?.nombre ? `${owner.nombre} <${owner.email||''}>` : (owner?.email || '')
     const modInfo = h.usuario_email ? mapEmails[h.usuario_email] : undefined
