@@ -1,14 +1,13 @@
 import type { Prospecto } from '@/types'
 import type { ExtendedMetrics, PreviousWeekDelta } from './prospectosMetrics'
-import { formatFechaHoraCDMX } from '@/lib/datetime'
+// import eliminado: fechas de cita dormidas
 
 async function loadJSPDF() { return (await import('jspdf')).jsPDF }
 async function loadAutoTable() { return (await import('jspdf-autotable')).default }
 
 function pct(part:number,total:number){ if(!total) return '0%'; return ((part/total)*100).toFixed(1)+'%' }
 const MX_TZ='America/Mexico_City'
-// Reemplazamos por util central con fallback manual
-function formatFechaCita(iso?:string|null){ return formatFechaHoraCDMX(iso) }
+// Citas dormidas: evitamos mostrar fechas de cita en tablas
 function nowMX(){
   const d=new Date()
   const fecha = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, day:'2-digit', month:'2-digit', year:'numeric'}).format(d)
@@ -141,7 +140,7 @@ export async function exportProspectosPDF(
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
   let metaProspectos = opts?.metaProspectos ?? 30
-  let metaCitas = opts?.metaCitas ?? 5
+  let metaCitas = opts?.metaCitas ?? 0
   const distinctAgentsCount = agrupado ? new Set(prospectos.map(p=> (p as ExtendedProspecto).agente_id)).size || 1 : 1
   if(agrupado){
     metaProspectos = metaProspectos * distinctAgentsCount
@@ -150,7 +149,7 @@ export async function exportProspectosPDF(
   let y = contentStartY
   if(!agrupado){
   const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas' ]
-    const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, formatFechaCita(p.fecha_cita), (p.notas||'').slice(0,120) ])
+  const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ])
     const tableStartY = contentStartY
     // @ts-expect-error autotable plugin
     doc.autoTable({
@@ -163,21 +162,11 @@ export async function exportProspectosPDF(
       theme:'grid',
       // Ajuste de anchos: considerar desplazamiento si se incluye ID
   columnStyles: (()=>{ const s: Record<number,{ cellWidth?: number; halign?: 'left'|'center'|'right'; overflow?: 'linebreak'|'ellipsize'|'visible' }> = {}; let base=0; if(incluirId) { s[0]={ cellWidth: 12, halign:'center' } ; base=1 }
-        if(incluirId){
-          // Total 182mm: 12 + 40 + 26 + 22 + 28 + 54 = 182
-          s[base+0] = { cellWidth: 40, halign:'left' } // Nombre
-          s[base+1] = { cellWidth: 26, halign:'center' } // Teléfono
-          s[base+2] = { cellWidth: 22, halign:'center' } // Estado
-          s[base+3] = { cellWidth: 28, halign:'center' } // Fecha Cita
-          s[base+4] = { cellWidth: 54, overflow:'linebreak', halign:'left' } // Notas
-        } else {
-          // Total 182mm: 42 + 26 + 22 + 28 + 64 = 182
-          s[base+0] = { cellWidth: 42, halign:'left' } // Nombre
-          s[base+1] = { cellWidth: 26, halign:'center' } // Teléfono
-          s[base+2] = { cellWidth: 22, halign:'center' } // Estado
-          s[base+3] = { cellWidth: 28, halign:'center' } // Fecha Cita
-          s[base+4] = { cellWidth: 64, overflow:'linebreak', halign:'left' } // Notas
-        }
+  // Total 182mm: 48 + 28 + 24 + 82 = 182 (aprox)
+  s[base+0] = { cellWidth: 48, halign:'left' } // Nombre
+  s[base+1] = { cellWidth: 28, halign:'center' } // Teléfono
+  s[base+2] = { cellWidth: 24, halign:'center' } // Estado
+  s[base+3] = { cellWidth: 82, overflow:'linebreak', halign:'left' } // Notas
         return s })(),
       margin: { top: headerHeight + 6, left: 14, right: 14 },
       didDrawPage: () => {
@@ -215,7 +204,7 @@ export async function exportProspectosPDF(
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
         ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
-        ['con_cita', resumen.por_estado.con_cita||0, '#198754'],
+  ['con_cita', resumen.por_estado.con_cita||0, '#198754'],
         ['descartado', resumen.por_estado.descartado||0, '#dc3545']
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
@@ -254,8 +243,8 @@ export async function exportProspectosPDF(
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
-  // Más espacio tras barras de progreso para separar del siguiente bloque
-  y += 28
+  // Más espacio tras barra de progreso para separar del siguiente bloque
+  y += 18
     }
     // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
     if(opts?.extendedMetrics){
@@ -320,7 +309,7 @@ export async function exportProspectosPDF(
     }
     const includeAgentDeltaResumen = !!opts?.perAgentDeltas
     const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado', ...(includeAgentDeltaResumen? ['Prospectos vs semana anterior','Citas vs semana anterior']: [])]
-    const body2 = Object.entries(porAgente).map(([agNameKey, r])=> {
+  const body2 = Object.entries(porAgente).map(([agNameKey, r])=> {
       const agId = Object.entries(agentesMap).find(([,name])=> name===agNameKey)?.[0]
       const deltas = includeAgentDeltaResumen && agId? opts?.perAgentDeltas?.[Number(agId)] : undefined
       return [
@@ -347,7 +336,7 @@ export async function exportProspectosPDF(
       totals.total,
       totals.pendiente,
       totals.seguimiento,
-      totals.con_cita,
+  totals.con_cita,
       totals.descartado,
       ...(includeAgentDeltaResumen? ['','']: [])
     ] ]

@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type React from 'react'
 import { getSupabaseClient } from '@/lib/supabaseClient'
 import AppModal from '@/components/ui/AppModal'
 import type { BloquePlanificacion } from '@/types'
@@ -28,21 +29,14 @@ export default function ProspectosPage() {
   const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
   const [errorMsg,setErrorMsg]=useState<string>('')
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
-  const [citaDrafts,setCitaDrafts]=useState<Record<number,{fecha?:string; hora?:string}>>({})
   const bcRef = useRef<BroadcastChannel|null>(null)
-
-  const isPastDateHour = (fecha:string, hour:string)=>{
-    const now = new Date()
-    const [y,m,d] = fecha.split('-').map(Number)
-    const dt = new Date(y, m-1, d, Number(hour), 0, 0, 0)
-    return dt.getTime() < now.getTime()-60000 // margen 1 min
-  }
+  
   const [agenteId,setAgenteId]=useState<string>('')
   const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
   const debounceRef = useRef<number|null>(null)
   const [metaProspectos,setMetaProspectos]=useState(30)
   const [metaCitas,setMetaCitas]=useState(5)
-  const [soloConCita,setSoloConCita]=useState(false)
+  
   interface BloqueLite { day:number; hour:string; activity:string; origin?:string }
   interface PlanLite { bloques?: BloqueLite[] }
   const [conflicto,setConflicto]=useState<null|{prospecto:Prospecto; fechaLocal:string; horaLocal:string; semana:number; anio:number; day:number; plan:PlanLite; bloque:BloqueLite}> (null)
@@ -56,37 +50,51 @@ export default function ProspectosPage() {
     if(!superuser) return
     const r = await fetch('/api/agentes')
     if(r.ok) {
-      const list = await r.json()
-      setAgentes(list)
+      try {
+        const data = await r.json()
+        const list = Array.isArray(data) ? data : (data?.agentes || [])
+        setAgentes(list)
+      } catch {/* ignore parse */}
     }
   }
 
-  const fetchAll=async()=>{
+  const fetchAll = async()=>{
     setLoading(true)
-  const params = new URLSearchParams({ anio:String(anio) })
-    if (semana !== 'ALL') params.set('semana', String(semana))
-    if (estadoFiltro) params.set('estado', estadoFiltro)
-    if (superuser && agenteId) params.set('agente_id', agenteId)
-  if (soloConCita) params.set('solo_con_cita','1')
-    const r = await fetch('/api/prospectos?'+params.toString())
-    if (r.ok) setProspectos(await r.json())
-    const r2 = await fetch('/api/prospectos/aggregate?'+params.toString())
-    if (r2.ok) setAgg(await r2.json())
-    // Cargar semana previa si aplica
-    if(semana !== 'ALL'){
-      const prev = (semana as number) - 1
-      if(prev >= 1){
-        const p2 = new URLSearchParams({ anio:String(anio), semana:String(prev) })
-        if (superuser && agenteId) p2.set('agente_id', agenteId)
-        const rPrev = await fetch('/api/prospectos/aggregate?'+p2.toString())
-        if(rPrev.ok) setPrevAgg(await rPrev.json()); else setPrevAgg(null)
-      } else setPrevAgg(null)
-    } else setPrevAgg(null)
-    setLoading(false)
+    try {
+      const params = new URLSearchParams()
+      params.set('anio', String(anio))
+      if(semana !== 'ALL') params.set('semana', String(semana))
+      if(superuser && agenteId) params.set('agente_id', String(agenteId))
+      if(estadoFiltro) params.set('estado', String(estadoFiltro))
+      const r = await fetch('/api/prospectos?'+params.toString())
+      if(r.ok){
+        const data = await r.json()
+        const list: Prospecto[] = Array.isArray(data) ? data : (data?.items || [])
+        setProspectos(list)
+        const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }
+        for(const p of list){ if(counts[p.estado] !== undefined) counts[p.estado]++ }
+        setAgg({ total: list.length, por_estado: counts, cumplimiento_30: list.length >= 30 })
+        if(semana !== 'ALL'){
+          const prevWeek = (semana as number) - 1
+          if(prevWeek >= 1){
+            try {
+              const q = new URLSearchParams({ anio:String(anio), semana:String(prevWeek) })
+              if(superuser && agenteId) q.set('agente_id', String(agenteId))
+              const rPrev = await fetch('/api/prospectos/aggregate?'+q.toString())
+              if(rPrev.ok){ setPrevAgg(await rPrev.json() as Aggregate) } else { setPrevAgg(null) }
+            } catch { setPrevAgg(null) }
+          } else { setPrevAgg(null) }
+        } else { setPrevAgg(null) }
+      } else {
+        setProspectos([])
+        setAgg({ total:0, por_estado:{}, cumplimiento_30:false })
+        setPrevAgg(null)
+      }
+    } finally { setLoading(false) }
   }
 
   useEffect(()=>{ fetchAll(); if(superuser) fetchAgentes() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[estadoFiltro, agenteId, semana, anio, soloConCita])
+  },[estadoFiltro, agenteId, semana, anio])
 
   useEffect(()=> { fetchFase2Metas().then(m=> { setMetaProspectos(m.metaProspectos); setMetaCitas(m.metaCitas) }) },[])
 
@@ -103,18 +111,16 @@ export default function ProspectosPage() {
       }
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[superuser, agenteId, anio, semana, estadoFiltro, soloConCita])
+  },[superuser, agenteId, anio, semana, estadoFiltro])
 
   // Timezone helpers (CDMX). Desde 2022 sin DST: offset fijo -06.
-  const MX_TZ = 'America/Mexico_City'
-  const MX_UTC_OFFSET = 6 // UTC = local + 6 (cuando local es CDMX hora estándar)
+  const MX_UTC_OFFSET = 6 // UTC = local + 6 (CDMX hora estándar)
   const buildUTCFromMX = (fecha:string,hora:string)=>{ // fecha YYYY-MM-DD, hora HH
     const [y,m,d] = fecha.split('-').map(Number)
     const h = Number(hora)
     return new Date(Date.UTC(y, m-1, d, h + MX_UTC_OFFSET, 0, 0)).toISOString()
   }
-  const formatMXDate = (iso:string)=>{ try { return new Intl.DateTimeFormat('en-CA',{timeZone:MX_TZ, year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date(iso)) } catch { return '' } }
-  const formatMXHour = (iso:string)=>{ try { return new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', hour12:false}).format(new Date(iso)) } catch { return '' } }
+  
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
     // Ya no se agenda cita durante el registro
     const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -181,7 +187,7 @@ export default function ProspectosPage() {
       return ()=> { supa.removeChannel(channel) }
     } catch { /* ignore missing config at build */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[superuser, agenteId, anio, semana, estadoFiltro, soloConCita])
+  },[superuser, agenteId, anio, semana, estadoFiltro])
 
   // Validaciones extra: formato teléfono y posible duplicado por nombre
   const telefonoValido = (v:string)=> !v || /^\+?[0-9\s-]{7,15}$/.test(v)
@@ -193,49 +199,31 @@ export default function ProspectosPage() {
   const nombreDuplicado = posibleDuplicado(form.nombre)
   const telefonoInvalido = !telefonoValido(form.telefono)
 
-  // Eliminación completa de prospectos deshabilitada (solo borrar cita) según requerimiento.
-  const borrarCita = async(p:Prospecto)=>{
-    if(!p.fecha_cita) return
-    if(!confirm('¿Borrar cita? Se eliminará también el bloque en planificación.')) return
-    const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = { fecha_cita: null }
-    if(p.estado==='con_cita') patch.estado='pendiente'
-    fetch('/api/prospectos/'+p.id,{method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch)}).then(async r=>{
-      if(r.ok){
-        // Eliminar bloque auto de planificación correspondiente
-        try {
-          if(semana !== 'ALL'){
-            const semanaIso = semana as number
-            const params = { prospecto_id: p.id, semana_iso: semanaIso, anio: anio, agente_id: p.agente_id }
-            await fetch('/api/planificacion/remove_cita',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(params)})
-          }
-        } catch {/* ignore */}
-  fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); try{ bcRef.current?.postMessage('prospectos:cita-updated') } catch {}; setToast({msg:'Cita eliminada', type:'success'})
-      } else { try { const j=await r.json(); setToast({msg:j.error||'Error', type:'error'}) } catch { setToast({msg:'Error', type:'error'}) } }
-    })
-  }
+  // Eliminación completa de prospectos y manejo de cita deshabilitados según requerimiento.
 
-  return <div className="container py-4">
-    <h2 className="fw-semibold mb-3">Prospectos</h2>
-    <div className="d-flex flex-wrap gap-3 align-items-end mb-2">
-      <div>
-        <label className="form-label small mb-1">Año</label>
-        <select className="form-select form-select-sm" value={anio} onChange={e=>setAnio(Number(e.target.value))}>
-          {Array.from({length:3},(_,i)=>semanaActual.anio-1+i).map(y=> <option key={y} value={y}>{y}</option>)}
-        </select>
+  return (
+    <div className="container py-4">
+      <h2 className="fw-semibold mb-3">Prospectos</h2>
+      <div className="d-flex flex-wrap gap-3 align-items-end mb-2">
+        <div>
+          <label className="form-label small mb-1">Año</label>
+          <select className="form-select form-select-sm" value={anio} onChange={e=>setAnio(Number(e.target.value))}>
+            {Array.from({length:3},(_,i)=>semanaActual.anio-1+i).map(y=> <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        <div style={{minWidth:230}}>
+          <label className="form-label small mb-1">Semana</label>
+          <select className="form-select form-select-sm" style={{minWidth:230}} value={semana} onChange={e=>{ const v=e.target.value; setSemana(v==='ALL'?'ALL':Number(v)) }} title={semana!=='ALL'? (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} ${formatearRangoSemana(r)}`})(): 'Todo el año'}>
+            <option value="ALL">Todo el año</option>
+            {Array.from({length:53},(_,i)=> i+1).map(w=> { const r = semanaDesdeNumero(anio, w); const range = formatearRangoSemana(r); return <option key={w} value={w}>{w} ({range})</option> })}
+          </select>
+        </div>
       </div>
-      <div style={{minWidth:230}}>
-        <label className="form-label small mb-1">Semana</label>
-        <select className="form-select form-select-sm" style={{minWidth:230}} value={semana} onChange={e=>{ const v=e.target.value; setSemana(v==='ALL'?'ALL':Number(v)) }} title={semana!=='ALL'? (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} ${formatearRangoSemana(r)}`})(): 'Todo el año'}>
-          <option value="ALL">Todo el año</option>
-          {Array.from({length:53},(_,i)=> i+1).map(w=> { const r = semanaDesdeNumero(anio, w); const range = formatearRangoSemana(r); return <option key={w} value={w}>{w} ({range})</option> })}
+      {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
+        <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto">
+          <option value="">(Seleccionar agente)</option>
+          {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
         </select>
-      </div>
-    </div>
-    {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
-      <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto">
-        <option value="">(Seleccionar agente)</option>
-        {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
-      </select>
   <button type="button" disabled={!prospectos.length} className="btn btn-outline-secondary btn-sm" onClick={async ()=>{
     const agrupado = superuser && !agenteId
     const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
@@ -322,16 +310,12 @@ export default function ProspectosPage() {
   }
   }}>PDF</button>
     </div>}
-  <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
-      <div className="form-check form-switch small">
-        <input className="form-check-input" type="checkbox" id="soloCitaChk" checked={soloConCita} onChange={e=>setSoloConCita(e.target.checked)} />
-        <label className="form-check-label" htmlFor="soloCitaChk">Solo con cita</label>
-      </div>
+  {/* Filtro solo con cita eliminado */}
       {agg && (!superuser || (superuser && agenteId)) && <div className="d-flex flex-column gap-2 small">
         <div className="d-flex flex-wrap gap-2 align-items-center">
           <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title="Todos">Total {agg.total}</button>
           {Object.entries(agg.por_estado).map(([k,v])=> { const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}}>{ESTADO_LABEL[k as ProspectoEstado]} {v}</button>})}
-          <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')} title="Progreso a meta">{agg.total>=metaProspectos? `Meta ${metaProspectos} ok`:`<${metaProspectos} prospectos`}</span>
+          <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')} title="Progreso a meta">{agg.total>=metaProspectos? `Meta ${metaProspectos} ok` : ('<'+metaProspectos+' prospectos')}</span>
           {!superuser && (
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = agentes.find(a=> String(a.id)===agenteId)?.nombre || agentes.find(a=> String(a.id)===agenteId)?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; const extended = computeExtendedMetrics(filtered,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 } })(); exportProspectosPDF(filtered, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, metaCitas, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename }) }}>PDF</button>
           )}
@@ -339,8 +323,7 @@ export default function ProspectosPage() {
         {(!superuser || (superuser && agenteId)) && <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>
           <div className={`progress-bar ${agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/metaProspectos)*100)}%`}}>{agg.total}/{metaProspectos}</div>
         </div>}
-      </div>}
-    </div>
+    </div>}
   <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
       <div className="row g-2">
         <div className="col-sm-3">
@@ -359,7 +342,7 @@ export default function ProspectosPage() {
     </form>
     <div className="table-responsive">
   <table className="table table-sm align-middle">
-	<thead><tr><th>Nombre</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th>Cita</th><th></th></tr></thead>
+	<thead><tr><th>Nombre</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th></th></tr></thead>
         <tbody>
       {prospectos.map(p=> <tr key={p.id}>
     <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
@@ -370,29 +353,8 @@ export default function ProspectosPage() {
                 {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </td>
-            <td style={{minWidth:170}}>
-              {(()=>{ const pad=(n:number)=>String(n).padStart(2,'0');
-                const draft = citaDrafts[p.id] || {}
-                const dateVal = p.fecha_cita? formatMXDate(p.fecha_cita): (draft.fecha||'')
-                const hourVal = p.fecha_cita? formatMXHour(p.fecha_cita): (draft.hora||'')
-                const setDraft=(partial: {fecha?:string; hora?:string})=> setCitaDrafts(prev=> ({...prev, [p.id]: {...prev[p.id], ...partial}}))
-                return <div className="d-flex gap-1 flex-column">
-                  <div className="d-flex gap-1">
-                    <input type="date" value={dateVal} min={new Date().toISOString().slice(0,10)} onChange={e=>{ const newDate=e.target.value; if(!newDate){ setDraft({fecha:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
-                      setDraft({fecha:newDate}); if(hourVal && !isPastDateHour(newDate, hourVal)){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}> = {fecha_cita:`${newDate}T${hourVal}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch,{ prospecto:p, fechaLocal:newDate, horaLocal:hourVal }); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }} className="form-control form-control-sm"/>
-                    <select className="form-select form-select-sm" value={hourVal} onChange={e=>{ const h=e.target.value; if(!h){ setDraft({hora:undefined}); update(p.id,{fecha_cita:null, estado: p.estado==='con_cita'? 'pendiente': p.estado}); return }
-                      if(dateVal && isPastDateHour(dateVal, h)) { setToast({msg:'Hora en el pasado', type:'error'}); return }
-                      setDraft({hora:h}); if(dateVal){ const patch: Partial<Prospecto & {estado?: ProspectoEstado}>={fecha_cita:`${dateVal}T${h}:00`}; if(p.estado!=='con_cita') patch.estado='con_cita'; update(p.id,patch,{ prospecto:p, fechaLocal:dateVal, horaLocal:h }); setCitaDrafts(prev=> { const cp={...prev}; delete cp[p.id]; return cp }) } }}>
-                      <option value="">--</option>
-                      {Array.from({length:24},(_,i)=> i).map(h=> { const hh=pad(h); const disabled = dateVal? isPastDateHour(dateVal, hh): false; return <option key={h} value={hh} disabled={disabled}>{hh}:00{disabled?' (pasado)':''}</option>})}
-                    </select>
-                  </div>
-                  {/* Texto detalle de día/ hora ocultado según solicitud */}
-                </div> })()}
-            </td>
-            <td className="text-nowrap">
-              {p.fecha_cita && <button onClick={()=>borrarCita(p)} className="btn btn-sm btn-warning text-dark" title="Borrar cita">Borrar cita</button>}
-            </td>
+            {/* Columna cita eliminada */}
+            {/* Botón borrar cita eliminado */}
           </tr>)}
           {(!loading && prospectos.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">No hay prospectos para los filtros actuales.</td></tr>}
         </tbody>
@@ -400,28 +362,31 @@ export default function ProspectosPage() {
       {loading && <div className="p-3">Cargando...</div>}
     </div>
     {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
-    {conflicto && <AppModal title="Conflicto de bloque" icon="exclamation-triangle" onClose={()=> setConflicto(null)}>
-      <div className="small">
-        <p className="mb-3">Existe un bloque <strong>{conflicto.bloque.activity}</strong> en la planificación para <strong>{conflicto.fechaLocal}</strong> a las <strong>{conflicto.horaLocal}:00</strong>. ¿Reemplazarlo por la cita del prospecto <strong>{conflicto.prospecto.nombre}</strong>?</p>
-        <div className="d-flex gap-2">
-          <button className="btn btn-primary btn-sm" onClick={async ()=>{
-            try {
-              const plan = conflicto.plan || { bloques: [] }
-              const bloques = (plan.bloques||[]).filter(b=> !(b.day===conflicto.day && b.hour===conflicto.horaLocal))
-              bloques.push({ day:conflicto.day, hour:conflicto.horaLocal, activity:'CITAS', origin:'manual' })
-              const body = { agente_id: conflicto.prospecto.agente_id, semana_iso: conflicto.semana, anio: conflicto.anio, bloques }
-              await fetch('/api/planificacion',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
-              setConflicto(null)
-              window.dispatchEvent(new CustomEvent('prospectos:cita-updated'))
-              setToast({msg:'Bloque reemplazado por cita', type:'success'})
-            } catch {
-              setToast({msg:'Error al reemplazar bloque', type:'error'})
-              setConflicto(null)
-            }
-          }}>Reemplazar bloque</button>
-          <button className="btn btn-outline-secondary btn-sm" onClick={()=> setConflicto(null)}>Mantener</button>
+    {conflicto && (
+      <AppModal title="Conflicto de bloque" icon="exclamation-triangle" onClose={()=> setConflicto(null)}>
+        <div className="small">
+          <p className="mb-3">Existe un bloque <strong>{conflicto.bloque?.activity}</strong> en la planificación para <strong>{conflicto.fechaLocal}</strong> a las <strong>{conflicto.horaLocal}:00</strong>. ¿Reemplazarlo por la cita del prospecto <strong>{conflicto.prospecto?.nombre}</strong>?</p>
+          <div className="d-flex gap-2">
+            <button className="btn btn-primary btn-sm" onClick={async ()=>{
+              try {
+                const plan = conflicto.plan || { bloques: [] }
+                const bloques = (plan.bloques||[]).filter(b=> !(b.day===conflicto.day && b.hour===conflicto.horaLocal))
+                bloques.push({ day:conflicto.day, hour:conflicto.horaLocal, activity:'CITAS', origin:'manual' })
+                const body = { agente_id: conflicto.prospecto?.agente_id, semana_iso: conflicto.semana, anio: conflicto.anio, bloques }
+                await fetch('/api/planificacion',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+                setConflicto(null)
+                window.dispatchEvent(new CustomEvent('prospectos:cita-updated'))
+                setToast({msg:'Bloque reemplazado por cita', type:'success'})
+              } catch {
+                setToast({msg:'Error al reemplazar bloque', type:'error'})
+                setConflicto(null)
+              }
+            }}>Reemplazar bloque</button>
+            <button className="btn btn-outline-secondary btn-sm" onClick={()=> setConflicto(null)}>Mantener</button>
+          </div>
         </div>
-      </div>
-    </AppModal>}
+      </AppModal>
+    )}
   </div>
+  );
 }
