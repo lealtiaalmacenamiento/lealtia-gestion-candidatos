@@ -60,6 +60,26 @@ export async function POST(req: Request) {
   const { data: historial, error } = await q.order('created_at', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Enriquecer con nombre de prospecto y agente dueño (desde usuarios)
+  const idsPros = Array.from(new Set((historial||[]).map(h => h.prospecto_id).filter(Boolean))) as number[]
+  const idsAgts = Array.from(new Set((historial||[]).map(h => h.agente_id).filter(Boolean))) as number[]
+  let mapPros: Record<number, { nombre?: string }> = {}
+  let mapUsers: Record<number, { email?: string; nombre?: string }> = {}
+  if (idsPros.length > 0) {
+    const { data: prosData } = await supabase.from('prospectos').select('id,nombre').in('id', idsPros)
+    if (prosData) {
+      type RowP = { id: number; nombre?: string | null }
+      mapPros = (prosData as RowP[]).reduce((acc, p) => { acc[p.id] = { nombre: p.nombre ?? undefined }; return acc }, {} as Record<number, { nombre?: string }>)
+    }
+  }
+  if (idsAgts.length > 0) {
+    const { data: usersData } = await supabase.from('usuarios').select('id,email,nombre').in('id', idsAgts)
+    if (usersData) {
+      type RowU = { id: number; email?: string | null; nombre?: string | null }
+      mapUsers = (usersData as RowU[]).reduce((acc, u) => { acc[u.id] = { email: u.email ?? undefined, nombre: u.nombre ?? undefined }; return acc }, {} as Record<number, { email?: string; nombre?: string }>)
+    }
+  }
+
   // Obtener superusuarios
   const { data: superusers, error: suErr } = await supabase
     .from('usuarios')
@@ -82,23 +102,30 @@ export async function POST(req: Request) {
     min: (historial && historial[0]?.created_at) || null,
     max: (historial && historial[historial.length-1]?.created_at) || null
   }
-  const rows = (historial||[]).map(h => `
+  const rows = (historial||[]).map(h => {
+    const pInfo = mapPros[h.prospecto_id as number]
+    const pName = pInfo?.nombre ? `${pInfo.nombre} (#${h.prospecto_id})` : `#${h.prospecto_id}`
+    const owner = mapUsers[h.agente_id as number]
+    const ownerLabel = owner?.nombre ? `${owner.nombre} <${owner.email||''}>` : (owner?.email || '')
+    return `
     <tr>
       <td>${new Date(h.created_at).toLocaleString('es-MX',{ hour12:false })}</td>
-      <td>#${h.prospecto_id}</td>
+      <td>${pName}</td>
+      <td>${ownerLabel}</td>
       <td>${h.usuario_email||''}</td>
       <td>${h.estado_anterior||''}</td>
       <td>${h.estado_nuevo||''}</td>
       <td>${h.nota_agregada ? 'Sí' : 'No'}</td>
-    </tr>`).join('')
+    </tr>`
+  }).join('')
   const html = `
     <div style="font-family:Arial,sans-serif">
       <h2>${title} — ${dateLabel}</h2>
       <p>Total de eventos: <strong>${(historial||[]).length}</strong></p>
-      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px">
+  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px">
         <thead style="background:#f3f4f6">
           <tr>
-            <th>Fecha</th><th>Prospecto</th><th>Usuario</th><th>De</th><th>A</th><th>Nota agregada</th>
+    <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
           </tr>
         </thead>
         <tbody>${rows||''}</tbody>
