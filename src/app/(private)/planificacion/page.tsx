@@ -198,8 +198,22 @@ export default function PlanificacionPage(){
         <div className="card p-3 shadow-sm">
           <div className="mb-1 small text-muted">Manual Prospecto: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='PROSPECCION').length}</div>
           <div className="mb-2 small text-muted">Manual SMNYL: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
-          <div className="mb-2 small">Prima anual promedio <input type="number" className="form-control form-control-sm" value={data.prima_anual_promedio} onChange={e=>setData({...data,prima_anual_promedio:Number(e.target.value)})}/></div>
-          <div className="mb-2 small">% Comisión <input type="number" className="form-control form-control-sm" value={data.porcentaje_comision} onChange={e=>setData({...data,porcentaje_comision:Number(e.target.value)})}/></div>
+          <div className="mb-2 small">
+            <label className="form-label small mb-1">Prima anual promedio</label>
+            <div className="input-group input-group-sm">
+              <span className="input-group-text">$</span>
+              <input type="number" className="form-control" value={data.prima_anual_promedio} onChange={e=>setData({...data,prima_anual_promedio:Number(e.target.value)})}/>
+            </div>
+            <div className="form-text">{(data.prima_anual_promedio??0).toLocaleString('es-MX',{ style:'currency', currency:'MXN', minimumFractionDigits:2, maximumFractionDigits:2 })}</div>
+          </div>
+          <div className="mb-2 small">
+            <label className="form-label small mb-1">Porcentaje de comisino promedio</label>
+            <div className="input-group input-group-sm">
+              <span className="input-group-text">%</span>
+              <input type="number" className="form-control" value={data.porcentaje_comision} onChange={e=>setData({...data,porcentaje_comision:Number(e.target.value)})}/>
+            </div>
+            <div className="form-text">%{(data.porcentaje_comision??0).toLocaleString('es-MX',{maximumFractionDigits:2})}</div>
+          </div>
           <div className="mb-2 small">Meta SMNYL semanal: {metaSmnyl}</div>
           <div className="progress mb-2" role="progressbar" aria-valuenow={horasSmnyl} aria-valuemin={0} aria-valuemax={metaSmnyl}>
             <div className={`progress-bar ${horasSmnyl>=metaSmnyl? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasSmnyl/metaSmnyl)*100)}%`}}>{horasSmnyl}/{metaSmnyl}</div>

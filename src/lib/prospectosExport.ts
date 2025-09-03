@@ -49,16 +49,15 @@ export async function exportProspectosPDF(
     agrupadoPorAgente?: boolean
     agentesMap?: Record<number,string>
     chartEstados?: boolean
-    metaProspectos?: number
-    metaCitas?: number
+  metaProspectos?: number
   forceLogoBlanco?: boolean
   extendedMetrics?: ExtendedMetrics
   prevWeekDelta?: PreviousWeekDelta
   perAgentExtended?: Record<number,ExtendedMetrics>
   filename?: string
-  perAgentDeltas?: Record<number,{ totalDelta:number; citasDelta:number }>
-  planningSummaries?: Record<number,{ prospeccion:number; citas:number; smnyl:number; total:number }>
-  singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; citas:number; smnyl:number; total:number } }
+  perAgentDeltas?: Record<number,{ totalDelta:number }>
+  planningSummaries?: Record<number,{ prospeccion:number; smnyl:number; total:number }>
+  singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
   }
 ){
   if(!prospectos.length) return
@@ -140,15 +139,13 @@ export async function exportProspectosPDF(
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
   let metaProspectos = opts?.metaProspectos ?? 30
-  let metaCitas = opts?.metaCitas ?? 0
   const distinctAgentsCount = agrupado ? new Set(prospectos.map(p=> (p as ExtendedProspecto).agente_id)).size || 1 : 1
   if(agrupado){
     metaProspectos = metaProspectos * distinctAgentsCount
-    metaCitas = metaCitas * distinctAgentsCount
   }
   let y = contentStartY
   if(!agrupado){
-  const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Fecha Cita','Notas' ]
+  const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas' ]
   const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ])
     const tableStartY = contentStartY
     // @ts-expect-error autotable plugin
@@ -185,10 +182,9 @@ export async function exportProspectosPDF(
   if(!agrupado){
     // Summary cards (2 columns)
     const cards: Array<[string,string]> = [
-  ['Prospectos totales', String(resumen.total)],
+      ['Prospectos totales', String(resumen.total)],
       ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
       ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
-  ['Con cita agendada', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
       ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
       ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
     ]
@@ -204,7 +200,6 @@ export async function exportProspectosPDF(
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
         ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
-  ['con_cita', resumen.por_estado.con_cita||0, '#198754'],
         ['descartado', resumen.por_estado.descartado||0, '#dc3545']
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
@@ -242,9 +237,8 @@ export async function exportProspectosPDF(
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
-  drawProgress('Meta SMNYL', resumen.por_estado.con_cita||0, metaCitas, progY+12)
   // Más espacio tras barra de progreso para separar del siguiente bloque
-  y += 18
+  y += 12
     }
     // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
     if(opts?.extendedMetrics){
@@ -255,30 +249,15 @@ export async function exportProspectosPDF(
   if(y > 240){ doc.addPage(); const hdr = drawHeader(); y = hdr.contentStartY }
       doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Métricas avanzadas',14,y)
       y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
-      // Distribución horas (compacta) (se deja aparte de la tabla)
-      const horas = Object.entries(em.citasPorHora).sort((a,b)=> a[0].localeCompare(b[0]))
-      if(horas.length){
-        y+=2; doc.setFont('helvetica','bold'); doc.text('Citas por hora:',14,y); doc.setFont('helvetica','normal'); y+=4
-        const chunk: string[] = []
-        horas.forEach(([h,c],i)=>{ chunk.push(`${h}:00=${c}`); if(chunk.length===6 || i===horas.length-1){ doc.text(chunk.join('  '),14,y); y+=4; chunk.length=0 } })
-      }
-      if(em.riesgoSeguimientoSinCita.length){
-        y+=2; doc.setFont('helvetica','bold'); doc.text('En riesgo (seguimiento sin cita):',14,y); y+=4; doc.setFont('helvetica','normal')
-        em.riesgoSeguimientoSinCita.forEach(rg=> { doc.text(`${rg.nombre} (${rg.dias}d)`,14,y); y+=4 })
-      }
+  // Secciones relacionadas con citas dormidas (citas por hora, riesgo seguimiento sin cita) no se incluyen
       // Tabla compacta de métricas clave
       const includeDelta = !!opts?.prevWeekDelta
-  const header = ['Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeDelta? ['Prospectos vs semana anterior','Citas vs semana anterior']: []) ]
+      const header = ['Conv P->S','Desc %','Proy semana', ...(includeDelta? ['Prospectos vs semana anterior']: []) ]
       const row = [
         (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
-        (em.conversionSeguimientoCita*100).toFixed(1)+'%',
         (em.ratioDescartado*100).toFixed(1)+'%',
-        em.promedioDiasPrimeraCita!=null? em.promedioDiasPrimeraCita.toFixed(1):'-',
         em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-',
-        ...(includeDelta? [
-          (opts.prevWeekDelta!.totalDelta>=0? '+':'')+String(opts.prevWeekDelta!.totalDelta),
-          (opts.prevWeekDelta!.conCitaDelta>=0? '+':'')+String(opts.prevWeekDelta!.conCitaDelta)
-        ]: [])
+        ...(includeDelta? [ (opts.prevWeekDelta!.totalDelta>=0? '+':'')+String(opts.prevWeekDelta!.totalDelta) ]: [])
       ]
       // @ts-expect-error autotable
   doc.autoTable({
@@ -289,7 +268,7 @@ export async function exportProspectosPDF(
         headStyles:{fillColor:[7,46,64]},
   theme:'grid',
   margin: { top: headerHeight + 6, left: 14, right: 14 },
-  columnStyles: { 0:{ halign:'center' }, 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' }, 5:{ halign:'center' }, 6:{ halign:'center' }, 7:{ halign:'center' } },
+  columnStyles: { 0:{ halign:'center' }, 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' } },
   didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
       })
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
@@ -302,13 +281,13 @@ export async function exportProspectosPDF(
     for(const p of prospectos){
       const ep = p as ExtendedProspecto
       const agName = agentesMap[ep.agente_id ?? -1] || `Ag ${ ep.agente_id}`
-      if(!porAgente[agName]) porAgente[agName] = { agente: agName, total:0, por_estado:{ pendiente:0, seguimiento:0, con_cita:0, descartado:0 } }
+  if(!porAgente[agName]) porAgente[agName] = { agente: agName, total:0, por_estado:{ pendiente:0, seguimiento:0, descartado:0 } }
       const bucket = porAgente[agName]
       bucket.total++
       if(bucket.por_estado[p.estado] !== undefined) bucket.por_estado[p.estado]++
     }
-    const includeAgentDeltaResumen = !!opts?.perAgentDeltas
-    const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado', ...(includeAgentDeltaResumen? ['Prospectos vs semana anterior','Citas vs semana anterior']: [])]
+  const includeAgentDeltaResumen = !!opts?.perAgentDeltas
+  const head2 = ['Agente','Total','Pendiente','Seguimiento','Descartado', ...(includeAgentDeltaResumen? ['Prospectos vs semana anterior']: [])]
   const body2 = Object.entries(porAgente).map(([agNameKey, r])=> {
       const agId = Object.entries(agentesMap).find(([,name])=> name===agNameKey)?.[0]
       const deltas = includeAgentDeltaResumen && agId? opts?.perAgentDeltas?.[Number(agId)] : undefined
@@ -316,29 +295,26 @@ export async function exportProspectosPDF(
         r.agente,
         r.total,
         r.por_estado.pendiente,
-        r.por_estado.seguimiento,
-        r.por_estado.con_cita,
-        r.por_estado.descartado,
-        ...(includeAgentDeltaResumen? [ deltas? (deltas.totalDelta>=0? '+'+deltas.totalDelta: String(deltas.totalDelta)):'-', deltas? (deltas.citasDelta>=0? '+'+deltas.citasDelta: String(deltas.citasDelta)):'-' ]: [])
+  r.por_estado.seguimiento,
+  r.por_estado.descartado,
+  ...(includeAgentDeltaResumen? [ deltas? (deltas.totalDelta>=0? '+'+deltas.totalDelta: String(deltas.totalDelta)):'-' ]: [])
       ]
     })
     // Totales al final
-    const totals = Object.values(porAgente).reduce((acc, r)=>{
+  const totals = Object.values(porAgente).reduce((acc, r)=>{
       acc.total += r.total
       acc.pendiente += r.por_estado.pendiente
       acc.seguimiento += r.por_estado.seguimiento
-      acc.con_cita += r.por_estado.con_cita
       acc.descartado += r.por_estado.descartado
       return acc
-    }, { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0 })
+  }, { total:0, pendiente:0, seguimiento:0, descartado:0 })
     const footerRows = [ [
       'TOTAL',
       totals.total,
       totals.pendiente,
-      totals.seguimiento,
-  totals.con_cita,
-      totals.descartado,
-      ...(includeAgentDeltaResumen? ['','']: [])
+  totals.seguimiento,
+  totals.descartado,
+  ...(includeAgentDeltaResumen? ['']: [])
     ] ]
   // @ts-expect-error autotable plugin
       doc.autoTable({
@@ -368,7 +344,6 @@ export async function exportProspectosPDF(
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
         ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
-        ['con_cita', resumen.por_estado.con_cita||0, '#198754'],
         ['descartado', resumen.por_estado.descartado||0, '#dc3545']
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
@@ -396,14 +371,12 @@ export async function exportProspectosPDF(
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+totalW/2, lineY+h-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
-  drawProgress('Meta SMNYL', resumen.por_estado.con_cita||0, metaCitas, progressTop+12)
-      const chartBlockBottom = progressTop + 20
+  const chartBlockBottom = progressTop + 12
       // Cards a la derecha
       const cards: Array<[string,string]> = [
         ['Total', String(resumen.total)],
         ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
-        ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
-        ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
+  ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
         ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`]
       ]
       const cardX = 110
@@ -418,8 +391,8 @@ export async function exportProspectosPDF(
       if(opts?.perAgentExtended){
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
-        const includeAgentDelta = !!opts?.perAgentDeltas
-  const header = ['Agente','Conv P->S','Conv S->C','Desc %','Prom días 1ra cita','Proy semana', ...(includeAgentDelta? ['Prospectos vs semana anterior','Citas vs semana anterior']: [])]
+  const includeAgentDelta = !!opts?.perAgentDeltas
+  const header = ['Agente','Conv P->S','Desc %','Proy semana', ...(includeAgentDelta? ['Prospectos vs semana anterior']: [])]
         // @ts-expect-error autotable plugin
   doc.autoTable({
           startY: y,
@@ -430,19 +403,14 @@ export async function exportProspectosPDF(
             return [
               agName,
               (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
-              (em.conversionSeguimientoCita*100).toFixed(1)+'%',
               (em.ratioDescartado*100).toFixed(1)+'%',
-              em.promedioDiasPrimeraCita!=null? em.promedioDiasPrimeraCita.toFixed(1):'-',
               em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-',
-              ...(includeAgentDelta? [
-                deltas? (deltas.totalDelta>=0? '+':'')+deltas.totalDelta : '-',
-                deltas? (deltas.citasDelta>=0? '+':'')+deltas.citasDelta : '-'
-              ]: [])
+              ...(includeAgentDelta? [ deltas? (deltas.totalDelta>=0? '+':'')+deltas.totalDelta : '-' ]: [])
             ]
           }),
           styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
           margin: { top: headerHeight + 6, left: 14, right: 14 },
-          columnStyles: { 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' }, 5:{ halign:'center' }, 6:{ halign:'center' }, 7:{ halign:'center' } },
+          columnStyles: { 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' } },
           didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
         })
         const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
@@ -451,7 +419,7 @@ export async function exportProspectosPDF(
 
       // Resumen de planificación semanal por agente (si se proporcionó)
       if(opts?.planningSummaries){
-        const totalAgg = Object.values(opts.planningSummaries).reduce((acc,cur)=>{ acc.prospeccion+=cur.prospeccion; acc.citas+=cur.citas; acc.smnyl+=cur.smnyl; acc.total+=cur.total; return acc },{prospeccion:0,citas:0,smnyl:0,total:0})
+        const totalAgg = Object.values(opts.planningSummaries).reduce((acc,cur)=>{ acc.prospeccion+=cur.prospeccion; acc.smnyl+=cur.smnyl; acc.total+=cur.total; return acc },{prospeccion:0,smnyl:0,total:0})
         // Salto de página si poco espacio
         if(y > 200){
           doc.addPage()
@@ -462,7 +430,6 @@ export async function exportProspectosPDF(
         // Tarjetas resumen total
         const cardsPlan: Array<[string,string]> = [
           ['Prospección', String(totalAgg.prospeccion)],
-          ['Citas', String(totalAgg.citas)],
           ['SMNYL', String(totalAgg.smnyl)],
           ['Total bloques', String(totalAgg.total)]
         ]
@@ -473,13 +440,13 @@ export async function exportProspectosPDF(
         cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   y = cy + cardH + GAP
         doc.setFontSize(7)
-        const headPlan = ['Agente','Prospección','Citas','SMNYL','Total']
+  const headPlan = ['Agente','Prospección','SMNYL','Total']
         // @ts-expect-error autotable
         doc.autoTable({
           startY:y,
           head:[headPlan],
           body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
-            agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.citas), String(sum.smnyl), String(sum.total)
+            agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.smnyl), String(sum.total)
           ]),
           styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
           margin: { top: headerHeight + 6, left: 14, right: 14 },
@@ -500,19 +467,19 @@ export async function exportProspectosPDF(
   let y2 = y + 4
     const plan = opts.singleAgentPlanning
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
-    const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['Citas', String(plan.summary.citas)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
+  const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
   // 4 tarjetas por fila: usar 41mm para caber en 182mm con 3 gaps de 6mm
   const cardW=41, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
     cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   cy += cardH + GAP
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
-    const blocksSorted = [...plan.bloques].sort((a,b)=> a.day===b.day? a.hour.localeCompare(b.hour): a.day-b.day)
+  const blocksSorted = [...plan.bloques].filter(b=> b.activity !== 'CITAS').sort((a,b)=> a.day===b.day? a.hour.localeCompare(b.hour): a.day-b.day)
     if(blocksSorted.length){
       const headPlan = ['Día','Hora','Actividad','Detalle']
       const bodyPlan = blocksSorted.map(b=> [
         DAY_NAMES[b.day]||String(b.day),
         b.hour+':00',
-        b.activity==='PROSPECCION'? 'Prospección': (b.activity==='CITAS'? 'Citas': b.activity),
+  b.activity==='PROSPECCION'? 'Prospección': b.activity,
         (b.prospecto_nombre? b.prospecto_nombre: '') + (b.notas? (b.prospecto_nombre? ' - ':'')+ b.notas: '')
       ])
       // @ts-expect-error autotable
