@@ -63,8 +63,10 @@ export async function POST(req: Request) {
   // Enriquecer con nombre de prospecto y agente dueño (desde usuarios)
   const idsPros = Array.from(new Set((historial||[]).map(h => h.prospecto_id).filter(Boolean))) as number[]
   const idsAgts = Array.from(new Set((historial||[]).map(h => h.agente_id).filter(Boolean))) as number[]
+  const emailsMod = Array.from(new Set((historial||[]).map(h => (h.usuario_email||'').trim()).filter(e => e.length>0))) as string[]
   let mapPros: Record<number, { nombre?: string }> = {}
   let mapUsers: Record<number, { email?: string; nombre?: string }> = {}
+  let mapEmails: Record<string, { email?: string; nombre?: string }> = {}
   if (idsPros.length > 0) {
     const { data: prosData } = await supabase.from('prospectos').select('id,nombre').in('id', idsPros)
     if (prosData) {
@@ -77,6 +79,13 @@ export async function POST(req: Request) {
     if (usersData) {
       type RowU = { id: number; email?: string | null; nombre?: string | null }
       mapUsers = (usersData as RowU[]).reduce((acc, u) => { acc[u.id] = { email: u.email ?? undefined, nombre: u.nombre ?? undefined }; return acc }, {} as Record<number, { email?: string; nombre?: string }>)
+    }
+  }
+  if (emailsMod.length > 0) {
+    const { data: modsData } = await supabase.from('usuarios').select('email,nombre').in('email', emailsMod)
+    if (modsData) {
+      type RowM = { email: string | null; nombre?: string | null }
+      mapEmails = (modsData as RowM[]).reduce((acc, m) => { const key = (m.email||'').trim(); if(key){ acc[key] = { email: key, nombre: m.nombre ?? undefined } } return acc }, {} as Record<string, { email?: string; nombre?: string }>)
     }
   }
 
@@ -107,12 +116,14 @@ export async function POST(req: Request) {
     const pName = pInfo?.nombre ? `${pInfo.nombre} (#${h.prospecto_id})` : `#${h.prospecto_id}`
     const owner = mapUsers[h.agente_id as number]
     const ownerLabel = owner?.nombre ? `${owner.nombre} <${owner.email||''}>` : (owner?.email || '')
+    const modInfo = h.usuario_email ? mapEmails[h.usuario_email] : undefined
+    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email||''}>` : (h.usuario_email||'')
     return `
     <tr>
       <td>${new Date(h.created_at).toLocaleString('es-MX',{ hour12:false })}</td>
       <td>${pName}</td>
       <td>${ownerLabel}</td>
-      <td>${h.usuario_email||''}</td>
+      <td>${modLabel}</td>
       <td>${h.estado_anterior||''}</td>
       <td>${h.estado_nuevo||''}</td>
       <td>${h.nota_agregada ? 'Sí' : 'No'}</td>
