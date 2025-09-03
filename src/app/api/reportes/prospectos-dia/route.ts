@@ -8,10 +8,15 @@ const supabase = getServiceClient()
 
 function yesterdayRangeUTC() {
   const now = new Date()
-  // Calcular día de ayer en zona MX (UTC-6 aprox). Para simplificar: usar UTC día anterior
   const y = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   const start = new Date(y.getTime() - 24*60*60*1000)
   const end = y
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+function lastHoursRange(hours: number) {
+  const end = new Date()
+  const start = new Date(end.getTime() - Math.max(1, hours) * 60 * 60 * 1000)
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
@@ -30,13 +35,29 @@ export async function POST(req: Request) {
   } else {
     usuarioEmail = 'cron'
   }
-  const { start, end } = yesterdayRangeUTC()
-  const { data: historial, error } = await supabase
+  const url = new URL(req.url)
+  const mode = url.searchParams.get('mode') || ''
+  const startQ = url.searchParams.get('start')
+  const endQ = url.searchParams.get('end')
+  const hoursQ = url.searchParams.get('hours')
+  const modeAll = url.searchParams.get('mode') === 'all'
+  const dry = url.searchParams.get('dry') === '1'
+  let range: { start: string; end: string }
+  if (startQ && endQ) {
+    range = { start: new Date(startQ).toISOString(), end: new Date(endQ).toISOString() }
+  } else if (mode === 'last24h' || (!!hoursQ && Number(hoursQ) > 0)) {
+    range = lastHoursRange(hoursQ ? Number(hoursQ) : 24)
+  } else {
+    range = yesterdayRangeUTC()
+  }
+  const { start, end } = range
+  let q = supabase
     .from('prospectos_historial')
     .select('created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
-    .gte('created_at', start)
-    .lt('created_at', end)
-    .order('created_at', { ascending: true })
+  if (!modeAll) {
+    q = q.gte('created_at', start).lt('created_at', end)
+  }
+  const { data: historial, error } = await q.order('created_at', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Obtener superusuarios
@@ -51,8 +72,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, sent: 0, detalle: 'no recipients' })
   }
 
-  const title = 'Reporte diario de cambios en Prospectos'
-  const dateLabel = new Date(start).toISOString().slice(0,10)
+  const title = 'Reporte de cambios en Prospectos'
+  const dateLabel = modeAll ? 'Todo' : new Date(start).toISOString().slice(0,10)
+  const meta = {
+    start,
+    end,
+    mode: modeAll ? 'all' : (hoursQ ? `last${hoursQ}h` : (mode || 'yesterdayUTC')),
+    count: (historial||[]).length,
+    min: (historial && historial[0]?.created_at) || null,
+    max: (historial && historial[historial.length-1]?.created_at) || null
+  }
   const rows = (historial||[]).map(h => `
     <tr>
       <td>${new Date(h.created_at).toLocaleString('es-MX',{ hour12:false })}</td>
@@ -77,12 +106,15 @@ export async function POST(req: Request) {
       <p style="margin-top:12px;color:#6b7280">Nota: contenido de notas no se incluye por privacidad. Consulte la plataforma para detalles.</p>
     </div>`
 
+  if (dry) {
+    return NextResponse.json({ success: true, dry: true, meta, sample: (historial||[]).slice(0, 10) })
+  }
   // Enviar a todos en un solo correo (BCC sería ideal; aquí simple to: join)
   try {
     await sendMail({ to: recipients.join(','), subject: `${title} — ${dateLabel}`, html })
-    await logAccion('reporte_prospectos_diario_enviado', { usuario: usuarioEmail, tabla_afectada: 'prospectos_historial', snapshot: { start, end, recipients: recipients.length } })
+    await logAccion('reporte_prospectos_diario_enviado', { usuario: usuarioEmail, tabla_afectada: 'prospectos_historial', snapshot: { ...meta, recipients: recipients.length } })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Mailer error' }, { status: 500 })
   }
-  return NextResponse.json({ success: true, sent: recipients.length, eventos: (historial||[]).length })
+  return NextResponse.json({ success: true, sent: recipients.length, eventos: (historial||[]).length, meta })
 }
