@@ -242,7 +242,7 @@ export async function exportProspectosPDF(
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
-  drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progY+12)
+  drawProgress('Meta SMNYL', resumen.por_estado.con_cita||0, metaCitas, progY+12)
   // Más espacio tras barra de progreso para separar del siguiente bloque
   y += 18
     }
@@ -395,8 +395,8 @@ export async function exportProspectosPDF(
         doc.setFillColor(7,46,64); doc.rect(baseX, lineY, totalW*pctVal, h, 'F')
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+totalW/2, lineY+h-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
-      drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
-      drawProgress('Meta citas', resumen.por_estado.con_cita||0, metaCitas, progressTop+12)
+  drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
+  drawProgress('Meta SMNYL', resumen.por_estado.con_cita||0, metaCitas, progressTop+12)
       const chartBlockBottom = progressTop + 20
       // Cards a la derecha
       const cards: Array<[string,string]> = [

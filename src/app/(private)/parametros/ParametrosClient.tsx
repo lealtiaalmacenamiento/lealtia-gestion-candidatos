@@ -245,7 +245,7 @@ export default function ParametrosClient(){
               <input type="number" className="form-control form-control-sm" value={metaProspectos??''} onChange={e=> setMetaProspectos(e.target.value? Number(e.target.value): null)} />
             </div>
             <div className="col-12 col-md-4 col-lg-3">
-              <label className="form-label small mb-1">Meta citas / semana</label>
+              <label className="form-label small mb-1">Meta SMNYL / semana</label>
               <input type="number" className="form-control form-control-sm" value={metaCitas??''} onChange={e=> setMetaCitas(e.target.value? Number(e.target.value): null)} />
             </div>
             <div className="col-12 col-md-4 col-lg-3 d-flex align-items-end">
