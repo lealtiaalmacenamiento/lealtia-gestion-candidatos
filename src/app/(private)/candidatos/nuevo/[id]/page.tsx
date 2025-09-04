@@ -94,26 +94,27 @@ export default function EditarCandidato() {
     const t = todayUTC()
     const anchorMonth = monthIndexFromText(m.mes) || new Date().getUTCMonth()+1
     const anchorYear = new Date().getUTCFullYear()
-    const ranges = [
-      ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear }),
-      ...parseAllRangesWithAnchor(m.capacitacion_cedula_a1, { anchorMonth, anchorYear })
-    ]
-    if (!ranges.length) return true
-    return ranges.some(r => r.end.getTime() >= t)
+    const regRanges = parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear })
+    const capRanges = parseAllRangesWithAnchor(m.capacitacion_cedula_a1, { anchorMonth, anchorYear })
+    const validReg = regRanges.some(r => r.end.getTime() >= t)
+    const validCap = capRanges.some(r => r.end.getTime() >= t)
+    return validReg && validCap
   }
   const isFutureEfc = (e: Efc) => {
     const t = todayUTC()
     const anchorMonth = monthIndexFromText(e.efc) || monthIndexFromText(form.mes as string) || new Date().getUTCMonth()+1
     const anchorYear = new Date().getUTCFullYear()
-    const ranges = [
-      ...parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear }),
-      ...parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear }),
-      ...parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear }),
-      ...parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear }),
-      ...parseAllRangesWithAnchor(e.inicio_escuela_fundamental, { anchorMonth, anchorYear })
-    ]
-    if (!ranges.length) return true
-    return ranges.some(r => r.end.getTime() >= t)
+    const ovRanges = parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear })
+    const playbookRanges = parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear })
+    const preEscuelaRanges = parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear })
+    const cdpRanges = parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear })
+    const inicioFundRanges = parseAllRangesWithAnchor(e.inicio_escuela_fundamental, { anchorMonth, anchorYear })
+    const validOV = ovRanges.some(r => r.end.getTime() >= t)
+    const validPlay = playbookRanges.some(r => r.end.getTime() >= t)
+    const validPre = preEscuelaRanges.some(r => r.end.getTime() >= t)
+    const validCDP = cdpRanges.some(r => r.end.getTime() >= t)
+    const validInicio = inicioFundRanges.some(r => r.end.getTime() >= t)
+    return validOV && validPlay && validPre && validCDP && validInicio
   }
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
