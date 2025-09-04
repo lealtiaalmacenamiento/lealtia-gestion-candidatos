@@ -40,8 +40,8 @@ export default function PlanificacionPage(){
     if(dirty && !force) return
   const showLoading = trigger!=='interval'
   if(showLoading) setLoading(true)
-    let plan: PlanificacionResponse | null = null
-    const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`)
+  let plan: PlanificacionResponse | null = null
+  const planRes = await fetch(`/api/planificacion?semana=${semana}&anio=${anio}${agenteQuery}`, { cache: 'no-store' })
     if(planRes.ok) plan = await planRes.json()
     if(planRes.ok){
       try { console.debug('PLANIF_FETCH_RAW', await planRes.clone().text()) } catch {}
@@ -59,17 +59,22 @@ export default function PlanificacionPage(){
           }
         }
       }
-      // Mantener bloques manuales existentes en local si aplica
-      const manual = plan.bloques.filter(b=> b.origin !== 'auto')
-      if(manual.length===0 && localManualRef.current.length>0 && !force){
-        manual.push(...localManualRef.current.map(b=> ({...b})))
-      }
-      plan = {...plan, bloques: manual}
+  // Mantener solo bloques del servidor (o los locales si se está en flujo post-guardado con merge más arriba)
+  const manual = plan.bloques.filter(b=> b.origin !== 'auto')
+  plan = {...plan, bloques: manual}
     }
   setData(plan)
   if(showLoading) setLoading(false)
   }
   useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[agenteId, semana, anio])
+
+  // Al cambiar agente/semana/año, limpiar estado local para evitar arrastre entre agentes
+  useEffect(()=>{
+    localManualRef.current = []
+    lastSavedManualRef.current = ''
+    setDirty(false)
+    setData(null)
   },[agenteId, semana, anio])
 
   // Cargar agentes para superuser
