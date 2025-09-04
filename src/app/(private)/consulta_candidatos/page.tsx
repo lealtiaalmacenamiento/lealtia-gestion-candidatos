@@ -41,6 +41,21 @@ function ConsultaCandidatosInner() {
   const [uncheckReason, setUncheckReason] = useState('')
   const [unchecking, setUnchecking] = useState(false)
 
+  // Si todas las etapas están marcadas como completadas, mostrar "Agente" en Proceso
+  const areAllEtapasCompleted = (c: CandidatoExt): boolean => {
+    const etapas = c.etapas_completadas || {}
+    const keys: Array<keyof Candidato> = [
+      'periodo_para_registro_y_envio_de_documentos',
+      'capacitacion_cedula_a1',
+      'periodo_para_ingresar_folio_oficina_virtual',
+      'periodo_para_playbook',
+      'pre_escuela_sesion_unica_de_arranque',
+      'fecha_limite_para_presentar_curricula_cdp',
+      'inicio_escuela_fundamental'
+    ]
+    return keys.every(k => !!etapas[k as string]?.completed)
+  }
+
   const toggleEtapa = async (c: CandidatoExt, etapaKey: keyof Candidato) => {
     // Mapear etiqueta de etapa a clave de etapas_completadas
     const map: Record<string, string> = {
@@ -326,6 +341,7 @@ function ConsultaCandidatosInner() {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
+                    const allCompleted = areAllEtapasCompleted(c as CandidatoExt)
                     const display = (col.key === 'fecha_de_creacion')
                       ? (formatDate(c.fecha_de_creacion) || '-')
                       : (col.key === 'ultima_actualizacion'
@@ -335,7 +351,7 @@ function ConsultaCandidatosInner() {
                           : (col.key === 'fecha_creacion_ct'
                             ? (formatDate(c.fecha_creacion_ct) || '-')
                              : (col.key === 'proceso'
-                               ? etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''
+                               ? (allCompleted ? 'Agente' : (etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''))
                               : value))));
                     const etapaKeys = new Set([
                       'periodo_para_registro_y_envio_de_documentos',
@@ -351,7 +367,7 @@ function ConsultaCandidatosInner() {
                     const etKey = col.key as string
                     const checked = !!etapas[etKey]?.completed
                     const meta = etapas[etKey]
-                    const rawProceso = (c as unknown as { proceso?: string }).proceso || ''
+                    const rawProceso = (allCompleted ? 'Agente' : ((c as unknown as { proceso?: string }).proceso || ''))
                     return (
                       <td key={col.key} className={cls} title={col.key==='proceso' ? rawProceso : undefined}>
                         <div className="d-flex flex-column gap-1">
