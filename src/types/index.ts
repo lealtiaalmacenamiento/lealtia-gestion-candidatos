@@ -28,6 +28,21 @@ export interface Candidato {
   pre_escuela_sesion_unica_de_arranque?: string
   fecha_limite_para_presentar_curricula_cdp?: string
   inicio_escuela_fundamental?: string
+  // Nuevo: email del agente (candidato) para creación de usuario
+  email_agente?: string
+  // Estado de completado por etapa (MES/EFC) con metadatos de usuario/fecha
+  etapas_completadas?: {
+    [etapa: string]: { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
+  }
+  // Meta devuelta por backend al crear (no persistida): estado creación usuario agente
+  _agente_meta?: {
+    created?: boolean
+    existed?: boolean
+    passwordTemporal?: string
+    correoEnviado?: boolean
+    correoError?: string
+    error?: string
+  }
 }
 
 /** Usuarios */
@@ -80,4 +95,46 @@ export interface Parametro {
   descripcion?: string | null
   actualizado_por?: string | null
   actualizado_en?: string | null
+}
+
+/* ===== Fase 2: Prospectos y Planificación ===== */
+export type ProspectoEstado = 'pendiente' | 'seguimiento' | 'con_cita' | 'descartado'
+
+export interface Prospecto {
+  id: number
+  agente_id: number
+  anio: number
+  semana_iso: number
+  nombre: string
+  telefono?: string | null
+  notas?: string | null
+  estado: ProspectoEstado
+  // Ahora timestamp (ISO) con fecha y hora
+  fecha_cita?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface BloquePlanificacion {
+  day: number // 0=Lunes ISO? (usaremos 0=lunes..6=domingo para consistencia)
+  hour: string // '05'..'23'
+  activity: 'PROSPECCION' | 'CITAS' | 'SMNYL'
+  origin?: 'auto' | 'manual'
+  // Metadata opcional cuando proviene de una cita de prospecto
+  prospecto_id?: number
+  prospecto_nombre?: string
+  prospecto_estado?: ProspectoEstado
+  notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
+}
+
+export interface PlanificacionSemana {
+  id: number
+  agente_id: number
+  anio: number
+  semana_iso: number
+  prima_anual_promedio: number
+  porcentaje_comision: number
+  bloques: BloquePlanificacion[]
+  created_at?: string
+  updated_at?: string
 }

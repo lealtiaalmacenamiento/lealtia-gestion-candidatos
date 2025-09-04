@@ -2,15 +2,17 @@
 import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
-import { calcularDerivados } from '@/lib/proceso';
+import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 
-interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string }
+interface EtapaMeta { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
+interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string; etapas_completadas?: Record<string, EtapaMeta> }
 import BasePage from '@/components/BasePage';
 import AppModal from '@/components/ui/AppModal';
 import { useAuth } from '@/context/AuthProvider';
+import { exportCandidatoPDF, exportCandidatosExcel } from '@/lib/exporters'
 
 // Tipos
-type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion'>;
+type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct'>;
 type AnyColKey = keyof Candidato;
 
 export default function ConsultaCandidatosPage() {
@@ -34,6 +36,88 @@ function ConsultaCandidatosInner() {
   const abortRef = useRef<AbortController | null>(null);
   // const [reloading, setReloading] = useState(false); // no usado actualmente
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [savingFlag, setSavingFlag] = useState<number | null>(null);
+  const [pendingUncheck, setPendingUncheck] = useState<{ c: CandidatoExt; key: keyof Candidato } | null>(null)
+  const [uncheckReason, setUncheckReason] = useState('')
+  const [unchecking, setUnchecking] = useState(false)
+
+  // Si todas las etapas están marcadas como completadas, mostrar "Agente" en Proceso
+  const areAllEtapasCompleted = (c: CandidatoExt): boolean => {
+    const etapas = c.etapas_completadas || {}
+    const keys: Array<keyof Candidato> = [
+      'periodo_para_registro_y_envio_de_documentos',
+      'capacitacion_cedula_a1',
+      'periodo_para_ingresar_folio_oficina_virtual',
+      'periodo_para_playbook',
+      'pre_escuela_sesion_unica_de_arranque',
+      'fecha_limite_para_presentar_curricula_cdp',
+      'inicio_escuela_fundamental'
+    ]
+    return keys.every(k => !!etapas[k as string]?.completed)
+  }
+
+  const toggleEtapa = async (c: CandidatoExt, etapaKey: keyof Candidato) => {
+    // Mapear etiqueta de etapa a clave de etapas_completadas
+    const map: Record<string, string> = {
+      periodo_para_registro_y_envio_de_documentos: 'periodo_para_registro_y_envio_de_documentos',
+      capacitacion_cedula_a1: 'capacitacion_cedula_a1',
+      periodo_para_ingresar_folio_oficina_virtual: 'periodo_para_ingresar_folio_oficina_virtual',
+      periodo_para_playbook: 'periodo_para_playbook',
+      pre_escuela_sesion_unica_de_arranque: 'pre_escuela_sesion_unica_de_arranque',
+      fecha_limite_para_presentar_curricula_cdp: 'fecha_limite_para_presentar_curricula_cdp',
+      inicio_escuela_fundamental: 'inicio_escuela_fundamental'
+    }
+    const key = map[etapaKey as string]
+    if (!key) return
+    try {
+      setSavingFlag(c.id_candidato)
+  const current = c.etapas_completadas || {}
+  const currentCompleted = !!(current[key]?.completed)
+      // Si se va a desmarcar, pedir confirmación con motivo
+      if (currentCompleted) {
+        setPendingUncheck({ c, key: etapaKey })
+        setUncheckReason('')
+        return
+      }
+      const payload = { etapas_completadas: { [key]: { completed: true } } }
+      const res = await fetch(`/api/candidatos/${c.id_candidato}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error actualizando etapa')
+      // Actualizar en memoria con respuesta (incluye merge + metadatos)
+  setData(d => d.map(x => x.id_candidato === c.id_candidato ? { ...(x as CandidatoExt), etapas_completadas: (j.etapas_completadas as Record<string, EtapaMeta> | undefined) } : x))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally { setSavingFlag(null) }
+  }
+
+  const confirmUncheck = async () => {
+    if (!pendingUncheck) return
+    const { c, key: etapaKey } = pendingUncheck
+    const map: Record<string, string> = {
+      periodo_para_registro_y_envio_de_documentos: 'periodo_para_registro_y_envio_de_documentos',
+      capacitacion_cedula_a1: 'capacitacion_cedula_a1',
+      periodo_para_ingresar_folio_oficina_virtual: 'periodo_para_ingresar_folio_oficina_virtual',
+      periodo_para_playbook: 'periodo_para_playbook',
+      pre_escuela_sesion_unica_de_arranque: 'pre_escuela_sesion_unica_de_arranque',
+      fecha_limite_para_presentar_curricula_cdp: 'fecha_limite_para_presentar_curricula_cdp',
+      inicio_escuela_fundamental: 'inicio_escuela_fundamental'
+    }
+    const key = map[etapaKey as string]
+    if (!key) { setPendingUncheck(null); return }
+    if (!uncheckReason.trim()) return // requerido
+    try {
+      setUnchecking(true)
+      const payload = { etapas_completadas: { [key]: { completed: false } }, _etapa_uncheck: { key, reason: uncheckReason.trim() } }
+      const res = await fetch(`/api/candidatos/${c.id_candidato}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error actualizando etapa')
+      setData(d => d.map(x => x.id_candidato === c.id_candidato ? { ...(x as CandidatoExt), etapas_completadas: (j.etapas_completadas as Record<string, EtapaMeta> | undefined) } : x))
+      setPendingUncheck(null)
+      setUncheckReason('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally { setUnchecking(false) }
+  }
 
   const fetchData = React.useCallback(async () => {
     abortRef.current?.abort();
@@ -98,21 +182,23 @@ function ConsultaCandidatosInner() {
   const columns = useMemo(() => ([
     { key: 'id_candidato', label: 'ID', sortable: true },
     { key: 'ct', label: 'CT', sortable: true },
-    { key: 'candidato', label: 'Candidato', sortable: true },
-    { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
-    { key: 'proceso', label: 'Proceso' },
-    { key: 'mes', label: 'Mes', sortable: true },
-    { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
-    { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
+  { key: 'candidato', label: 'Candidato', sortable: true },
+  { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
+  { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
+  { key: 'proceso', label: 'Proceso' },
+  { key: 'mes', label: 'Cédula A1', sortable: true },
+  { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
+  { key: 'capacitacion_cedula_a1', label: 'Capacitación A1' },
     { key: 'fecha_tentativa_de_examen', label: 'Fecha tentativa examen', sortable: true },
     { key: 'efc', label: 'EFC', sortable: true },
-    { key: 'periodo_para_ingresar_folio_oficina_virtual', label: 'Periodo folio OV' },
-    { key: 'periodo_para_playbook', label: 'Periodo Playbook' },
-    { key: 'pre_escuela_sesion_unica_de_arranque', label: 'Pre Escuela' },
-    { key: 'fecha_limite_para_presentar_curricula_cdp', label: 'Currícula CDP' },
-    { key: 'inicio_escuela_fundamental', label: 'Inicio Escuela' },
+  { key: 'periodo_para_ingresar_folio_oficina_virtual', label: 'Periodo folio OV' },
+  { key: 'periodo_para_playbook', label: 'Periodo Playbook' },
+  { key: 'pre_escuela_sesion_unica_de_arranque', label: 'Pre Escuela' },
+  { key: 'fecha_limite_para_presentar_curricula_cdp', label: 'Currícula CDP' },
+  { key: 'inicio_escuela_fundamental', label: 'Inicio Escuela' },
     { key: 'seg_gmm', label: 'SEG GMM' },
     { key: 'seg_vida', label: 'SEG VIDA' },
+  // columnas derivadas ya incluidas arriba (no duplicar)
     { key: 'fecha_de_creacion', label: 'Creado', sortable: true },
     { key: 'ultima_actualizacion', label: 'Actualizado', sortable: true },
     { key: 'usuario_creador', label: 'Creador' },
@@ -129,6 +215,49 @@ function ConsultaCandidatosInner() {
   // Modal de eliminación
   const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
   const handleEdit = (id: number) => { window.location.href = `/candidatos/nuevo/${id}`; };
+  // Modal asignar email agente
+  const [assigning, setAssigning] = useState(false)
+  const [selectedForAgente, setSelectedForAgente] = useState<Candidato | null>(null)
+  const [agenteEmail, setAgenteEmail] = useState('')
+  interface AgenteMeta {
+    created?: boolean
+    existed?: boolean
+    passwordTemporal?: string
+    correoEnviado?: boolean
+    correoError?: string
+    error?: string
+    ok?: boolean
+  }
+  const [agenteMeta, setAgenteMeta] = useState<AgenteMeta | null>(null)
+  const openAgenteModal = (c: Candidato) => {
+    if (c.email_agente) return; // no permitir cambiar
+    setSelectedForAgente(c)
+    setAgenteEmail('')
+    setAgenteMeta(null)
+  }
+  const submitAgente = async (e: React.FormEvent) => {
+    e.preventDefault()
+  if (!selectedForAgente) return
+  if (selectedForAgente.email_agente) { setAgenteMeta({ error: 'Ya tiene agente asignado' }); return }
+    const email = agenteEmail.trim().toLowerCase()
+    if (!/.+@.+\..+/.test(email)) { setAgenteMeta({ error: 'Email inválido' }); return }
+    try {
+      setAssigning(true)
+      const res = await fetch(`/api/candidatos/${selectedForAgente.id_candidato}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email_agente: email }) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Error asignando email')
+      setAgenteMeta(j._agente_meta || { ok: true })
+      // Actualizar en memoria
+      setData(d => d.map(x => x.id_candidato === selectedForAgente.id_candidato ? { ...x, email_agente: email } : x))
+      if (!j._agente_meta?.error) {
+        setTimeout(()=>{ setSelectedForAgente(null) }, 1200)
+      }
+    } catch (er) {
+      setAgenteMeta({ error: er instanceof Error ? er.message : 'Error' })
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   const performDelete = async () => {
     if (!pendingDelete) return;
@@ -148,6 +277,16 @@ function ConsultaCandidatosInner() {
     }
   };
 
+  // Exportar a Excel real (.xlsx) usando librería; evita problemas de acentos
+  const exportExcelXlsx = React.useCallback(() => {
+    if (!filtered.length) return;
+    exportCandidatosExcel(filtered);
+  }, [filtered]);
+
+  // 'proceso' ya se adjunta en fetchData vía calcularDerivados
+
+  // (utilidades CSV eliminadas; ahora generamos XLSX y se mantiene codificación correcta)
+
   return (
   <BasePage title="Consulta de candidatos">
       {search?.get('deleted') === '0' && (
@@ -158,8 +297,12 @@ function ConsultaCandidatosInner() {
           <a href="/consulta_candidatos" className="btn-close" aria-label="Cerrar" title="Cerrar"></a>
         </div>
       )}
-      <div className="d-flex justify-content-end align-items-center gap-3 mb-2">
-        <button className="btn btn-outline-secondary btn-sm" onClick={fetchData} disabled={loading}>{loading ? '...' : 'Recargar'}</button>
+      <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
+        <div></div>
+        <div className="d-flex align-items-center gap-2">
+          <button className="btn btn-outline-secondary btn-sm" onClick={fetchData} disabled={loading}>{loading ? '...' : 'Recargar'}</button>
+          <button className="btn btn-outline-success btn-sm" onClick={exportExcelXlsx} disabled={loading || filtered.length===0} title="Exportar listado a Excel">Exportar Excel</button>
+        </div>
       </div>
       {loading && (
         <div className="table-responsive fade-in-scale">
@@ -180,7 +323,7 @@ function ConsultaCandidatosInner() {
         <div className="alert alert-info">Sin registros</div>
       )}
 
-      {!loading && filtered.length > 0 && (
+  {!loading && filtered.length > 0 && (
         <div className="table-responsive fade-in-scale">
           <table className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-dark">
@@ -193,12 +336,14 @@ function ConsultaCandidatosInner() {
             </thead>
             <tbody>
                   {filtered.map((c, idx) => (
-                <tr key={c.id_candidato} className={`${c.eliminado ? 'table-danger' : ''} dash-anim stagger-${(idx % 6)+1}`}> 
+                <tr key={c.id_candidato} className={`dash-anim stagger-${(idx % 6)+1}`}> 
                   {columns.map(col => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
-                        const display = (col.key === 'fecha_de_creacion')
+                    const allCompleted = areAllEtapasCompleted(c as CandidatoExt)
+                    const isAgente = allCompleted
+                    const display = (col.key === 'fecha_de_creacion')
                       ? (formatDate(c.fecha_de_creacion) || '-')
                       : (col.key === 'ultima_actualizacion'
                         ? (formatDate(c.ultima_actualizacion) || '-')
@@ -206,20 +351,56 @@ function ConsultaCandidatosInner() {
                           ? (formatDate(c.fecha_tentativa_de_examen) || '-')
                           : (col.key === 'fecha_creacion_ct'
                             ? (formatDate(c.fecha_creacion_ct) || '-')
-                            : value)));
+                             : (col.key === 'proceso'
+                               ? (isAgente ? 'Agente' : (etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''))
+                              : value))));
+                    const etapaKeys = new Set([
+                      'periodo_para_registro_y_envio_de_documentos',
+                      'capacitacion_cedula_a1',
+                      'periodo_para_ingresar_folio_oficina_virtual',
+                      'periodo_para_playbook',
+                      'pre_escuela_sesion_unica_de_arranque',
+                      'fecha_limite_para_presentar_curricula_cdp',
+                      'inicio_escuela_fundamental'
+                    ])
+                    const isEtapa = etapaKeys.has(col.key as string)
+                    const etapas = (c as CandidatoExt).etapas_completadas || {}
+                    const etKey = col.key as string
+                    const checked = !!etapas[etKey]?.completed
+                    const meta = etapas[etKey]
+                    const rawProceso = (isAgente ? 'Agente' : ((c as unknown as { proceso?: string }).proceso || ''))
                     return (
-                      <td key={col.key} className={cls}>
-                        <Cell v={display} />
+                      <td key={col.key} className={cls} title={col.key==='proceso' ? rawProceso : undefined}>
+                        <div className="d-flex flex-column gap-1">
+                          <Cell v={display} />
+                          {isEtapa && (
+                            <label className="small d-flex align-items-center gap-2">
+                              <input type="checkbox" className="form-check-input" checked={checked} disabled={savingFlag===c.id_candidato || !!c.eliminado}
+                                onChange={()=>toggleEtapa(c, col.key as AnyColKey)} />
+                              <span>Completado</span>
+                            </label>
+                          )}
+                          {isEtapa && checked && meta?.at && (
+                            <div className="form-text small">
+                              Marcado el {formatDate(meta.at)} por {meta.by?.nombre || ''} {meta.by?.email ? `(${meta.by.email})` : ''}
+                            </div>
+                          )}
+                        </div>
                       </td>
-                    );
+                    )
                   })}
-                  {!readOnly && (
+          {!readOnly && (
                     <td style={{whiteSpace:'nowrap'}}>
                       <button
                         className="btn btn-sm btn-primary me-1"
                         onClick={() => handleEdit(c.id_candidato)}
                         disabled={deleting === c.id_candidato}
                       >Editar</button>
+                      <button
+                        className="btn btn-sm btn-outline-secondary me-1"
+                        onClick={() => exportCandidatoPDF(c)}
+                      >PDF</button>
+            {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => setPendingDelete(c)}
@@ -231,7 +412,10 @@ function ConsultaCandidatosInner() {
               ))}
             </tbody>
           </table>
-          <div className="small text-muted mt-2">Mostrando {filtered.length} de {data.length} registros cargados.</div>
+          <div className="d-flex justify-content-between align-items-center mt-2 small">
+            <div className="text-muted">Mostrando {filtered.length} de {data.length} registros cargados.</div>
+            <div></div>
+          </div>
         </div>
       )}
       {pendingDelete && (
@@ -255,6 +439,68 @@ function ConsultaCandidatosInner() {
             <div><strong>Nombre:</strong> {pendingDelete.candidato || '—'}</div>
           </div>
           <p className="text-danger fw-semibold mb-0">¿Deseas continuar?</p>
+        </AppModal>
+      )}
+      {selectedForAgente && (
+        <AppModal
+          title="Asignar email agente"
+          icon="person-plus-fill"
+          width={500}
+          onClose={()=> !assigning && setSelectedForAgente(null)}
+          disableClose={assigning}
+          footer={null}
+        >
+          <form onSubmit={submitAgente} className="needs-validation" noValidate>
+            <div className="mb-3 small">
+              <strong>Candidato:</strong> {selectedForAgente.candidato || '—'} (ID {selectedForAgente.id_candidato})
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Email del agente</label>
+              <input type="email" className="form-control" value={agenteEmail} onChange={e=>setAgenteEmail(e.target.value)} required disabled={assigning} placeholder="agente@dominio.com" />
+            </div>
+            {agenteMeta && (
+              <div className={`alert py-2 small ${agenteMeta.error ? 'alert-danger' : 'alert-info'}`}>
+                {agenteMeta.error && <><strong>Error:</strong> {agenteMeta.error}</>}
+                {!agenteMeta.error && (
+                  <>
+                    {agenteMeta.created && <div>Usuario agente creado.</div>}
+                    {agenteMeta.existed && <div>El usuario ya existía.</div>}
+                    {agenteMeta.correoEnviado === true && <div>Correo de bienvenida enviado.</div>}
+                    {agenteMeta.correoEnviado === false && <div>No se pudo enviar correo: {agenteMeta.correoError || 'Error desconocido'}</div>}
+                    {!agenteMeta.created && !agenteMeta.existed && !agenteMeta.error && <div>Asignado.</div>}
+                  </>
+                )}
+              </div>
+            )}
+            <div className="d-flex justify-content-end gap-2">
+              <button type="button" className="btn btn-soft-secondary btn-sm" onClick={()=>!assigning && setSelectedForAgente(null)} disabled={assigning}>Cerrar</button>
+              <button type="submit" className="btn btn-success btn-sm d-flex align-items-center gap-2" disabled={assigning}>
+                {assigning && <span className="spinner-border spinner-border-sm" />}
+                {assigning ? 'Asignando…' : 'Guardar'}
+              </button>
+            </div>
+          </form>
+        </AppModal>
+      )}
+      {pendingUncheck && (
+        <AppModal
+          title="Confirmar desmarcar etapa"
+          icon="exclamation-triangle-fill"
+          width={520}
+          onClose={()=> !unchecking && setPendingUncheck(null)}
+          disableClose={unchecking}
+          footer={<>
+            <button type="button" className="btn btn-soft-secondary btn-sm" onClick={()=>!unchecking && setPendingUncheck(null)} disabled={unchecking}>Cancelar</button>
+            <button type="button" className="btn btn-danger btn-sm d-flex align-items-center gap-2" onClick={confirmUncheck} disabled={unchecking || !uncheckReason.trim()}>
+              {unchecking && <span className="spinner-border spinner-border-sm" />}
+              {unchecking ? 'Guardando…' : 'Sí, desmarcar'}
+            </button>
+          </>}
+        >
+          <p className="mb-2 small">Indica el motivo para desmarcar esta etapa. Se registrará en auditoría.</p>
+          <div className="mb-2">
+            <textarea className="form-control" rows={3} value={uncheckReason} onChange={e=>setUncheckReason(e.target.value)} placeholder="Motivo (requerido)" required disabled={unchecking} />
+          </div>
         </AppModal>
       )}
     </BasePage>
@@ -283,7 +529,6 @@ function Th({ label, k, sortKey, sortDir, onSort, sortable, width }: ThProps) {
 
 function formatDate(v?: string) {
   if (!v) return ''
-  // Si viene como YYYY-MM-DD mostramos dd/mm/aa sin crear objeto Date para evitar desfases
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
     const [y,m,d] = v.split('-')
     return `${d}/${m}/${y.slice(2)}`

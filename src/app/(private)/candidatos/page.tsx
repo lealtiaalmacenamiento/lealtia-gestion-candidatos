@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 
 import { getCandidatos, deleteCandidato } from '@/lib/api';
+import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
+import { exportCandidatosExcel, exportCandidatoPDF } from '@/lib/exporters';
 import AppModal from '@/components/ui/AppModal';
 import type { Candidato } from '@/types';
 import BasePage from '@/components/BasePage';
@@ -37,9 +39,12 @@ export default function CandidatosPage() {
       <div className="d-flex justify-content-center align-items-center d-center-mobile min-vh-100 bg-light px-2 px-sm-3">
         <div className="card shadow w-100 app-shell-narrow border-0">
           <div className="card-body">
-            <div className="d-flex justify-content-between align-items-center mb-3">
+            <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
               <h2 className="mb-0">Candidatos</h2>
-              <Link href="/candidatos/nuevo" className="btn btn-success">Nuevo</Link>
+              <div className="d-flex gap-2 ms-auto">
+                <button className="btn btn-outline-primary btn-sm" onClick={()=>exportCandidatosExcel(candidatos)}>Exportar Excel</button>
+                <Link href="/candidatos/nuevo" className="btn btn-success btn-sm">Nuevo</Link>
+              </div>
             </div>
             <div className="table-responsive small">
               <table className="table table-bordered table-hover align-middle mb-0">
@@ -47,28 +52,61 @@ export default function CandidatosPage() {
                   <tr>
                     <th>CT</th>
                     <th>Nombre</th>
-                    <th>MES</th>
+                    <th>Email agente</th>
+                    <th>Cédula A1</th>
                     <th>EFC</th>
+                    <th>Proceso</th>
+                    <th>Días CT</th>
                     <th className="col-actions">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {candidatos.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center">No hay candidatos registrados.</td></tr>
-                  ) : candidatos.map((c) => (
-                    <tr key={c.id_candidato}>
-                      <td>{c.ct}</td>
-                      <td>{c.candidato}</td>
-                      <td>{c.mes}</td>
-                      <td>{c.efc}</td>
-                      <td className="p-1">
-                        <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
-                          <Link href={`/candidatos/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
-                          <button onClick={() => setPendingDelete(c)} className="btn btn-danger btn-sm flex-fill">Eliminar</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                    <tr><td colSpan={8} className="text-center">No hay candidatos registrados.</td></tr>
+                  ) : candidatos.map((c) => {
+                    const { proceso, dias_desde_ct } = calcularDerivados({
+                      periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
+                      capacitacion_cedula_a1: c.capacitacion_cedula_a1,
+                      periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
+                      periodo_para_playbook: c.periodo_para_playbook,
+                      pre_escuela_sesion_unica_de_arranque: c.pre_escuela_sesion_unica_de_arranque,
+                      fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
+                      inicio_escuela_fundamental: c.inicio_escuela_fundamental,
+                      fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
+                      fecha_creacion_ct: c.fecha_creacion_ct
+                    })
+                    const dias = dias_desde_ct
+                    const etapas = c.etapas_completadas || {}
+                    const allCompleted = [
+                      'periodo_para_registro_y_envio_de_documentos',
+                      'capacitacion_cedula_a1',
+                      'periodo_para_ingresar_folio_oficina_virtual',
+                      'periodo_para_playbook',
+                      'pre_escuela_sesion_unica_de_arranque',
+                      'fecha_limite_para_presentar_curricula_cdp',
+                      'inicio_escuela_fundamental'
+                    ].every(k => !!etapas[k]?.completed)
+                    const isAgente = allCompleted
+                    const procesoMostrar = isAgente ? 'Agente' : etiquetaProceso(proceso)
+                    return (
+                      <tr key={c.id_candidato}>
+                        <td>{c.ct}</td>
+                        <td>{c.candidato}</td>
+                        <td>{(c as unknown as Record<string, unknown>).email_agente as string || ''}</td>
+                        <td>{c.mes}</td>
+                        <td>{c.efc}</td>
+                        <td title={isAgente ? 'Agente' : proceso}>{procesoMostrar}</td>
+                        <td>{dias ?? '—'}</td>
+                        <td className="p-1">
+                          <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
+                            <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
+                            <button onClick={() => exportCandidatoPDF({ ...c, proceso })} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
+                            <button onClick={() => setPendingDelete(c)} className="btn btn-danger btn-sm flex-fill">Eliminar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

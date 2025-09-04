@@ -17,6 +17,30 @@ export async function getCandidatoById(id: number): Promise<Candidato> {
   return handleResponse<Candidato>(res)
 }
 
+export async function getCandidatoByCT(ct: string): Promise<Candidato | null> {
+  const res = await fetch(`/api/candidatos?ct=${encodeURIComponent(ct)}`, { cache: 'no-store' })
+  // La API devuelve null si no existe
+  if (res.status === 200) {
+    const data = await res.json()
+    return data as (Candidato | null)
+  }
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Error consultando CT')
+  return null
+}
+
+export async function getCandidatoByEmail(email: string): Promise<Candidato | null> {
+  const q = `/api/candidatos?email_agente=${encodeURIComponent(email.trim().toLowerCase())}`
+  const res = await fetch(q, { cache: 'no-store' })
+  if (res.status === 200) {
+    const data = await res.json()
+    return data as (Candidato | null)
+  }
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Error consultando email')
+  return null
+}
+
 export async function createCandidato(payload: Partial<Candidato>): Promise<Candidato> {
   const res = await fetch('/api/candidatos', {
     method: 'POST',

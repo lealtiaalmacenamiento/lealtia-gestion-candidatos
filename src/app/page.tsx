@@ -26,3 +26,5 @@ export default function Home() {
   return <div style={{ padding: 24, fontFamily: 'sans-serif' }}></div>
 }
 
+// vercel: redeploy marker (2025-08-29-3)
+

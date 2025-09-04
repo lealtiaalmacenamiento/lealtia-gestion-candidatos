@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-  "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "build": "next build",
+  "start": "next start",
+  "lint": "eslint",
+  "typecheck": "tsc -p . --noEmit"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
@@ -15,10 +16,13 @@
     "bootstrap": "^5.3.7",
     "bootstrap-icons": "^1.13.1",
     "dotenv": "^17.2.1",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
     "next": "^15.5.0",
     "nodemailer": "^6.10.1",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+  "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
