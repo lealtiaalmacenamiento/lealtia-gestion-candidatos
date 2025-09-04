@@ -86,7 +86,7 @@ export default function CandidatosPage() {
                       'fecha_limite_para_presentar_curricula_cdp',
                       'inicio_escuela_fundamental'
                     ].every(k => !!etapas[k]?.completed)
-                    const isAgente = !!c.email_agente || allCompleted
+                    const isAgente = allCompleted
                     const procesoMostrar = isAgente ? 'Agente' : etiquetaProceso(proceso)
                     return (
                       <tr key={c.id_candidato}>

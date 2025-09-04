@@ -342,7 +342,7 @@ function ConsultaCandidatosInner() {
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
                     const allCompleted = areAllEtapasCompleted(c as CandidatoExt)
-                    const isAgente = !!(c as Candidato).email_agente || allCompleted
+                    const isAgente = allCompleted
                     const display = (col.key === 'fecha_de_creacion')
                       ? (formatDate(c.fecha_de_creacion) || '-')
                       : (col.key === 'ultima_actualizacion'

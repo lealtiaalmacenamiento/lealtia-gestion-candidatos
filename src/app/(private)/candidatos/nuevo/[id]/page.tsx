@@ -299,7 +299,7 @@ export default function EditarCandidato() {
     ]
     return keys.every(k => !!etapas[k]?.completed)
   })()
-  const isAgenteProc = !!form.email_agente || etapasAllCompleted
+  const isAgenteProc = etapasAllCompleted
   const procesoActual = isAgenteProc ? 'Agente' : etiquetaProceso(form.proceso)
   const diasCT = form.dias_desde_ct
 

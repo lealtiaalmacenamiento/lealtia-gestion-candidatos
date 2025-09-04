@@ -37,8 +37,8 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       'fecha_limite_para_presentar_curricula_cdp',
       'inicio_escuela_fundamental'
     ].every(k => !!etapas[k]?.completed)
-    const isAgente = !!c.email_agente || allCompleted
-    const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
+  const isAgente = allCompleted
+  const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
     return {
       ID: c.id_candidato,
       CT: c.ct,
@@ -219,7 +219,7 @@ export async function exportCandidatoPDF(c: Candidato) {
     'fecha_limite_para_presentar_curricula_cdp',
     'inicio_escuela_fundamental'
   ].every(k => !!etapasPdf[k]?.completed)
-  const isAgentePdf = !!c.email_agente || allCompletedPdf
+  const isAgentePdf = allCompletedPdf
   const procesoLabel = U(isAgentePdf ? 'Agente' : (etiquetaProceso(proceso) || ''))
   const { headerHeight, contentStartY } = drawHeader({ procesoLabel })
   doc.setFontSize(10)
