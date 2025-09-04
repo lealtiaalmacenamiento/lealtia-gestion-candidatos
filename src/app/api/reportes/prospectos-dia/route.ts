@@ -129,20 +129,34 @@ export async function POST(req: Request) {
       <td>${h.nota_agregada ? 'Sí' : 'No'}</td>
     </tr>`
   }).join('')
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
   const html = `
-    <div style="font-family:Arial,sans-serif">
-      <h2>${title} — ${dateLabel}</h2>
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <img src="${LOGO_URL}" alt="Lealtia" style="max-height:50px;margin-bottom:8px;display:block;margin:auto" />
+      <h2 style="margin:0;font-size:20px;">${title}</h2>
+      <div style="opacity:0.9;font-size:12px;">${dateLabel}</div>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
       <p>Total de eventos: <strong>${(historial||[]).length}</strong></p>
-  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px">
-        <thead style="background:#f3f4f6">
-          <tr>
-    <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
-          </tr>
-        </thead>
-        <tbody>${rows||''}</tbody>
-      </table>
+      <div style="overflow:auto">
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
+          <thead style="background:#f3f4f6">
+            <tr>
+              <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
+            </tr>
+          </thead>
+          <tbody>${rows||''}</tbody>
+        </table>
+      </div>
       <p style="margin-top:12px;color:#6b7280">Nota: contenido de notas no se incluye por privacidad. Consulte la plataforma para detalles.</p>
-    </div>`
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
 
   if (dry) {
     return NextResponse.json({ success: true, dry: true, meta, sample: (historial||[]).slice(0, 10) })
