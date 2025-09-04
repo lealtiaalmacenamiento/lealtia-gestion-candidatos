@@ -26,6 +26,9 @@ interface FormState {
   inicio_escuela_fundamental?: string;
   seg_gmm?: number;
   seg_vida?: number;
+  etapas_completadas?: {
+    [etapa: string]: { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
+  };
 }
 
 // Obtener params con useParams para evitar conflicto de tipos del entrypoint
@@ -283,7 +286,21 @@ export default function EditarCandidato() {
 
   if (loading) return <BasePage title="Editar candidato"><div className="text-center py-5"><div className="spinner-border" /></div></BasePage>
 
-  const procesoActual = etiquetaProceso(form.proceso)
+  const etapasAllCompleted = (()=>{
+    const etapas = (form.etapas_completadas || {}) as Record<string, { completed?: boolean }>
+    const keys = [
+      'periodo_para_registro_y_envio_de_documentos',
+      'capacitacion_cedula_a1',
+      'periodo_para_ingresar_folio_oficina_virtual',
+      'periodo_para_playbook',
+      'pre_escuela_sesion_unica_de_arranque',
+      'fecha_limite_para_presentar_curricula_cdp',
+      'inicio_escuela_fundamental'
+    ]
+    return keys.every(k => !!etapas[k]?.completed)
+  })()
+  const isAgenteProc = !!form.email_agente || etapasAllCompleted
+  const procesoActual = isAgenteProc ? 'Agente' : etiquetaProceso(form.proceso)
   const diasCT = form.dias_desde_ct
 
   return (

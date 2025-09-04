@@ -27,7 +27,18 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
       fecha_creacion_ct: c.fecha_creacion_ct
     })
-    const proc = etiquetaProceso(proceso) || ''
+    const etapas = (c.etapas_completadas || {}) as Record<string, { completed?: boolean }>
+    const allCompleted = [
+      'periodo_para_registro_y_envio_de_documentos',
+      'capacitacion_cedula_a1',
+      'periodo_para_ingresar_folio_oficina_virtual',
+      'periodo_para_playbook',
+      'pre_escuela_sesion_unica_de_arranque',
+      'fecha_limite_para_presentar_curricula_cdp',
+      'inicio_escuela_fundamental'
+    ].every(k => !!etapas[k]?.completed)
+    const isAgente = !!c.email_agente || allCompleted
+    const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
     return {
       ID: c.id_candidato,
       CT: c.ct,
@@ -198,7 +209,18 @@ export async function exportCandidatoPDF(c: Candidato) {
     fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
     fecha_creacion_ct: c.fecha_creacion_ct
   })
-  const procesoLabel = U(etiquetaProceso(proceso) || '')
+  const etapasPdf = (c.etapas_completadas || {}) as Record<string, { completed?: boolean }>
+  const allCompletedPdf = [
+    'periodo_para_registro_y_envio_de_documentos',
+    'capacitacion_cedula_a1',
+    'periodo_para_ingresar_folio_oficina_virtual',
+    'periodo_para_playbook',
+    'pre_escuela_sesion_unica_de_arranque',
+    'fecha_limite_para_presentar_curricula_cdp',
+    'inicio_escuela_fundamental'
+  ].every(k => !!etapasPdf[k]?.completed)
+  const isAgentePdf = !!c.email_agente || allCompletedPdf
+  const procesoLabel = U(isAgentePdf ? 'Agente' : (etiquetaProceso(proceso) || ''))
   const { headerHeight, contentStartY } = drawHeader({ procesoLabel })
   doc.setFontSize(10)
   // Tabla Datos de candidato (orden y etiquetas solicitadas)
