@@ -76,6 +76,18 @@ export default function CandidatosPage() {
                       fecha_creacion_ct: c.fecha_creacion_ct
                     })
                     const dias = dias_desde_ct
+                    const etapas = c.etapas_completadas || {}
+                    const allCompleted = [
+                      'periodo_para_registro_y_envio_de_documentos',
+                      'capacitacion_cedula_a1',
+                      'periodo_para_ingresar_folio_oficina_virtual',
+                      'periodo_para_playbook',
+                      'pre_escuela_sesion_unica_de_arranque',
+                      'fecha_limite_para_presentar_curricula_cdp',
+                      'inicio_escuela_fundamental'
+                    ].every(k => !!etapas[k]?.completed)
+                    const isAgente = !!c.email_agente || allCompleted
+                    const procesoMostrar = isAgente ? 'Agente' : etiquetaProceso(proceso)
                     return (
                       <tr key={c.id_candidato}>
                         <td>{c.ct}</td>
@@ -83,7 +95,7 @@ export default function CandidatosPage() {
                         <td>{(c as unknown as Record<string, unknown>).email_agente as string || ''}</td>
                         <td>{c.mes}</td>
                         <td>{c.efc}</td>
-                        <td title={proceso}>{etiquetaProceso(proceso)}</td>
+                        <td title={isAgente ? 'Agente' : proceso}>{procesoMostrar}</td>
                         <td>{dias ?? '—'}</td>
                         <td className="p-1">
                           <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
