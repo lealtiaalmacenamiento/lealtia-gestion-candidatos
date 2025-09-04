@@ -130,11 +130,13 @@ export async function POST(req: Request) {
     </tr>`
   }).join('')
   const year = new Date().getFullYear()
-  const LOGO_URL = process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
   const html = `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
     <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
-      <img src="${LOGO_URL}" alt="Lealtia" style="max-height:50px;margin-bottom:8px;display:block;margin:auto" />
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
       <h2 style="margin:0;font-size:20px;">${title}</h2>
       <div style="opacity:0.9;font-size:12px;">${dateLabel}</div>
     </div>
