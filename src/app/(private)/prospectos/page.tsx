@@ -328,16 +328,6 @@ export default function ProspectosPage() {
         </div>}
     </div>}
   <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
-      {superuser && (
-        <div className="mb-2">
-          <label className="form-label small mb-1">Asignar a (agente)</label>
-          <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select form-select-sm w-auto">
-            <option value="">(Sin asignar, se asignará al creador)</option>
-            {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
-          </select>
-          <div className="form-text">Si no seleccionas un agente, el prospecto quedará bajo tu mismo perfil de candidato.</div>
-        </div>
-      )}
       <div className="row g-2">
         <div className="col-sm-3">
           <input required value={form.nombre} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Nombre" className="form-control"/>
