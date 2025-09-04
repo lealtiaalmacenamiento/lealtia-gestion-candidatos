@@ -33,7 +33,7 @@ export default function ProspectosPage() {
   
   const [agenteId,setAgenteId]=useState<string>('')
   const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
-  const debounceRef = useRef<number|null>(null)
+  // const debounceRef = useRef<number|null>(null) // ya no se usa con edición en modal
   const [metaProspectos,setMetaProspectos]=useState(30)
   
   interface BloqueLite { day:number; hour:string; activity:string; origin?:string }
@@ -113,12 +113,8 @@ export default function ProspectosPage() {
   },[superuser, agenteId, anio, semana, estadoFiltro])
 
   // Timezone helpers (CDMX). Desde 2022 sin DST: offset fijo -06.
-  const MX_UTC_OFFSET = 6 // UTC = local + 6 (CDMX hora estándar)
-  const buildUTCFromMX = (fecha:string,hora:string)=>{ // fecha YYYY-MM-DD, hora HH
-    const [y,m,d] = fecha.split('-').map(Number)
-    const h = Number(hora)
-    return new Date(Date.UTC(y, m-1, d, h + MX_UTC_OFFSET, 0, 0)).toISOString()
-  }
+  // const MX_UTC_OFFSET = 6
+  // const buildUTCFromMX = (fecha:string,hora:string)=>{ /* obsoleto: edición modal no toca fecha_cita */ }
   
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
     // Ya no se agenda cita durante el registro
@@ -127,46 +123,7 @@ export default function ProspectosPage() {
     else { try { const j=await r.json(); setErrorMsg(j.error||'Error'); setToast({msg:j.error||'Error', type:'error'}) } catch { setErrorMsg('Error al guardar'); setToast({msg:'Error al guardar', type:'error'}) } }
   }
 
-  const update=(id:number, patch:Partial<Prospecto>, meta?: { prospecto: Prospecto; fechaLocal?: string; horaLocal?: string })=> {
-    // debounce mínimo
-    window.clearTimeout(debounceRef.current||0)
-    debounceRef.current = window.setTimeout(()=>{
-      const toSend:Record<string,unknown>={...patch}
-      if(patch.fecha_cita){
-        const fc=String(patch.fecha_cita)
-        if(/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00$/.test(fc)){
-          const [fecha, hFull] = fc.split('T')
-          const hora = hFull.slice(0,2)
-          toSend.fecha_cita = buildUTCFromMX(fecha, hora)
-        }
-      }
-  fetch('/api/prospectos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSend)}).then(async r=>{ if(r.ok){ fetchAll(); window.dispatchEvent(new CustomEvent('prospectos:cita-updated')); try{ bcRef.current?.postMessage('prospectos:cita-updated') } catch {}; setToast({msg:'Actualizado', type:'success'})
-          // Detectar conflicto solo si acabamos de asignar cita (no al borrar)
-          if(patch.fecha_cita && meta?.fechaLocal && meta?.horaLocal){
-            try {
-              const fechaLocal = meta.fechaLocal; const horaLocal = meta.horaLocal
-              const fechaObj = new Date(fechaLocal+'T'+horaLocal+':00')
-              const { semana: semIso, anio: anioIso } = obtenerSemanaIso(fechaObj)
-              // Obtener planificación de esa semana
-              const params = new URLSearchParams({ semana:String(semIso), anio:String(anioIso), agente_id: String(meta.prospecto.agente_id) })
-              const rPlan = await fetch('/api/planificacion?'+params.toString())
-              if(rPlan.ok){
-                const plan = await rPlan.json()
-                // Calcular day index (0 lunes) usando semanaDesdeNumero
-                const rango = semanaDesdeNumero(anioIso, semIso)
-                const mondayUTC = rango.inicio
-                const localMid = new Date(fechaObj.getFullYear(), fechaObj.getMonth(), fechaObj.getDate())
-                const dayIdx = Math.floor( (localMid.getTime() - new Date(mondayUTC.getUTCFullYear(), mondayUTC.getUTCMonth(), mondayUTC.getUTCDate()).getTime()) / 86400000 )
-                const blk = plan.bloques?.find((b: BloqueLite)=> b.day===dayIdx && b.hour===horaLocal)
-                if(blk && blk.origin!== 'auto' && (blk.activity==='PROSPECCION' || blk.activity==='SMNYL')){
-                  setConflicto({prospecto: meta.prospecto, fechaLocal, horaLocal, semana: semIso, anio: anioIso, day: dayIdx, plan, bloque: blk})
-                }
-              }
-            } catch {/*ignore*/}
-          }
-        } else { try { const j=await r.json(); setToast({msg:j.error||'Error', type:'error'}) } catch { setToast({msg:'Error', type:'error'}) } } })
-    },300)
-  }
+  // update() inline de campos reemplazado por edición vía modal
 
   // Realtime: escuchar cambios en tabla prospectos del agente actual (o todos si superuser+agenteId)
   useEffect(()=>{
@@ -197,6 +154,45 @@ export default function ProspectosPage() {
   }
   const nombreDuplicado = posibleDuplicado(form.nombre)
   const telefonoInvalido = !telefonoValido(form.telefono)
+
+  // Modal de edición de prospecto
+  const [editTarget, setEditTarget] = useState<Prospecto|null>(null)
+  const [editForm, setEditForm] = useState<{ nombre:string; telefono:string; notas:string; estado:ProspectoEstado }>({ nombre:'', telefono:'', notas:'', estado:'pendiente' })
+  const openEdit = (p: Prospecto) => {
+    setEditTarget(p)
+    setEditForm({
+      nombre: p.nombre || '',
+      telefono: p.telefono || '',
+      notas: p.notas || '',
+      estado: p.estado
+    })
+  }
+  const closeEdit = () => { setEditTarget(null) }
+  const saveEdit = async () => {
+    if (!editTarget) return
+    const patch: Partial<Prospecto> = {}
+    if (editForm.nombre.trim() !== (editTarget.nombre||'').trim()) patch.nombre = editForm.nombre.trim()
+    if ((editForm.telefono||'').trim() !== (editTarget.telefono||'').trim()) patch.telefono = (editForm.telefono||'').trim()
+    if ((editForm.notas||'').trim() !== (editTarget.notas||'').trim()) patch.notas = (editForm.notas||'').trim()
+    if (editForm.estado !== editTarget.estado) patch.estado = editForm.estado
+    if (Object.keys(patch).length === 0) { setToast({ msg:'Sin cambios', type:'success' }); closeEdit(); return }
+    try {
+      const r = await fetch('/api/prospectos/'+editTarget.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
+      if (r.ok) {
+        setToast({ msg:'Prospecto actualizado', type:'success' })
+        closeEdit(); fetchAll()
+      } else {
+        let errMsg = 'Error al actualizar'
+        try {
+          const j = await r.json() as { error?: string }
+          if (j?.error) errMsg = j.error
+        } catch {}
+        setToast({ msg: errMsg, type:'error' })
+      }
+    } catch {
+      setToast({ msg:'Error al actualizar', type:'error' })
+    }
+  }
 
   // Eliminación completa de prospectos y manejo de cita deshabilitados según requerimiento.
 
@@ -346,27 +342,64 @@ export default function ProspectosPage() {
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
     <div className="table-responsive">
-  <table className="table table-sm align-middle">
-	<thead><tr><th>Nombre</th><th>Teléfono</th><th>Notas</th><th>Estado</th><th></th></tr></thead>
+      <table className="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Notas</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
-      {prospectos.map(p=> <tr key={p.id}>
-    <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
-            <td>{p.telefono||''}</td>
-            <td style={{maxWidth:180}}><input value={p.notas||''} onChange={e=>update(p.id,{notas:e.target.value})} className="form-control form-control-sm"/></td>
-            <td>
-              <select value={p.estado} onChange={e=>update(p.id,{estado:e.target.value as ProspectoEstado})} className="form-select form-select-sm">
-                {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </td>
-            {/* Columna cita eliminada */}
-            {/* Botón borrar cita eliminado */}
-          </tr>)}
+          {prospectos.map(p=> (
+            <tr key={p.id}>
+              <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
+              <td>{p.telefono||''}</td>
+              <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
+              <td>{ESTADO_LABEL[p.estado]}</td>
+              <td className="text-end">
+                <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>
+              </td>
+            </tr>
+          ))}
           {(!loading && prospectos.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">No hay prospectos para los filtros actuales.</td></tr>}
         </tbody>
       </table>
       {loading && <div className="p-3">Cargando...</div>}
     </div>
     {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
+    {editTarget && (
+      <AppModal title={`Editar prospecto`} icon="pencil" onClose={closeEdit}>
+        <div className="small">
+          <div className="row g-2">
+            <div className="col-sm-6">
+              <label className="form-label small">Nombre</label>
+              <input className="form-control" value={editForm.nombre} onChange={e=>setEditForm(f=>({...f,nombre:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Teléfono</label>
+              <input className="form-control" value={editForm.telefono} onChange={e=>setEditForm(f=>({...f,telefono:e.target.value}))} />
+            </div>
+            <div className="col-12">
+              <label className="form-label small">Notas</label>
+              <input className="form-control" value={editForm.notas} onChange={e=>setEditForm(f=>({...f,notas:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Estado</label>
+              <select className="form-select" value={editForm.estado} onChange={e=>setEditForm(f=>({...f,estado:e.target.value as ProspectoEstado}))}>
+                {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="d-flex justify-content-end gap-2 mt-3">
+            <button className="btn btn-outline-secondary btn-sm" onClick={closeEdit}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={!editForm.nombre.trim()}>Guardar cambios</button>
+          </div>
+        </div>
+      </AppModal>
+    )}
     {conflicto && (
       <AppModal title="Conflicto de bloque" icon="exclamation-triangle" onClose={()=> setConflicto(null)}>
         <div className="small">
