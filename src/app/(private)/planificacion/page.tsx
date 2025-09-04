@@ -12,7 +12,8 @@ interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:numbe
 // Ciclo original ya no usado para toggle directo, mantenido por referencia futura
 // const ACTIVIDADES = ['PROSPECCION','CITAS','SMNYL'] as const
 
-const HORAS_BASE = Array.from({length:17},(_ ,i)=> (5+i).toString().padStart(2,'0')) // 05..21 rango base
+// Mostrar calendario con 24 horas (00..23)
+const HORAS_BASE = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
 
 export default function PlanificacionPage(){
   const { user } = useAuth()
