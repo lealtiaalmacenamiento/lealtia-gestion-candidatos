@@ -117,6 +117,8 @@ export default function ProspectosPage() {
   // const buildUTCFromMX = (fecha:string,hora:string)=>{ /* obsoleto: edición modal no toca fecha_cita */ }
   
   const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
+    // Si superusuario/admin y se eligió agente en el selector superior, enviar agente_id para asignación
+    if (superuser && agenteId) body.agente_id = Number(agenteId)
     // Ya no se agenda cita durante el registro
     const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente'}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
@@ -326,6 +328,16 @@ export default function ProspectosPage() {
         </div>}
     </div>}
   <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
+      {superuser && (
+        <div className="mb-2">
+          <label className="form-label small mb-1">Asignar a (agente)</label>
+          <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select form-select-sm w-auto">
+            <option value="">(Sin asignar, se asignará al creador)</option>
+            {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
+          </select>
+          <div className="form-text">Si no seleccionas un agente, el prospecto quedará bajo tu mismo perfil de candidato.</div>
+        </div>
+      )}
       <div className="row g-2">
         <div className="col-sm-3">
           <input required value={form.nombre} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Nombre" className="form-control"/>

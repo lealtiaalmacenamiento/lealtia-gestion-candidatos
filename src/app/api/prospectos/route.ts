@@ -70,6 +70,25 @@ export async function POST(req: Request) {
   if (!usuario.activo) return NextResponse.json({ error: 'Usuario inactivo' }, { status: 403 })
 
   const body = await req.json()
+  // Restricción: solo usuarios presentes en el listado de candidatos (por email_agente) pueden crear prospectos
+  try {
+    const emailLower = (usuario.email || '').trim().toLowerCase()
+    const { data: cand, error: candErr } = await supabase
+      .from('candidatos')
+      .select('id_candidato')
+      .eq('email_agente', emailLower)
+      .eq('eliminado', false)
+      .limit(1)
+      .maybeSingle()
+    if (candErr && candErr.code && candErr.code !== 'PGRST116') {
+      return NextResponse.json({ error: candErr.message }, { status: 500 })
+    }
+    if (!cand) {
+      return NextResponse.json({ error: 'No autorizado para agregar prospectos: el usuario no está en el listado de candidatos.' }, { status: 403 })
+    }
+  } catch {
+    return NextResponse.json({ error: 'Error validando elegibilidad de candidato' }, { status: 500 })
+  }
   const nombre: string = (body.nombre||'').trim()
   if (!nombre) return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
 
@@ -124,8 +143,23 @@ export async function POST(req: Request) {
 
   const { anio, semana } = obtenerSemanaIso(new Date())
 
+  // Permitir a admin/superusuario asignar a un agente explícito; si no, por defecto al usuario actual
+  let agenteAsignado = usuario.id
+  if (usuario.rol === 'admin' || usuario.rol === 'superusuario') {
+    const aId = Number(body.agente_id)
+    if (aId && Number.isFinite(aId)) {
+      const { data: agUsr, error: agErr } = await supabase.from('usuarios').select('id,activo').eq('id', aId).maybeSingle()
+      if (agErr && agErr.code && agErr.code !== 'PGRST116') {
+        return NextResponse.json({ error: agErr.message }, { status: 500 })
+      }
+      if (agUsr && (agUsr as { activo?: boolean }).activo !== false) {
+        agenteAsignado = (agUsr as { id: number }).id
+      }
+    }
+  }
+
   const insert = {
-    agente_id: usuario.id,
+    agente_id: agenteAsignado,
     anio,
     semana_iso: semana,
     nombre,
