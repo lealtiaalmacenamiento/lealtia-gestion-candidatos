@@ -217,10 +217,11 @@ export default function ProspectosPage() {
         </div>
       </div>
       {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
-        <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto">
-          <option value="">(Seleccionar agente)</option>
+        <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto" title="También se usa para asignar el agente al crear un prospecto">
+          <option value="">(Todos para ver / Sin asignar al crear)</option>
           {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
         </select>
+        <span className="text-muted small">Este selector también asigna el agente al crear un prospecto.</span>
   <button type="button" disabled={!prospectos.length} className="btn btn-outline-secondary btn-sm" onClick={async ()=>{
     const agrupado = superuser && !agenteId
     const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
