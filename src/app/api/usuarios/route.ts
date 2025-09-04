@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { logAccion } from '@/lib/logger'
 import { buildAltaUsuarioEmail, sendMail } from '@/lib/mailer'
 
-const VALID_ROLES = new Set(['admin','editor','superusuario','lector'])
+// Añadimos rol 'agente' para Fase 2 (prospectos / planificación)
+const VALID_ROLES = new Set(['admin','editor','superusuario','lector','agente'])
 
 // Cliente admin (service role) sin dependencia de cookies para evitar errores Next 15
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL

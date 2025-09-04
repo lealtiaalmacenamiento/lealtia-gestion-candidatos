@@ -1,0 +1,10 @@
+d254cf7 fix(fecha): mostrar fecha pura sin hora y proceso/dias CT en edición
+6bc5f32 fix(ui): rename MES Cédula A1 to Cédula A1 and adjust exporters
+ffccc1b feat(candidatos): export Excel/PDF, proceso/dias CT, rename MES label, improved exam date clash messages
+a33b5f4 chore(build): remove duplicate next.config.ts to avoid double builds
+067cd02 chore(build): remove duplicate next.config, lazy logger in middleware, improve env-check
+321c2ba chore(build): remove duplicate next.config.ts and add /api/env-check
+3f16291 chore(diagnostics): add /env-info page to inspect Vercel env
+c29b3e7 feat(ui): banner de entorno (preview/develop)
+861eec9 chore(ci): dynamic environment mapping and yaml fix
+cad5d28 feat(mail): login URL dinamico segun entorno

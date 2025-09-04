@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-// Middleware simplificado: evita llamadas de red a Supabase que pueden colgar el arranque
-import { logAccion } from '@/lib/logger'
+// Middleware simplificado: evita llamadas de red a Supabase que pueden colgar el arranque.
+// Evitamos importar logger directamente para no arrastrar dependencias no compatibles con Edge.
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
@@ -12,7 +12,12 @@ export async function middleware(req: NextRequest) {
   const composite = req.cookies.get(`sb-${projectRef}-auth-token`)?.value
   // Consideramos válida la sesión si existe la cookie compuesta (nuevo flujo) O la cookie access (flujo antiguo)
   const session = (composite || access) ? { token: true } : null
-  if (session) logAccion('middleware_session_cookie', {})
+  if (session) {
+    // Carga perezosa sólo en runtime server (no edge) para evitar warnings de Node APIs
+    if (process.env.NEXT_RUNTIME !== 'edge') {
+      import('@/lib/logger').then(m => m.logAccion('middleware_session_cookie', {})).catch(() => {})
+    }
+  }
 
   const url = req.nextUrl
 

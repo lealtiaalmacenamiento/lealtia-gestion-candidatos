@@ -13,7 +13,8 @@ permissions:
 jobs:
 	build-and-lint:
 		runs-on: ubuntu-latest
-		environment: development
+		# Dynamic environment name based on branch
+		environment: ${{ github.ref == 'refs/heads/main' && 'production' || (github.ref == 'refs/heads/develop' && 'develop' || 'preview') }}
 		steps:
 			- name: Checkout
 				uses: actions/checkout@v4

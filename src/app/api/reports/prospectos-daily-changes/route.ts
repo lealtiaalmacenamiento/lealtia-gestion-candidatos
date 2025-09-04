@@ -102,12 +102,23 @@ export async function GET() {
       <tbody>${rows || '<tr><td colspan="5" style="padding:10px;color:#777">Sin cambios registrados en la ventana.</td></tr>'}</tbody>
     </table>
   </div>`
+  
+  // Enviar SOLO a superusuarios/admin activos
+  const { data: supers, error: supErr } = await supa
+    .from('usuarios')
+    .select('email, rol, activo')
+    .in('rol', ['superusuario', 'admin'] as const)
+    .eq('activo', true)
 
-  const recipients = process.env.PROSPECTS_REPORT_TO || process.env.REPORTS_TO || process.env.MAIL_REPORTS_TO || ''
-  if (!recipients) {
-    return NextResponse.json({ ok: true, sent: false, reason: 'No recipients configured (set PROSPECTS_REPORT_TO)' })
+  if (supErr) {
+    return NextResponse.json({ ok: false, error: supErr.message }, { status: 500 })
   }
 
-  await sendMail({ to: recipients, subject: title, html })
+  const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
+  if (!emails.length) {
+    return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
+  }
+
+  await sendMail({ to: emails.join(','), subject: title, html })
   return NextResponse.json({ ok: true, sent: true, count })
 }

@@ -20,13 +20,7 @@ export default function Header() {
   // Navegación contextual por módulo
   // (Se removió navegación contextual, rol ya no utilizado)
   const moduleLinks: { href: string; label: string; icon?: string; roles?: string[] }[] = []
-  if (pathname.startsWith('/candidatos') || pathname.startsWith('/eliminarcandidatos')) {
-    // Pedido: eliminar enlaces de candidatos y eliminados -> no añadimos nada
-  } else if (pathname.startsWith('/usuarios')) {
-    // Pedido: eliminar enlaces de usuarios -> no añadimos
-  } else if (pathname.startsWith('/parametros')) {
-    // Pedido: eliminar enlaces de parámetros -> no añadimos
-  }
+  // Eliminamos prospectos/planificación del navbar; se mostrarán solo en el dashboard principal.
 
   return (
     <Navbar pageTitle={title && title.toLowerCase() !== 'dashboard' ? title : undefined}>
