@@ -30,6 +30,9 @@ export default function ProspectosPage() {
   const [errorMsg,setErrorMsg]=useState<string>('')
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const bcRef = useRef<BroadcastChannel|null>(null)
+  // Evitar envíos duplicados por doble click
+  const [saving,setSaving] = useState(false)
+  const submittingRef = useRef(false)
   
   const [agenteId,setAgenteId]=useState<string>('')
   const [agentes,setAgentes]=useState<Array<{id:number; nombre?:string; email:string}>>([])
@@ -116,13 +119,22 @@ export default function ProspectosPage() {
   // const MX_UTC_OFFSET = 6
   // const buildUTCFromMX = (fecha:string,hora:string)=>{ /* obsoleto: edición modal no toca fecha_cita */ }
   
-  const submit=async(e:React.FormEvent)=>{e.preventDefault(); setErrorMsg(''); if(!form.nombre.trim()) return; const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
+  const submit=async(e:React.FormEvent)=>{
+    e.preventDefault()
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setSaving(true)
+    setErrorMsg('')
+    if(!form.nombre.trim()) { setSaving(false); submittingRef.current = false; return }
+    const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
     // Si superusuario/admin y se eligió agente en el selector superior, enviar agente_id para asignación
     if (superuser && agenteId) body.agente_id = Number(agenteId)
     // Ya no se agenda cita durante el registro
-    const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente'}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
-    else { try { const j=await r.json(); setErrorMsg(j.error||'Error'); setToast({msg:j.error||'Error', type:'error'}) } catch { setErrorMsg('Error al guardar'); setToast({msg:'Error al guardar', type:'error'}) } }
+    try {
+      const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente'}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
+      else { try { const j=await r.json(); setErrorMsg(j.error||'Error'); setToast({msg:j.error||'Error', type:'error'}) } catch { setErrorMsg('Error al guardar'); setToast({msg:'Error al guardar', type:'error'}) } }
+  } finally { setSaving(false); submittingRef.current = false }
   }
 
   // update() inline de campos reemplazado por edición vía modal
@@ -341,7 +353,11 @@ export default function ProspectosPage() {
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
   <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
       </div>
-  <div className="mt-2"><button className="btn btn-primary btn-sm" disabled={loading || telefonoInvalido}>Agregar</button></div>
+  <div className="mt-2">
+        <button className="btn btn-primary btn-sm" disabled={saving || loading || telefonoInvalido} aria-busy={saving} type="submit">
+          {saving ? 'Guardando…' : 'Agregar'}
+        </button>
+      </div>
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
     <div className="table-responsive">
