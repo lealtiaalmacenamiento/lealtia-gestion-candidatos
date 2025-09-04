@@ -136,6 +136,22 @@ export async function POST(req: Request) {
   }
   const { data, error } = await supabase.from('prospectos').insert([insert]).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Historial: registrar alta para que el reporte diario incluya el evento
+  try {
+    const nuevoId = (data as { id?: number }).id
+    if (nuevoId) {
+      await supabase.from('prospectos_historial').insert({
+        prospecto_id: nuevoId,
+        agente_id: usuario.id,
+        usuario_email: usuario.email,
+        estado_anterior: null,
+        estado_nuevo: estado,
+        nota_agregada: Boolean((notas || '').trim()),
+        notas_anteriores: null,
+        notas_nuevas: notas || null
+      })
+    }
+  } catch {}
   // Audit alta
   try {
     await logAccion('alta_prospecto', {
