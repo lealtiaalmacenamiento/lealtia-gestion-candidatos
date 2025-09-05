@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { sendMail } from '@/lib/mailer'
+import * as XLSX from 'xlsx'
 
 function getTodayCDMXParts(now = new Date()) {
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -110,9 +111,10 @@ export async function GET(req: Request) {
       <tbody>${rows || '<tr><td colspan="5" style="padding:10px;color:#777">Sin cambios registrados en la ventana.</td></tr>'}</tbody>
     </table>
   </div>`
-  // Generar CSV como adjunto compatible con Excel
-  const csvHeader = ['Fecha (CDMX)','Prospecto','Agente','Cambio de estado','Notas']
-  const csvRows = (historial||[]).map(h=>{
+  // Generar XLSX real como adjunto
+  const header = ['Fecha (CDMX)','Prospecto','Agente','Cambio de estado','Notas']
+  const aoa = [header]
+  for (const h of (historial||[])) {
     const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '')
@@ -122,12 +124,13 @@ export async function GET(req: Request) {
       : `${h.estado_anterior || ''} -> ${h.estado_nuevo || ''}`
     const notas = h.nota_agregada ? 'Actualizó notas' : ''
     const fecha = fmtCDMX(h.created_at)
-    // Escapar comas y comillas
-    const esc = (s: string)=> '"' + (s||'').replace(/"/g,'""') + '"'
-    return [fecha,nombre,agente,estado,notas].map(esc).join(',')
-  })
-  const csv = [csvHeader.join(','), ...csvRows].join('\r\n')
-  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g,'_')}.csv`, content: csv, contentType: 'text/csv; charset=utf-8' }
+    aoa.push([fecha, nombre, agente, estado, notas])
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
+  const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g,'_')}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
   
   // Enviar SOLO a superusuarios/admin activos
   const { data: supers, error: supErr } = await supa
