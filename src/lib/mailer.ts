@@ -54,12 +54,13 @@ export interface SendMailOptions {
   subject: string
   html?: string
   text?: string
+  attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>
 }
 
-export async function sendMail({ to, subject, html, text }: SendMailOptions) {
+export async function sendMail({ to, subject, html, text, attachments }: SendMailOptions) {
   const tx = await getTransporter()
   const from = process.env.MAIL_FROM || user
-  await tx.sendMail({ from, to, subject, text, html })
+  await tx.sendMail({ from, to, subject, text, html, attachments })
 }
 
 export function buildAltaUsuarioEmail(email: string, password: string) {
