@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import { sendMail } from '@/lib/mailer'
+import * as XLSX from 'xlsx'
 import { logAccion } from '@/lib/logger'
+
+// Forzar runtime Node para uso de nodemailer/xlsx
+export const runtime = 'nodejs'
 
 const supabase = getServiceClient()
 
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
   const { data: superusers, error: suErr } = await supabase
     .from('usuarios')
     .select('email')
-    .in('rol', ['superusuario','admin'])
+    .eq('rol', 'superusuario')
     .eq('activo', true)
   if (suErr) return NextResponse.json({ error: suErr.message }, { status: 500 })
   const recipients = (superusers||[]).map(u => u.email).filter(Boolean)
@@ -163,9 +167,31 @@ export async function POST(req: Request) {
   if (dry) {
     return NextResponse.json({ success: true, dry: true, meta, sample: (historial||[]).slice(0, 10) })
   }
+  // Generar adjunto XLSX con las mismas columnas mostradas en el correo
+  const aoa: Array<Array<string>> = []
+  aoa.push(['Fecha','Prospecto','Pertenece a','Usuario (modificó)','De','A','Nota agregada'])
+  for (const h of (historial || [])) {
+    const pInfo = mapPros[h.prospecto_id as number]
+    const pName = (pInfo?.nombre || '').toString()
+    const owner = mapUsers[h.agente_id as number]
+    const ownerLabel = owner?.nombre ? `${owner.nombre} <${owner.email||''}>` : (owner?.email || '')
+    const modInfo = h.usuario_email ? mapEmails[h.usuario_email] : undefined
+    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email||''}>` : (h.usuario_email||'')
+    const fecha = new Date(h.created_at).toLocaleString('es-MX', { hour12: false })
+    const de = h.estado_anterior || ''
+    const a = h.estado_nuevo || ''
+    const nota = h.nota_agregada ? 'Sí' : 'No'
+    aoa.push([fecha, pName, ownerLabel, modLabel, de, a, nota])
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
+  const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+  const attachment = { filename: `reporte_prospectos_${dateLabel}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+
   // Enviar a todos en un solo correo (BCC sería ideal; aquí simple to: join)
   try {
-    await sendMail({ to: recipients.join(','), subject: `${title} — ${dateLabel}`, html })
+    await sendMail({ to: recipients.join(','), subject: `${title} — ${dateLabel}`, html, attachments: [attachment] })
     await logAccion('reporte_prospectos_diario_enviado', { usuario: usuarioEmail, tabla_afectada: 'prospectos_historial', snapshot: { ...meta, recipients: recipients.length } })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Mailer error' }, { status: 500 })
