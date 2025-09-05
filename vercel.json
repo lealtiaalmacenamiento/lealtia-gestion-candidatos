@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "ignoreCommand": "PREV=\"${VERCEL_GIT_PREVIOUS_SHA:-}\"; CUR=\"${VERCEL_GIT_COMMIT_SHA:-HEAD}\"; if [ -z \"$PREV\" ] || ! git cat-file -e \"$PREV^{commit}\" 2>/dev/null; then echo 'build: previous SHA missing; run build'; exit 1; fi; echo 'build: diff' $PREV '..' $CUR; git diff --quiet \"$PREV\" \"$CUR\" -- src public next.config.mjs package.json tsconfig.json eslint.config.mjs && { echo 'build: no relevant changes'; exit 0; } || { echo 'build: changes detected'; exit 1; }",
+  "ignoreCommand": "bash ./scripts/vercel-ignore.sh",
   "crons": [
     { "path": "/api/reports/prospectos-daily-changes", "schedule": "0 6 * * *" }
   ]
