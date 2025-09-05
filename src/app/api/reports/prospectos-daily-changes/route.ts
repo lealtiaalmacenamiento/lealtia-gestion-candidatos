@@ -108,12 +108,28 @@ export async function GET(req: Request) {
       <tbody>${rows || '<tr><td colspan="5" style="padding:10px;color:#777">Sin cambios registrados en la ventana.</td></tr>'}</tbody>
     </table>
   </div>`
+  // Generar CSV como adjunto compatible con Excel
+  const csvHeader = ['Fecha (CDMX)','Prospecto','Agente','Cambio de estado','Notas']
+  const csvRows = (historial||[]).map(h=>{
+    const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
+    const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
+    const nombre = (p?.nombre || '')
+    const agente = (ag?.nombre || ag?.email || '')
+    const estado = `${h.estado_anterior || ''} -> ${h.estado_nuevo || ''}`
+    const notas = h.nota_agregada ? 'Actualizó notas' : ''
+    const fecha = fmtCDMX(h.created_at)
+    // Escapar comas y comillas
+    const esc = (s: string)=> '"' + (s||'').replace(/"/g,'""') + '"'
+    return [fecha,nombre,agente,estado,notas].map(esc).join(',')
+  })
+  const csv = [csvHeader.join(','), ...csvRows].join('\r\n')
+  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g,'_')}.csv`, content: csv, contentType: 'text/csv; charset=utf-8' }
   
   // Enviar SOLO a superusuarios/admin activos
   const { data: supers, error: supErr } = await supa
     .from('usuarios')
     .select('email, rol, activo')
-    .in('rol', ['superusuario', 'admin'] as const)
+    .eq('rol', 'superusuario')
     .eq('activo', true)
 
   if (supErr) {
@@ -122,11 +138,11 @@ export async function GET(req: Request) {
 
   const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
   if (dry) {
-    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails })
+    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails, attachment_name: attachment.filename })
   }
   if (!emails.length) {
     return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
   }
-  await sendMail({ to: emails.join(','), subject: title, html })
+  await sendMail({ to: emails.join(','), subject: title, html, attachments: [attachment] })
   return NextResponse.json({ ok: true, sent: true, count })
 }

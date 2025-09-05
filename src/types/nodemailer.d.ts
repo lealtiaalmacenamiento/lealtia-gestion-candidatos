@@ -1,5 +1,6 @@
 declare module 'nodemailer' {
-  interface TransporterSendMailOptions { from?: string; to: string; subject: string; text?: string; html?: string }
+  interface AttachmentLike { filename: string; content: Buffer | string; contentType?: string }
+  interface TransporterSendMailOptions { from?: string; to: string; subject: string; text?: string; html?: string; attachments?: AttachmentLike[] }
   interface Transporter { sendMail(opts: TransporterSendMailOptions): Promise<unknown> }
   interface NodemailerModule { createTransport(opts: unknown): Transporter }
   const nodemailer: NodemailerModule
