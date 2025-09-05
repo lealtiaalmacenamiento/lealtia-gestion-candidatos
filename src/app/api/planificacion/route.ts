@@ -23,7 +23,9 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const payload = data || { bloques: [], agente_id: agenteId, semana_iso: semanaQ, anio: anioQ, prima_anual_promedio: 30000, porcentaje_comision: 35 }
   try {
-    await logAccion('lectura_planificacion', { tabla_afectada: 'planificaciones', snapshot: { agente_id: agenteId, semana_iso: semanaQ, anio: anioQ } })
+  const ua = req.headers.get('user-agent') || ''
+  const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || ''
+  await logAccion('lectura_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', snapshot: { meta: { actor_email: usuario.email, actor_rol: usuario.rol, target_agente_id: agenteId, semana_iso: semanaQ, anio: anioQ, ip, ua } } })
   } catch {}
   return NextResponse.json(payload)
 }
@@ -37,6 +39,8 @@ export async function POST(req: Request) {
   if (!agente_id) return NextResponse.json({ error: 'agente_id requerido' }, { status: 400 })
   const semana_iso: number = body.semana_iso
   const anio: number = body.anio
+  const ua = req.headers.get('user-agent') || ''
+  const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || ''
   // Siempre persistimos todos los bloques (manuales y auto)
   const isBloque = (b: unknown): b is BloquePlanificacion => {
     if (!b || typeof b !== 'object') return false
@@ -53,7 +57,12 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message, detalle: 'upsert_planificacion' }, { status: 500 })
   const result = { ...(data||upsert), debug: { enviados_total: bloquesAll.length, persistidos: bloques.length } }
   try {
-    await logAccion('upsert_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', id_registro: Number((data as { id?: number })?.id || 0), snapshot: result })
+    const snapshot = { meta: { actor_email: usuario.email, actor_rol: usuario.rol, target_agente_id: agente_id, semana_iso, anio, ip, ua }, data: result }
+    await logAccion('upsert_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', id_registro: Number((data as { id?: number })?.id || 0), snapshot })
+    if (usuario.rol !== 'agente' && usuario.id !== agente_id) {
+      // Log explícito cuando alguien con rol elevado edita la planificación de otro agente
+      await logAccion('superuser_upsert_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', id_registro: Number((data as { id?: number })?.id || 0), snapshot })
+    }
   } catch {}
   return NextResponse.json(result)
 }
