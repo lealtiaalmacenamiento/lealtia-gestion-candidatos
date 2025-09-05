@@ -121,6 +121,15 @@ export default function PlanificacionPage(){
   const guardar = async()=>{
     if(!data) return 
     if(semana==='ALL') return
+    // Confirmación explícita si un superusuario está actuando sobre otro agente
+    if (superuser) {
+      const targetId = agenteId ? Number(agenteId) : null
+      if (!targetId) { alert('Seleccione un agente antes de guardar.'); return }
+      if (user?.id && targetId !== user.id) {
+        const proceed = confirm(`Guardarás planificación para el agente #${targetId} como ${user.email}. ¿Confirmas?`)
+        if (!proceed) return
+      }
+    }
     const manual = data.bloques.filter(b=> b.origin!=='auto').sort((a,b)=> a.day-b.day || a.hour.localeCompare(b.hour) || a.activity.localeCompare(b.activity))
     const hash = JSON.stringify(manual)
     const body={
@@ -147,6 +156,11 @@ export default function PlanificacionPage(){
 
   return <div className="container py-4">
     <h2 className="fw-semibold mb-3">Planificación semanal</h2>
+    {superuser && user && agenteId && Number(agenteId)!==user.id && (
+      <div className="alert alert-warning py-2 small mb-2">
+        Estás actuando como otro agente (objetivo: #{agenteId}). Todas las acciones quedarán registradas con tu usuario {user.email}.
+      </div>
+    )}
     <div className="d-flex flex-wrap gap-2 align-items-end mb-3">
       <div>
         <label className="form-label small mb-1">Año</label>
