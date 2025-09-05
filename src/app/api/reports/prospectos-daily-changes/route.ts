@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { sendMail } from '@/lib/mailer'
+import * as XLSX from 'xlsx'
+
+// Asegurar runtime Node.js (necesario para nodemailer/xlsx)
+export const runtime = 'nodejs'
 
 function getTodayCDMXParts(now = new Date()) {
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -92,27 +96,41 @@ export async function GET(req: Request) {
   }).join('')
 
   const count = historial?.length || 0
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
+  // Formato "anterior": tarjeta con cabecera y tabla con bordes
   const html = `
-  <div style="font-family:Arial,sans-serif;max-width:800px;margin:auto">
-    <h2 style="margin:0 0 12px;color:#004481">${title}</h2>
-    <p style="margin:0 0 12px;color:#333">Ventana: ${fmtCDMX(window.start)} — ${fmtCDMX(window.end)}</p>
-    <p style="margin:0 0 12px">Total de cambios: <strong>${count}</strong></p>
-    <table style="width:100%;border-collapse:collapse;font-size:14px">
-      <thead>
-        <tr style="background:#f5f7fa">
-          <th style="text-align:left;padding:8px;border-bottom:1px solid #ddd">Fecha (CDMX)</th>
-          <th style="text-align:left;padding:8px;border-bottom:1px solid #ddd">Prospecto</th>
-          <th style="text-align:left;padding:8px;border-bottom:1px solid #ddd">Agente</th>
-          <th style="text-align:left;padding:8px;border-bottom:1px solid #ddd">Cambio de estado</th>
-          <th style="text-align:left;padding:8px;border-bottom:1px solid #ddd">Notas</th>
-        </tr>
-      </thead>
-      <tbody>${rows || '<tr><td colspan="5" style="padding:10px;color:#777">Sin cambios registrados en la ventana.</td></tr>'}</tbody>
-    </table>
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">${title}</h2>
+      <div style="opacity:0.9;font-size:12px;">Ventana: ${fmtCDMX(window.start)} — ${fmtCDMX(window.end)}</div>
+      <div style="opacity:0.9;font-size:12px;margin-top:4px;">Total de cambios: <strong>${count}</strong></div>
+    </div>
+    <div style="padding:16px;background-color:#fff;">
+      <div style="overflow:auto">
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
+          <thead style="background:#f3f4f6">
+            <tr>
+              <th>Fecha (CDMX)</th><th>Prospecto</th><th>Agente</th><th>Cambio de estado</th><th>Notas</th>
+            </tr>
+          </thead>
+          <tbody>${rows || ''}</tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;color:#6b7280;font-size:12px;">Nota: el adjunto incluye la tabla completa para Excel.</p>
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
   </div>`
-  // Generar CSV como adjunto compatible con Excel
-  const csvHeader = ['Fecha (CDMX)','Prospecto','Agente','Cambio de estado','Notas']
-  const csvRows = (historial||[]).map(h=>{
+  // Generar XLSX real como adjunto
+  const header = ['Fecha (CDMX)','Prospecto','Agente','Cambio de estado','Notas']
+  const aoa = [header]
+  for (const h of (historial||[])) {
     const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '')
@@ -122,12 +140,13 @@ export async function GET(req: Request) {
       : `${h.estado_anterior || ''} -> ${h.estado_nuevo || ''}`
     const notas = h.nota_agregada ? 'Actualizó notas' : ''
     const fecha = fmtCDMX(h.created_at)
-    // Escapar comas y comillas
-    const esc = (s: string)=> '"' + (s||'').replace(/"/g,'""') + '"'
-    return [fecha,nombre,agente,estado,notas].map(esc).join(',')
-  })
-  const csv = [csvHeader.join(','), ...csvRows].join('\r\n')
-  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g,'_')}.csv`, content: csv, contentType: 'text/csv; charset=utf-8' }
+    aoa.push([fecha, nombre, agente, estado, notas])
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
+  const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g,'_')}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
   
   // Enviar SOLO a superusuarios/admin activos
   const { data: supers, error: supErr } = await supa
