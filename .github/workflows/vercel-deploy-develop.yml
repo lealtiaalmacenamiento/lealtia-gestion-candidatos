@@ -1,0 +1,29 @@
+name: Deploy develop to Vercel (Hook)
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Deploy Hook secret
+        run: |
+          if [ -z "${{ secrets.VERCEL_DEPLOY_HOOK_DEVELOP }}" ]; then
+            echo "::error::Missing repo secret VERCEL_DEPLOY_HOOK_DEVELOP (create it with the Vercel Deploy Hook URL for branch develop)"
+            exit 1
+          fi
+      - name: Trigger Vercel deploy
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_DEVELOP }}
+        run: |
+          set -e
+          curl -s -X POST "$DEPLOY_HOOK_URL" -o /dev/null -w "%{http_code}" | tee response_code.txt
+          CODE=$(cat response_code.txt)
+          if [ "$CODE" != "200" ] && [ "$CODE" != "201" ] && [ "$CODE" != "202" ]; then
+            echo "::error::Deploy hook returned HTTP $CODE"
+            exit 1
+          fi
+          echo "Deploy hook triggered (HTTP $CODE)"
