@@ -21,9 +21,15 @@ function fmtCDMX(d: string | Date) {
   return new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'short', timeStyle: 'short' }).format(dt)
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const supa = ensureAdminClient()
-  const window = getDailyWindowUTC(new Date())
+  const url = new URL(req.url)
+  const startQ = url.searchParams.get('start')
+  const endQ = url.searchParams.get('end')
+  const dry = url.searchParams.get('dry') === '1'
+  const window = (!startQ || !endQ)
+    ? getDailyWindowUTC(new Date())
+    : { start: new Date(startQ), end: new Date(endQ) }
   const startISO = window.start.toISOString()
   const endISO = window.end.toISOString()
 
@@ -115,10 +121,12 @@ export async function GET() {
   }
 
   const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
+  if (dry) {
+    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails })
+  }
   if (!emails.length) {
     return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
   }
-
   await sendMail({ to: emails.join(','), subject: title, html })
   return NextResponse.json({ ok: true, sent: true, count })
 }
