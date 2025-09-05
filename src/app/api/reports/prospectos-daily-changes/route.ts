@@ -78,7 +78,9 @@ export async function GET(req: Request) {
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '—')
     const agente = (ag?.nombre || ag?.email || '—')
-    const estado = `${h.estado_anterior || '—'} → ${h.estado_nuevo || '—'}`
+    const estado = (h.estado_anterior == null || String(h.estado_anterior).trim()==='')
+      ? `Creación (→ ${h.estado_nuevo || '—'})`
+      : `${h.estado_anterior} → ${h.estado_nuevo || '—'}`
     const notas = h.nota_agregada ? 'Actualizó notas' : ''
     return `<tr>
       <td style="padding:6px;border-bottom:1px solid #eee;white-space:nowrap">${fmtCDMX(h.created_at)}</td>
@@ -115,7 +117,9 @@ export async function GET(req: Request) {
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '')
     const agente = (ag?.nombre || ag?.email || '')
-    const estado = `${h.estado_anterior || ''} -> ${h.estado_nuevo || ''}`
+    const estado = (h.estado_anterior == null || String(h.estado_anterior).trim()==='')
+      ? `Creación (-> ${h.estado_nuevo || ''})`
+      : `${h.estado_anterior || ''} -> ${h.estado_nuevo || ''}`
     const notas = h.nota_agregada ? 'Actualizó notas' : ''
     const fecha = fmtCDMX(h.created_at)
     // Escapar comas y comillas
