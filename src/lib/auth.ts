@@ -5,7 +5,7 @@ import type { Database } from '@/types/supabase'
 export type UsuarioSesion = Database['public']['Tables']['usuarios']['Row']
 
 // Versión simplificada y robusta usando createServerClient (maneja todos los formatos de cookie de Supabase)
-export async function getUsuarioSesion(): Promise<UsuarioSesion | null> {
+export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | null> {
   const cookieStore = await cookies()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -19,7 +19,25 @@ export async function getUsuarioSesion(): Promise<UsuarioSesion | null> {
     }
   })
 
-  const { data: { user }, error: userErr } = await supabase.auth.getUser()
+  // Soporte de Authorization: Bearer <access_token> (cuando no haya cookies de SSR)
+  let user: { email?: string | null } | null = null
+  let userErr: unknown = null
+  const bearer = h?.get('authorization') || h?.get('Authorization')
+  if (bearer && bearer.toLowerCase().startsWith('bearer ')) {
+    const token = bearer.slice(7).trim()
+    try {
+      const { data, error } = await supabase.auth.getUser(token)
+      user = data?.user ?? null
+      userErr = error ?? null
+    } catch (e) {
+      user = null
+      userErr = e
+    }
+  } else {
+    const res = await supabase.auth.getUser()
+    user = res.data?.user ?? null
+    userErr = res.error ?? null
+  }
   if (userErr) return null
   if (!user?.email) return null
 

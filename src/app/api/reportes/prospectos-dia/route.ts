@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   let usuarioEmail: string | null = null
   // Si hay secret válido, permitimos ejecución sin sesión; si no, validamos sesión admin/superusuario
   if (!secretEnv || secretHeader !== secretEnv) {
-    const usuario = await getUsuarioSesion()
+    const usuario = await getUsuarioSesion(req.headers)
     if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     if (!(usuario.rol === 'admin' || usuario.rol === 'superusuario')) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
