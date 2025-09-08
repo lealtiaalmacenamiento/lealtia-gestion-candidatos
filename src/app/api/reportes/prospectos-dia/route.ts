@@ -7,6 +7,8 @@ import { logAccion } from '@/lib/logger'
 
 // Forzar runtime Node para uso de nodemailer/xlsx
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 const supabase = getServiceClient()
 
