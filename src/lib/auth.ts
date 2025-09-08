@@ -38,6 +38,41 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
     const res = await supabase.auth.getUser()
     user = res.data?.user ?? null
     userErr = res.error ?? null
+    // Fallback: extraer access_token directo de cookies sb-<projectRef>-auth-token o sb-access-token
+    if (!user && !userErr) {
+      try {
+        const projectRef = process.env.SUPABASE_PROJECT_REF
+          || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https?:\/\//,'').split('.')[0]
+          || ''
+        const all = cookieStore.getAll()
+        const compositeName = projectRef ? `sb-${projectRef}-auth-token` : null
+        let accessToken: string | null = null
+        // Buscar cookie compuesta
+        if (compositeName) {
+          const c = all.find(x => x.name === compositeName || x.name.startsWith(compositeName + '.'))
+          if (c?.value) {
+            try {
+              const parsed = JSON.parse(c.value)
+              if (parsed && typeof parsed.access_token === 'string') accessToken = parsed.access_token
+            } catch {
+              // Ignorar
+            }
+          }
+        }
+        // Fallback a sb-access-token (flujo antiguo)
+        if (!accessToken) {
+          const a = all.find(x => x.name === 'sb-access-token')
+          if (a?.value) accessToken = a.value
+        }
+        if (accessToken) {
+          const { data, error } = await supabase.auth.getUser(accessToken)
+          user = data?.user ?? null
+          userErr = error ?? null
+        }
+      } catch {
+        // sin cambio
+      }
+    }
   }
   if (userErr) return null
   if (!user?.email) return null
