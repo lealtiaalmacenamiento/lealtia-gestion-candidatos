@@ -1,0 +1,169 @@
+{
+  "sheet": "INFORMACIÓN INICIAL",
+  "headerRow": 5,
+  "meta": [
+    [
+      "5/9/2025",
+      "",
+      "CONTEO / PRIMAS",
+      "0",
+      "0.5",
+      "1",
+      "2",
+      "3",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    [
+      "5",
+      "",
+      "VI",
+      "0 a 14,999",
+      "-",
+      "1, 15,000 a 49,999",
+      "50,000 a 149,999",
+      "150,000 o mas",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    [
+      "",
+      "",
+      "GM",
+      "0 a 7,500",
+      "7,500 en adelante",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "7,500 en adelante",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]
+  ],
+  "headers": [
+    "ID",
+    "No. Póliza",
+    "Contratante",
+    "Teléfono",
+    "Correo",
+    "Cumpleaños",
+    "Producto",
+    "Prima anual",
+    "Moneda",
+    "Forma de pago",
+    "Fecha de emisión",
+    "Tipo",
+    "Tipo de pago",
+    "Día de pago"
+  ],
+  "rowCount": 1,
+  "comments": [
+    {
+      "cell": "A1",
+      "text": "Comentario:\n    NO MOVER\n\nEl día actual"
+    },
+    {
+      "cell": "F6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: date\n\nFecha de nacimiento del cliente"
+    },
+    {
+      "cell": "G6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: string\n\nViene del listado de productos existentes"
+    },
+    {
+      "cell": "H6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: float\nFormato: moneda\n\nEl total SIN IVA de prima por la que se emite la póliza\n\nCONDICIÓN: El producto seleccionado debe coincidir la moneda en el tipo de prima anual (USD, MXN, UDI)"
+    },
+    {
+      "cell": "I6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: string\n\nLa moneda en que fue vendido el producto.\n\nCONDICIÓN: Los GMM SOLO se comercializan en MXN"
+    },
+    {
+      "cell": "J6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: char\nHay 4 tipos:\nA = Anual = 12 meses\nS = Semestral = 6 meses\nT = Trimestral = 3 meses\nM = Mensual = 1 mes"
+    },
+    {
+      "cell": "K6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: date\n\nEs la fecha de emisión de la póliza"
+    },
+    {
+      "cell": "L6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: char\n\nSolo hay 3 valores:\nS = Sencilla = 1\nD = Doble = 2\nT = Triple = 3\n\nCONDICIÓN: Vendrá de la prima anual reportada en la póliza o cotización"
+    },
+    {
+      "cell": "M6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: string\n\nSolo hay dos tipos de pago: \nModo Directo\nCargo Automático"
+    },
+    {
+      "cell": "N6",
+      "text": "Humberto Carrillo ATK :\nTipo de dato: int\nFecha en que se hace el cobro de la póliza"
+    }
+  ],
+  "sample": [
+    {
+      "ID": "1",
+      "No. Póliza": "VI0002909881",
+      "Contratante": "CLIENTE PÓLIZA SIMPLE",
+      "Teléfono": "(442) 123 45 67",
+      "Correo": "correo@dominio.com",
+      "Cumpleaños": "Sat Oct 15 1994 00:00:36 GMT-0600 (hora estándar central)",
+      "Producto": "IMAGINA SER 10_20P - UDI",
+      "Prima anual": "2340",
+      "Moneda": "UDI",
+      "Forma de pago": "A",
+      "Fecha de emisión": "Mon May 05 2025 00:00:36 GMT-0600 (hora estándar central)",
+      "Tipo": "S",
+      "Tipo de pago": "Modo Directo",
+      "Día de pago": "10"
+    }
+  ],
+  "allRows": [
+    {
+      "ID": "1",
+      "No. Póliza": "VI0002909881",
+      "Contratante": "CLIENTE PÓLIZA SIMPLE",
+      "Teléfono": "(442) 123 45 67",
+      "Correo": "correo@dominio.com",
+      "Cumpleaños": "Sat Oct 15 1994 00:00:36 GMT-0600 (hora estándar central)",
+      "Producto": "IMAGINA SER 10_20P - UDI",
+      "Prima anual": "2340",
+      "Moneda": "UDI",
+      "Forma de pago": "A",
+      "Fecha de emisión": "Mon May 05 2025 00:00:36 GMT-0600 (hora estándar central)",
+      "Tipo": "S",
+      "Tipo de pago": "Modo Directo",
+      "Día de pago": "10"
+    }
+  ]
+}

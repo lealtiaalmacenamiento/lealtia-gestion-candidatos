@@ -5,9 +5,9 @@ export interface Database {
   public: {
     Tables: {
       usuarios: {
-        Row: { id: number; email: string; rol: string; activo: boolean; nombre?: string | null };
-        Insert: { id?: number; email: string; rol: string; activo?: boolean; nombre?: string | null };
-        Update: { id?: number; email?: string; rol?: string; activo?: boolean; nombre?: string | null };
+  Row: { id: number; email: string; rol: string; activo: boolean; nombre?: string | null; last_login?: string | null };
+  Insert: { id?: number; email: string; rol: string; activo?: boolean; nombre?: string | null; last_login?: string | null };
+  Update: { id?: number; email?: string; rol?: string; activo?: boolean; nombre?: string | null; last_login?: string | null };
         Relationships: [];
       };
       candidatos: {

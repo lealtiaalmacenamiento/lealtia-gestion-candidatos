@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import type { Database } from '@/types/supabase'
 
 // Versión simplificada y robusta usando createServerClient (maneja todos los formatos de cookie de Supabase)
 export async function getUsuarioSesion() {
@@ -8,7 +9,7 @@ export async function getUsuarioSesion() {
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseAnon) return null
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnon, {
+  const supabase = createServerClient<Database>(supabaseUrl, supabaseAnon, {
     cookies: {
       get(name: string) { return cookieStore.get(name)?.value },
       set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
@@ -23,5 +24,15 @@ export async function getUsuarioSesion() {
   // Traer registro de tabla usuarios (rol, activo)
   const { data: usuarioBD } = await supabase.from('usuarios').select('*').eq('email', user.email).single()
   if (!usuarioBD) return { email: user.email, rol: null, activo: false }
+  // Actualizar last_login si la columna existe y han pasado >=5 min desde el último (para reducir escrituras)
+  interface UsuarioRow { id: number; last_login?: string | null }
+  const row = usuarioBD as unknown as UsuarioRow
+  const last = row.last_login ? new Date(row.last_login) : null
+  const now = new Date()
+  if (!last || (now.getTime() - last.getTime()) > 5*60*1000) {
+    // Intentar actualización; si la columna no existe, Supabase retornará error ignorado
+  await supabase.from('usuarios').update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>).eq('id', row.id)
+    row.last_login = now.toISOString()
+  }
   return usuarioBD
 }

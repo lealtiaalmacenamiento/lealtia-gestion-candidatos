@@ -1,0 +1,205 @@
+{
+  "source": "fase_3_lealtia.docx",
+  "extractedAt": "2025-09-06T20:13:00.250Z",
+  "totalComments": 22,
+  "comments": [
+    {
+      "id": "0",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:30:00Z",
+      "commentText": "Conteo y Conteo2 no se visualizan, eso solo es para el cálculo. Está dentro de las notas del archivo Excel",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "1",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:30:00Z",
+      "commentText": "Propongo escribirlo solo en mayúsculas, para no tener diferencias de formato.",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "2",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:31:00Z",
+      "commentText": "Correcto. El nombre comercial viene del listado de la pestaña: Tablas",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "3",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:31:00Z",
+      "commentText": "Solo hay 2 opciones: En Vigor o Anulada",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "4",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:32:00Z",
+      "commentText": "",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "5",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:33:00Z",
+      "commentText": "",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "6",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:34:00Z",
+      "commentText": "Solo hay 2 formas de pago: Modo Directo y Cargo Automático",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "7",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:34:00Z",
+      "commentText": "Sip, pudo ser un error mío",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "8",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:35:00Z",
+      "commentText": "Mismo punto, esto no aplica para visualizarse, es solo para el cálculo de total de pólizas basados en el monto pagado de prima",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "9",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:37:00Z",
+      "commentText": "Correcto, las pólizas de VI no tienes medios puntos",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "10",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:37:00Z",
+      "commentText": "Solo a 0.5. GMM no tiene puntos enteros.",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "11",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:39:00Z",
+      "commentText": "Gastos médicos, solamente cuenta 0.5 puntos, independientemente del monto de prima",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "12",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:41:00Z",
+      "commentText": "",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "13",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:42:00Z",
+      "commentText": "¿No hay forma de dejar el separador? Visualmente es más sencillo diferenciar los millares",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "14",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:43:00Z",
+      "commentText": "Salvo Febrero",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "15",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:44:00Z",
+      "commentText": "Correcto Es Oct-27",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "16",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:44:00Z",
+      "commentText": "Fueron para calculos de las pólizas simples, dobles o triples en conteo de puntos",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "17",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:45:00Z",
+      "commentText": "",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "18",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:45:00Z",
+      "commentText": "",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "19",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:46:00Z",
+      "commentText": "Solo estos 2 dos",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "20",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:46:00Z",
+      "commentText": "Correcto. Esto no lo había considerado, pero por favor agregalo. Será importante mantener el histórico de cambios de costo de póliza",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    },
+    {
+      "id": "21",
+      "author": "Humberto Carrillo",
+      "date": "2025-09-06T09:47:00Z",
+      "commentText": "Debemos rechazarlo",
+      "referencedText": null,
+      "startParagraphIndex": null,
+      "endParagraphIndex": null
+    }
+  ]
+}

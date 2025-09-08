@@ -186,12 +186,46 @@ export async function POST(req: Request) {
   const ws = XLSX.utils.aoa_to_sheet(aoa)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
+
+  // Agregar segunda hoja: última conexión de cada usuario (vía Auth last_sign_in_at)
+  type UsuarioRow = { email: string; nombre?: string | null }
+  const { data: usersTable } = await supabase.from('usuarios').select('email,nombre')
+  // Cargar todos los usuarios de Auth con paginación
+  const authMap = new Map<string, string | null>() // email(lower) -> last_sign_in_at ISO
+  try {
+    const perPage = 1000
+    for (let page = 1; page <= 100; page++) {
+      const { data: authData, error: authErr } = await supabase.auth.admin.listUsers({ page, perPage })
+      if (authErr) break
+      const list = (authData?.users || []) as Array<{ email: string | null; last_sign_in_at: string | null }>
+      for (const u of list) {
+        if (u.email) authMap.set(u.email.toLowerCase(), u.last_sign_in_at)
+      }
+      if (!list || list.length < perPage) break
+    }
+  } catch {
+    // Si falla (falta service role), generamos adjunto vacío para no romper el flujo
+  }
+  const usersAoa: Array<Array<string>> = []
+  usersAoa.push(['Email','Nombre','Última conexión (CDMX)'])
+  if (usersTable) {
+    for (const u of usersTable as UsuarioRow[]) {
+      const key = (u.email || '').toLowerCase()
+      const raw = authMap.get(key)
+      let display = ''
+      if (raw) display = new Date(raw).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', hour12: false })
+      usersAoa.push([u.email, u.nombre || '', display])
+    }
+  }
+  const wsU = XLSX.utils.aoa_to_sheet(usersAoa)
+  XLSX.utils.book_append_sheet(wb, wsU, 'Usuarios - Última conexión')
+  // Escribir el workbook final con ambas hojas (Cambios y UltimaConexion)
   const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
   const attachment = { filename: `reporte_prospectos_${dateLabel}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
 
   // Enviar a todos en un solo correo (BCC sería ideal; aquí simple to: join)
   try {
-    await sendMail({ to: recipients.join(','), subject: `${title} — ${dateLabel}`, html, attachments: [attachment] })
+  await sendMail({ to: recipients.join(','), subject: `${title} — ${dateLabel}`, html, attachments: [attachment] })
     await logAccion('reporte_prospectos_diario_enviado', { usuario: usuarioEmail, tabla_afectada: 'prospectos_historial', snapshot: { ...meta, recipients: recipients.length } })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Mailer error' }, { status: 500 })

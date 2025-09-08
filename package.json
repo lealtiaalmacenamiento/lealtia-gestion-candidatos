@@ -7,7 +7,9 @@
     "build": "next build",
   "start": "next start",
   "lint": "eslint",
-  "typecheck": "tsc -p . --noEmit"
+  "typecheck": "tsc -p . --noEmit",
+  "read:xlsx": "node scripts/read_xlsx.js",
+  "extract:docx": "node scripts/extract_docx_comments.js docs/fase_3_lealtia.docx"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
@@ -22,7 +24,9 @@
     "nodemailer": "^6.10.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-  "xlsx": "^0.18.5"
+  "xlsx": "^0.18.5",
+  "adm-zip": "^0.5.12",
+  "fast-xml-parser": "^4.4.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
