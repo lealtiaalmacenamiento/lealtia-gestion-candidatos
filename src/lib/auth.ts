@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
+import { getServiceClient } from '@/lib/supabaseAdmin'
 
 export type UsuarioSesion = Database['public']['Tables']['usuarios']['Row']
 
@@ -41,12 +42,25 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
   if (userErr) return null
   if (!user?.email) return null
 
-  // Traer registro de tabla usuarios (rol, activo)
-  const { data: usuarioBD } = await supabase
-    .from('usuarios')
-    .select('id,email,rol,activo,nombre,last_login')
-    .eq('email', user.email)
-    .maybeSingle()
+  // Traer registro de tabla usuarios (rol, activo) con service role (evitar RLS),
+  // y si no hay service key disponible, caer a SSR client con RLS
+  let usuarioBD: UsuarioSesion | null = null
+  try {
+    const admin = getServiceClient()
+    const { data } = await admin
+      .from('usuarios')
+      .select('id,email,rol,activo,nombre,last_login')
+      .eq('email', user.email)
+      .maybeSingle()
+    usuarioBD = (data as UsuarioSesion) || null
+  } catch {
+    const { data } = await supabase
+      .from('usuarios')
+      .select('id,email,rol,activo,nombre,last_login')
+      .eq('email', user.email)
+      .maybeSingle()
+    usuarioBD = (data as UsuarioSesion) || null
+  }
   if (!usuarioBD) return null
   // Actualizar last_login si la columna existe y han pasado >=5 min desde el último (para reducir escrituras)
   interface UsuarioRow { id: number; last_login?: string | null }
@@ -54,11 +68,21 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
   const last = row.last_login ? new Date(row.last_login) : null
   const now = new Date()
   if (!last || (now.getTime() - last.getTime()) > 5*60*1000) {
-    // Intentar actualización; si la columna no existe, Supabase retornará error ignorado
-    await supabase
-      .from('usuarios')
-      .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
-      .eq('id', row.id)
+    // Intentar actualización con admin si existe; si no, con SSR. Si falla, ignorar.
+    try {
+      const admin = getServiceClient()
+      await admin
+        .from('usuarios')
+        .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
+        .eq('id', row.id)
+    } catch {
+      try {
+        await supabase
+          .from('usuarios')
+          .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
+          .eq('id', row.id)
+      } catch {}
+    }
     row.last_login = now.toISOString()
   }
   return usuarioBD as UsuarioSesion
