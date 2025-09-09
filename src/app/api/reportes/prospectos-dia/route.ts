@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
+import type { UsuarioSesion } from '@/lib/auth'
 import { sendMail } from '@/lib/mailer'
 import * as XLSX from 'xlsx'
 import { logAccion } from '@/lib/logger'
@@ -35,7 +37,32 @@ export async function POST(req: Request) {
   const debug = url.searchParams.get('debug') === '1'
   // Si hay secret válido, permitimos ejecución sin sesión; si no, validamos sesión admin/superusuario
   if (!secretEnv || secretHeader !== secretEnv) {
-    const usuario = await getUsuarioSesion(req.headers)
+    let usuario = await getUsuarioSesion(req.headers)
+    if (!usuario) {
+      // Fallback robusto: leer usuario de Auth vía SSR cookies y cruzar contra tabla usuarios por id_auth/email
+      try {
+        const cookieStore = await cookies()
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        const supa = createServerClient(supabaseUrl, supabaseKey, {
+          cookies: {
+            get(name: string) { return cookieStore.get(name)?.value },
+            set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
+            remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }) }
+          }
+        })
+        const { data: { user } } = await supa.auth.getUser()
+        if (user?.email) {
+          // buscar por id_auth o email con admin (sin RLS)
+          const admin = getServiceClient()
+          const byId = user.id ? await admin.from('usuarios').select('id,email,rol,activo').eq('id_auth', user.id).maybeSingle() : { data: null }
+          const row = byId.data ?? (await admin.from('usuarios').select('id,email,rol,activo,nombre,last_login').eq('email', user.email).maybeSingle()).data
+          if (row) {
+            usuario = row as UsuarioSesion
+          }
+        }
+      } catch {}
+    }
     if (!usuario) {
       const cookieNames = debug ? (await cookies()).getAll().map(c => c.name) : undefined
       return NextResponse.json({ error: 'No autenticado', cookieNames }, { status: 401 })
