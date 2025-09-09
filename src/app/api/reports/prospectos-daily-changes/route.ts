@@ -35,6 +35,12 @@ function getDailyWindowUTC(now = new Date()) {
   return { start: new Date(yesterdayUTC), end: new Date(todayUTC) }
 }
 
+function getRollingLast24UTC(now = new Date()) {
+  const end = new Date(now)
+  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+  return { start, end }
+}
+
 function fmtCDMX(d: string | Date) {
   const dt = typeof d === 'string' ? new Date(d) : d
   return new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'short', timeStyle: 'short' }).format(dt)
@@ -46,8 +52,10 @@ export async function GET(req: Request) {
   const startQ = url.searchParams.get('start')
   const endQ = url.searchParams.get('end')
   const dry = url.searchParams.get('dry') === '1'
+  const windowParam = (url.searchParams.get('window') || url.searchParams.get('mode') || '').toLowerCase()
+  const useAnchored = ['cdmx-day', 'day', 'anchored'].includes(windowParam)
   const window = (!startQ || !endQ)
-    ? getDailyWindowUTC(new Date())
+    ? (useAnchored ? getDailyWindowUTC(new Date()) : getRollingLast24UTC(new Date()))
     : { start: new Date(startQ), end: new Date(endQ) }
   const startISO = window.start.toISOString()
   const endISO = window.end.toISOString()
@@ -193,10 +201,10 @@ export async function GET(req: Request) {
   const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
   // Observabilidad básica
   try {
-    console.log('[prospectos-daily-changes] window', { startISO, endISO, count, first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at })
+    console.log('[prospectos-daily-changes] window', { mode: useAnchored ? 'cdmx-day' : 'last24h', startISO, endISO, count, first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at })
   } catch {}
   if (dry) {
-    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails, attachment_name: attachment.filename, sample: { first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at } })
+    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO, mode: useAnchored ? 'cdmx-day' : 'last24h' }, recipients: emails, attachment_name: attachment.filename, sample: { first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at } })
   }
   if (!emails.length) {
     return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
