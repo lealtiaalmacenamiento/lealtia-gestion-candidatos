@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { sendMail } from '@/lib/mailer'
 import * as XLSX from 'xlsx'
+import { logAccion } from '@/lib/logger'
 
 // Asegurar runtime Node.js (necesario para nodemailer/xlsx)
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 function getTodayCDMXParts(now = new Date()) {
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -31,11 +33,14 @@ export async function GET(req: Request) {
   const startQ = url.searchParams.get('start')
   const endQ = url.searchParams.get('end')
   const dry = url.searchParams.get('dry') === '1'
+  const isCron = req.headers.get('x-vercel-cron') ? true : false
   const window = (!startQ || !endQ)
     ? getDailyWindowUTC(new Date())
     : { start: new Date(startQ), end: new Date(endQ) }
   const startISO = window.start.toISOString()
   const endISO = window.end.toISOString()
+  // Observabilidad mínima
+  try { await logAccion('cron_reportes_daily_changes_start', { snapshot: { isCron, startISO, endISO, dry } }) } catch {}
 
   // 1) Cambios de historial del último día CDMX
   const { data: historial, error: histErr } = await supa
@@ -46,6 +51,7 @@ export async function GET(req: Request) {
     .order('created_at', { ascending: true })
 
   if (histErr) {
+    try { await logAccion('cron_reportes_daily_changes_error', { snapshot: { stage: 'historial', error: histErr.message } }) } catch {}
     return NextResponse.json({ ok: false, error: histErr.message }, { status: 500 })
   }
 
@@ -156,16 +162,20 @@ export async function GET(req: Request) {
     .eq('activo', true)
 
   if (supErr) {
+    try { await logAccion('cron_reportes_daily_changes_error', { snapshot: { stage: 'superusers', error: supErr.message } }) } catch {}
     return NextResponse.json({ ok: false, error: supErr.message }, { status: 500 })
   }
 
   const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
   if (dry) {
+    try { await logAccion('cron_reportes_daily_changes_dry', { snapshot: { count, recipients: emails.length, startISO, endISO } }) } catch {}
     return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails, attachment_name: attachment.filename })
   }
   if (!emails.length) {
+    try { await logAccion('cron_reportes_daily_changes_skip', { snapshot: { reason: 'no_recipients' } }) } catch {}
     return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
   }
   await sendMail({ to: emails.join(','), subject: title, html, attachments: [attachment] })
+  try { await logAccion('cron_reportes_daily_changes_sent', { snapshot: { count, recipients: emails.length } }) } catch {}
   return NextResponse.json({ ok: true, sent: true, count })
 }
