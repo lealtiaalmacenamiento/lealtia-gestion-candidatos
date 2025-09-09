@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import { sendMail } from '@/lib/mailer'
@@ -30,18 +31,23 @@ export async function POST(req: Request) {
   const secretHeader = req.headers.get('x-cron-key') || ''
   const secretEnv = process.env.REPORTES_CRON_SECRET || ''
   let usuarioEmail: string | null = null
+  const url = new URL(req.url)
+  const debug = url.searchParams.get('debug') === '1'
   // Si hay secret válido, permitimos ejecución sin sesión; si no, validamos sesión admin/superusuario
   if (!secretEnv || secretHeader !== secretEnv) {
     const usuario = await getUsuarioSesion(req.headers)
-    if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    if (!usuario) {
+      const cookieNames = debug ? (await cookies()).getAll().map(c => c.name) : undefined
+      return NextResponse.json({ error: 'No autenticado', cookieNames }, { status: 401 })
+    }
     if (!(usuario.rol === 'admin' || usuario.rol === 'superusuario')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+      const info = debug ? { rol: usuario.rol, email: usuario.email } : undefined
+      return NextResponse.json({ error: 'No autorizado', info }, { status: 403 })
     }
     usuarioEmail = usuario.email
   } else {
     usuarioEmail = 'cron'
   }
-  const url = new URL(req.url)
   const mode = url.searchParams.get('mode') || ''
   const startQ = url.searchParams.get('start')
   const endQ = url.searchParams.get('end')
