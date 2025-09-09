@@ -25,9 +25,11 @@ export async function GET() {
 export async function POST(req: Request) {
   const usuario = await getUsuarioSesion()
   const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
-  const allowedRoles = ['admin','superusuario']
+  const allowedRoles = ['admin','superusuario','super_usuario','supervisor']
   if (!usuario?.activo || !rol || !allowedRoles.includes(rol)) {
-    return NextResponse.json({ error: 'Sin permiso' }, { status: 403 })
+    const url = new URL(req.url)
+    const debug = url.searchParams.get('debug') === '1'
+    return NextResponse.json({ error: 'Sin permiso', ...(debug ? { rol, activo: usuario?.activo } : {}) }, { status: 403 })
   }
 
   const body = await req.json()

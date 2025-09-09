@@ -17,7 +17,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const { id } = await context.params
   const usuario = await getUsuarioSesion()
   const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
-  const allowedRoles = ['admin','superusuario']
+  const allowedRoles = ['admin','superusuario','super_usuario','supervisor']
   if (!usuario?.activo || !rol || !allowedRoles.includes(rol)) {
     const url = new URL(req.url)
     const debug = url.searchParams.get('debug') === '1'
@@ -43,7 +43,7 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
   const { id } = await context.params
   const usuario = await getUsuarioSesion()
   const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
-  const allowedRoles = ['admin','superusuario']
+  const allowedRoles = ['admin','superusuario','super_usuario','supervisor']
   if (!usuario?.activo || !rol || !allowedRoles.includes(rol)) {
     const url = new URL(req.url)
     const debug = url.searchParams.get('debug') === '1'
