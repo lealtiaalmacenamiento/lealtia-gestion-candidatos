@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers'
+import { cookies as nextCookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { getServiceClient } from '@/lib/supabaseAdmin'
@@ -6,19 +6,49 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 export type UsuarioSesion = Database['public']['Tables']['usuarios']['Row']
 
 // Versión simplificada y robusta usando createServerClient (maneja todos los formatos de cookie de Supabase)
+type CookieAdapter = {
+  get(name: string): string | undefined
+  set(name: string, value: string, options: CookieOptions): void
+  remove(name: string, options: CookieOptions): void
+  getAll?(): Array<{ name: string; value: string }>
+}
+
 export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | null> {
-  const cookieStore = await cookies()
+  // Preferir cookies del request (Header: Cookie) para máxima compatibilidad
+  // Si no existen, usar el store de Next (ligado al request actual)
+  const reqCookieHeader = h?.get('cookie') || h?.get('Cookie') || ''
+  let cookieAdapter: CookieAdapter
+  if (reqCookieHeader) {
+    const jar: Record<string, string> = {}
+    reqCookieHeader.split(';').forEach(part => {
+      const [k, ...rest] = part.split('=')
+      if (!k) return
+      const key = k.trim()
+      const val = rest.join('=').trim()
+      if (key) jar[key] = decodeURIComponent(val || '')
+    })
+    cookieAdapter = {
+      get: (name: string) => jar[name],
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      set: (name: string, value: string, options: CookieOptions) => { /* no-op for request cookies */ },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      remove: (name: string, options: CookieOptions) => { /* no-op for request cookies */ },
+      getAll: () => Object.entries(jar).map(([name, value]) => ({ name, value }))
+    }
+  } else {
+    const store = await nextCookies()
+    cookieAdapter = {
+      get: (name: string) => store.get(name)?.value,
+      set: (name: string, value: string, options: CookieOptions) => { store.set({ name, value, ...options }) },
+      remove: (name: string, options: CookieOptions) => { store.set({ name, value: '', ...options }) },
+      getAll: () => store.getAll().map(c => ({ name: c.name, value: c.value }))
+    }
+  }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseAnon) return null
 
-  const supabase = createServerClient<Database>(supabaseUrl, supabaseAnon, {
-    cookies: {
-      get(name: string) { return cookieStore.get(name)?.value },
-      set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
-      remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }) }
-    }
-  })
+  const supabase = createServerClient<Database>(supabaseUrl, supabaseAnon, { cookies: cookieAdapter })
 
   // Soporte de Authorization: Bearer <access_token> (cuando no haya cookies de SSR)
   let user: { email?: string | null } | null = null
@@ -44,16 +74,29 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
         const projectRef = process.env.SUPABASE_PROJECT_REF
           || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https?:\/\//,'').split('.')[0]
           || ''
-        const all = cookieStore.getAll()
+        const all = typeof cookieAdapter.getAll === 'function' ? (cookieAdapter.getAll() as Array<{name:string; value:string}>) : []
         const compositeName = projectRef ? `sb-${projectRef}-auth-token` : null
         let accessToken: string | null = null
+        const findAccessTokenInJson = (obj: unknown): string | null => {
+          if (!obj || typeof obj !== 'object') return null
+          const anyObj = obj as Record<string, unknown>
+          if (typeof anyObj['access_token'] === 'string') return anyObj['access_token'] as string
+          // Common shapes: { currentSession: { access_token } } or { data: { session: { access_token } } }
+          for (const key of Object.keys(anyObj)) {
+            const val = anyObj[key]
+            const found = findAccessTokenInJson(val)
+            if (found) return found
+          }
+          return null
+        }
         // Buscar cookie compuesta
         if (compositeName) {
           const c = all.find(x => x.name === compositeName || x.name.startsWith(compositeName + '.'))
           if (c?.value) {
             try {
               const parsed = JSON.parse(c.value)
-              if (parsed && typeof parsed.access_token === 'string') accessToken = parsed.access_token
+              const found = findAccessTokenInJson(parsed)
+              if (found) accessToken = found
             } catch {
               // Ignorar
             }
