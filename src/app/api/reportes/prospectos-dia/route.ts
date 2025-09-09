@@ -170,34 +170,6 @@ export async function POST(req: Request) {
   }).join('')
   const year = new Date().getFullYear()
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
-  const html = `
-  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
-    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
-      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
-        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
-      </span>
-      <h2 style="margin:0;font-size:20px;">${title}</h2>
-      <div style="opacity:0.9;font-size:12px;">${dateLabel}</div>
-    </div>
-    <div style="padding:24px;background-color:#fff;">
-      <p>Total de eventos: <strong>${(historial||[]).length}</strong></p>
-      <div style="overflow:auto">
-        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
-          <thead style="background:#f3f4f6">
-            <tr>
-              <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
-            </tr>
-          </thead>
-          <tbody>${rows||''}</tbody>
-        </table>
-      </div>
-      <p style="margin-top:12px;color:#6b7280">Nota: contenido de notas no se incluye por privacidad. Consulte la plataforma para detalles.</p>
-    </div>
-    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
-      <p>© ${year} Lealtia — Todos los derechos reservados</p>
-      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
-    </div>
-  </div>`
 
   if (dry) {
     return NextResponse.json({ success: true, dry: true, meta, sample: (historial||[]).slice(0, 10) })
@@ -243,6 +215,7 @@ export async function POST(req: Request) {
   }
   const usersAoa: Array<Array<string>> = []
   usersAoa.push(['Email','Nombre','Última conexión (CDMX)'])
+  let usersRowsHtml = ''
   if (usersTable) {
     for (const u of usersTable as UsuarioRow[]) {
       const key = (u.email || '').toLowerCase()
@@ -250,10 +223,57 @@ export async function POST(req: Request) {
       let display = ''
       if (raw) display = new Date(raw).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', hour12: false })
       usersAoa.push([u.email, u.nombre || '', display])
+      usersRowsHtml += `<tr>
+        <td>${u.email}</td>
+        <td>${u.nombre || ''}</td>
+        <td>${display}</td>
+      </tr>`
     }
   }
   const wsU = XLSX.utils.aoa_to_sheet(usersAoa)
   XLSX.utils.book_append_sheet(wb, wsU, 'Usuarios - Última conexión')
+  // Construir HTML final con sección de cambios y sección de última conexión
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">${title}</h2>
+      <div style="opacity:0.9;font-size:12px;">${dateLabel}</div>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <h3 style="margin:0 0 8px 0;font-size:16px;">Cambios en prospectos</h3>
+      <p>Total de eventos: <strong>${(historial||[]).length}</strong></p>
+      <div style="overflow:auto">
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
+          <thead style="background:#f3f4f6">
+            <tr>
+              <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
+            </tr>
+          </thead>
+          <tbody>${rows||''}</tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;color:#6b7280">Nota: contenido de notas no se incluye por privacidad. Consulte la plataforma para detalles.</p>
+
+      <h3 style="margin:24px 0 8px 0;font-size:16px;">Usuarios — Última conexión (CDMX)</h3>
+      <div style="overflow:auto">
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
+          <thead style="background:#f3f4f6">
+            <tr>
+              <th>Email</th><th>Nombre</th><th>Última conexión (CDMX)</th>
+            </tr>
+          </thead>
+          <tbody>${usersRowsHtml}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
   // Escribir el workbook final con ambas hojas (Cambios y UltimaConexion)
   const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
   const attachment = { filename: `reporte_prospectos_${dateLabel}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
