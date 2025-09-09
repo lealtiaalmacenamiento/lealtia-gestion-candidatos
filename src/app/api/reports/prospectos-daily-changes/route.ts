@@ -28,12 +28,12 @@ function getTodayCDMXParts(now = new Date()) {
   return { y: Number(parts.year), m: Number(parts.month), d: Number(parts.day) }
 }
 
-// Ventana anclada al día CDMX [00:00, 24:00) => [06:00 UTC, 06:00 UTC siguiente)
-function getDailyWindowUTC(now = new Date()) {
-  const { y, m, d } = getTodayCDMXParts(now)
-  const todayUTC = Date.UTC(y, m - 1, d, 6, 0, 0)
-  const yesterdayUTC = todayUTC - 24 * 60 * 60 * 1000
-  return { start: new Date(yesterdayUTC), end: new Date(todayUTC) }
+// Ventana anclada al día CDMX de la fecha dada: [00:00, 24:00) => [06:00Z, 06:00Z siguiente)
+function getCDMXDayWindowFor(date = new Date()) {
+  const { y, m, d } = getTodayCDMXParts(date)
+  const startUTC = Date.UTC(y, m - 1, d, 6, 0, 0)
+  const endUTC = startUTC + 24 * 60 * 60 * 1000
+  return { start: new Date(startUTC), end: new Date(endUTC) }
 }
 
 // Ventana móvil últimas 24 horas
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
   let selectedMode: 'last24h' | 'cdmx-day' = useAnchored ? 'cdmx-day' : 'last24h'
   let window = explicitRange
     ? { start: new Date(startQ as string), end: new Date(endQ as string) }
-    : (useAnchored ? getDailyWindowUTC(new Date()) : getRollingLast24UTC(new Date()))
+    : (useAnchored ? getCDMXDayWindowFor(new Date()) : getRollingLast24UTC(new Date()))
 
   let startISO = window.start.toISOString()
   let endISO = window.end.toISOString()
@@ -84,8 +84,8 @@ export async function GET(req: Request) {
   if (!explicitRange && histRows.length === 0) {
     try {
       if (selectedMode === 'last24h') {
-        // Probar día anclado CDMX (hoy)
-        const alt1 = getDailyWindowUTC(new Date())
+        // Probar CDMX-day para la fecha actual (hoy 00:00→mañana 00:00)
+        const alt1 = getCDMXDayWindowFor(new Date())
         const { data: h1 } = await supa
           .from('prospectos_historial')
           .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
@@ -99,8 +99,8 @@ export async function GET(req: Request) {
           endISO = window.end.toISOString()
           selectedMode = 'cdmx-day'
         } else {
-          // Probar día anclado CDMX (ayer)
-          const alt2 = getDailyWindowUTC(new Date(Date.now() - 24 * 60 * 60 * 1000))
+          // Probar CDMX-day anterior (ayer 00:00→hoy 00:00)
+          const alt2 = getCDMXDayWindowFor(new Date(Date.now() - 24 * 60 * 60 * 1000))
           const { data: h2 } = await supa
             .from('prospectos_historial')
             .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
@@ -117,7 +117,7 @@ export async function GET(req: Request) {
         }
       } else {
         // selectedMode === 'cdmx-day' → probar CDMX-day anterior
-        const alt = getDailyWindowUTC(new Date(Date.now() - 24 * 60 * 60 * 1000))
+        const alt = getCDMXDayWindowFor(new Date(Date.now() - 24 * 60 * 60 * 1000))
         const { data: hPrev } = await supa
           .from('prospectos_historial')
           .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
