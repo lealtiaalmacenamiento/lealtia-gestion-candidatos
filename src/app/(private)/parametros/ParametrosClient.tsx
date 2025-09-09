@@ -14,8 +14,8 @@ const buildDiffs = (orig: unknown, edited: unknown): Diff[] => {
     .map(k => ({ campo: k, antes: String(o[k] ?? ''), despues: String(e[k] ?? '') }))
 }
 import BasePage from '@/components/BasePage';
-import type { CedulaA1, Efc } from '@/types';
-import { getCedulaA1, updateCedulaA1, getEfc, updateEfc } from '@/lib/api';
+import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza } from '@/types';
+import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro } from '@/lib/api';
 import AppModal from '@/components/ui/AppModal';
 
 export default function ParametrosClient(){
@@ -29,6 +29,12 @@ export default function ParametrosClient(){
   const [notif, setNotif] = useState<{msg:string; type:'success'|'danger'|'info'|'warning'}|null>(null);
   const [openMes, setOpenMes] = useState(false);
   const [openEfc, setOpenEfc] = useState(false);
+  const [openProductos, setOpenProductos] = useState(false);
+  // Productos (Fase 3)
+  const [productos, setProductos] = useState<ProductoParametro[]>([])
+  const [editProdId, setEditProdId] = useState<string|null>(null)
+  const [editProd, setEditProd] = useState<Partial<ProductoParametro>|null>(null)
+  const [newProd, setNewProd] = useState<Partial<ProductoParametro>>({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
   // Fase 2 metas
   const [openFase2,setOpenFase2]=useState(false)
   const [metaProspectos,setMetaProspectos]=useState<number|null>(null)
@@ -40,9 +46,10 @@ export default function ParametrosClient(){
   const loadAll = async () => {
     try {
       setLoading(true);
-      const [mes, efc] = await Promise.all([getCedulaA1(), getEfc()]);
+  const [mes, efc, prods] = await Promise.all([getCedulaA1(), getEfc(), getProductoParametros()]);
       setMesRows([...mes].sort((a,b)=>a.id - b.id));
       setEfcRows([...efc].sort((a,b)=>a.id - b.id));
+  setProductos([...prods]);
       // Cargar fase2 metas
       try {
         const r = await fetch('/api/parametros?tipo=fase2')
@@ -105,6 +112,52 @@ export default function ParametrosClient(){
   const saveEditEfc = openConfirmEfc;
   const cancelEditEfc = ()=>{ setEditEfcId(null); setEditEfcRow(null); };
 
+  // Handlers productos
+  const startEditProd = (p: ProductoParametro)=>{ setEditProdId(p.id); setEditProd({ ...p }) }
+  const cancelEditProd = ()=>{ setEditProdId(null); setEditProd(null) }
+  const onChangeEditProd = (e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=> setEditProd(prev=> {
+    if(!prev) return prev
+    const name = e.target.name
+    const val = (e.target as HTMLInputElement).type === 'number'
+      ? (e.target.value === '' ? null : Number(e.target.value))
+      : (e.target.value === '' ? null : e.target.value)
+    return { ...prev, [name]: val }
+  })
+  const onChangeNewProd = (e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=> setNewProd(prev=> {
+    const name = e.target.name
+    const val = (e.target as HTMLInputElement).type === 'number'
+      ? (e.target.value === '' ? null : Number(e.target.value))
+      : (e.target.value === '' ? null : e.target.value)
+    return { ...prev, [name]: val }
+  })
+  const saveEditProd = async ()=>{
+    if(!editProdId||!editProd) return
+    try {
+      const upd = await updateProductoParametro(editProdId, editProd)
+      setProductos(list=> list.map(p=> p.id===upd.id? upd: p))
+      setNotif({msg:'Producto actualizado', type:'success'})
+    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { cancelEditProd() }
+  }
+  const addNewProd = async ()=>{
+    if(!newProd.nombre_comercial || !newProd.tipo_producto){ setNotif({msg:'Completa al menos nombre y tipo', type:'warning'}); return }
+    try {
+      // normaliza tipos
+      const payload: Partial<ProductoParametro> = { ...newProd }
+      const created = await createProductoParametro(payload)
+      setProductos(list=> [created, ...list])
+      setNewProd({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
+      setNotif({msg:'Producto creado', type:'success'})
+    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) }
+  }
+  const removeProd = async (id: string)=>{
+    if(!window.confirm(`¿Eliminar la variante de producto?`)) return
+    try {
+      await deleteProductoParametro(id)
+      setProductos(list=> list.filter(p=> p.id!==id))
+      setNotif({msg:'Producto eliminado', type:'success'})
+    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) }
+  }
+
   const saveFase2 = async()=>{
     if(metaProspectos==null || metaCitas==null){ setNotif({msg:'Complete ambos valores', type:'warning'}); return }
     setSavingFase2(true)
@@ -131,6 +184,128 @@ export default function ParametrosClient(){
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
       {!loading && (
         <div className="d-flex flex-column gap-5">
+          <section className="border rounded p-3 bg-white shadow-sm">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <button type="button" onClick={()=>setOpenProductos(o=>!o)} aria-expanded={openProductos} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
+                <i className={`bi bi-caret-${openProductos? 'down':'right'}-fill`}></i>
+                <span className="fw-bold small text-uppercase">Productos parametrizados (Fase 3)</span>
+              </button>
+              {openProductos && (
+                <span className="small text-muted">Variantes y porcentajes por año</span>
+              )}
+            </div>
+            {openProductos && (
+              <div className="mt-3">
+                <div className="border rounded p-2 mb-3 bg-light">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12 col-md-3">
+                      <label className="form-label small mb-1">Nombre comercial</label>
+                      <input name="nombre_comercial" value={newProd.nombre_comercial||''} onChange={onChangeNewProd} className="form-control form-control-sm" />
+                    </div>
+                    <div className="col-6 col-md-2">
+                      <label className="form-label small mb-1">Tipo</label>
+                      <select name="tipo_producto" value={newProd.tipo_producto as TipoProducto} onChange={onChangeNewProd} className="form-select form-select-sm">
+                        <option value="VI">VI</option>
+                        <option value="GMM">GMM</option>
+                      </select>
+                    </div>
+                    <div className="col-6 col-md-2">
+                      <label className="form-label small mb-1">Moneda</label>
+                      <select name="moneda" value={(newProd.moneda||'') as MonedaPoliza|''} onChange={onChangeNewProd} className="form-select form-select-sm">
+                        <option value="">Cualquiera</option>
+                        <option value="MXN">MXN</option>
+                        <option value="USD">USD</option>
+                        <option value="UDI">UDI</option>
+                      </select>
+                    </div>
+                    <div className="col-6 col-md-2">
+                      <label className="form-label small mb-1">Duración (años)</label>
+                      <input name="duracion_anios" value={newProd.duracion_anios??''} onChange={onChangeNewProd} type="number" className="form-control form-control-sm" />
+                    </div>
+                    <div className="col-12 col-md-2 d-grid">
+                      <button type="button" onClick={addNewProd} className="btn btn-primary btn-sm">Agregar</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered align-middle mb-0 table-nowrap">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Moneda</th>
+                        <th>Duración</th>
+                        <th>AÑO 1</th>
+                        <th>AÑO 2</th>
+                        <th>AÑO 3</th>
+                        <th>AÑO 4</th>
+                        <th>AÑO 5</th>
+                        <th>AÑO 6</th>
+                        <th>AÑO 7</th>
+                        <th>AÑO 8</th>
+                        <th>AÑO 9</th>
+                        <th>AÑO 10</th>
+                        <th>AÑO 11+</th>
+                        <th style={{width:150}}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productos.length===0 && (<tr><td colSpan={16} className="text-center small">Sin variantes</td></tr>)}
+                      {productos.map(p=> (
+                        <tr key={p.id}>
+                          <td>{editProdId===p.id? <input name="nombre_comercial" value={editProd?.nombre_comercial||''} onChange={onChangeEditProd} className="form-control form-control-sm" />: p.nombre_comercial}</td>
+                          <td>{editProdId===p.id? (
+                            <select name="tipo_producto" value={editProd?.tipo_producto as TipoProducto} onChange={onChangeEditProd} className="form-select form-select-sm">
+                              <option value="VI">VI</option>
+                              <option value="GMM">GMM</option>
+                            </select>
+                          ) : p.tipo_producto}
+                          </td>
+                          <td>{editProdId===p.id? (
+                            <select name="moneda" value={(editProd?.moneda||'') as MonedaPoliza|''} onChange={onChangeEditProd} className="form-select form-select-sm">
+                              <option value="">Cualquiera</option>
+                              <option value="MXN">MXN</option>
+                              <option value="USD">USD</option>
+                              <option value="UDI">UDI</option>
+                            </select>
+                          ): (p.moneda||'')}</td>
+                          <td>{editProdId===p.id? <input name="duracion_anios" type="number" value={editProd?.duracion_anios??''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.duracion_anios??'')}</td>
+                          {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
+                            type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
+                            const key = `anio_${n}_percent` as AnioKey
+                            const val = ((p as unknown) as Record<string, unknown>)[key] as number | null | undefined
+                            const editVal = (editProd as (Partial<Record<AnioKey, number | null>>|null))?.[key]
+                            return (
+                              <td key={n}>
+                                {editProdId===p.id
+                                  ? <input name={key} type="number" step="0.001" value={editVal ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                                  : (val ?? '')}
+                              </td>
+                            )
+                          })}
+                          <td>{editProdId===p.id? <input name="anio_11_plus_percent" type="number" step="0.001" value={editProd?.anio_11_plus_percent??''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.anio_11_plus_percent??'')}</td>
+                          <td style={{whiteSpace:'nowrap'}}>
+                            {editProdId===p.id? (
+                              <>
+                                <button type="button" className="btn btn-success btn-sm me-1" onClick={saveEditProd}>Guardar</button>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditProd}>Cancelar</button>
+                              </>
+                            ) : (
+                              <>
+                                <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditProd(p)}>Editar</button>
+                                <button type="button" className="btn btn-outline-danger btn-sm" onClick={()=>removeProd(p.id)}>Eliminar</button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
           <section className="border rounded p-3 bg-white shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenMes(o=>!o)} aria-expanded={openMes} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">

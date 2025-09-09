@@ -138,3 +138,35 @@ export interface PlanificacionSemana {
   created_at?: string
   updated_at?: string
 }
+
+/* ===== Fase 3: Productos parametrizados ===== */
+export type TipoProducto = 'VI' | 'GMM'
+export type MonedaPoliza = 'MXN' | 'USD' | 'UDI'
+export interface ProductoParametro {
+  id: string
+  nombre_comercial: string
+  tipo_producto: TipoProducto
+  moneda?: MonedaPoliza | null
+  duracion_anios?: number | null
+  condicion_sa_tipo?: string | null
+  sa_min?: number | null
+  sa_max?: number | null
+  condicion_edad_tipo?: string | null
+  edad_min?: number | null
+  edad_max?: number | null
+  anio_1_percent?: number | null
+  anio_2_percent?: number | null
+  anio_3_percent?: number | null
+  anio_4_percent?: number | null
+  anio_5_percent?: number | null
+  anio_6_percent?: number | null
+  anio_7_percent?: number | null
+  anio_8_percent?: number | null
+  anio_9_percent?: number | null
+  anio_10_percent?: number | null
+  anio_11_plus_percent?: number | null
+  puntos_multiplicador?: number
+  activo: boolean
+  creado_por?: string | null
+  creado_at?: string
+}
