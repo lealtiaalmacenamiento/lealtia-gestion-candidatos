@@ -8,6 +8,7 @@ export const runtime = 'nodejs'
 // Evita cualquier caching accidental en plataformas que puedan cachear GET
 export const dynamic = 'force-dynamic'
 
+// Tipado de filas de historial
 type HistRow = {
   id: number
   created_at: string
@@ -27,14 +28,15 @@ function getTodayCDMXParts(now = new Date()) {
   return { y: Number(parts.year), m: Number(parts.month), d: Number(parts.day) }
 }
 
+// Ventana anclada al día CDMX [00:00, 24:00) => [06:00 UTC, 06:00 UTC siguiente)
 function getDailyWindowUTC(now = new Date()) {
-  // 00:00 CDMX == 06:00 UTC (sin DST en CDMX)
   const { y, m, d } = getTodayCDMXParts(now)
   const todayUTC = Date.UTC(y, m - 1, d, 6, 0, 0)
   const yesterdayUTC = todayUTC - 24 * 60 * 60 * 1000
   return { start: new Date(yesterdayUTC), end: new Date(todayUTC) }
 }
 
+// Ventana móvil últimas 24 horas
 function getRollingLast24UTC(now = new Date()) {
   const end = new Date(now)
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
@@ -54,13 +56,17 @@ export async function GET(req: Request) {
   const dry = url.searchParams.get('dry') === '1'
   const windowParam = (url.searchParams.get('window') || url.searchParams.get('mode') || '').toLowerCase()
   const useAnchored = ['cdmx-day', 'day', 'anchored'].includes(windowParam)
-  const window = (!startQ || !endQ)
-    ? (useAnchored ? getDailyWindowUTC(new Date()) : getRollingLast24UTC(new Date()))
-    : { start: new Date(startQ), end: new Date(endQ) }
-  const startISO = window.start.toISOString()
-  const endISO = window.end.toISOString()
+  const explicitRange = !!(startQ && endQ)
 
-  // 1) Cambios de historial del último día CDMX
+  let selectedMode: 'last24h' | 'cdmx-day' = useAnchored ? 'cdmx-day' : 'last24h'
+  let window = explicitRange
+    ? { start: new Date(startQ as string), end: new Date(endQ as string) }
+    : (useAnchored ? getDailyWindowUTC(new Date()) : getRollingLast24UTC(new Date()))
+
+  let startISO = window.start.toISOString()
+  let endISO = window.end.toISOString()
+
+  // 1) Traer historial para la ventana elegida
   const { data: historial, error: histErr } = await supa
     .from('prospectos_historial')
     .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
@@ -72,12 +78,69 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: histErr.message }, { status: 500 })
   }
 
-  const histRows = (historial || []) as HistRow[]
-  const idsPros = Array.from(new Set(histRows.map(h => h.prospecto_id).filter(Boolean))) as number[]
-  const idsAg = Array.from(new Set(histRows.map(h => h.agente_id).filter(Boolean))) as number[]
-  const emailsMod = Array.from(new Set(histRows.map(h => (h.usuario_email||'').trim()).filter(e => e.length>0))) as string[]
+  let histRows: HistRow[] = (historial || []) as HistRow[]
 
-  // 2) Datos de prospectos
+  // 1b) Fallbacks si no se pasó rango explícito y no hay resultados
+  if (!explicitRange && histRows.length === 0) {
+    try {
+      if (selectedMode === 'last24h') {
+        // Probar día anclado CDMX (hoy)
+        const alt1 = getDailyWindowUTC(new Date())
+        const { data: h1 } = await supa
+          .from('prospectos_historial')
+          .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
+          .gte('created_at', alt1.start.toISOString())
+          .lt('created_at', alt1.end.toISOString())
+          .order('created_at', { ascending: true })
+        if ((h1 || []).length > 0) {
+          histRows = h1 as HistRow[]
+          window = alt1
+          startISO = window.start.toISOString()
+          endISO = window.end.toISOString()
+          selectedMode = 'cdmx-day'
+        } else {
+          // Probar día anclado CDMX (ayer)
+          const alt2 = getDailyWindowUTC(new Date(Date.now() - 24 * 60 * 60 * 1000))
+          const { data: h2 } = await supa
+            .from('prospectos_historial')
+            .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
+            .gte('created_at', alt2.start.toISOString())
+            .lt('created_at', alt2.end.toISOString())
+            .order('created_at', { ascending: true })
+          if ((h2 || []).length > 0) {
+            histRows = h2 as HistRow[]
+            window = alt2
+            startISO = window.start.toISOString()
+            endISO = window.end.toISOString()
+            selectedMode = 'cdmx-day'
+          }
+        }
+      } else {
+        // selectedMode === 'cdmx-day' → probar CDMX-day anterior
+        const alt = getDailyWindowUTC(new Date(Date.now() - 24 * 60 * 60 * 1000))
+        const { data: hPrev } = await supa
+          .from('prospectos_historial')
+          .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
+          .gte('created_at', alt.start.toISOString())
+          .lt('created_at', alt.end.toISOString())
+          .order('created_at', { ascending: true })
+        if ((hPrev || []).length > 0) {
+          histRows = hPrev as HistRow[]
+          window = alt
+          startISO = window.start.toISOString()
+          endISO = window.end.toISOString()
+        }
+      }
+    } catch {
+      // silencioso
+    }
+  }
+
+  // 2) Enriquecer datos
+  const idsPros = Array.from(new Set(histRows.map(h => h.prospecto_id).filter((v): v is number => !!v)))
+  const idsAg = Array.from(new Set(histRows.map(h => h.agente_id).filter((v): v is number => !!v)))
+  const emailsMod = Array.from(new Set(histRows.map(h => (h.usuario_email || '').trim()).filter(e => e.length > 0)))
+
   const prospectosMap = new Map<number, { id: number; nombre: string | null; estado: string | null; agente_id: number | null }>()
   if (idsPros.length) {
     const { data: pros } = await supa
@@ -87,7 +150,6 @@ export async function GET(req: Request) {
     for (const p of pros || []) prospectosMap.set(p.id, p)
   }
 
-  // 3) Emails de agentes
   const agentesMap = new Map<number, { id: number; email: string | null; nombre: string | null }>()
   if (idsAg.length) {
     const { data: ags } = await supa
@@ -97,7 +159,6 @@ export async function GET(req: Request) {
     for (const a of ags || []) agentesMap.set(a.id, a)
   }
 
-  // 3b) Nombres por email del usuario que modificó
   const modsMap = new Map<string, { email: string | null; nombre: string | null }>()
   if (emailsMod.length) {
     const { data: mods } = await supa
@@ -107,8 +168,7 @@ export async function GET(req: Request) {
     for (const m of mods || []) if (m.email) modsMap.set(m.email, m)
   }
 
-  // 4) Construir HTML (columnas esperadas)
-  // label basado en fecha de inicio de la ventana en CDMX
+  // 3) Construir HTML y XLSX
   const rangeLabel = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium' }).format(window.start)
   const title = `Reporte de cambios en prospectos — ${rangeLabel}`
 
@@ -116,10 +176,10 @@ export async function GET(req: Request) {
     const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '—')
-    const perteneceA = ag?.nombre ? `${ag.nombre} <${ag.email||''}>` : (ag?.email || '—')
+    const perteneceA = ag?.nombre ? `${ag.nombre} <${ag.email || ''}>` : (ag?.email || '—')
     const modInfo = h.usuario_email ? modsMap.get(h.usuario_email) : undefined
-    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email||''}>` : (h.usuario_email || '—')
-    const de = (h.estado_anterior == null || String(h.estado_anterior).trim()==='') ? '' : String(h.estado_anterior)
+    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email || ''}>` : (h.usuario_email || '—')
+    const de = (h.estado_anterior == null || String(h.estado_anterior).trim() === '') ? '' : String(h.estado_anterior)
     const a = h.estado_nuevo || '—'
     const notaAgregada = h.nota_agregada ? 'Sí' : ((h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Sí' : 'No')
     return `<tr>
@@ -133,10 +193,10 @@ export async function GET(req: Request) {
     </tr>`
   }).join('')
 
-  const count = historial?.length || 0
+  const count = histRows.length
   const year = new Date().getFullYear()
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
-  // Formato "anterior": tarjeta con cabecera y tabla con bordes
+
   const html = `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
     <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
@@ -152,7 +212,7 @@ export async function GET(req: Request) {
         <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
           <thead style="background:#f3f4f6">
             <tr>
-              <th>Fecha (CDMX)</th><th>Prospecto</th><th>Agente</th><th>Cambio de estado</th><th>Notas</th>
+              <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
             </tr>
           </thead>
           <tbody>${rows || ''}</tbody>
@@ -165,17 +225,18 @@ export async function GET(req: Request) {
       <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
     </div>
   </div>`
+
   // Generar XLSX real como adjunto
-  const header = ['Fecha','Prospecto','Pertenece a','Usuario (modificó)','De','A','Nota agregada']
-  const aoa = [header]
+  const header = ['Fecha', 'Prospecto', 'Pertenece a', 'Usuario (modificó)', 'De', 'A', 'Nota agregada']
+  const aoa: Array<Array<string>> = [header]
   for (const h of histRows) {
     const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '')
-    const perteneceA = ag?.nombre ? `${ag.nombre} <${ag.email||''}>` : (ag?.email || '')
+    const perteneceA = ag?.nombre ? `${ag.nombre} <${ag.email || ''}>` : (ag?.email || '')
     const modInfo = h.usuario_email ? modsMap.get(h.usuario_email) : undefined
-    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email||''}>` : (h.usuario_email||'')
-    const de = (h.estado_anterior == null || String(h.estado_anterior).trim()==='') ? '' : String(h.estado_anterior)
+    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email || ''}>` : (h.usuario_email || '')
+    const de = (h.estado_anterior == null || String(h.estado_anterior).trim() === '') ? '' : String(h.estado_anterior)
     const a = h.estado_nuevo || ''
     const notaAgregada = h.nota_agregada ? 'Sí' : ((h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Sí' : 'No')
     const fecha = fmtCDMX(h.created_at)
@@ -185,9 +246,9 @@ export async function GET(req: Request) {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
   const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
-  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g,'_')}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
-  
-  // Enviar SOLO a superusuarios/admin activos
+  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g, '_')}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+
+  // Destinatarios: superusuarios activos
   const { data: supers, error: supErr } = await supa
     .from('usuarios')
     .select('email, rol, activo')
@@ -199,12 +260,14 @@ export async function GET(req: Request) {
   }
 
   const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
-  // Observabilidad básica
+
+  // Observabilidad
   try {
-    console.log('[prospectos-daily-changes] window', { mode: useAnchored ? 'cdmx-day' : 'last24h', startISO, endISO, count, first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at })
+    console.log('[prospectos-daily-changes] window', { mode: selectedMode, startISO, endISO, count, first: histRows[0]?.created_at, last: histRows[histRows.length - 1]?.created_at })
   } catch {}
+
   if (dry) {
-    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO, mode: useAnchored ? 'cdmx-day' : 'last24h' }, recipients: emails, attachment_name: attachment.filename, sample: { first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at } })
+    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO, mode: selectedMode }, recipients: emails, attachment_name: attachment.filename, sample: { first: histRows[0]?.created_at, last: histRows[histRows.length - 1]?.created_at } })
   }
   if (!emails.length) {
     return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
