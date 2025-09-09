@@ -5,6 +5,8 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
+  // Permitir Cron de Vercel y rutas públicas de reportes sin sesión
+  const isCronRequest = !!req.headers.get('x-vercel-cron') || (req.headers.get('user-agent')||'').toLowerCase().includes('vercel-cron')
   const projectRef = process.env.SUPABASE_PROJECT_REF
     || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https:\/\//,'').split('.')[0]
     || 'missing_project_ref'
@@ -22,9 +24,14 @@ export async function middleware(req: NextRequest) {
   const url = req.nextUrl
 
   // Rutas públicas
-  const publicPaths = new Set(['/', '/login', '/api/login', '/api/logout'])
+  const publicPaths = new Set([
+    '/', '/login', '/api/login', '/api/logout',
+    // Endpoints usados por Cron/diagnóstico
+    '/api/reports/prospectos-daily-changes',
+    '/api/auth_debug', '/api/env-check'
+  ])
   const isAsset = url.pathname.startsWith('/_next/') || url.pathname.startsWith('/favicon') || url.pathname.startsWith('/public/')
-  const isPublic = publicPaths.has(url.pathname) || isAsset
+  const isPublic = publicPaths.has(url.pathname) || isAsset || isCronRequest
 
   // Si no hay sesión y la ruta no es pública → redirigir a login
   if (!session && !isPublic) {
