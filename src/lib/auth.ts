@@ -1,5 +1,6 @@
 import { cookies as nextCookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 
@@ -20,14 +21,15 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
   const supabase = createServerClient<Database>(supabaseUrl, supabaseAnon, { cookies: cookieAdapter })
 
   // Soporte de Authorization: Bearer <access_token> (cuando no haya cookies de SSR)
-  let user: { email?: string | null } | null = null
+  type UserMinimal = { id?: string | null; email?: string | null }
+  let user: UserMinimal | null = null
   let userErr: unknown = null
   const bearer = h?.get('authorization') || h?.get('Authorization')
   if (bearer && bearer.toLowerCase().startsWith('bearer ')) {
     const token = bearer.slice(7).trim()
     try {
       const { data, error } = await supabase.auth.getUser(token)
-      user = data?.user ?? null
+  user = (data?.user as UserMinimal) ?? null
       userErr = error ?? null
     } catch (e) {
       user = null
@@ -35,7 +37,7 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
     }
   } else {
   const res = await supabase.auth.getUser()
-    user = res.data?.user ?? null
+    user = (res.data?.user as UserMinimal) ?? null
     userErr = res.error ?? null
     // Fallback: extraer access_token directo de cookies sb-<projectRef>-auth-token o sb-access-token
     if (!user && !userErr) {
@@ -89,28 +91,69 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
   if (userErr) return null
   if (!user?.email) return null
 
-  // Traer registro de tabla usuarios (rol, activo) con service role (evitar RLS),
-  // y si no hay service key disponible, caer a SSR client con RLS
+  // Traer registro de tabla usuarios intentando por id_auth y por email.
+  // Primero con service role (evita RLS); si no se encuentra o no hay service key, usamos SSR.
+  const selectCols = 'id,email,rol,activo,nombre,last_login,id_auth'
+  async function lookupUsuarioBy(client: SupabaseClient): Promise<UsuarioSesion | null> {
+    // 1) id_auth si existe
+    try {
+      if (user && user.id) {
+        const { data } = await client
+          .from('usuarios')
+          .select(selectCols)
+          .eq('id_auth', user.id)
+          .maybeSingle()
+        if (data) return data as UsuarioSesion
+      }
+    } catch {}
+    // 2) email exacto
+    try {
+      if (user && user.email) {
+        const { data } = await client
+          .from('usuarios')
+          .select(selectCols)
+          .eq('email', user.email)
+          .maybeSingle()
+        if (data) return data as UsuarioSesion
+      }
+    } catch {}
+    // 3) email trim
+    try {
+      if (user && user.email) {
+        const emailTrim = user.email.trim()
+        if (emailTrim !== user.email) {
+          const { data } = await client
+            .from('usuarios')
+            .select(selectCols)
+            .eq('email', emailTrim)
+            .maybeSingle()
+          if (data) return data as UsuarioSesion
+        }
+      }
+    } catch {}
+    // 4) email case-insensitive exact (ilike sin comodines)
+    try {
+      if (user && user.email) {
+        const { data } = await client
+          .from('usuarios')
+          .select(selectCols)
+          .ilike('email', user.email)
+          .maybeSingle()
+        if (data) return data as UsuarioSesion
+      }
+    } catch {}
+    return null
+  }
+
   let usuarioBD: UsuarioSesion | null = null
   try {
     const admin = getServiceClient()
-    const { data } = await admin
-      .from('usuarios')
-      .select('id,email,rol,activo,nombre,last_login')
-      .eq('email', user.email)
-      .maybeSingle()
-    usuarioBD = (data as UsuarioSesion) || null
+    usuarioBD = await lookupUsuarioBy(admin)
   } catch {
-    // ignore, we'll try SSR below
+    // ignore
   }
-  // Si con admin no encontramos, intentamos con SSR (usa el mismo proyecto que las cookies de Auth)
   if (!usuarioBD) {
-    const { data } = await supabase
-      .from('usuarios')
-      .select('id,email,rol,activo,nombre,last_login')
-      .eq('email', user.email)
-      .maybeSingle()
-    usuarioBD = (data as UsuarioSesion) || null
+    usuarioBD = await lookupUsuarioBy(supabase as unknown as SupabaseClient)
   }
   if (!usuarioBD) return null
   // Actualizar last_login si la columna existe y han pasado >=5 min desde el último (para reducir escrituras)
@@ -122,16 +165,20 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
     // Intentar actualización con admin si existe; si no, con SSR. Si falla, ignorar.
     try {
       const admin = getServiceClient()
-      await admin
-        .from('usuarios')
-        .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
-        .eq('id', row.id)
-    } catch {
-      try {
-        await supabase
+      if (typeof row.id === 'number' && row.id > 0) {
+        await admin
           .from('usuarios')
           .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
           .eq('id', row.id)
+      }
+    } catch {
+      try {
+        if (typeof row.id === 'number' && row.id > 0) {
+          await supabase
+            .from('usuarios')
+            .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
+            .eq('id', row.id)
+        }
       } catch {}
     }
     row.last_login = now.toISOString()
