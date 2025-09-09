@@ -7,14 +7,22 @@ import { logAccion } from '@/lib/logger'
 
 // Forzar runtime Node para uso de nodemailer/xlsx
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 const supabase = getServiceClient()
 
-function yesterdayRangeUTC() {
-  const now = new Date()
-  const y = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-  const start = new Date(y.getTime() - 24*60*60*1000)
-  const end = y
+function getTodayCDMXParts(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' })
+  const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value])) as { year: string; month: string; day: string }
+  return { y: Number(parts.year), m: Number(parts.month), d: Number(parts.day) }
+}
+
+function yesterdayRangeCDMXUTC(now = new Date()) {
+  // Ventana de 00:00 a 24:00 CDMX del día anterior
+  const { y, m, d } = getTodayCDMXParts(now)
+  const todayStartUTC = Date.UTC(y, m - 1, d, 6, 0, 0) // 00:00 CDMX == 06:00 UTC
+  const start = new Date(todayStartUTC - 24*60*60*1000)
+  const end = new Date(todayStartUTC)
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
@@ -52,7 +60,7 @@ export async function POST(req: Request) {
   } else if (mode === 'last24h' || (!!hoursQ && Number(hoursQ) > 0)) {
     range = lastHoursRange(hoursQ ? Number(hoursQ) : 24)
   } else {
-    range = yesterdayRangeUTC()
+    range = yesterdayRangeCDMXUTC()
   }
   const { start, end } = range
   let q = supabase
@@ -115,6 +123,7 @@ export async function POST(req: Request) {
     min: (historial && historial[0]?.created_at) || null,
     max: (historial && historial[historial.length-1]?.created_at) || null
   }
+  try { console.log('[prospectos-dia] window', meta) } catch {}
   const rows = (historial||[]).map(h => {
   const pInfo = mapPros[h.prospecto_id as number]
   const pName = (pInfo?.nombre || '').toString()
