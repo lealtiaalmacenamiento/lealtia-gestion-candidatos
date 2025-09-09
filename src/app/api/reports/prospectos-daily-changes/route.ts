@@ -5,6 +5,8 @@ import * as XLSX from 'xlsx'
 
 // Asegurar runtime Node.js (necesario para nodemailer/xlsx)
 export const runtime = 'nodejs'
+// Evita cualquier caching accidental en plataformas que puedan cachear GET
+export const dynamic = 'force-dynamic'
 
 function getTodayCDMXParts(now = new Date()) {
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -40,7 +42,7 @@ export async function GET(req: Request) {
   // 1) Cambios de historial del último día CDMX
   const { data: historial, error: histErr } = await supa
     .from('prospectos_historial')
-    .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
+    .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, notas_anteriores, notas_nuevas')
     .gte('created_at', startISO)
     .lt('created_at', endISO)
     .order('created_at', { ascending: true })
@@ -85,7 +87,7 @@ export async function GET(req: Request) {
     const estado = (h.estado_anterior == null || String(h.estado_anterior).trim()==='')
       ? `Creación (→ ${h.estado_nuevo || '—'})`
       : `${h.estado_anterior} → ${h.estado_nuevo || '—'}`
-    const notas = h.nota_agregada ? 'Actualizó notas' : ''
+    const notas = (h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Actualizó notas' : ''
     return `<tr>
       <td style="padding:6px;border-bottom:1px solid #eee;white-space:nowrap">${fmtCDMX(h.created_at)}</td>
       <td style="padding:6px;border-bottom:1px solid #eee">${nombre}</td>
@@ -138,7 +140,7 @@ export async function GET(req: Request) {
     const estado = (h.estado_anterior == null || String(h.estado_anterior).trim()==='')
       ? `Creación (-> ${h.estado_nuevo || ''})`
       : `${h.estado_anterior || ''} -> ${h.estado_nuevo || ''}`
-    const notas = h.nota_agregada ? 'Actualizó notas' : ''
+    const notas = (h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Actualizó notas' : ''
     const fecha = fmtCDMX(h.created_at)
     aoa.push([fecha, nombre, agente, estado, notas])
   }
@@ -160,8 +162,12 @@ export async function GET(req: Request) {
   }
 
   const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
+  // Observabilidad básica
+  try {
+    console.log('[prospectos-daily-changes] window', { startISO, endISO, count, first: historial?.[0]?.created_at, last: historial?.[historial.length-1]?.created_at })
+  } catch {}
   if (dry) {
-    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails, attachment_name: attachment.filename })
+    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails, attachment_name: attachment.filename, sample: { first: historial?.[0]?.created_at, last: historial?.[historial.length-1]?.created_at } })
   }
   if (!emails.length) {
     return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
