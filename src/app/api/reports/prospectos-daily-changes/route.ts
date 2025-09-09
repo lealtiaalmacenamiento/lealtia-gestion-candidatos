@@ -8,6 +8,19 @@ export const runtime = 'nodejs'
 // Evita cualquier caching accidental en plataformas que puedan cachear GET
 export const dynamic = 'force-dynamic'
 
+type HistRow = {
+  id: number
+  created_at: string
+  prospecto_id: number | null
+  agente_id: number | null
+  usuario_email: string | null
+  estado_anterior: string | null
+  estado_nuevo: string | null
+  nota_agregada?: boolean | null
+  notas_anteriores?: string | null
+  notas_nuevas?: string | null
+}
+
 function getTodayCDMXParts(now = new Date()) {
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' })
   const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value])) as { year: string; month: string; day: string }
@@ -42,7 +55,7 @@ export async function GET(req: Request) {
   // 1) Cambios de historial del último día CDMX
   const { data: historial, error: histErr } = await supa
     .from('prospectos_historial')
-    .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, notas_anteriores, notas_nuevas')
+    .select('id, created_at, prospecto_id, agente_id, usuario_email, estado_anterior, estado_nuevo, nota_agregada, notas_anteriores, notas_nuevas')
     .gte('created_at', startISO)
     .lt('created_at', endISO)
     .order('created_at', { ascending: true })
@@ -51,8 +64,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: histErr.message }, { status: 500 })
   }
 
-  const idsPros = Array.from(new Set((historial || []).map(h => h.prospecto_id).filter(Boolean))) as number[]
-  const idsAg = Array.from(new Set((historial || []).map(h => h.agente_id).filter(Boolean))) as number[]
+  const histRows = (historial || []) as HistRow[]
+  const idsPros = Array.from(new Set(histRows.map(h => h.prospecto_id).filter(Boolean))) as number[]
+  const idsAg = Array.from(new Set(histRows.map(h => h.agente_id).filter(Boolean))) as number[]
+  const emailsMod = Array.from(new Set(histRows.map(h => (h.usuario_email||'').trim()).filter(e => e.length>0))) as string[]
 
   // 2) Datos de prospectos
   const prospectosMap = new Map<number, { id: number; nombre: string | null; estado: string | null; agente_id: number | null }>()
@@ -74,26 +89,39 @@ export async function GET(req: Request) {
     for (const a of ags || []) agentesMap.set(a.id, a)
   }
 
-  // 4) Construir HTML
+  // 3b) Nombres por email del usuario que modificó
+  const modsMap = new Map<string, { email: string | null; nombre: string | null }>()
+  if (emailsMod.length) {
+    const { data: mods } = await supa
+      .from('usuarios')
+      .select('email, nombre')
+      .in('email', emailsMod)
+    for (const m of mods || []) if (m.email) modsMap.set(m.email, m)
+  }
+
+  // 4) Construir HTML (columnas esperadas)
   // label basado en fecha de inicio de la ventana en CDMX
   const rangeLabel = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium' }).format(window.start)
   const title = `Reporte de cambios en prospectos — ${rangeLabel}`
 
-  const rows = (historial || []).map(h => {
+  const rows = histRows.map(h => {
     const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '—')
-    const agente = (ag?.nombre || ag?.email || '—')
-    const estado = (h.estado_anterior == null || String(h.estado_anterior).trim()==='')
-      ? `Creación (→ ${h.estado_nuevo || '—'})`
-      : `${h.estado_anterior} → ${h.estado_nuevo || '—'}`
-    const notas = (h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Actualizó notas' : ''
+    const perteneceA = ag?.nombre ? `${ag.nombre} <${ag.email||''}>` : (ag?.email || '—')
+    const modInfo = h.usuario_email ? modsMap.get(h.usuario_email) : undefined
+    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email||''}>` : (h.usuario_email || '—')
+    const de = (h.estado_anterior == null || String(h.estado_anterior).trim()==='') ? '' : String(h.estado_anterior)
+    const a = h.estado_nuevo || '—'
+    const notaAgregada = h.nota_agregada ? 'Sí' : ((h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Sí' : 'No')
     return `<tr>
       <td style="padding:6px;border-bottom:1px solid #eee;white-space:nowrap">${fmtCDMX(h.created_at)}</td>
       <td style="padding:6px;border-bottom:1px solid #eee">${nombre}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee">${agente}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee">${estado}</td>
-      <td style="padding:6px;border-bottom:1px solid #eee">${notas}</td>
+      <td style="padding:6px;border-bottom:1px solid #eee">${perteneceA}</td>
+      <td style="padding:6px;border-bottom:1px solid #eee">${modLabel}</td>
+      <td style="padding:6px;border-bottom:1px solid #eee">${de}</td>
+      <td style="padding:6px;border-bottom:1px solid #eee">${a}</td>
+      <td style="padding:6px;border-bottom:1px solid #eee">${notaAgregada}</td>
     </tr>`
   }).join('')
 
@@ -130,19 +158,20 @@ export async function GET(req: Request) {
     </div>
   </div>`
   // Generar XLSX real como adjunto
-  const header = ['Fecha (CDMX)','Prospecto','Agente','Cambio de estado','Notas']
+  const header = ['Fecha','Prospecto','Pertenece a','Usuario (modificó)','De','A','Nota agregada']
   const aoa = [header]
-  for (const h of (historial||[])) {
+  for (const h of histRows) {
     const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
     const nombre = (p?.nombre || '')
-    const agente = (ag?.nombre || ag?.email || '')
-    const estado = (h.estado_anterior == null || String(h.estado_anterior).trim()==='')
-      ? `Creación (-> ${h.estado_nuevo || ''})`
-      : `${h.estado_anterior || ''} -> ${h.estado_nuevo || ''}`
-    const notas = (h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Actualizó notas' : ''
+    const perteneceA = ag?.nombre ? `${ag.nombre} <${ag.email||''}>` : (ag?.email || '')
+    const modInfo = h.usuario_email ? modsMap.get(h.usuario_email) : undefined
+    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email||''}>` : (h.usuario_email||'')
+    const de = (h.estado_anterior == null || String(h.estado_anterior).trim()==='') ? '' : String(h.estado_anterior)
+    const a = h.estado_nuevo || ''
+    const notaAgregada = h.nota_agregada ? 'Sí' : ((h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Sí' : 'No')
     const fecha = fmtCDMX(h.created_at)
-    aoa.push([fecha, nombre, agente, estado, notas])
+    aoa.push([fecha, nombre, perteneceA, modLabel, de, a, notaAgregada])
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa)
   const wb = XLSX.utils.book_new()
@@ -164,10 +193,10 @@ export async function GET(req: Request) {
   const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
   // Observabilidad básica
   try {
-    console.log('[prospectos-daily-changes] window', { startISO, endISO, count, first: historial?.[0]?.created_at, last: historial?.[historial.length-1]?.created_at })
+    console.log('[prospectos-daily-changes] window', { startISO, endISO, count, first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at })
   } catch {}
   if (dry) {
-    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails, attachment_name: attachment.filename, sample: { first: historial?.[0]?.created_at, last: historial?.[historial.length-1]?.created_at } })
+    return NextResponse.json({ ok: true, dry: true, sent: false, count, window: { start: startISO, end: endISO }, recipients: emails, attachment_name: attachment.filename, sample: { first: histRows?.[0]?.created_at, last: histRows?.[histRows.length-1]?.created_at } })
   }
   if (!emails.length) {
     return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
