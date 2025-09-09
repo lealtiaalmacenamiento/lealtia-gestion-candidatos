@@ -101,6 +101,10 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
       .maybeSingle()
     usuarioBD = (data as UsuarioSesion) || null
   } catch {
+    // ignore, we'll try SSR below
+  }
+  // Si con admin no encontramos, intentamos con SSR (usa el mismo proyecto que las cookies de Auth)
+  if (!usuarioBD) {
     const { data } = await supabase
       .from('usuarios')
       .select('id,email,rol,activo,nombre,last_login')

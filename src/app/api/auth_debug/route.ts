@@ -9,6 +9,9 @@ export async function GET(req: Request) {
   const cookieStore = await cookies()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const ssrProjectRef = supabaseUrl?.replace(/^https?:\/\//,'').split('.')[0]
+  const serviceUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRef = serviceUrl?.replace(/^https?:\/\//,'').split('.')[0]
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       get(name: string) { return cookieStore.get(name)?.value },
@@ -38,5 +41,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ user, error: error?.message, cookieNames, usuarioBD, dbError })
+  return NextResponse.json({ user, error: error?.message, cookieNames, usuarioBD, dbError, projectRefs: { ssrProjectRef, serviceRef } })
 }
