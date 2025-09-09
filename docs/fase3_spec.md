@@ -423,7 +423,7 @@ Este anexo resume el alcance funcional y las reglas/validaciones clave definidas
 - Cálculo de puntos por póliza (VI/GMM) basado en rangos de prima en MXN; almacenamiento en cache (`poliza_puntos_cache`).
 - Fuentes de UDI/FX (Banxico) con fallback al último valor y marca stale.
 - Calendario de pagos con ajuste por días del mes (incluye Febrero).
-- Reporte diario de cambios en prospectos con adjunto adicional de “Última conexión de usuarios” usando Auth (last_sign_in_at) y formateo CDMX.
+- Reporte diario de cambios en prospectos con un solo adjunto XLSX que contiene dos hojas: “Cambios” y “Usuarios – Última conexión (CDMX)”, usando Auth (last_sign_in_at) y formateo CDMX.
 - Políticas RLS y funciones seguras para mutaciones sensibles.
 
 ### Reglas y validaciones
@@ -455,7 +455,15 @@ Este anexo resume el alcance funcional y las reglas/validaciones clave definidas
   - Asesor ve sus clientes/pólizas; supervisor y super_usuario sin filtro.
   - UPDATE sensible sólo vía funciones SECURITY DEFINER; triggers para normalización/derivados.
 - Reportes
-  - Diario de prospectos (HTML + XLSX) y adjunto “Usuarios última conexión (CDMX)” desde Auth.
+  - Diario de prospectos (HTML + un solo XLSX con 2 hojas: “Cambios” y “Usuarios – Última conexión (CDMX)”) desde Auth.
 
 ### Notas de zona horaria
 - Almacenaje de timestamps en UTC; visualización y reportes en America/Mexico_City (CDMX).
+
+## Sprint 5 – Reporte diario (Criterios de Aceptación)
+
+- Entrega: un único archivo XLSX con 2 hojas: "Cambios" y "Usuarios – Última conexión (CDMX)".
+- Canales: envío por correo (HTML + adjunto) en ejecución programada diaria y ejecución manual.
+- Autenticación: admite ejecución por cron con secreto y por sesión de usuario autorizado.
+- Ventana por defecto: día CDMX; soporta modos last24h y rango explícito. "Cambios" siempre se genera; "Usuarios – Última conexión" se puebla desde Auth (last_sign_in_at).
+- Comportamiento sin datos: el archivo se envía igualmente con hojas vacías salvo que se especifique 'skipIfEmpty' donde aplique.
