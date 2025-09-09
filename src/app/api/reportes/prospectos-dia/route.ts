@@ -87,6 +87,7 @@ export async function POST(req: Request) {
   const hoursQ = url.searchParams.get('hours')
   const modeAll = url.searchParams.get('mode') === 'all'
   const dry = url.searchParams.get('dry') === '1'
+  const skipIfEmpty = url.searchParams.get('skipIfEmpty') === '1'
   let range: { start: string; end: string }
   if (startQ && endQ) {
     range = { start: new Date(startQ).toISOString(), end: new Date(endQ).toISOString() }
@@ -179,7 +180,11 @@ export async function POST(req: Request) {
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
 
   if (dry) {
-    return NextResponse.json({ success: true, dry: true, meta, sample: (historial||[]).slice(0, 10) })
+    const would_send = (recipients.length > 0) && (!skipIfEmpty || (historial||[]).length > 0)
+    return NextResponse.json({ success: true, dry: true, would_send, meta, sample: (historial||[]).slice(0, 10) })
+  }
+  if (skipIfEmpty && (historial||[]).length === 0) {
+    return NextResponse.json({ success: true, sent: 0, detalle: 'skipIfEmpty: no hay eventos en el rango' })
   }
   // Generar adjunto XLSX con las mismas columnas mostradas en el correo
   const aoa: Array<Array<string>> = []
