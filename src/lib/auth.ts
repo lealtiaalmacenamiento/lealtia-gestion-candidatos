@@ -23,24 +23,20 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
   // Soporte de Authorization: Bearer <access_token> (cuando no haya cookies de SSR)
   type UserMinimal = { id?: string | null; email?: string | null }
   let user: UserMinimal | null = null
-  let userErr: unknown = null
   const bearer = h?.get('authorization') || h?.get('Authorization')
   if (bearer && bearer.toLowerCase().startsWith('bearer ')) {
     const token = bearer.slice(7).trim()
     try {
-      const { data, error } = await supabase.auth.getUser(token)
-  user = (data?.user as UserMinimal) ?? null
-      userErr = error ?? null
-    } catch (e) {
+      const { data } = await supabase.auth.getUser(token)
+      user = (data?.user as UserMinimal) ?? null
+  } catch {
       user = null
-      userErr = e
     }
   } else {
   const res = await supabase.auth.getUser()
     user = (res.data?.user as UserMinimal) ?? null
-    userErr = res.error ?? null
     // Fallback: extraer access_token directo de cookies sb-<projectRef>-auth-token o sb-access-token
-    if (!user && !userErr) {
+    if (!user) {
       try {
         const projectRef = process.env.SUPABASE_PROJECT_REF
           || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https?:\/\//,'').split('.')[0]
@@ -79,16 +75,14 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
           if (a?.value) accessToken = a.value
         }
         if (accessToken) {
-          const { data, error } = await supabase.auth.getUser(accessToken)
-          user = data?.user ?? null
-          userErr = error ?? null
+          const { data } = await supabase.auth.getUser(accessToken)
+          user = (data?.user as UserMinimal) ?? null
         }
       } catch {
         // sin cambio
       }
     }
   }
-  if (userErr) return null
   if (!user?.email) return null
 
   // Traer registro de tabla usuarios intentando por id_auth y por email.
