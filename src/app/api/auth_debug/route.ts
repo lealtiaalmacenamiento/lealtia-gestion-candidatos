@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { getUsuarioSesion } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,5 +69,11 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ user, error: error?.message, cookieNames, usuarioBD, dbError, projectRefs: { ssrProjectRef, serviceRef }, deepDiag })
+  // También probamos nuestra función unificada usada por las rutas protegidas
+  let usuarioSesion: unknown = null
+  try {
+    usuarioSesion = await getUsuarioSesion()
+  } catch {}
+
+  return NextResponse.json({ user, error: error?.message, cookieNames, usuarioBD, dbError, projectRefs: { ssrProjectRef, serviceRef }, deepDiag, usuarioSesion })
 }
