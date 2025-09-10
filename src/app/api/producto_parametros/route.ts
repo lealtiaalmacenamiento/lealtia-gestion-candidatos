@@ -3,6 +3,7 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { logAccion } from '@/lib/logger'
+import { canReadProductoParametros, canWriteProductoParametros, isActiveUser } from '@/lib/roles'
 
 const supabase = getServiceClient()
 
@@ -14,7 +15,28 @@ const allowedFields = new Set([
   'puntos_multiplicador','activo'
 ])
 
-export async function GET() {
+export async function GET(req: Request) {
+  // Auth via SSR cookies
+  const cookieStore = await cookies()
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supa = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      get(name: string) { return cookieStore.get(name)?.value },
+      set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
+      remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }) }
+    }
+  })
+  const { data: { user } } = await supa.auth.getUser()
+  const { data: usuario } = user?.email ? await supa.from('usuarios').select('*').eq('email', user.email).maybeSingle() : { data: null }
+  const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
+  const isProd = (process.env.VERCEL_ENV === 'production') || (process.env.NODE_ENV === 'production')
+  const allowed = isActiveUser(usuario) && (canReadProductoParametros(rol) || !isProd)
+  if (!allowed) {
+    const url = new URL(req.url)
+    const debug = url.searchParams.get('debug') === '1'
+    return NextResponse.json({ error: 'Sin permiso', ...(debug ? { rol, activo: usuario?.activo } : {}) }, { status: 403 })
+  }
   const { data, error } = await supabase
     .from('producto_parametros')
     .select('*')
@@ -40,9 +62,8 @@ export async function POST(req: Request) {
   const { data: usuario, error: uerr } = await supa.from('usuarios').select('*').eq('email', user.email).maybeSingle()
   if (uerr || !usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
-  const allowedRoles = ['admin','superusuario','super_usuario','supervisor']
   const isProd = (process.env.VERCEL_ENV === 'production') || (process.env.NODE_ENV === 'production')
-  const allowed = usuario?.activo && (allowedRoles.includes(rol ?? '') || !isProd)
+  const allowed = isActiveUser(usuario) && (canWriteProductoParametros(rol) || !isProd)
   if (!allowed) {
     const url = new URL(req.url)
     const debug = url.searchParams.get('debug') === '1'

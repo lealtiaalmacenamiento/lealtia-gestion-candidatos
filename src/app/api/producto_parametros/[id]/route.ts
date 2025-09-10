@@ -3,6 +3,7 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { logAccion } from '@/lib/logger'
+import { canDeleteProductoParametros, canWriteProductoParametros, isActiveUser } from '@/lib/roles'
 
 const supabase = getServiceClient()
 
@@ -30,9 +31,8 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   if (!user?.email) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const { data: usuario } = await supa.from('usuarios').select('*').eq('email', user.email).maybeSingle()
   const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
-  const allowedRoles = ['admin','superusuario','super_usuario','supervisor']
   const isProd = (process.env.VERCEL_ENV === 'production') || (process.env.NODE_ENV === 'production')
-  const allowed = usuario?.activo && (allowedRoles.includes(rol ?? '') || !isProd)
+  const allowed = isActiveUser(usuario) && (canWriteProductoParametros(rol) || !isProd)
   if (!allowed) {
     const url = new URL(req.url)
     const debug = url.searchParams.get('debug') === '1'
@@ -75,9 +75,8 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
   if (!user?.email) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const { data: usuario } = await supa.from('usuarios').select('*').eq('email', user.email).maybeSingle()
   const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
-  const allowedRoles = ['admin','superusuario','super_usuario','supervisor']
   const isProd = (process.env.VERCEL_ENV === 'production') || (process.env.NODE_ENV === 'production')
-  const allowed = usuario?.activo && (allowedRoles.includes(rol ?? '') || !isProd)
+  const allowed = isActiveUser(usuario) && (canDeleteProductoParametros(rol) || !isProd)
   if (!allowed) {
     const url = new URL(req.url)
     const debug = url.searchParams.get('debug') === '1'
