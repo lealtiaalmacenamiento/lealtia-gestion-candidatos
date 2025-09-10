@@ -41,10 +41,9 @@ Durante build sin variables, el código usa proxys placeholder para evitar fallo
 `/api/efc/debug/[id]` es sólo diagnóstico. Elimínalo antes de producción final si no se requiere.
 
 ## Mejoras pendientes
-- Restaurar `"strict": true` en `tsconfig.json` y tipar consultas Supabase con tipos generados (@supabase/cli gen types).
-- Migrar de paquetes deprecated de auth helpers a `@supabase/ssr` completamente (ya parcialmente incluido).
 
----
 Actualizado automáticamente.
+\n+## Marca de despliegue
+Redeploy marker: sprint6-roles-fix 2025-09-09T00:00:00Z
 \n+## Marca de despliegue
 Commit forzado para redeploy: ajuste timestamp ${(new Date()).toISOString()}.

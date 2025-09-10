@@ -198,25 +198,25 @@ export async function deleteAuditoria(id: number): Promise<{ success: boolean }>
 
 /* ========= PRODUCTO PARAMETROS (Fase 3) ========= */
 export async function getProductoParametros(): Promise<ProductoParametro[]> {
-  const res = await fetch('/api/producto_parametros', { cache: 'no-store' })
+  const res = await fetch('/api/producto_parametros?debug=1', { cache: 'no-store' })
   return handleResponse<ProductoParametro[]>(res)
 }
 
 export async function createProductoParametro(payload: Partial<ProductoParametro>): Promise<ProductoParametro> {
-  const res = await fetch('/api/producto_parametros', {
+  const res = await fetch('/api/producto_parametros?debug=1', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
   })
   return handleResponse<ProductoParametro>(res)
 }
 
 export async function updateProductoParametro(id: string, payload: Partial<ProductoParametro>): Promise<ProductoParametro> {
-  const res = await fetch(`/api/producto_parametros/${id}`, {
+  const res = await fetch(`/api/producto_parametros/${id}?debug=1`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
   })
   return handleResponse<ProductoParametro>(res)
 }
 
 export async function deleteProductoParametro(id: string): Promise<{ success: boolean }> {
-  const res = await fetch(`/api/producto_parametros/${id}`, { method: 'DELETE' })
+  const res = await fetch(`/api/producto_parametros/${id}?debug=1`, { method: 'DELETE' })
   return handleResponse<{ success: boolean }>(res)
 }
