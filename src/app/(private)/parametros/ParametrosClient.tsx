@@ -263,10 +263,10 @@ export default function ParametrosClient(){
                             const key = `anio_${n}_percent` as AnioKey
                             const val = ((p as unknown) as Record<string, unknown>)[key] as number | null | undefined
                             return (
-                <td key={n}>{val!=null? `${Number(val).toFixed(3)} %` : ''}</td>
+                              <td key={n}>{val!=null? `${Number(val).toFixed(2)}%` : ''}</td>
                             )
                           })}
-              <td>{p.anio_11_plus_percent!=null? `${Number(p.anio_11_plus_percent).toFixed(3)} %` : ''}</td>
+                          <td>{p.anio_11_plus_percent!=null? `${Number(p.anio_11_plus_percent).toFixed(2)}%` : ''}</td>
                           <td style={{whiteSpace:'nowrap'}}>
                             <>
                               <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditProd(p)}>Editar</button>
