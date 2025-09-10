@@ -124,9 +124,9 @@ export default function ParametrosClient(){
       if (p.sa_min!=null && p.sa_max!=null) return `>= ${fmtNum(Number(p.sa_min))} y <= ${fmtNum(Number(p.sa_max))}`
     }
     if (p.edad_min!=null || p.edad_max!=null) {
-      if (p.edad_min!=null && p.edad_max==null) return `> ${Number(p.edad_min)}`
-      if (p.edad_max!=null && p.edad_min==null) return `<= ${Number(p.edad_max)}`
-      if (p.edad_min!=null && p.edad_max!=null) return `> ${Number(p.edad_min)} y <= ${Number(p.edad_max)}`
+  if (p.edad_min!=null && p.edad_max==null) return `> ${Number(p.edad_min)} años`
+  if (p.edad_max!=null && p.edad_min==null) return `<= ${Number(p.edad_max)} años`
+  if (p.edad_min!=null && p.edad_max!=null) return `> ${Number(p.edad_min)} años y <= ${Number(p.edad_max)} años`
     }
     return ''
   }
