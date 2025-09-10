@@ -254,55 +254,93 @@ export default function ParametrosClient(){
                       {productos.length===0 && (<tr><td colSpan={16} className="text-center small">Sin variantes</td></tr>)}
                       {productos.map(p=> (
                         <tr key={p.id}>
-                          <td>{editProdId===p.id? <input name="nombre_comercial" value={editProd?.nombre_comercial ?? p.nombre_comercial ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />: p.nombre_comercial}</td>
-                          <td>{editProdId===p.id? (
-                            <select name="tipo_producto" value={(editProd?.tipo_producto ?? p.tipo_producto) as TipoProducto} onChange={onChangeEditProd} className="form-select form-select-sm">
-                              <option value="VI">VI</option>
-                              <option value="GMM">GMM</option>
-                            </select>
-                          ) : p.tipo_producto}
-                          </td>
-                          <td>{editProdId===p.id? (
-                            <select name="moneda" value={((editProd?.moneda ?? p.moneda) || '') as MonedaPoliza|''} onChange={onChangeEditProd} className="form-select form-select-sm">
-                              <option value="">Cualquiera</option>
-                              <option value="MXN">MXN</option>
-                              <option value="USD">USD</option>
-                              <option value="UDI">UDI</option>
-                            </select>
-                          ): (p.moneda||'')}</td>
-                          <td>{editProdId===p.id? <input name="duracion_anios" type="number" value={(editProd?.duracion_anios ?? p.duracion_anios) ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.duracion_anios??'')}</td>
+                          <td>{p.nombre_comercial}</td>
+                          <td>{p.tipo_producto}</td>
+                          <td>{p.moneda||''}</td>
+                          <td>{p.duracion_anios??''}</td>
                           {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
                             type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
                             const key = `anio_${n}_percent` as AnioKey
                             const val = ((p as unknown) as Record<string, unknown>)[key] as number | null | undefined
-                            const editVal = (editProd as (Partial<Record<AnioKey, number | null>>|null))?.[key]
                             return (
-                              <td key={n}>
-                                {editProdId===p.id
-                                  ? <input name={key} type="number" step="0.001" value={(editVal ?? (val ?? '')) as number|''} placeholder={val!=null? String(val): ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
-                                  : (val ?? '')}
-                              </td>
+                              <td key={n}>{val ?? ''}</td>
                             )
                           })}
-                          <td>{editProdId===p.id? <input name="anio_11_plus_percent" type="number" step="0.001" value={(editProd?.anio_11_plus_percent ?? p.anio_11_plus_percent) ?? ''} placeholder={p.anio_11_plus_percent!=null? String(p.anio_11_plus_percent): ''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.anio_11_plus_percent??'')}</td>
+                          <td>{p.anio_11_plus_percent??''}</td>
                           <td style={{whiteSpace:'nowrap'}}>
-                            {editProdId===p.id? (
-                              <>
-                                <button type="button" className="btn btn-success btn-sm me-1" onClick={saveEditProd}>Guardar</button>
-                                <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditProd}>Cancelar</button>
-                              </>
-                            ) : (
-                              <>
-                                <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditProd(p)}>Editar</button>
-                                <button type="button" className="btn btn-outline-danger btn-sm" onClick={()=>removeProd(p.id)}>Eliminar</button>
-                              </>
-                            )}
+                            <>
+                              <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditProd(p)}>Editar</button>
+                              <button type="button" className="btn btn-outline-danger btn-sm" onClick={()=>removeProd(p.id)}>Eliminar</button>
+                            </>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+
+                {/* Modal de edición de producto */}
+                {editProdId && editProd && (
+                  <AppModal
+                    title={`Editar producto: ${editProd.nombre_comercial || ''}`}
+                    icon="pencil-square"
+                    width={900}
+                    onClose={cancelEditProd}
+                    footer={
+                      <>
+                        <button type="button" className="btn btn-soft-secondary btn-sm" onClick={cancelEditProd}>Cancelar</button>
+                        <button type="button" className="btn btn-success btn-sm" onClick={saveEditProd}>Guardar</button>
+                      </>
+                    }
+                  >
+                    <div className="container-fluid small">
+                      <div className="row g-2">
+                        <div className="col-12 col-md-6">
+                          <label className="form-label small mb-1">Nombre comercial</label>
+                          <input name="nombre_comercial" value={editProd.nombre_comercial ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                        </div>
+                        <div className="col-6 col-md-2">
+                          <label className="form-label small mb-1">Tipo</label>
+                          <select name="tipo_producto" value={(editProd.tipo_producto ?? 'VI') as TipoProducto} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <option value="VI">VI</option>
+                            <option value="GMM">GMM</option>
+                          </select>
+                        </div>
+                        <div className="col-6 col-md-2">
+                          <label className="form-label small mb-1">Moneda</label>
+                          <select name="moneda" value={(editProd.moneda || '') as MonedaPoliza|''} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <option value="">Cualquiera</option>
+                            <option value="MXN">MXN</option>
+                            <option value="USD">USD</option>
+                            <option value="UDI">UDI</option>
+                          </select>
+                        </div>
+                        <div className="col-6 col-md-2">
+                          <label className="form-label small mb-1">Duración (años)</label>
+                          <input name="duracion_anios" type="number" value={editProd.duracion_anios ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                        </div>
+                      </div>
+                      <hr />
+                      <div className="row g-2">
+                        {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
+                          type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
+                          const key = `anio_${n}_percent` as AnioKey
+                          const val = (editProd as Partial<Record<AnioKey, number|null>>)[key]
+                          return (
+                            <div className="col-6 col-md-2" key={n}>
+                              <label className="form-label small mb-1">AÑO {n}</label>
+                              <input name={key} type="number" step="0.001" value={val ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                            </div>
+                          )
+                        })}
+                        <div className="col-6 col-md-2">
+                          <label className="form-label small mb-1">AÑO 11+</label>
+                          <input name="anio_11_plus_percent" type="number" step="0.001" value={editProd.anio_11_plus_percent ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                        </div>
+                      </div>
+                    </div>
+                  </AppModal>
+                )}
               </div>
             )}
           </section>
