@@ -121,7 +121,10 @@ export default function ParametrosClient(){
     const val = (e.target as HTMLInputElement).type === 'number'
       ? (e.target.value === '' ? null : Number(e.target.value))
       : (e.target.value === '' ? null : e.target.value)
-    return { ...prev, [name]: val }
+    // Clamp 0-100 for percent fields
+    const isPercent = /^anio_([1-9]|10|11)_/.test(name)
+    const clamped = (isPercent && typeof val === 'number') ? Math.max(0, Math.min(100, val)) : val
+    return { ...prev, [name]: clamped }
   })
   const onChangeNewProd = (e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=> setNewProd(prev=> {
     const name = e.target.name
@@ -133,7 +136,16 @@ export default function ParametrosClient(){
   const saveEditProd = async ()=>{
     if(!editProdId||!editProd) return
     try {
-      const upd = await updateProductoParametro(editProdId, editProd)
+      // Round percent fields to 2 decimals before sending
+      const payload: Partial<ProductoParametro> = { ...editProd }
+      type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
+      for (const n of [1,2,3,4,5,6,7,8,9,10] as const) {
+        const key = `anio_${n}_percent` as AnioKey
+        const v = (payload as Partial<Record<AnioKey, number|null>>)[key]
+        if (typeof v === 'number') (payload as Partial<Record<AnioKey, number|null>>)[key] = Number(v.toFixed(2))
+      }
+      if (typeof payload.anio_11_plus_percent === 'number') payload.anio_11_plus_percent = Number(payload.anio_11_plus_percent.toFixed(2))
+      const upd = await updateProductoParametro(editProdId, payload)
       setProductos(list=> list.map(p=> p.id===upd.id? upd: p))
       setNotif({msg:'Producto actualizado', type:'success'})
     } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { cancelEditProd() }
@@ -330,7 +342,7 @@ export default function ParametrosClient(){
                             <div className="col-6 col-md-2" key={n}>
                               <label className="form-label small mb-1">AÑO {n}</label>
                               <div className="input-group input-group-sm">
-                                <input name={key} type="number" step="0.01" value={val ?? ''} onChange={onChangeEditProd} className="form-control" />
+                                <input name={key} type="number" step="0.01" min={0} max={100} value={val ?? ''} onChange={onChangeEditProd} className="form-control" />
                                 <span className="input-group-text">%</span>
                               </div>
                             </div>
@@ -339,7 +351,7 @@ export default function ParametrosClient(){
                         <div className="col-6 col-md-2">
                           <label className="form-label small mb-1">AÑO 11+</label>
                           <div className="input-group input-group-sm">
-                            <input name="anio_11_plus_percent" type="number" step="0.01" value={editProd.anio_11_plus_percent ?? ''} onChange={onChangeEditProd} className="form-control" />
+                            <input name="anio_11_plus_percent" type="number" step="0.01" min={0} max={100} value={editProd.anio_11_plus_percent ?? ''} onChange={onChangeEditProd} className="form-control" />
                             <span className="input-group-text">%</span>
                           </div>
                         </div>
