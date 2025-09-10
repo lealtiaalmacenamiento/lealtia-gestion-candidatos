@@ -470,7 +470,7 @@ Este anexo resume el alcance funcional y las reglas/validaciones clave definidas
 
 ---
 
-## Sprint 2 – Monedas y normalización (estado: Parcial → en curso)
+## Sprint 2 – Monedas y normalización (estado: Completado)
 
 Entregables implementados:
 - Funciones `get_current_udi(fecha)`, `get_fx_usd(fecha)`, `normalize_prima(monto, moneda, fecha)` y trigger BEFORE en `polizas` para mantener `prima_mxn` y `sa_mxn`.
@@ -480,9 +480,12 @@ Entregables implementados:
   - GET/POST `/api/market/fx` (listar y upsert por fecha)
   - Permisos POST restringidos a `admin | supervisor | super_usuario | superusuario`.
 
-Pendiente:
-- Programar job/cron de ingesta automática (Banxico) y una UI mínima de carga manual.
-- RLS específica en `udi_values`/`fx_values` (RLS habilitado; políticas detalladas se cerrarán en Sprint 7).
+RLS:
+- Políticas aplicadas: lectura para `authenticated`; escritura sólo para roles superiores (admin/supervisor/superusuario). Ver migración `20250909_fase3_sprint2_rls_policies.sql`.
+
+Operación (post-merge / despliegue):
+- Configurar Cron en la plataforma (p.ej. Vercel) apuntando a `/api/market/sync` con header `x-cron-secret: $MARKET_SYNC_SECRET` y definir variables `MARKET_SYNC_SECRET` y `BANXICO_TOKEN` en el entorno.
+- (Opcional) Crear una UI mínima de carga manual (ya disponible vía endpoints POST autenticados).
 
 Notas de uso rápido:
 - Upsert manual UDI/FX: enviar POST autenticado a `/api/market/udi` o `/api/market/fx` con cuerpo `{ fecha: 'YYYY-MM-DD', valor: number, source?: string, stale?: boolean }`.
