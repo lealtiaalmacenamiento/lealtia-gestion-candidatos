@@ -230,23 +230,23 @@ export default function ParametrosClient(){
 
                 <div className="table-responsive">
                   <table className="table table-sm table-bordered align-middle mb-0 table-nowrap">
-                    <thead className="table-light">
+          <thead className="table-light">
                       <tr>
                         <th>Nombre</th>
                         <th>Tipo</th>
                         <th>Moneda</th>
                         <th>Duración</th>
-                        <th>AÑO 1</th>
-                        <th>AÑO 2</th>
-                        <th>AÑO 3</th>
-                        <th>AÑO 4</th>
-                        <th>AÑO 5</th>
-                        <th>AÑO 6</th>
-                        <th>AÑO 7</th>
-                        <th>AÑO 8</th>
-                        <th>AÑO 9</th>
-                        <th>AÑO 10</th>
-                        <th>AÑO 11+</th>
+            <th>AÑO 1 (%)</th>
+            <th>AÑO 2 (%)</th>
+            <th>AÑO 3 (%)</th>
+            <th>AÑO 4 (%)</th>
+            <th>AÑO 5 (%)</th>
+            <th>AÑO 6 (%)</th>
+            <th>AÑO 7 (%)</th>
+            <th>AÑO 8 (%)</th>
+            <th>AÑO 9 (%)</th>
+            <th>AÑO 10 (%)</th>
+            <th>AÑO 11+ (%)</th>
                         <th style={{width:150}}>Acciones</th>
                       </tr>
                     </thead>
@@ -258,15 +258,15 @@ export default function ParametrosClient(){
                           <td>{p.tipo_producto}</td>
                           <td>{p.moneda||''}</td>
                           <td>{p.duracion_anios??''}</td>
-                          {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
+              {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
                             type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
                             const key = `anio_${n}_percent` as AnioKey
                             const val = ((p as unknown) as Record<string, unknown>)[key] as number | null | undefined
                             return (
-                              <td key={n}>{val ?? ''}</td>
+                <td key={n}>{val!=null? `${Number(val).toFixed(3)} %` : ''}</td>
                             )
                           })}
-                          <td>{p.anio_11_plus_percent??''}</td>
+              <td>{p.anio_11_plus_percent!=null? `${Number(p.anio_11_plus_percent).toFixed(3)} %` : ''}</td>
                           <td style={{whiteSpace:'nowrap'}}>
                             <>
                               <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditProd(p)}>Editar</button>
@@ -329,13 +329,19 @@ export default function ParametrosClient(){
                           return (
                             <div className="col-6 col-md-2" key={n}>
                               <label className="form-label small mb-1">AÑO {n}</label>
-                              <input name={key} type="number" step="0.001" value={val ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                              <div className="input-group input-group-sm">
+                                <input name={key} type="number" step="0.01" value={val ?? ''} onChange={onChangeEditProd} className="form-control" />
+                                <span className="input-group-text">%</span>
+                              </div>
                             </div>
                           )
                         })}
                         <div className="col-6 col-md-2">
                           <label className="form-label small mb-1">AÑO 11+</label>
-                          <input name="anio_11_plus_percent" type="number" step="0.001" value={editProd.anio_11_plus_percent ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                          <div className="input-group input-group-sm">
+                            <input name="anio_11_plus_percent" type="number" step="0.01" value={editProd.anio_11_plus_percent ?? ''} onChange={onChangeEditProd} className="form-control" />
+                            <span className="input-group-text">%</span>
+                          </div>
                         </div>
                       </div>
                     </div>
