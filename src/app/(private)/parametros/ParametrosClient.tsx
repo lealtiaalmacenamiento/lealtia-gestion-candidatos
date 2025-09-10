@@ -38,6 +38,8 @@ export default function ParametrosClient(){
   const [newCondExpr, setNewCondExpr] = useState<string>('')
   type Op = '<' | '<=' | '>' | '>='
   const [newProd, setNewProd] = useState<Partial<ProductoParametro>>({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
+  const [savingProdEdit, setSavingProdEdit] = useState(false)
+  const [savingProdNew, setSavingProdNew] = useState(false)
   // Fase 2 metas
   const [openFase2,setOpenFase2]=useState(false)
   const [metaProspectos,setMetaProspectos]=useState<number|null>(null)
@@ -174,6 +176,7 @@ export default function ParametrosClient(){
   const saveEditProd = async ()=>{
     if(!editProdId||!editProd) return
     try {
+  setSavingProdEdit(true)
       // Round percent fields to 2 decimals before sending
       const payload: Partial<ProductoParametro> = { ...editProd }
       type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
@@ -204,11 +207,12 @@ export default function ParametrosClient(){
       const upd = await updateProductoParametro(editProdId, payload)
       setProductos(list=> list.map(p=> p.id===upd.id? upd: p))
       setNotif({msg:'Producto actualizado', type:'success'})
-    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { cancelEditProd() }
+    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { setSavingProdEdit(false); cancelEditProd() }
   }
   const addNewProd = async ()=>{
     if(!newProd.nombre_comercial || !newProd.tipo_producto){ setNotif({msg:'Completa al menos nombre y tipo', type:'warning'}); return }
     try {
+      setSavingProdNew(true)
       // normaliza tipos
   const payload: Partial<ProductoParametro> = { ...newProd }
   const parsed = parseCondExpr((newCondExpr||'').trim())
@@ -223,7 +227,7 @@ export default function ParametrosClient(){
   setNewProd({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
   setNewCondExpr('')
       setNotif({msg:'Producto creado', type:'success'})
-    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) }
+  } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { setSavingProdNew(false) }
   }
   const removeProd = async (id: string)=>{
     if(!window.confirm(`¿Eliminar la variante de producto?`)) return
@@ -304,7 +308,7 @@ export default function ParametrosClient(){
                       <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45 años&quot;, &quot;&gt;65 años&quot;</div>
                     </div>
                     <div className="col-12 col-md-2 d-grid">
-                      <button type="button" onClick={addNewProd} className="btn btn-primary btn-sm">Agregar</button>
+                      <button type="button" onClick={addNewProd} disabled={savingProdNew} className="btn btn-primary btn-sm">{savingProdNew? 'Agregando…':'Agregar'}</button>
                     </div>
                   </div>
                 </div>
@@ -369,10 +373,10 @@ export default function ParametrosClient(){
                     icon="pencil-square"
                     width={900}
                     onClose={cancelEditProd}
-                    footer={
+          footer={
                       <>
-                        <button type="button" className="btn btn-soft-secondary btn-sm" onClick={cancelEditProd}>Cancelar</button>
-                        <button type="button" className="btn btn-success btn-sm" onClick={saveEditProd}>Guardar</button>
+            <button type="button" className="btn btn-soft-secondary btn-sm" onClick={cancelEditProd} disabled={savingProdEdit}>Cancelar</button>
+            <button type="button" className="btn btn-success btn-sm" onClick={saveEditProd} disabled={savingProdEdit}>{savingProdEdit? 'Guardando…':'Guardar'}</button>
                       </>
                     }
                   >
@@ -381,6 +385,22 @@ export default function ParametrosClient(){
                         <div className="col-12 col-md-6">
                           <label className="form-label small mb-1">Nombre comercial</label>
                           <input name="nombre_comercial" value={editProd.nombre_comercial ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                        </div>
+                        <div className="col-6 col-md-3">
+                          <label className="form-label small mb-1">Tipo</label>
+                          <select name="tipo_producto" value={(editProd.tipo_producto as TipoProducto) || 'VI'} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <option value="VI">VI</option>
+                            <option value="GMM">GMM</option>
+                          </select>
+                        </div>
+                        <div className="col-6 col-md-3">
+                          <label className="form-label small mb-1">Moneda</label>
+                          <select name="moneda" value={(editProd.moneda as MonedaPoliza) || ''} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <option value="">Cualquiera</option>
+                            <option value="MXN">MXN</option>
+                            <option value="USD">USD</option>
+                            <option value="UDI">UDI</option>
+                          </select>
                         </div>
                         <div className="col-6 col-md-3">
                           <label className="form-label small mb-1">Duración (años)</label>
