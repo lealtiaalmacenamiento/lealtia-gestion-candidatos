@@ -489,3 +489,21 @@ Operación (post-merge / despliegue):
 
 Notas de uso rápido:
 - Upsert manual UDI/FX: enviar POST autenticado a `/api/market/udi` o `/api/market/fx` con cuerpo `{ fecha: 'YYYY-MM-DD', valor: number, source?: string, stale?: boolean }`.
+
+---
+
+## Sprint 3 – Puntos y caché (estado: Completado)
+
+Entregables implementados:
+- Función `recalc_puntos_poliza(poliza_id)` con reglas de puntos por rangos (VI y GMM) usando `prima_mxn`.
+- Snapshot en `poliza_puntos_cache` con:
+  - `puntos_total`, `clasificacion`, `base_factor` (porcentaje por año del producto), `year_factor`, `producto_parametro_id`.
+  - Tasas aplicadas: `udi_valor`, `usd_fx` y `breakdown` con `prima_mxn`, `sa_mxn`, `fx_aplicado`, `udi_aplicada`.
+- Triggers AFTER en `polizas` que recalculan al cambiar: `prima_input`, `prima_moneda`, `sa_input`, `sa_moneda`, `fecha_emision`, `estatus`, `producto_parametro_id`.
+- Auto-selección de variante (`producto_parametro_id`) cuando venga NULL: prioriza coincidencia de moneda y rango de SA.
+- Recalculo masivo: `recalc_puntos_poliza_all(p_limit int default null)`.
+- Integración operativa: el endpoint `/api/market/sync` (Banxico) dispara recálculo dirigido por fecha y moneda tras upsert de UDI/FX.
+
+Notas:
+- Si no existe variante aplicable, se deja `producto_parametro_id` NULL y la clasificación puede resultar NULL.
+- Para resultados consistentes, mantener UDI/FX del día cargados (cron de mercado activo).
