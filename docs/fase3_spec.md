@@ -467,3 +467,22 @@ Este anexo resume el alcance funcional y las reglas/validaciones clave definidas
 - Autenticación: admite ejecución por cron con secreto y por sesión de usuario autorizado.
 - Ventana por defecto: día CDMX; soporta modos last24h y rango explícito. "Cambios" siempre se genera; "Usuarios – Última conexión" se puebla desde Auth (last_sign_in_at).
 - Comportamiento sin datos: el archivo se envía igualmente con hojas vacías salvo que se especifique 'skipIfEmpty' donde aplique.
+
+---
+
+## Sprint 2 – Monedas y normalización (estado: Parcial → en curso)
+
+Entregables implementados:
+- Funciones `get_current_udi(fecha)`, `get_fx_usd(fecha)`, `normalize_prima(monto, moneda, fecha)` y trigger BEFORE en `polizas` para mantener `prima_mxn` y `sa_mxn`.
+- Seeds mínimos para la fecha actual en `udi_values` y `fx_values`.
+- Endpoints admin de mercado:
+  - GET/POST `/api/market/udi` (listar y upsert por fecha)
+  - GET/POST `/api/market/fx` (listar y upsert por fecha)
+  - Permisos POST restringidos a `admin | supervisor | super_usuario | superusuario`.
+
+Pendiente:
+- Programar job/cron de ingesta automática (Banxico) y una UI mínima de carga manual.
+- RLS específica en `udi_values`/`fx_values` (RLS habilitado; políticas detalladas se cerrarán en Sprint 7).
+
+Notas de uso rápido:
+- Upsert manual UDI/FX: enviar POST autenticado a `/api/market/udi` o `/api/market/fx` con cuerpo `{ fecha: 'YYYY-MM-DD', valor: number, source?: string, stale?: boolean }`.

@@ -8,6 +8,14 @@ export const runtime = 'nodejs'
 // Evita cualquier caching accidental en plataformas que puedan cachear GET
 export const dynamic = 'force-dynamic'
 
+function okCronSecret(req: Request): boolean {
+  const secret = (process.env.REPORTES_CRON_SECRET || '').trim()
+  if (!secret) return true // sin secreto definido, no se aplica restricción
+  const url = new URL(req.url)
+  const hdr = req.headers.get('x-cron-secret') || url.searchParams.get('secret')
+  return !!hdr && hdr === secret
+}
+
 // Tipado de filas de historial
 type HistRow = {
   id: number
@@ -49,6 +57,9 @@ function fmtCDMX(d: string | Date) {
 }
 
 export async function GET(req: Request) {
+  if (!okCronSecret(req)) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  }
   const supa = ensureAdminClient()
   const url = new URL(req.url)
   const startQ = url.searchParams.get('start')
