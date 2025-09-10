@@ -35,6 +35,7 @@ export default function ParametrosClient(){
   const [editProdId, setEditProdId] = useState<string|null>(null)
   const [editProd, setEditProd] = useState<Partial<ProductoParametro>|null>(null)
   const [editCondExpr, setEditCondExpr] = useState<string>('')
+  const [newCondExpr, setNewCondExpr] = useState<string>('')
   type Op = '<' | '<=' | '>' | '>='
   const [newProd, setNewProd] = useState<Partial<ProductoParametro>>({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
   // Fase 2 metas
@@ -209,10 +210,18 @@ export default function ParametrosClient(){
     if(!newProd.nombre_comercial || !newProd.tipo_producto){ setNotif({msg:'Completa al menos nombre y tipo', type:'warning'}); return }
     try {
       // normaliza tipos
-      const payload: Partial<ProductoParametro> = { ...newProd }
+  const payload: Partial<ProductoParametro> = { ...newProd }
+  const parsed = parseCondExpr((newCondExpr||'').trim())
+  payload.condicion_sa_tipo = (parsed.condicion_sa_tipo as string|undefined) ?? null
+  payload.sa_min = (parsed.sa_min as number|undefined) ?? null
+  payload.sa_max = (parsed.sa_max as number|undefined) ?? null
+  payload.condicion_edad_tipo = (parsed.condicion_edad_tipo as string|undefined) ?? null
+  payload.edad_min = (parsed.edad_min as number|undefined) ?? null
+  payload.edad_max = (parsed.edad_max as number|undefined) ?? null
       const created = await createProductoParametro(payload)
       setProductos(list=> [created, ...list])
-      setNewProd({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
+  setNewProd({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
+  setNewCondExpr('')
       setNotif({msg:'Producto creado', type:'success'})
     } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) }
   }
@@ -289,6 +298,11 @@ export default function ParametrosClient(){
                       <label className="form-label small mb-1">Duración (años)</label>
                       <input name="duracion_anios" value={newProd.duracion_anios??''} onChange={onChangeNewProd} type="number" className="form-control form-control-sm" />
                     </div>
+                    <div className="col-12 col-md-3">
+                      <label className="form-label small mb-1">Suma Asegurada (SA)</label>
+                      <input value={newCondExpr} onChange={e=> setNewCondExpr(e.target.value)} className="form-control form-control-sm" placeholder=">= 500,000 | < 1,500,000 | <=45 | >65" />
+                      <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45&quot;, &quot;&gt;65&quot;</div>
+                    </div>
                     <div className="col-12 col-md-2 d-grid">
                       <button type="button" onClick={addNewProd} className="btn btn-primary btn-sm">Agregar</button>
                     </div>
@@ -300,6 +314,8 @@ export default function ParametrosClient(){
           <thead className="table-light">
                       <tr>
             <th>Producto</th>
+            <th>Tipo</th>
+            <th>Moneda</th>
             <th>Duración (años)</th>
             <th>Suma Asegurada (SA)</th>
             <th>AÑO 1 (%)</th>
@@ -321,6 +337,8 @@ export default function ParametrosClient(){
                       {productos.map(p=> (
                         <tr key={p.id}>
                           <td>{p.nombre_comercial}</td>
+                          <td>{p.tipo_producto}</td>
+                          <td>{p.moneda||''}</td>
                           <td>{p.duracion_anios??''}</td>
                           <td>{formatCondExpr(p)}</td>
               {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
