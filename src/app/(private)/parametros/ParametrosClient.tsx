@@ -300,8 +300,8 @@ export default function ParametrosClient(){
                     </div>
                     <div className="col-12 col-md-3">
                       <label className="form-label small mb-1">Suma Asegurada (SA)</label>
-                      <input value={newCondExpr} onChange={e=> setNewCondExpr(e.target.value)} className="form-control form-control-sm" placeholder=">= 500,000 | < 1,500,000 | <=45 | >65" />
-                      <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45&quot;, &quot;&gt;65&quot;</div>
+                      <input value={newCondExpr} onChange={e=> setNewCondExpr(e.target.value)} className="form-control form-control-sm" placeholder=">= 500,000 | < 1,500,000 | <=45 años | >65 años" />
+                      <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45 años&quot;, &quot;&gt;65 años&quot;</div>
                     </div>
                     <div className="col-12 col-md-2 d-grid">
                       <button type="button" onClick={addNewProd} className="btn btn-primary btn-sm">Agregar</button>
@@ -388,8 +388,8 @@ export default function ParametrosClient(){
                         </div>
                         <div className="col-12 col-md-3">
                           <label className="form-label small mb-1">Suma Asegurada (SA)</label>
-                          <input value={editCondExpr} onChange={e=> setEditCondExpr(e.target.value)} className="form-control form-control-sm" placeholder=">= 500,000 | < 1,500,000 | <=45 | >65" />
-                          <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45&quot;, &quot;&gt;65&quot;</div>
+                          <input value={editCondExpr} onChange={e=> setEditCondExpr(e.target.value)} className="form-control form-control-sm" placeholder=">= 500,000 | < 1,500,000 | <=45 años | >65 años" />
+                          <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45 años&quot;, &quot;&gt;65 años&quot;</div>
                         </div>
                       </div>
                       <hr />
