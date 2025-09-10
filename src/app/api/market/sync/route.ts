@@ -40,6 +40,27 @@ async function fetchBanxicoSerie(serie: string, date: string, token: string) {
   return { fecha: iso, valor }
 }
 
+async function recalcForDateAndCurrency(fechaISO: string, moneda: 'USD' | 'UDI') {
+  // Recalcula sólo pólizas cuya fecha_emision coincide y que usan esa moneda en prima o SA
+  const pols = await supabase
+    .from('polizas')
+    .select('id')
+    .eq('fecha_emision', fechaISO)
+    .or(`prima_moneda.eq.${moneda},sa_moneda.eq.${moneda}`)
+
+  if (pols.error) {
+    return { count: 0, error: pols.error.message }
+  }
+  const ids: string[] = (pols.data as Array<{ id: string }> | null || []).map(r => r.id)
+  let ok = 0
+  for (const id of ids) {
+    // Llamar función RPC para recálculo puntual
+    const r = await supabase.rpc('recalc_puntos_poliza', { p_poliza_id: id })
+    if (!r.error) ok++
+  }
+  return { count: ok }
+}
+
 export async function POST(req: Request) {
   if (!okSecret(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
   const url = new URL(req.url)
@@ -56,6 +77,9 @@ export async function POST(req: Request) {
       const up = await supabase.from('udi_values').upsert({ fecha, valor, source: 'banxico', fetched_at: new Date().toISOString(), stale: false }, { onConflict: 'fecha' }).select().single()
       if (up.error) throw up.error
       results.udi = up.data
+  // Recalcular afectadas (fecha exacta y moneda UDI)
+  const rec = await recalcForDateAndCurrency(fecha, 'UDI')
+  results.udi_recalc = rec
     }
     if (source === 'fx' || source === 'both') {
       // USD/MXN FIX serie SF43718
@@ -63,6 +87,9 @@ export async function POST(req: Request) {
       const up = await supabase.from('fx_values').upsert({ fecha, valor, source: 'banxico', fetched_at: new Date().toISOString(), stale: false }, { onConflict: 'fecha' }).select().single()
       if (up.error) throw up.error
       results.fx = up.data
+  // Recalcular afectadas (fecha exacta y moneda USD)
+  const rec = await recalcForDateAndCurrency(fecha, 'USD')
+  results.fx_recalc = rec
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
