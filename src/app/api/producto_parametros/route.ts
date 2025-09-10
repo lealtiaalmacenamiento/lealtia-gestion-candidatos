@@ -50,11 +50,11 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json()
-  const invalid = Object.keys(body).filter(k => !allowedFields.has(k))
-  if (invalid.length) {
-    return NextResponse.json({ error: 'Campos no permitidos', invalid, permitidos: Array.from(allowedFields) }, { status: 400 })
-  }
-  const insertBody = { activo: true, puntos_multiplicador: 1, ...body }
+  // Filtra solo campos permitidos; ignora el resto para evitar errores innecesarios
+  const cleaned = Object.fromEntries(
+    Object.entries(body).filter(([k]) => (allowedFields as Set<string>).has(k as string))
+  ) as Record<string, unknown>
+  const insertBody = { activo: true, puntos_multiplicador: 1, ...cleaned }
   const { data, error } = await supabase.from('producto_parametros').insert([insertBody]).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

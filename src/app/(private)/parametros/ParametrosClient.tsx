@@ -254,23 +254,23 @@ export default function ParametrosClient(){
                       {productos.length===0 && (<tr><td colSpan={16} className="text-center small">Sin variantes</td></tr>)}
                       {productos.map(p=> (
                         <tr key={p.id}>
-                          <td>{editProdId===p.id? <input name="nombre_comercial" value={editProd?.nombre_comercial||''} onChange={onChangeEditProd} className="form-control form-control-sm" />: p.nombre_comercial}</td>
+                          <td>{editProdId===p.id? <input name="nombre_comercial" value={editProd?.nombre_comercial ?? p.nombre_comercial ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />: p.nombre_comercial}</td>
                           <td>{editProdId===p.id? (
-                            <select name="tipo_producto" value={editProd?.tipo_producto as TipoProducto} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <select name="tipo_producto" value={(editProd?.tipo_producto ?? p.tipo_producto) as TipoProducto} onChange={onChangeEditProd} className="form-select form-select-sm">
                               <option value="VI">VI</option>
                               <option value="GMM">GMM</option>
                             </select>
                           ) : p.tipo_producto}
                           </td>
                           <td>{editProdId===p.id? (
-                            <select name="moneda" value={(editProd?.moneda||'') as MonedaPoliza|''} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <select name="moneda" value={((editProd?.moneda ?? p.moneda) || '') as MonedaPoliza|''} onChange={onChangeEditProd} className="form-select form-select-sm">
                               <option value="">Cualquiera</option>
                               <option value="MXN">MXN</option>
                               <option value="USD">USD</option>
                               <option value="UDI">UDI</option>
                             </select>
                           ): (p.moneda||'')}</td>
-                          <td>{editProdId===p.id? <input name="duracion_anios" type="number" value={editProd?.duracion_anios??''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.duracion_anios??'')}</td>
+                          <td>{editProdId===p.id? <input name="duracion_anios" type="number" value={(editProd?.duracion_anios ?? p.duracion_anios) ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.duracion_anios??'')}</td>
                           {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
                             type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
                             const key = `anio_${n}_percent` as AnioKey
@@ -279,12 +279,12 @@ export default function ParametrosClient(){
                             return (
                               <td key={n}>
                                 {editProdId===p.id
-                                  ? <input name={key} type="number" step="0.001" value={editVal ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                                  ? <input name={key} type="number" step="0.001" value={(editVal ?? (val ?? '')) as number|''} placeholder={val!=null? String(val): ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
                                   : (val ?? '')}
                               </td>
                             )
                           })}
-                          <td>{editProdId===p.id? <input name="anio_11_plus_percent" type="number" step="0.001" value={editProd?.anio_11_plus_percent??''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.anio_11_plus_percent??'')}</td>
+                          <td>{editProdId===p.id? <input name="anio_11_plus_percent" type="number" step="0.001" value={(editProd?.anio_11_plus_percent ?? p.anio_11_plus_percent) ?? ''} placeholder={p.anio_11_plus_percent!=null? String(p.anio_11_plus_percent): ''} onChange={onChangeEditProd} className="form-control form-control-sm" /> : (p.anio_11_plus_percent??'')}</td>
                           <td style={{whiteSpace:'nowrap'}}>
                             {editProdId===p.id? (
                               <>

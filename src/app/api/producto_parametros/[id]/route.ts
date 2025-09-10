@@ -43,14 +43,19 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
 
   const body = await req.json()
-  const invalid = Object.keys(body).filter(k => !allowedFields.has(k))
-  if (invalid.length) {
-    return NextResponse.json({ error: 'Campos no permitidos', invalid, permitidos: Array.from(allowedFields) }, { status: 400 })
+  // Filtra campos permitidos; ignora el resto para permitir payloads con extras del UI
+  const cleaned = Object.fromEntries(
+    Object.entries(body).filter(([k]) => (allowedFields as Set<string>).has(k as string))
+  )
+  if (Object.keys(cleaned).length === 0) {
+    const url = new URL(req.url)
+    const debug = url.searchParams.get('debug') === '1'
+    return NextResponse.json({ error: 'Sin cambios', ...(debug ? { provided_keys: Object.keys(body) } : {}) }, { status: 400 })
   }
-  const { data, error } = await supabase.from('producto_parametros').update(body).eq('id', id).select().single()
+  const { data, error } = await supabase.from('producto_parametros').update(cleaned).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  await logAccion('edicion_producto_parametro', { usuario: usuario.email, tabla_afectada: 'producto_parametros', id_registro: 0, snapshot: existente.data })
+  await logAccion('edicion_producto_parametro', { usuario: usuario.email, tabla_afectada: 'producto_parametros', id_registro: data?.id ?? 0, snapshot: existente.data })
   return NextResponse.json(data)
 }
 
