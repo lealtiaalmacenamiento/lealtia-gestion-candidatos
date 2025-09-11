@@ -25,10 +25,15 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim().toLowerCase()
 
-  let sel = supa.from('clientes').select('id, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email').order('created_at', { ascending: false }).limit(100)
+  let sel = supa
+    .from('clientes')
+    .select('id, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email')
+    .limit(100)
   if (q) {
     sel = sel.or(`email.ilike.%${q}%,primer_nombre.ilike.%${q}%,segundo_nombre.ilike.%${q}%,primer_apellido.ilike.%${q}%,segundo_apellido.ilike.%${q}%`)
   }
+  // Use a safe ordering column that is guaranteed to exist
+  sel = sel.order('id', { ascending: true })
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json({ items: data || [] })
