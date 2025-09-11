@@ -24,11 +24,36 @@ export async function POST(req: Request) {
   const supa = await getSupa()
   const { data: auth } = await supa.auth.getUser()
   if (!auth?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  const body = await req.json().catch(() => null) as { request_id?: string, motivo?: string }
+  const body = await req.json().catch(() => null) as { request_id?: string, motivo?: string, debug?: boolean }
   if (!body?.request_id) return NextResponse.json({ error: 'Falta request_id' }, { status: 400 })
 
+  const debugOn = body.debug || process.env.NODE_ENV === 'development'
+  if (debugOn) {
+    try {
+      console.debug('[reject_poliza_update][debug] user.id', auth.user.id)
+      console.debug('[reject_poliza_update][debug] request_id', body.request_id)
+      const { data: usuarioRow } = await supa.from('usuarios').select('id,id_auth,rol,activo').eq('id_auth', auth.user.id).maybeSingle()
+      console.debug('[reject_poliza_update][debug] usuarios row', usuarioRow)
+      const { data: reqRow } = await supa.from('poliza_update_requests').select('id,estado,poliza_id,solicitante_id').eq('id', body.request_id).maybeSingle()
+      console.debug('[reject_poliza_update][debug] update_request row', reqRow)
+    } catch (e) {
+      console.debug('[reject_poliza_update][debug] error fetching pre-data', e)
+    }
+  }
+
   const rpc = await supa.rpc('reject_poliza_update', { p_request_id: body.request_id, p_motivo: body.motivo || '' })
-  if (rpc.error) return NextResponse.json({ error: rpc.error.message }, { status: 400 })
+  if (rpc.error) {
+    if (debugOn) {
+      console.debug('[reject_poliza_update][debug] rpc.error', rpc.error)
+      try {
+        const { data: isSuper } = await supa.rpc('is_super_role_wrapper')
+        console.debug('[reject_poliza_update][debug] is_super_role_wrapper()', isSuper)
+      } catch (e) {
+        console.debug('[reject_poliza_update][debug] fallo wrapper is_super_role', e)
+      }
+    }
+    return NextResponse.json({ error: rpc.error.message, details: rpc.error.details, hint: rpc.error.hint, code: rpc.error.code }, { status: 400 })
+  }
 
   try {
     const { data: reqRow } = await supa

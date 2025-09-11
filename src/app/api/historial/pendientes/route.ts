@@ -74,12 +74,13 @@ export async function GET() {
   const usuariosMap = new Map<string, { nombre?: string | null, email?: string | null }>()
   if (solicitantes.size) {
     try {
+      // solicitante_id proviene de auth.uid() (uuid); en la tabla usuarios corresponde a usuarios.id_auth
       const { data: users } = await supa
         .from('usuarios')
-        .select('id, nombre, email')
-        .in('id', Array.from(solicitantes))
-      for (const u of (users || []) as Array<{ id: string, nombre?: string | null, email?: string | null }>) {
-        usuariosMap.set(u.id, { nombre: u.nombre ?? null, email: u.email ?? null })
+        .select('id_auth, nombre, email')
+        .in('id_auth', Array.from(solicitantes))
+      for (const u of (users || []) as Array<{ id_auth: string, nombre?: string | null, email?: string | null }>) {
+        usuariosMap.set(u.id_auth, { nombre: u.nombre ?? null, email: u.email ?? null })
       }
     } catch { /* omit enrichment on RLS error */ }
   }
