@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       const admin = getServiceClient()
       let sel = admin
     .from('polizas')
-    .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto)')
+  .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto)')
         .order('fecha_alta_sistema', { ascending: false })
         .limit(100)
       if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // map join + computed fields
-    type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
@@ -82,7 +82,8 @@ export async function GET(req: Request) {
       numero_poliza: r.numero_poliza,
       estatus: r.estatus,
       forma_pago: r.forma_pago,
-      prima_input: r.prima_input,
+  prima_input: r.prima_input,
+  periodicidad_pago: r.periodicidad_pago ?? null,
       prima_moneda: r.prima_moneda,
       sa_input: r.sa_input,
       sa_moneda: r.sa_moneda,
@@ -105,7 +106,7 @@ export async function GET(req: Request) {
   const supa = await getSupa()
   let sel = supa
       .from('polizas')
-    .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), clientes!inner(asesor_id)')
+    .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), clientes!inner(asesor_id)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
   if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
@@ -119,7 +120,7 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // quitar campo join anidado
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
@@ -139,7 +140,8 @@ export async function GET(req: Request) {
       cliente_id: r.cliente_id,
       numero_poliza: r.numero_poliza,
       estatus: r.estatus,
-      forma_pago: r.forma_pago,
+  forma_pago: r.forma_pago,
+  periodicidad_pago: r.periodicidad_pago ?? null,
       prima_input: r.prima_input,
       prima_moneda: r.prima_moneda,
       sa_input: r.sa_input,
@@ -189,7 +191,8 @@ export async function POST(req: Request) {
     numero_poliza?: string
     fecha_emision?: string
   fecha_renovacion?: string
-    forma_pago?: string
+  forma_pago?: string
+  periodicidad_pago?: string
   tipo_pago?: string
   dia_pago?: number
   meses_check?: Record<string, boolean>
@@ -206,7 +209,15 @@ export async function POST(req: Request) {
   const numero_poliza = (body.numero_poliza || '').trim()
   const fecha_emision = (body.fecha_emision || '').trim() // YYYY-MM-DD
   const fecha_renovacion = (body.fecha_renovacion || '').trim()
-  const forma_pago = (body.forma_pago || '').trim()
+  const forma_pago_raw = (body.forma_pago || '').trim()
+  const periodicidad_pago = (body.periodicidad_pago || '').trim()
+  // If front-end sent legacy A/S/T/M in forma_pago, interpret it as periodicidad and require a method in tipo_pago or default MODO_DIRECTO
+  let forma_pago = forma_pago_raw
+  const isFreq = ['A','S','T','M'].includes(forma_pago_raw)
+  if (isFreq) {
+    // shift to periodicidad if not provided
+    forma_pago = (body.tipo_pago && ['MODO_DIRECTO','CARGO_AUTOMATICO'].includes(body.tipo_pago)) ? body.tipo_pago : 'MODO_DIRECTO'
+  }
   const tipo_pago = (body.tipo_pago || '').trim()
   const dia_pago = typeof body.dia_pago === 'number' ? body.dia_pago : null
   const meses_check = body.meses_check && typeof body.meses_check === 'object' ? body.meses_check : null
@@ -255,6 +266,7 @@ export async function POST(req: Request) {
     fecha_emision,
   fecha_renovacion: fecha_renovacion || null,
     forma_pago,
+    periodicidad_pago: isFreq ? forma_pago_raw : (periodicidad_pago || null),
   tipo_pago: tipo_pago || null,
   dia_pago: dia_pago,
   meses_check: meses_check || {},
