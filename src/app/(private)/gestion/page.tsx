@@ -342,11 +342,25 @@ export default function GestionPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="d-flex flex-column"><label className="form-label small">No. Póliza</label><input className="form-control form-control-sm" value={editPoliza.numero_poliza||''} onChange={e=>setEditPoliza({...editPoliza, numero_poliza: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Estatus</label><input className="form-control form-control-sm" value={editPoliza.estatus||''} onChange={e=>setEditPoliza({...editPoliza, estatus: e.target.value})} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Forma de pago</label><input className="form-control form-control-sm" value={editPoliza.forma_pago||''} onChange={e=>setEditPoliza({...editPoliza, forma_pago: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Forma de pago</label>
+                  <select className="form-select form-select-sm" value={editPoliza.forma_pago||''} onChange={e=>setEditPoliza({...editPoliza, forma_pago: e.target.value})}>
+                    <option value="">—</option>
+                    <option value="A">A</option>
+                    <option value="S">S</option>
+                    <option value="T">T</option>
+                    <option value="M">M</option>
+                  </select>
+                </div>
                 <div className="d-flex flex-column"><label className="form-label small">Fecha emisión</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_emision || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_emision: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Fecha renovación</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_renovacion || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_renovacion: e.target.value||undefined})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Tipo</label><input className="form-control form-control-sm" disabled value={editPoliza.tipo_producto || ''} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Tipo de pago</label><input className="form-control form-control-sm" value={editPoliza.tipo_pago || ''} onChange={e=>setEditPoliza({...editPoliza, tipo_pago: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Tipo de pago</label>
+                  <select className="form-select form-select-sm" value={editPoliza.tipo_pago || ''} onChange={e=>setEditPoliza({...editPoliza, tipo_pago: e.target.value})}>
+                    <option value="">—</option>
+                    <option value="MODO_DIRECTO">Modo directo</option>
+                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
+                  </select>
+                </div>
                 <div className="d-flex flex-column"><label className="form-label small">Día de pago</label><input className="form-control form-control-sm" type="number" min={1} max={31} value={editPoliza.dia_pago ?? ''} onChange={e=>{ const v = parseInt(e.target.value,10); setEditPoliza({...editPoliza, dia_pago: isFinite(v)? v:null}) }} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Prima</label><input className="form-control form-control-sm" value={editPoliza.prima_input ?? ''} onChange={e=>setEditPoliza({...editPoliza, prima_input: toNumOrNull(e.target.value)})} /></div>
               </div>
@@ -386,7 +400,7 @@ export default function GestionPage() {
                 <div className="d-flex flex-column">
                   <label className="form-label small">Tipo de producto</label>
                   <select className="form-select form-select-sm" value={tipoProducto} onChange={e=>{ setTipoProducto(e.target.value); setNuevaPoliza({...nuevaPoliza, producto_parametro_id: undefined, prima_moneda: 'MXN'}) }}>
-                    <option value="">Todos</option>
+                    <option value="">Selecciona uno</option>
                     <option value="VI">Vida (VI)</option>
                     <option value="GMM">Gastos médicos (GMM)</option>
                   </select>
@@ -419,13 +433,19 @@ export default function GestionPage() {
                   <label className="form-label small">Forma de pago</label>
                   <select className="form-select form-select-sm" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})}>
                     <option value="">Selecciona…</option>
-                    <option value="MODO_DIRECTO">Modo directo</option>
-                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
+                    <option value="A">A</option>
+                    <option value="S">S</option>
+                    <option value="T">T</option>
+                    <option value="M">M</option>
                   </select>
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Tipo de pago</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.tipo_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, tipo_pago: e.target.value})} />
+                  <select className="form-select form-select-sm" value={nuevaPoliza.tipo_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, tipo_pago: e.target.value})}>
+                    <option value="">Selecciona…</option>
+                    <option value="MODO_DIRECTO">Modo directo</option>
+                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
+                  </select>
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Día de pago</label>
