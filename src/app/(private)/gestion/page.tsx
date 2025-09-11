@@ -20,7 +20,8 @@ type Poliza = {
   cliente_id: string
   numero_poliza?: string|null
   estatus?: string|null
-  forma_pago?: string|null
+  forma_pago?: string|null // método cobro (MODO_DIRECTO/CARGO_AUTOMATICO)
+  periodicidad_pago?: string|null // A/S/T/M
   prima_input?: number|null
   prima_moneda?: string|null
   sa_input?: number|null
@@ -56,7 +57,7 @@ export default function GestionPage() {
   const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
   const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string; moneda?: string|null; sa_min?: number|null; sa_max?: number|null }>>([])
   const [tipoProducto, setTipoProducto] = useState<string>('')
-  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; tipo_pago: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', tipo_pago: '', dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
+  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; periodicidad_pago?: string; tipo_pago: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, tipo_pago: '', dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
 
   useEffect(() => {
     if (!addingPoliza) return
@@ -303,7 +304,8 @@ export default function GestionPage() {
                   <th>No. Póliza</th>
                   <th>Producto</th>
                   <th>Estatus</th>
-                  <th>Forma de pago</th>
+                    <th>Periodicidad</th>
+                    <th>Método pago</th>
                   <th>Fecha de emisión</th>
                   <th>Fecha renovación</th>
                   <th>Tipo</th>
@@ -320,6 +322,7 @@ export default function GestionPage() {
                     <td className="text-xs">{p.numero_poliza || '—'}</td>
                     <td className="text-xs">{p.producto_nombre || '—'}</td>
                     <td className="text-xs">{p.estatus || '—'}</td>
+                    <td className="text-xs">{p.periodicidad_pago || '—'}</td>
                     <td className="text-xs">{p.forma_pago || '—'}</td>
                     <td className="text-xs">{p.fecha_emision ? new Date(p.fecha_emision).toLocaleDateString() : '—'}</td>
                     <td className="text-xs">{p.fecha_renovacion ? new Date(p.fecha_renovacion).toLocaleDateString() : '—'}</td>
@@ -342,13 +345,20 @@ export default function GestionPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="d-flex flex-column"><label className="form-label small">No. Póliza</label><input className="form-control form-control-sm" value={editPoliza.numero_poliza||''} onChange={e=>setEditPoliza({...editPoliza, numero_poliza: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Estatus</label><input className="form-control form-control-sm" value={editPoliza.estatus||''} onChange={e=>setEditPoliza({...editPoliza, estatus: e.target.value})} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Forma de pago</label>
-                  <select className="form-select form-select-sm" value={editPoliza.forma_pago||''} onChange={e=>setEditPoliza({...editPoliza, forma_pago: e.target.value})}>
+                <div className="d-flex flex-column"><label className="form-label small">Periodicidad</label>
+                  <select className="form-select form-select-sm" value={editPoliza.periodicidad_pago||''} onChange={e=>setEditPoliza({...editPoliza, periodicidad_pago: e.target.value})}>
                     <option value="">—</option>
                     <option value="A">A</option>
                     <option value="S">S</option>
                     <option value="T">T</option>
                     <option value="M">M</option>
+                  </select>
+                </div>
+                <div className="d-flex flex-column"><label className="form-label small">Método de pago</label>
+                  <select className="form-select form-select-sm" value={editPoliza.forma_pago||''} onChange={e=>setEditPoliza({...editPoliza, forma_pago: e.target.value})}>
+                    <option value="">—</option>
+                    <option value="MODO_DIRECTO">Modo directo</option>
+                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
                   </select>
                 </div>
                 <div className="d-flex flex-column"><label className="form-label small">Fecha emisión</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_emision || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_emision: e.target.value})} /></div>
@@ -430,13 +440,21 @@ export default function GestionPage() {
                   </select>
                 </div>
                 <div className="d-flex flex-column">
-                  <label className="form-label small">Forma de pago</label>
-                  <select className="form-select form-select-sm" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})}>
+                  <label className="form-label small">Periodicidad</label>
+                  <select className="form-select form-select-sm" value={nuevaPoliza.periodicidad_pago || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, periodicidad_pago: e.target.value})}>
                     <option value="">Selecciona…</option>
                     <option value="A">A</option>
                     <option value="S">S</option>
                     <option value="T">T</option>
                     <option value="M">M</option>
+                  </select>
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Método de pago</label>
+                  <select className="form-select form-select-sm" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})}>
+                    <option value="">Selecciona…</option>
+                    <option value="MODO_DIRECTO">Modo directo</option>
+                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
                   </select>
                 </div>
                 <div className="d-flex flex-column">
@@ -463,7 +481,7 @@ export default function GestionPage() {
                 <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza} onClick={async()=>{
                   if (submittingNuevaPoliza) return
                   const primaNum = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
-                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Forma de pago, Prima anual'); return }
+                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.periodicidad_pago || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Periodicidad, Método de pago, Prima anual'); return }
                   const payload: Record<string, unknown> = {
                     cliente_id: selectedCliente.id,
                     numero_poliza: nuevaPoliza.numero_poliza,
@@ -471,6 +489,7 @@ export default function GestionPage() {
                     fecha_renovacion: nuevaPoliza.fecha_renovacion || null,
                     estatus: nuevaPoliza.estatus || null,
                     forma_pago: nuevaPoliza.forma_pago,
+                    periodicidad_pago: nuevaPoliza.periodicidad_pago,
                     tipo_pago: nuevaPoliza.tipo_pago || null,
                     dia_pago: nuevaPoliza.dia_pago ? Number(nuevaPoliza.dia_pago) : null,
                     prima_input: primaNum,
