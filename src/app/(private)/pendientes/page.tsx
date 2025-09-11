@@ -12,6 +12,7 @@ type Item = {
   solicitante_email?: string | null
   cliente_id?: string | null
   cliente_nombre?: string | null
+  cliente_code?: string | null
   poliza_numero?: string | null
   ref_label?: string | null
   changes?: Array<{ campo: string, actual: unknown, propuesto: unknown }>
@@ -122,7 +123,7 @@ export default function PendientesPage() {
               <tr key={r.id}>
                 <td className="small">{r.tipo}</td>
                 <td className="small">{r.tipo==='poliza' ? (r.poliza_numero || r.ref_id) : (r.ref_label || r.cliente_nombre || r.ref_id)}</td>
-                <td className="small">{r.cliente_nombre || r.cliente_id || '—'}</td>
+                <td className="small">{(r.cliente_nombre ? r.cliente_nombre : (r.cliente_id || '—'))}{r.cliente_code ? ` · ${r.cliente_code}` : ''}</td>
                 <td className="small">{r.solicitante_nombre || r.solicitante_email || r.solicitante_id}</td>
                 <td className="small">{new Date(r.creado_at).toLocaleString()}</td>
                 <td className="small">
@@ -136,11 +137,11 @@ export default function PendientesPage() {
                   )}
                 </td>
               </tr>
-              {r.tipo==='cliente' && Array.isArray(r.changes) && r.changes.length>0 && (
+        {['cliente','poliza'].includes(r.tipo) && Array.isArray(r.changes) && r.changes.length>0 && (
                 <tr key={`${r.id}-details`}>
                   <td colSpan={6} className="bg-light">
                     <div className="p-2 small">
-                      <strong>Cambios propuestos</strong>
+          <strong>Cambios propuestos {r.tipo==='poliza' ? 'de póliza' : 'de cliente'}</strong>
                       <ul className="mb-0 mt-1" style={{columns: 2, columnGap: '2rem'}}>
                         {r.changes.map((c: { campo: string; actual: unknown; propuesto: unknown }, i: number) => (
                           <li key={i} style={{breakInside:'avoid'}}>

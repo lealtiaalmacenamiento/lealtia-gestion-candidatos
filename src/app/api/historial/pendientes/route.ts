@@ -28,6 +28,7 @@ type PendingItem = {
   solicitante_email?: string | null
   cliente_id?: string | null
   cliente_nombre?: string | null
+  cliente_code?: string | null
   poliza_numero?: string | null
   ref_label?: string | null
   changes?: Array<{ campo: string, actual: unknown, propuesto: unknown }>
@@ -46,7 +47,7 @@ export async function GET() {
       .order('creado_at', { ascending: false })
       .limit(200),
     supa.from('poliza_update_requests')
-      .select('id, poliza_id, solicitante_id, creado_at')
+  .select('id, poliza_id, solicitante_id, creado_at, payload_propuesto')
       .eq('estado', 'PENDIENTE')
       .order('creado_at', { ascending: false })
       .limit(200)
@@ -65,8 +66,9 @@ export async function GET() {
       solicitantes.add(r.solicitante_id)
     }
   }
-  if (pr.data) {
-    for (const r of pr.data as Array<{ id: string, poliza_id: string, solicitante_id: string, creado_at: string }>) {
+  const polizaReqs = (pr.data || []) as Array<{ id: string, poliza_id: string, solicitante_id: string, creado_at: string, payload_propuesto?: Record<string, unknown> }>
+  if (polizaReqs?.length) {
+    for (const r of polizaReqs) {
       items.push({ id: r.id, tipo: 'poliza', ref_id: r.poliza_id, creado_at: r.creado_at, solicitante_id: r.solicitante_id })
       polizaIds.add(r.poliza_id)
       solicitantes.add(r.solicitante_id)
@@ -88,16 +90,31 @@ export async function GET() {
     } catch { /* omit enrichment on RLS error */ }
   }
 
-  // 3) Enriquecer: polizas -> cliente_id, numero_poliza
-  const polizaMap = new Map<string, { cliente_id?: string | null, numero_poliza?: string | null }>()
+  // 3) Enriquecer: polizas -> cliente_id, numero_poliza y fila base para diffs
+  const polizaMap = new Map<string, { cliente_id?: string | null, numero_poliza?: string | null, row?: Record<string, unknown> }>()
   if (polizaIds.size) {
     try {
       const { data: pols } = await supa
         .from('polizas')
-        .select('id, cliente_id, numero_poliza')
+        .select('id, cliente_id, numero_poliza, estatus, fecha_emision, fecha_renovacion, forma_pago, periodicidad_pago, dia_pago, prima_input, prima_moneda, sa_input, sa_moneda, producto_parametro_id, meses_check')
         .in('id', Array.from(polizaIds))
-      for (const p of (pols || []) as Array<{ id: string, cliente_id: string, numero_poliza?: string | null }>) {
-        polizaMap.set(p.id, { cliente_id: p.cliente_id, numero_poliza: p.numero_poliza ?? null })
+      for (const p of (pols || []) as Array<{ id: string, cliente_id: string, numero_poliza?: string | null, estatus?: string|null, fecha_emision?: string|null, fecha_renovacion?: string|null, forma_pago?: string|null, periodicidad_pago?: string|null, dia_pago?: number|null, prima_input?: number|null, prima_moneda?: string|null, sa_input?: number|null, sa_moneda?: string|null, producto_parametro_id?: string|null, meses_check?: unknown }>) {
+        const row: Record<string, unknown> = {
+          numero_poliza: p.numero_poliza ?? null,
+          estatus: p.estatus ?? null,
+          fecha_emision: p.fecha_emision ?? null,
+          fecha_renovacion: p.fecha_renovacion ?? null,
+          forma_pago: p.forma_pago ?? null,
+          periodicidad_pago: p.periodicidad_pago ?? null,
+          dia_pago: p.dia_pago ?? null,
+          prima_input: p.prima_input ?? null,
+          prima_moneda: p.prima_moneda ?? null,
+          sa_input: p.sa_input ?? null,
+          sa_moneda: p.sa_moneda ?? null,
+          producto_parametro_id: p.producto_parametro_id ?? null,
+          meses_check: p.meses_check ?? null,
+        }
+        polizaMap.set(p.id, { cliente_id: p.cliente_id, numero_poliza: p.numero_poliza ?? null, row })
         if (p.cliente_id) clienteIds.add(p.cliente_id)
       }
     } catch { /* omit */ }
@@ -143,7 +160,8 @@ export async function GET() {
     if (cid) {
       const c = clienteMap.get(cid)
       if (c) {
-        it.cliente_nombre = c.nombre
+  it.cliente_nombre = c.nombre
+  it.cliente_code = c.code || null
         // etiqueta de referencia amigable
         it.ref_label = c.code || c.nombre || cid
       }
@@ -154,6 +172,20 @@ export async function GET() {
       if (req && req.payload_propuesto && typeof req.payload_propuesto === 'object') {
         const c = clienteMap.get(req.cliente_id || it.ref_id)
         const base: Record<string, unknown> = (c?.row || {}) as Record<string, unknown>
+        const diffs: Array<{ campo: string, actual: unknown, propuesto: unknown }> = []
+        for (const [k, v] of Object.entries(req.payload_propuesto)) {
+          const actual = base[k]
+          diffs.push({ campo: k, actual, propuesto: v as unknown })
+        }
+        it.changes = diffs
+      }
+    }
+    // Construir diffs para cambios de póliza
+    if (it.tipo === 'poliza' && it.ref_id && Array.isArray(polizaReqs)) {
+      const req = polizaReqs.find(r => r.id === it.id)
+      if (req && req.payload_propuesto && typeof req.payload_propuesto === 'object') {
+        const p = polizaMap.get(it.ref_id)
+        const base: Record<string, unknown> = (p?.row || {}) as Record<string, unknown>
         const diffs: Array<{ campo: string, actual: unknown, propuesto: unknown }> = []
         for (const [k, v] of Object.entries(req.payload_propuesto)) {
           const actual = base[k]
