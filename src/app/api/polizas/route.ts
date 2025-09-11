@@ -279,15 +279,14 @@ export async function POST(req: Request) {
 
   try {
     const admin = getServiceClient()
-    // Guardar contra duplicados: misma póliza para el mismo cliente
+    // Duplicado global por restricción UNIQUE (uq_polizas_numero): numero_poliza único en toda la tabla
     const { data: dup } = await admin
       .from('polizas')
-      .select('id')
-      .eq('cliente_id', cliente_id)
+      .select('id, cliente_id')
       .eq('numero_poliza', numero_poliza)
       .limit(1)
     if (dup && dup.length) {
-      return NextResponse.json({ error: 'Ya existe una póliza con ese número para este cliente' }, { status: 409 })
+      return NextResponse.json({ error: 'Ya existe una póliza con ese número (en otro registro)' }, { status: 409 })
     }
   const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
