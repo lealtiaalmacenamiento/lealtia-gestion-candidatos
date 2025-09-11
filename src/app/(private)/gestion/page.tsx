@@ -38,7 +38,7 @@ export default function GestionPage() {
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
   const [creating, setCreating] = useState(false)
-  const [nuevo, setNuevo] = useState<Cliente>({ id: '' })
+  const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null }>({ id: '', telefono_celular: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -161,7 +161,8 @@ export default function GestionPage() {
                 <input className="form-control form-control-sm" placeholder="Primer nombre" value={nuevo.primer_nombre||''} onChange={e=>setNuevo({...nuevo, primer_nombre: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Segundo nombre" value={nuevo.segundo_nombre||''} onChange={e=>setNuevo({...nuevo, segundo_nombre: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Primer apellido" value={nuevo.primer_apellido||''} onChange={e=>setNuevo({...nuevo, primer_apellido: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Segundo apellido" value={nuevo.segundo_apellido||''} onChange={e=>setNuevo({...nuevo, segundo_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Segundo apellido (deja vacío si no aplica)" value={nuevo.segundo_apellido||''} onChange={e=>setNuevo({...nuevo, segundo_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Teléfono celular" value={nuevo.telefono_celular||''} onChange={e=>setNuevo({...nuevo, telefono_celular: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Email" value={nuevo.email||''} onChange={e=>setNuevo({...nuevo, email: e.target.value})} />
               </div>
               <div className="mt-2 flex gap-2">
@@ -173,12 +174,13 @@ export default function GestionPage() {
                       segundo_nombre: nuevo.segundo_nombre,
                       primer_apellido: nuevo.primer_apellido,
                       segundo_apellido: nuevo.segundo_apellido,
+                      telefono_celular: nuevo.telefono_celular,
                       email: nuevo.email,
                     })})
                     const j = await res.json()
                     if (!res.ok) { alert(j.error || 'Error al crear'); return }
                     setCreating(false)
-                    setNuevo({ id: '' })
+                    setNuevo({ id: '', telefono_celular: '' })
                     await load()
                   } catch { alert('Error al crear') }
                 }}>Crear</button>
