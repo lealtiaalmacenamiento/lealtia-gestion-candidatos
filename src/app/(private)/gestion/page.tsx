@@ -52,6 +52,8 @@ export default function GestionPage() {
   const [addingPoliza, setAddingPoliza] = useState(false)
   const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; forma_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; sa_input?: string; sa_moneda?: string }>({ numero_poliza: '', fecha_emision: '', forma_pago: '', prima_input: '', prima_moneda: '' })
   const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
+  const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string }>>([])
+  const [tipoProducto, setTipoProducto] = useState<string>('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,6 +72,18 @@ export default function GestionPage() {
       router.replace('/asesor')
     }
   }, [isSuper, router])
+
+  // Cargar productos parametrizados al abrir el modal de nueva póliza
+  useEffect(() => {
+    if (!addingPoliza) return
+    ;(async () => {
+      try {
+        const res = await fetch('/api/producto_parametros?debug=1', { cache: 'no-store' })
+        const data = await res.json()
+        if (res.ok) setProductos(Array.isArray(data) ? data : [])
+      } catch {}
+    })()
+  }, [addingPoliza])
 
   async function submitClienteCambio(c: Cliente) {
     // Construir payload mínimo desde el formulario
@@ -344,6 +358,23 @@ export default function GestionPage() {
                   <input className="form-control form-control-sm" type="date" value={nuevaPoliza.fecha_emision} onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_emision: e.target.value})} />
                 </div>
                 <div className="d-flex flex-column">
+                  <label className="form-label small">Tipo de producto</label>
+                  <select className="form-select form-select-sm" value={tipoProducto} onChange={e=>{ setTipoProducto(e.target.value); setNuevaPoliza({...nuevaPoliza, producto_parametro_id: undefined}) }}>
+                    <option value="">Todos</option>
+                    <option value="VI">Vida (VI)</option>
+                    <option value="GMM">Gastos médicos (GMM)</option>
+                  </select>
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Producto parametrizado</label>
+                  <select className="form-select form-select-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, producto_parametro_id: e.target.value || undefined})}>
+                    <option value="">Sin seleccionar</option>
+                    {productos.filter(p => !tipoProducto || p.tipo_producto === tipoProducto).map(p => (
+                      <option key={p.id} value={p.id}>{p.nombre_comercial} ({p.tipo_producto})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="d-flex flex-column">
                   <label className="form-label small">Forma de pago</label>
                   <select className="form-select form-select-sm" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})}>
                     <option value="">Selecciona…</option>
@@ -363,10 +394,6 @@ export default function GestionPage() {
                     <option value="USD">USD</option>
                     <option value="UDI">UDI</option>
                   </select>
-                </div>
-                <div className="d-flex flex-column">
-                  <label className="form-label small">Producto (ID opcional)</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, producto_parametro_id: e.target.value || undefined})} />
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Suma asegurada (opcional)</label>
