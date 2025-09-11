@@ -162,8 +162,8 @@ export async function GET() {
     if (cid) {
       const c = clienteMap.get(cid)
       if (c) {
-  it.cliente_nombre = c.nombre
-  it.cliente_code = c.code || null
+        it.cliente_nombre = c.nombre
+        it.cliente_code = c.code || null
         // etiqueta de referencia amigable
         it.ref_label = c.code || c.nombre || cid
       }
@@ -180,6 +180,21 @@ export async function GET() {
           diffs.push({ campo: k, actual, propuesto: v as unknown })
         }
         it.changes = diffs
+
+        // Fallback: si el nombre actual está vacío, armarlo con valores propuestos
+        if (!it.cliente_nombre) {
+          const pn = (req.payload_propuesto['primer_nombre'] || '').toString().trim()
+          const sn = (req.payload_propuesto['segundo_nombre'] || '').toString().trim()
+          const pa = (req.payload_propuesto['primer_apellido'] || '').toString().trim()
+          const sa = (req.payload_propuesto['segundo_apellido'] || '').toString().trim()
+          const proposedName = [pn, sn, pa, sa].filter(Boolean).join(' ').trim()
+          if (proposedName) it.cliente_nombre = proposedName
+        }
+        // Fallback: si no hay código de cliente, usar el propuesto si viene
+        if (!it.cliente_code) {
+          const proposedCode = (req.payload_propuesto['cliente_code'] || req.payload_propuesto['codigo'] || '').toString().trim()
+          if (proposedCode) it.cliente_code = proposedCode
+        }
       }
     }
     // Construir diffs para cambios de póliza
