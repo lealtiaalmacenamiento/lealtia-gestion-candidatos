@@ -1,102 +1,171 @@
 import { NextResponse } from 'next/server'
-import { getServiceClient } from '@/lib/supabaseAdmin'
+import { createClient } from '@supabase/supabase-js'
 
-const supabase = getServiceClient()
-
-// Evitar edge runtime y caching accidental
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type Source = 'udi' | 'fx' | 'both'
-
-function okSecret(req: Request): boolean {
-  const secret = process.env.MARKET_SYNC_SECRET
-  if (!secret) return false
-  const hdr = req.headers.get('x-cron-secret') || new URL(req.url).searchParams.get('secret')
-  return !!hdr && hdr === secret
+function envOrThrow(name: string): string {
+  const v = process.env[name]
+  if (!v) throw new Error(`Missing env ${name}`)
+  return v
 }
 
-function todayMX(): string {
-  // Use today in local server timezone; in Vercel this is UTC, acceptable for daily sync
-  return new Date().toISOString().slice(0, 10)
+function ymd(d: Date): string {
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
-type BanxicoResponse = { bmx?: { series?: Array<{ datos?: Array<{ fecha?: string, dato?: string }> }> } }
-
-async function fetchBanxicoSerie(serie: string, date: string, token: string) {
-  const url = `https://www.banxico.org.mx/SieAPIRest/service/v1/series/${serie}/datos/${date}/${date}?token=${encodeURIComponent(token)}`
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
-  if (!res.ok) throw new Error(`Banxico ${serie} ${res.status}`)
-  const json: BanxicoResponse = await res.json()
-  const series = json?.bmx?.series?.[0]?.datos
-  if (!Array.isArray(series) || series.length === 0) throw new Error('Banxico vacío')
-  const dato = series[0]?.dato
-  const fecha = series[0]?.fecha
-  const valor = Number(String(dato).replace(/,/g, '.'))
-  if (!fecha || Number.isNaN(valor)) throw new Error('Dato inválido')
-  // Convert Banxico dd/MM/yyyy to yyyy-MM-dd if necessary
-  const [dd, mm, yyyy] = String(fecha).split('/')
-  const iso = yyyy && mm && dd ? `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}` : date
-  return { fecha: iso, valor }
-}
-
-async function recalcForDateAndCurrency(fechaISO: string, moneda: 'USD' | 'UDI') {
-  // Recalcula sólo pólizas cuya fecha_emision coincide y que usan esa moneda en prima o SA
-  const pols = await supabase
-    .from('polizas')
-    .select('id')
-    .eq('fecha_emision', fechaISO)
-    .or(`prima_moneda.eq.${moneda},sa_moneda.eq.${moneda}`)
-
-  if (pols.error) {
-    return { count: 0, error: pols.error.message }
+async function fetchBanxicoSeries(series: string, start: string, end: string, token: string) {
+  const url = `https://www.banxico.org.mx/SieAPIRest/service/v1/series/${series}/datos/${start}/${end}?token=${encodeURIComponent(token)}`
+  const res = await fetch(url)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Banxico ${series} ${res.status}: ${text}`)
   }
-  const ids: string[] = (pols.data as Array<{ id: string }> | null || []).map(r => r.id)
-  let ok = 0
-  for (const id of ids) {
-    // Llamar función RPC para recálculo puntual
-    const r = await supabase.rpc('recalc_puntos_poliza', { p_poliza_id: id })
-    if (!r.error) ok++
+  return res.json() as Promise<unknown>
+}
+
+async function fetchBanxicoOportuno(series: string, token: string) {
+  const url = `https://www.banxico.org.mx/SieAPIRest/service/v1/series/${series}/datos/oportuno?token=${encodeURIComponent(token)}`
+  const res = await fetch(url)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Banxico oportuno ${series} ${res.status}: ${text}`)
   }
-  return { count: ok }
+  return res.json() as Promise<unknown>
+}
+
+type BanxicoDato = { fecha: string; dato: string }
+
+function isBanxicoResp(obj: unknown): obj is { bmx: { series: Array<{ datos: BanxicoDato[] }> } } {
+  if (!obj || typeof obj !== 'object') return false
+  const root = obj as Record<string, unknown>
+  const bmx = root['bmx'] as Record<string, unknown> | undefined
+  const series = (bmx?.['series'] as unknown) as Array<{ datos?: unknown }>
+  return Array.isArray(series) && Array.isArray(series[0]?.datos)
+}
+
+function parseBanxico(json: unknown): BanxicoDato[] {
+  if (!isBanxicoResp(json)) return []
+  return json.bmx.series[0].datos
+}
+
+function parseNumero(val: string): number | null {
+  if (!val) return null
+  const n = Number(String(val).replace(/,/g, ''))
+  return Number.isFinite(n) ? n : null
+}
+
+function parseFechaDDMMYYYY(s: string): string | null {
+  const m = /^([0-3]?\d)\/([0-1]?\d)\/(\d{4})$/.exec(s)
+  if (!m) return null
+  const dd = m[1].padStart(2, '0')
+  const MM = m[2].padStart(2, '0')
+  const yyyy = m[3]
+  return `${yyyy}-${MM}-${dd}`
 }
 
 export async function POST(req: Request) {
-  if (!okSecret(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
-  const url = new URL(req.url)
-  const source = (url.searchParams.get('source') as Source) || 'both'
-  const date = url.searchParams.get('date') || todayMX()
-  const token = process.env.BANXICO_TOKEN
-  if (!token) return NextResponse.json({ error: 'BANXICO_TOKEN no configurado' }, { status: 500, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
-
-  const results: Record<string, unknown> = {}
   try {
-    if (source === 'udi' || source === 'both') {
-      // UDI serie SP68257
-      const { fecha, valor } = await fetchBanxicoSerie('SP68257', date, token)
-      const up = await supabase.from('udi_values').upsert({ fecha, valor, source: 'banxico', fetched_at: new Date().toISOString(), stale: false }, { onConflict: 'fecha' }).select().single()
-      if (up.error) throw up.error
-      results.udi = up.data
-  // Recalcular afectadas (fecha exacta y moneda UDI)
-  const rec = await recalcForDateAndCurrency(fecha, 'UDI')
-  results.udi_recalc = rec
-    }
-    if (source === 'fx' || source === 'both') {
-      // USD/MXN FIX serie SF43718
-      const { fecha, valor } = await fetchBanxicoSerie('SF43718', date, token)
-      const up = await supabase.from('fx_values').upsert({ fecha, valor, source: 'banxico', fetched_at: new Date().toISOString(), stale: false }, { onConflict: 'fecha' }).select().single()
-      if (up.error) throw up.error
-      results.fx = up.data
-  // Recalcular afectadas (fecha exacta y moneda USD)
-  const rec = await recalcForDateAndCurrency(fecha, 'USD')
-  results.fx_recalc = rec
-    }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    return NextResponse.json({ error: msg }, { status: 500, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
-  }
+    const secret = process.env.CRON_SECRET || ''
+    const hdr = req.headers.get('x-cron-secret') || ''
+    if (!secret || hdr !== secret) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  return NextResponse.json({ success: true, date, source, results }, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
+    // Accept params via query string or JSON body for compatibility
+    const url = new URL(req.url)
+    let source = (url.searchParams.get('source') || '').toLowerCase()
+    let daysBackStr = url.searchParams.get('days_back') || ''
+    if (!source || !daysBackStr) {
+      try {
+        const body = await req.json().catch(() => null) as { source?: string; days_back?: number | string } | null
+        if (body) {
+          if (!source && body.source) source = String(body.source).toLowerCase()
+          if (!daysBackStr && body.days_back != null) daysBackStr = String(body.days_back)
+        }
+      } catch { /* ignore */ }
+    }
+    const sourceNorm = (source || 'both') as 'udi' | 'usd' | 'both'
+    const daysBack = Number(daysBackStr || '365')
+
+    const token = envOrThrow('BANXICO_TOKEN')
+    const supabaseUrl = envOrThrow('NEXT_PUBLIC_SUPABASE_URL')
+    const serviceKey = envOrThrow('SUPABASE_SERVICE_ROLE_KEY')
+
+    const today = new Date()
+    const start = new Date(today.getTime() - daysBack * 24 * 3600 * 1000)
+    const startStr = ymd(start)
+    const endStr = ymd(today)
+
+    const seriesUDI = process.env.BANXICO_SERIES_UDI || 'SP68257'
+    const seriesUSD = process.env.BANXICO_SERIES_USD || 'SF43718'
+
+  const wantUDI = sourceNorm === 'both' || sourceNorm === 'udi'
+  const wantUSD = sourceNorm === 'both' || sourceNorm === 'usd'
+
+    const tasks: Array<Promise<unknown>> = []
+    if (wantUDI) tasks.push(fetchBanxicoSeries(seriesUDI, startStr, endStr, token))
+    if (wantUSD) tasks.push(fetchBanxicoSeries(seriesUSD, startStr, endStr, token))
+
+    const results = await Promise.all(tasks)
+    const [udiJson, usdJson] = (
+      sourceNorm === 'both' ? results : sourceNorm === 'udi' ? [results[0], undefined] : [undefined, results[0]]
+    ) as [unknown | undefined, unknown | undefined]
+
+    const fetchedAt = new Date().toISOString()
+    let udiDatos = (udiJson ? parseBanxico(udiJson) : [])
+    let usdDatos = (usdJson ? parseBanxico(usdJson) : [])
+
+    const notes: string[] = []
+    if (wantUDI && udiDatos.length === 0) {
+      try {
+        const uOpp = await fetchBanxicoOportuno(seriesUDI, token)
+        const opp = parseBanxico(uOpp)
+        if (opp.length) {
+          udiDatos = opp
+          notes.push('UDI vacío en rango, usando datos oportuno')
+        }
+      } catch {/* ignore */}
+    }
+    if (wantUSD && usdDatos.length === 0) {
+      try {
+        const fOpp = await fetchBanxicoOportuno(seriesUSD, token)
+        const opp = parseBanxico(fOpp)
+        if (opp.length) {
+          usdDatos = opp
+          notes.push('USD vacío en rango, usando datos oportuno')
+        }
+      } catch {/* ignore */}
+    }
+
+    const udiRows = udiDatos
+      .map(d => ({ fecha: parseFechaDDMMYYYY(d.fecha), valor: parseNumero(d.dato) }))
+      .filter(r => r.fecha && r.valor != null)
+      .map(r => ({ fecha: r.fecha!, valor: r.valor as number, source: 'banxico', fetched_at: fetchedAt, stale: false }))
+
+    const fxRows = usdDatos
+      .map(d => ({ fecha: parseFechaDDMMYYYY(d.fecha), valor: parseNumero(d.dato) }))
+      .filter(r => r.fecha && r.valor != null)
+      .map(r => ({ fecha: r.fecha!, valor: r.valor as number, source: 'banxico', fetched_at: fetchedAt, stale: false }))
+
+    const supaAdmin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+    if (udiRows.length) {
+      const { error: udiErr } = await supaAdmin.from('udi_values').upsert(udiRows, { onConflict: 'fecha' })
+      if (udiErr) return NextResponse.json({ error: 'UDI upsert failed', details: udiErr }, { status: 500 })
+    }
+
+    if (fxRows.length) {
+      const { error: fxErr } = await supaAdmin.from('fx_values').upsert(fxRows, { onConflict: 'fecha' })
+      if (fxErr) return NextResponse.json({ error: 'FX upsert failed', details: fxErr }, { status: 500 })
+    }
+
+  return NextResponse.json({ ok: true, counts: { udi: udiRows.length, usd: fxRows.length }, range: { start: startStr, end: endStr }, note: notes.length ? notes.join('; ') : undefined })
+  } catch (e) {
+    const msg = (e instanceof Error) ? e.message : String(e)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
 
 export async function GET(req: Request) {

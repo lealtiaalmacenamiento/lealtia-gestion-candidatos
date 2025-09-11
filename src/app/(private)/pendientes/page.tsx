@@ -1,0 +1,133 @@
+"use client"
+import { useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/context/AuthProvider'
+
+type Item = {
+  id: string
+  tipo: 'cliente' | 'poliza'
+  ref_id: string
+  creado_at: string
+  solicitante_id: string
+  solicitante_nombre?: string | null
+  solicitante_email?: string | null
+  cliente_id?: string | null
+  cliente_nombre?: string | null
+  poliza_numero?: string | null
+}
+
+export default function PendientesPage() {
+  const { user } = useAuth()
+  const role = (user?.rol || '').toLowerCase()
+  const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+  const [items, setItems] = useState<Item[]>([])
+  const [scope, setScope] = useState<'all'|'cliente'|'poliza'>('all')
+  const [loading, setLoading] = useState(true)
+  const [acting, setActing] = useState<string | null>(null)
+
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true)
+      const r = await fetch('/api/historial/pendientes')
+      const j = await r.json()
+      setItems(j.items || [])
+      setLoading(false)
+    }
+    void run()
+  }, [])
+
+  const view = useMemo(() => {
+    let v = items
+    if (scope === 'cliente') v = v.filter(i => i.tipo === 'cliente')
+    else if (scope === 'poliza') v = v.filter(i => i.tipo === 'poliza')
+    return v
+  }, [items, scope])
+
+  async function refresh() {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/historial/pendientes')
+      const j = await r.json()
+      setItems(j.items || [])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function aprobar(it: Item) {
+    if (!isSuper) return
+    setActing(it.id)
+    try {
+      if (it.tipo === 'cliente') {
+        await fetch('/api/clientes/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id }) })
+      } else {
+        await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id }) })
+      }
+      await refresh()
+    } finally { setActing(null) }
+  }
+
+  async function rechazar(it: Item) {
+    if (!isSuper) return
+    const motivo = prompt('Motivo de rechazo') || ''
+    setActing(it.id)
+    try {
+      if (it.tipo === 'cliente') {
+        await fetch('/api/clientes/updates/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, motivo }) })
+      } else {
+        await fetch('/api/polizas/updates/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, motivo }) })
+      }
+      await refresh()
+    } finally { setActing(null) }
+  }
+
+  return (
+    <div className="p-4">
+      <h1 className="text-xl font-semibold mb-3">Cambios pendientes</h1>
+      <div className="flex items-center gap-2 mb-3">
+        <label>Filtro:</label>
+        <select value={scope} onChange={e=>setScope(e.target.value as 'all'|'cliente'|'poliza')} className="border px-2 py-1">
+          <option value="all">Todos</option>
+          <option value="cliente">Solo cliente</option>
+          <option value="poliza">Solo póliza</option>
+        </select>
+        {loading && <span className="text-sm text-gray-500">Cargando…</span>}
+      </div>
+      <div className="table-responsive small">
+        <table className="table table-striped table-hover align-middle shadow-sm mb-0">
+          <thead className="table-dark">
+            <tr>
+              <th>Tipo</th>
+              <th>Referencia</th>
+              <th>Cliente</th>
+              <th>Asesor</th>
+              <th>Creado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {view.map(r => (
+              <tr key={r.id}>
+                <td className="small">{r.tipo}</td>
+                <td className="small font-mono">{r.tipo==='poliza' ? (r.poliza_numero || r.ref_id) : r.ref_id}</td>
+                <td className="small">{r.cliente_nombre || r.cliente_id || '—'}</td>
+                <td className="small">{r.solicitante_nombre || r.solicitante_email || r.solicitante_id}</td>
+                <td className="small">{new Date(r.creado_at).toLocaleString()}</td>
+                <td className="small">
+                  {isSuper ? (
+                    <div className="d-flex gap-2">
+                      <button disabled={!!acting} onClick={()=>aprobar(r)} className="btn btn-sm btn-success">{acting===r.id? 'Aplicando…':'Aprobar'}</button>
+                      <button disabled={!!acting} onClick={()=>rechazar(r)} className="btn btn-sm btn-danger">{acting===r.id? 'Rechazando…':'Rechazar'}</button>
+                    </div>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {view.length===0 && (<tr><td colSpan={6} className="text-center text-muted small py-3">Sin pendientes</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}

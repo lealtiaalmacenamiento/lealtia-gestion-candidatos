@@ -42,6 +42,16 @@ async function fetchBanxicoSeries(series: string, start: string, end: string, to
   return res.json() as Promise<unknown>
 }
 
+async function fetchBanxicoOportuno(series: string, token: string) {
+  const url = `https://www.banxico.org.mx/SieAPIRest/service/v1/series/${series}/datos/oportuno?token=${encodeURIComponent(token)}`
+  const res = await fetch(url)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Banxico oportuno ${series} ${res.status}: ${text}`)
+  }
+  return res.json() as Promise<unknown>
+}
+
 type BanxicoDato = { fecha: string; dato: string }
 
 function isBanxicoResp(obj: unknown): obj is { bmx: { series: Array<{ datos: BanxicoDato[] }> } } {
@@ -98,8 +108,35 @@ export async function GET(req: Request) {
       fetchBanxicoSeries(seriesUSD, startStr, endStr, token)
     ])
 
-    const udiDatos = parseBanxico(udiJson)
-    const usdDatos = parseBanxico(usdJson)
+    let udiDatos = parseBanxico(udiJson)
+    let usdDatos = parseBanxico(usdJson)
+
+  const note: string[] = []
+    // Fallback: si vienen vacíos, intenta 'oportuno' (último disponible)
+    if (udiDatos.length === 0) {
+      try {
+        const udiOpp = await fetchBanxicoOportuno(seriesUDI, token)
+        const opp = parseBanxico(udiOpp)
+        if (opp.length) {
+          udiDatos = opp
+          note.push('UDI vacío en rango, usando datos oportuno (último disponible)')
+        }
+  } catch {
+        note.push('UDI vacío y oportuno falló')
+      }
+    }
+    if (usdDatos.length === 0) {
+      try {
+        const usdOpp = await fetchBanxicoOportuno(seriesUSD, token)
+        const opp = parseBanxico(usdOpp)
+        if (opp.length) {
+          usdDatos = opp
+          note.push('USD vacío en rango, usando datos oportuno (último disponible)')
+        }
+  } catch {
+        note.push('USD vacío y oportuno falló')
+      }
+    }
 
     const fetchedAt = new Date().toISOString()
     const udiRows = udiDatos
@@ -122,7 +159,7 @@ export async function GET(req: Request) {
     const { error: fxErr } = await supaAdmin.from('fx_values').upsert(fxRows, { onConflict: 'fecha' })
     if (fxErr) return NextResponse.json({ error: 'FX upsert failed', details: fxErr }, { status: 500 })
 
-    return NextResponse.json({ ok: true, counts: { udi: udiRows.length, usd: fxRows.length }, range: { start: startStr, end: endStr } })
+  return NextResponse.json({ ok: true, counts: { udi: udiRows.length, usd: fxRows.length }, range: { start: startStr, end: endStr }, note: note.length ? note.join('; ') : undefined })
   } catch (e) {
     const msg = (e instanceof Error) ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })
