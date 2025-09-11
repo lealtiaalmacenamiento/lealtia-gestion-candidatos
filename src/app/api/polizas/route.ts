@@ -21,13 +21,22 @@ async function getSupa() {
 }
 
 export async function GET(req: Request) {
-  const usuario = await getUsuarioSesion()
+  let usuario = await getUsuarioSesion()
   let authUserId: string | null = null
   if (!usuario?.email) {
+    // Fallback a cookie session y luego buscar fila en usuarios para rol
     const supaProbe = await getSupa()
     const { data: auth } = await supaProbe.auth.getUser()
     if (!auth?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     authUserId = auth.user.id
+    try {
+      const { data: uRow } = await supaProbe.from('usuarios').select('*').eq('id_auth', auth.user.id).maybeSingle()
+      if (uRow) {
+        usuario = { ...uRow, rol: (uRow.rol || '').toString() }
+      }
+    } catch {
+      // ignorar, seguirá flujo como no-super
+    }
   } else {
     const anyU = usuario as unknown as { id_auth?: string | null }
     authUserId = anyU?.id_auth ?? null
@@ -36,8 +45,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim().toLowerCase()
   const clienteId = (url.searchParams.get('cliente_id') || '').trim()
-  const role = (usuario?.rol || '').toLowerCase()
-  const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+  const role = (usuario?.rol || '').toString().trim().toLowerCase()
+  const isSuper = ['superusuario','super_usuario','supervisor','admin','root'].includes(role)
 
   if (isSuper) {
     try {
