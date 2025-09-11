@@ -1,5 +1,6 @@
 "use client"
 import React, { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
 
@@ -35,6 +36,7 @@ export default function GestionPage() {
   const { user } = useAuth()
   const role = (user?.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+  const router = useRouter()
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
@@ -49,6 +51,7 @@ export default function GestionPage() {
   const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
   const [addingPoliza, setAddingPoliza] = useState(false)
   const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; forma_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; sa_input?: string; sa_moneda?: string }>({ numero_poliza: '', fecha_emision: '', forma_pago: '', prima_input: '', prima_moneda: '' })
+  const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,6 +63,13 @@ export default function GestionPage() {
   }, [qClientes])
 
   useEffect(() => { void load() }, [load])
+
+  // Redirigir asesores a Vista Asesor al entrar al módulo Clientes y Pólizas
+  useEffect(() => {
+    if (!isSuper) {
+      router.replace('/asesor')
+    }
+  }, [isSuper, router])
 
   async function submitClienteCambio(c: Cliente) {
     // Construir payload mínimo desde el formulario
@@ -149,7 +159,7 @@ export default function GestionPage() {
                     <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
                     <td className="text-end">
                       <div className="d-flex gap-2 justify-content-end">
-                        <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+                        <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
                         <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
                       </div>
                     </td>
@@ -266,7 +276,7 @@ export default function GestionPage() {
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Pólizas de {fmtNombre(selectedCliente) || selectedCliente.email || selectedCliente.id}</h2>
             {isSuper && (
-              <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza: '', fecha_emision: '', forma_pago: '', prima_input: '', prima_moneda: '' }) }}>Agregar póliza</button>
+              <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza: '', fecha_emision: '', forma_pago: '', prima_input: '', prima_moneda: '' }); setSubmittingNuevaPoliza(false) }}>Agregar póliza</button>
             )}
           </div>
           <div className="table-responsive small">
@@ -335,8 +345,9 @@ export default function GestionPage() {
                 <input className="form-control form-control-sm" placeholder="Moneda SA (MXN/USD/UDI) opcional" value={nuevaPoliza.sa_moneda || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_moneda: e.target.value || undefined})} />
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
-                <button className="btn btn-sm btn-secondary" onClick={()=>setAddingPoliza(false)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" onClick={async()=>{
+                <button className="btn btn-sm btn-secondary" disabled={submittingNuevaPoliza} onClick={()=>setAddingPoliza(false)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza} onClick={async()=>{
+                  if (submittingNuevaPoliza) return
                   const prima = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
                   if (!selectedCliente?.id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !nuevaPoliza.prima_moneda || !isFinite(prima)) {
                     alert('Campos requeridos: No. Póliza, Fecha de emisión, Forma de pago, Prima, Moneda (y cliente seleccionado)')
@@ -354,6 +365,7 @@ export default function GestionPage() {
                   if (nuevaPoliza.sa_input) payload.sa_input = Number((nuevaPoliza.sa_input||'').replace(/,/g,''))
                   if (nuevaPoliza.sa_moneda) payload.sa_moneda = nuevaPoliza.sa_moneda
                   try {
+                    setSubmittingNuevaPoliza(true)
                     const res = await fetch('/api/polizas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
                     const j = await res.json()
                     if (!res.ok) { alert(j.error || 'Error al crear póliza'); return }
@@ -362,6 +374,8 @@ export default function GestionPage() {
                     try { const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) }
                   } catch {
                     alert('Error al crear póliza')
+                  } finally {
+                    setSubmittingNuevaPoliza(false)
                   }
                 }}>Crear</button>
               </div>
