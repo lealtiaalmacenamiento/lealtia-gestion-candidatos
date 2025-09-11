@@ -140,7 +140,9 @@ export async function GET() {
           primer_apellido: c.primer_apellido ?? null,
           segundo_apellido: c.segundo_apellido ?? null,
           email: c.email ?? null,
+          correo: c.email ?? null, // alias para mostrar diffs con clave 'correo'
           telefono_celular: c.telefono_celular ?? null,
+          telefono: c.telefono_celular ?? null, // alias para 'telefono'
           fecha_nacimiento: c.fecha_nacimiento ?? null,
         }
         clienteMap.set(c.id, { nombre, code: c.cliente_code ?? null, row })
