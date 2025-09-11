@@ -4,11 +4,13 @@ import { useAuth } from '@/context/AuthProvider'
 
 type Cliente = {
   id: string
+  cliente_code?: string
   primer_nombre?: string|null
   segundo_nombre?: string|null
   primer_apellido?: string|null
   segundo_apellido?: string|null
   email?: string|null
+  telefono_celular?: string|null
 }
 
 type Poliza = {
@@ -58,7 +60,8 @@ export default function GestionPage() {
       segundo_nombre: c.segundo_nombre ?? undefined,
       primer_apellido: c.primer_apellido ?? undefined,
       segundo_apellido: c.segundo_apellido ?? undefined,
-      email: c.email ?? undefined,
+      telefono_celular: c.telefono_celular ?? undefined,
+      correo: c.email ?? undefined,
     }
     const res = await fetch('/api/clientes/updates', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -107,13 +110,13 @@ export default function GestionPage() {
             <h2 className="font-medium">Clientes</h2>
             <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
             <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
-            <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', primer_nombre: '', segundo_nombre: '', primer_apellido: '', segundo_apellido: '', email: '' }) }}>Nuevo cliente</button>
+            <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
           </header>
           <div className="table-responsive small">
             <table className="table table-sm table-striped align-middle">
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>Número de cliente</th>
                   <th>Nombre</th>
                   <th>Email</th>
                   <th></th>
@@ -122,7 +125,7 @@ export default function GestionPage() {
               <tbody>
                 {clientes.map(c => (
                   <tr key={c.id}>
-                    <td className="font-mono text-xs">{c.id}</td>
+                    <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
                     <td className="text-xs">{fmtNombre(c)}</td>
                     <td className="text-xs">{c.email || '—'}</td>
                     <td className="text-end">
@@ -146,6 +149,7 @@ export default function GestionPage() {
                 <input className="form-control form-control-sm" placeholder="Segundo nombre" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Primer apellido" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Segundo apellido" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Teléfono celular" value={editCliente.telefono_celular||''} onChange={e=>setEditCliente({...editCliente, telefono_celular: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} />
               </div>
               <div className="mt-2 flex gap-2">
@@ -195,7 +199,7 @@ export default function GestionPage() {
           <div className="d-flex align-items-center mb-3 gap-2">
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Cliente</h2>
-            <span className="ms-auto small text-muted">ID: {selectedCliente.id}</span>
+            <span className="ms-auto small text-muted">Número de cliente: {selectedCliente.cliente_code || selectedCliente.id}</span>
           </div>
           <div className="mb-3">
             <div className="row g-2">
@@ -221,6 +225,7 @@ export default function GestionPage() {
                 <input className="form-control form-control-sm" placeholder="Segundo nombre" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Primer apellido" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Segundo apellido" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Teléfono celular" value={editCliente.telefono_celular||''} onChange={e=>setEditCliente({...editCliente, telefono_celular: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} />
               </div>
               <div className="mt-2 flex gap-2">
