@@ -37,6 +37,8 @@ export default function GestionPage() {
 
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
+  const [creating, setCreating] = useState(false)
+  const [nuevo, setNuevo] = useState<Cliente>({ id: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -105,6 +107,7 @@ export default function GestionPage() {
             <h2 className="font-medium">Clientes</h2>
             <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
             <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
+            <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', primer_nombre: '', segundo_nombre: '', primer_apellido: '', segundo_apellido: '', email: '' }) }}>Nuevo cliente</button>
           </header>
           <div className="table-responsive small">
             <table className="table table-sm table-striped align-middle">
@@ -148,6 +151,37 @@ export default function GestionPage() {
               <div className="mt-2 flex gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setEditCliente(null)}>Cancelar</button>
                 <button className="btn btn-sm btn-success" onClick={()=>submitClienteCambio(editCliente)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
+              </div>
+            </div>
+          )}
+          {creating && (
+            <div className="mt-3 border rounded p-3 bg-light">
+              <h3 className="small fw-bold mb-2">Nuevo cliente</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="form-control form-control-sm" placeholder="Primer nombre" value={nuevo.primer_nombre||''} onChange={e=>setNuevo({...nuevo, primer_nombre: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Segundo nombre" value={nuevo.segundo_nombre||''} onChange={e=>setNuevo({...nuevo, segundo_nombre: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Primer apellido" value={nuevo.primer_apellido||''} onChange={e=>setNuevo({...nuevo, primer_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Segundo apellido" value={nuevo.segundo_apellido||''} onChange={e=>setNuevo({...nuevo, segundo_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Email" value={nuevo.email||''} onChange={e=>setNuevo({...nuevo, email: e.target.value})} />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button className="btn btn-sm btn-secondary" onClick={()=>setCreating(false)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" onClick={async()=>{
+                  try {
+                    const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                      primer_nombre: nuevo.primer_nombre,
+                      segundo_nombre: nuevo.segundo_nombre,
+                      primer_apellido: nuevo.primer_apellido,
+                      segundo_apellido: nuevo.segundo_apellido,
+                      email: nuevo.email,
+                    })})
+                    const j = await res.json()
+                    if (!res.ok) { alert(j.error || 'Error al crear'); return }
+                    setCreating(false)
+                    setNuevo({ id: '' })
+                    await load()
+                  } catch { alert('Error al crear') }
+                }}>Crear</button>
               </div>
             </div>
           )}

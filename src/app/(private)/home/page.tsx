@@ -15,7 +15,7 @@ const modules = [
   { key: 'prospectos', title: 'Prospectos', desc: 'Gestión semanal de prospectos', icon: 'people-fill', roles: ['agente','superusuario','admin'], color: 'info' },
   { key: 'planificacion', title: 'Planificación', desc: 'Bloques de actividades y citas', icon: 'calendar-week', roles: ['agente','superusuario','admin'], color: 'primary' },
   // Gestión unificada (CRUD + dispara solicitudes)
-  { key: 'gestion', title: 'Clientes y Pólizas', desc: 'CRUD unificado; ediciones crean solicitud de cambio', icon: 'collection', roles: ['editor','superusuario','admin','agente'], color: 'primary' },
+  { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['editor','superusuario','admin','agente'], color: 'primary' },
   // Módulos especializados (opcionalmente ocultables si usas solo la vista unificada)
   // { key: 'clientes/updates', title: 'Cambios de cliente', desc: 'Enviar y aprobar cambios de datos', icon: 'person-gear', roles: ['editor','superusuario','admin'], color: 'primary' },
   // { key: 'polizas/updates', title: 'Cambios de póliza', desc: 'Aprobación de cambios de póliza', icon: 'file-earmark-check', roles: ['editor','superusuario','admin'], color: 'secondary' },
