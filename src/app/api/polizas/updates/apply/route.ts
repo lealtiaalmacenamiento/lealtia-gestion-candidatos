@@ -24,12 +24,21 @@ export async function POST(req: Request) {
   const supa = await getSupa()
   const { data: auth } = await supa.auth.getUser()
   if (!auth?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  const body = await req.json().catch(() => null) as { request_id?: string }
+  const body = await req.json().catch(() => null) as { request_id?: string, debug?: boolean }
   if (!body?.request_id) return NextResponse.json({ error: 'Falta request_id' }, { status: 400 })
 
   const rpc = await supa.rpc('apply_poliza_update', { p_request_id: body.request_id })
   if (rpc.error) {
-    return NextResponse.json({ error: rpc.error.message, details: rpc.error.details, hint: rpc.error.hint, code: rpc.error.code }, { status: 400 })
+    let pending: unknown = null
+    if (body.debug) {
+      const { data: row } = await supa
+        .from('poliza_update_requests')
+        .select('*')
+        .eq('id', body.request_id)
+        .maybeSingle()
+      pending = row
+    }
+    return NextResponse.json({ error: rpc.error.message, details: rpc.error.details, hint: rpc.error.hint, code: rpc.error.code, pending }, { status: 400 })
   }
 
   try {
