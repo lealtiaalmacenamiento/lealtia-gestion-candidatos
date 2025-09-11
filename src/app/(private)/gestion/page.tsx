@@ -189,13 +189,13 @@ export default function GestionPage() {
           {editCliente && (
             <AppModal title="Editar cliente" icon="person-fill" onClose={()=>setEditCliente(null)}>
               <div className="grid grid-cols-2 gap-2">
-                <input className="form-control form-control-sm" placeholder="Primer nombre" value={editCliente.primer_nombre||''} onChange={e=>setEditCliente({...editCliente, primer_nombre: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Segundo nombre" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Primer apellido" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Segundo apellido" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Teléfono celular" value={editCliente.telefono_celular||''} onChange={e=>setEditCliente({...editCliente, telefono_celular: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} />
-                <input className="form-control form-control-sm" type="date" placeholder="Cumpleaños" value={editCliente.fecha_nacimiento || ''} onChange={e=>setEditCliente({...editCliente, fecha_nacimiento: e.target.value})} />
+                <div className="d-flex flex-column"><label className="form-label small">Primer nombre</label><input className="form-control form-control-sm" value={editCliente.primer_nombre||''} onChange={e=>setEditCliente({...editCliente, primer_nombre: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Segundo nombre</label><input className="form-control form-control-sm" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Primer apellido</label><input className="form-control form-control-sm" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Segundo apellido</label><input className="form-control form-control-sm" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Teléfono celular</label><input className="form-control form-control-sm" value={editCliente.telefono_celular||''} onChange={e=>setEditCliente({...editCliente, telefono_celular: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Email</label><input className="form-control form-control-sm" type="email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Cumpleaños</label><input className="form-control form-control-sm" type="date" value={editCliente.fecha_nacimiento || ''} onChange={e=>setEditCliente({...editCliente, fecha_nacimiento: e.target.value})} /></div>
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setEditCliente(null)}>Cancelar</button>
@@ -206,13 +206,13 @@ export default function GestionPage() {
           {creating && (
             <AppModal title="Nuevo cliente" icon="person-plus" onClose={()=>setCreating(false)}>
               <div className="grid grid-cols-2 gap-2">
-                <input className="form-control form-control-sm" placeholder="Primer nombre" value={nuevo.primer_nombre||''} onChange={e=>setNuevo({...nuevo, primer_nombre: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Segundo nombre" value={nuevo.segundo_nombre||''} onChange={e=>setNuevo({...nuevo, segundo_nombre: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Primer apellido" value={nuevo.primer_apellido||''} onChange={e=>setNuevo({...nuevo, primer_apellido: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Segundo apellido (deja vacío si no aplica)" value={nuevo.segundo_apellido||''} onChange={e=>setNuevo({...nuevo, segundo_apellido: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Teléfono celular" value={nuevo.telefono_celular||''} onChange={e=>setNuevo({...nuevo, telefono_celular: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Email" value={nuevo.email||''} onChange={e=>setNuevo({...nuevo, email: e.target.value})} />
-                <input className="form-control form-control-sm" type="date" placeholder="Cumpleaños" value={nuevo.fecha_nacimiento || ''} onChange={e=>setNuevo({...nuevo, fecha_nacimiento: e.target.value})} />
+                <div className="d-flex flex-column"><label className="form-label small">Primer nombre</label><input className="form-control form-control-sm" value={nuevo.primer_nombre||''} onChange={e=>setNuevo({...nuevo, primer_nombre: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Segundo nombre</label><input className="form-control form-control-sm" value={nuevo.segundo_nombre||''} onChange={e=>setNuevo({...nuevo, segundo_nombre: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Primer apellido</label><input className="form-control form-control-sm" value={nuevo.primer_apellido||''} onChange={e=>setNuevo({...nuevo, primer_apellido: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Segundo apellido (opcional)</label><input className="form-control form-control-sm" value={nuevo.segundo_apellido||''} onChange={e=>setNuevo({...nuevo, segundo_apellido: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Teléfono celular</label><input className="form-control form-control-sm" value={nuevo.telefono_celular||''} onChange={e=>setNuevo({...nuevo, telefono_celular: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Email</label><input className="form-control form-control-sm" type="email" value={nuevo.email||''} onChange={e=>setNuevo({...nuevo, email: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Cumpleaños</label><input className="form-control form-control-sm" type="date" value={nuevo.fecha_nacimiento || ''} onChange={e=>setNuevo({...nuevo, fecha_nacimiento: e.target.value})} /></div>
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setCreating(false)}>Cancelar</button>
@@ -272,12 +272,12 @@ export default function GestionPage() {
             <div className="mt-3 border rounded p-3 bg-light">
               <h3 className="small fw-bold mb-2">Editar cliente</h3>
               <div className="grid grid-cols-2 gap-2">
-                <input className="form-control form-control-sm" placeholder="Primer nombre" value={editCliente.primer_nombre||''} onChange={e=>setEditCliente({...editCliente, primer_nombre: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Segundo nombre" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Primer apellido" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Segundo apellido" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Teléfono celular" value={editCliente.telefono_celular||''} onChange={e=>setEditCliente({...editCliente, telefono_celular: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} />
+                <div className="d-flex flex-column"><label className="form-label small">Primer nombre</label><input className="form-control form-control-sm" value={editCliente.primer_nombre||''} onChange={e=>setEditCliente({...editCliente, primer_nombre: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Segundo nombre</label><input className="form-control form-control-sm" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Primer apellido</label><input className="form-control form-control-sm" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Segundo apellido</label><input className="form-control form-control-sm" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Teléfono celular</label><input className="form-control form-control-sm" value={editCliente.telefono_celular||''} onChange={e=>setEditCliente({...editCliente, telefono_celular: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Email</label><input className="form-control form-control-sm" type="email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} /></div>
               </div>
               <div className="mt-2 flex gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setEditCliente(null)}>Cancelar</button>
@@ -292,9 +292,7 @@ export default function GestionPage() {
           <div className="d-flex align-items-center mb-3 gap-2">
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Pólizas de {fmtNombre(selectedCliente) || selectedCliente.email || selectedCliente.id}</h2>
-            {isSuper && (
-              <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
-            )}
+            <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
           </div>
     <div className="table-responsive small">
             <table className="table table-sm table-striped align-middle">
