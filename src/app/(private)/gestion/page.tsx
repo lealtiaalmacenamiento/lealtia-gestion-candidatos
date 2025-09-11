@@ -52,7 +52,7 @@ export default function GestionPage() {
   const [addingPoliza, setAddingPoliza] = useState(false)
   const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; forma_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; sa_input?: string; sa_moneda?: string }>({ numero_poliza: '', fecha_emision: '', forma_pago: '', prima_input: '', prima_moneda: '' })
   const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
-  const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string }>>([])
+  const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string; moneda?: string|null; sa_min?: number|null; sa_max?: number|null }>>([])
   const [tipoProducto, setTipoProducto] = useState<string>('')
 
   const load = useCallback(async () => {
@@ -367,7 +367,24 @@ export default function GestionPage() {
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Producto parametrizado</label>
-                  <select className="form-select form-select-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, producto_parametro_id: e.target.value || undefined})}>
+                  <select className="form-select form-select-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>{
+                      const value = e.target.value || undefined
+                      let updated = { ...nuevaPoliza, producto_parametro_id: value }
+                      if (value) {
+                        const prod = productos.find(p=>p.id===value)
+                        if (prod) {
+                          updated = {
+                            ...updated,
+                            prima_moneda: prod.moneda || '',
+                            sa_moneda: prod.moneda || '',
+                            sa_input: prod.sa_min != null ? String(prod.sa_min) : ''
+                          }
+                        }
+                      } else {
+                        updated = { ...updated, prima_moneda: '', sa_moneda: '', sa_input: '' }
+                      }
+                      setNuevaPoliza(updated)
+                    }}>
                     <option value="">Sin seleccionar</option>
                     {productos.filter(p => !tipoProducto || p.tipo_producto === tipoProducto).map(p => (
                       <option key={p.id} value={p.id}>{p.nombre_comercial} ({p.tipo_producto})</option>
@@ -387,26 +404,16 @@ export default function GestionPage() {
                   <input className="form-control form-control-sm" value={nuevaPoliza.prima_input} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_input: e.target.value})} />
                 </div>
                 <div className="d-flex flex-column">
-                  <label className="form-label small">Moneda prima</label>
-                  <select className="form-select form-select-sm" value={nuevaPoliza.prima_moneda} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_moneda: e.target.value})}>
-                    <option value="">Selecciona…</option>
-                    <option value="MXN">MXN</option>
-                    <option value="USD">USD</option>
-                    <option value="UDI">UDI</option>
-                  </select>
+                  <label className="form-label small">Moneda prima (desde producto)</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.prima_moneda} disabled readOnly />
                 </div>
                 <div className="d-flex flex-column">
-                  <label className="form-label small">Suma asegurada (opcional)</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.sa_input || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_input: e.target.value || undefined})} />
+                  <label className="form-label small">Suma asegurada (desde producto)</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.sa_input || ''} disabled readOnly />
                 </div>
                 <div className="d-flex flex-column">
-                  <label className="form-label small">Moneda SA (opcional)</label>
-                  <select className="form-select form-select-sm" value={nuevaPoliza.sa_moneda || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_moneda: e.target.value || undefined})}>
-                    <option value="">Selecciona…</option>
-                    <option value="MXN">MXN</option>
-                    <option value="USD">USD</option>
-                    <option value="UDI">UDI</option>
-                  </select>
+                  <label className="form-label small">Moneda SA (desde producto)</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.sa_moneda || ''} disabled readOnly />
                 </div>
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
@@ -414,8 +421,8 @@ export default function GestionPage() {
                 <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza} onClick={async()=>{
                   if (submittingNuevaPoliza) return
                   const prima = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
-                  if (!selectedCliente?.id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !nuevaPoliza.prima_moneda || !isFinite(prima)) {
-                    alert('Campos requeridos: No. Póliza, Fecha de emisión, Forma de pago, Prima, Moneda (y cliente seleccionado)')
+                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !nuevaPoliza.prima_moneda || !isFinite(prima)) {
+                    alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Forma de pago, Prima (y cliente seleccionado)')
                     return
                   }
                   const payload: Record<string, unknown> = {
