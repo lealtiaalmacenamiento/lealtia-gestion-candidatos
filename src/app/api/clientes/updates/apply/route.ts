@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       .select('solicitante_id, cliente_id')
       .eq('id', body.request_id)
       .maybeSingle()
-    if (reqRow?.solicitante_id) {
+  if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
       if (user?.email) {
         await sendMail({ to: user.email, subject: 'Solicitud aprobada', html: `<p>Tu solicitud fue aprobada para el cliente ${reqRow.cliente_id}.</p>` })

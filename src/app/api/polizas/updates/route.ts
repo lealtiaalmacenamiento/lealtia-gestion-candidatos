@@ -58,8 +58,8 @@ export async function POST(req: Request) {
   if (rpc.error) return NextResponse.json({ error: rpc.error.message }, { status: 400 })
   const requestId = rpc.data as string
 
-  // Notificar a supervisores
-  try {
+  // Notificación opcional (desactivada por defecto)
+  if (process.env.NOTIFY_CHANGE_REQUESTS === '1') try {
     const { data: supers } = await supa
       .from('usuarios')
       .select('email, rol, activo')
