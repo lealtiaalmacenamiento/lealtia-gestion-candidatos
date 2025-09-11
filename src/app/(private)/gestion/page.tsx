@@ -70,10 +70,13 @@ export default function GestionPage() {
     const j = await res.json()
     if (!res.ok) { alert(j.error || 'Error al enviar solicitud'); return }
     if (isSuper && j.id) {
-      // Opcional: aprobar de inmediato
-      await fetch('/api/clientes/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id }) })
+      const ra = await fetch('/api/clientes/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id }) })
+      const ja = await ra.json().catch(()=>({}))
+      if (!ra.ok) { alert(ja.error || 'Error al aprobar'); return }
+      alert('Guardado y aprobado')
+    } else {
+      alert('Solicitud enviada')
     }
-    alert(isSuper ? 'Guardado y aprobado' : 'Solicitud enviada')
     setEditCliente(null)
   }
 
