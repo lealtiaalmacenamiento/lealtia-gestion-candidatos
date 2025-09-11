@@ -1,5 +1,6 @@
 "use client"
 import React, { useCallback, useEffect, useState } from 'react'
+import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
 
 type Cliente = {
@@ -11,6 +12,7 @@ type Cliente = {
   segundo_apellido?: string|null
   email?: string|null
   telefono_celular?: string|null
+  fecha_nacimiento?: string|null
 }
 
 type Poliza = {
@@ -40,7 +42,7 @@ export default function GestionPage() {
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
   const [creating, setCreating] = useState(false)
-  const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null }>({ id: '', telefono_celular: '' })
+  const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -62,6 +64,7 @@ export default function GestionPage() {
       segundo_apellido: c.segundo_apellido ?? undefined,
       telefono_celular: c.telefono_celular ?? undefined,
       correo: c.email ?? undefined,
+  fecha_nacimiento: c.fecha_nacimiento ?? undefined,
     }
     const res = await fetch('/api/clientes/updates', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -105,7 +108,10 @@ export default function GestionPage() {
 
   return (
     <div className="p-4">
-      <h1 className="text-xl font-semibold mb-4">Clientes y Pólizas</h1>
+      <div className="d-flex align-items-center mb-4 gap-2">
+        <h1 className="text-xl font-semibold mb-0">Clientes y Pólizas</h1>
+        <a href="/asesor" className="btn btn-sm btn-outline-primary ms-auto">Abrir Vista Asesor</a>
+      </div>
       {loading && <p className="text-sm text-gray-600">Cargando…</p>}
       {view === 'list' && (
         <section className="border rounded p-3">
@@ -145,8 +151,7 @@ export default function GestionPage() {
             </table>
           </div>
           {editCliente && (
-            <div className="mt-3 border rounded p-3 bg-light">
-              <h3 className="small fw-bold mb-2">Editar cliente</h3>
+            <AppModal title="Editar cliente" icon="person-fill" onClose={()=>setEditCliente(null)}>
               <div className="grid grid-cols-2 gap-2">
                 <input className="form-control form-control-sm" placeholder="Primer nombre" value={editCliente.primer_nombre||''} onChange={e=>setEditCliente({...editCliente, primer_nombre: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Segundo nombre" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} />
@@ -154,16 +159,16 @@ export default function GestionPage() {
                 <input className="form-control form-control-sm" placeholder="Segundo apellido" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Teléfono celular" value={editCliente.telefono_celular||''} onChange={e=>setEditCliente({...editCliente, telefono_celular: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} />
+                <input className="form-control form-control-sm" type="date" placeholder="Cumpleaños" value={editCliente.fecha_nacimiento || ''} onChange={e=>setEditCliente({...editCliente, fecha_nacimiento: e.target.value})} />
               </div>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setEditCliente(null)}>Cancelar</button>
                 <button className="btn btn-sm btn-success" onClick={()=>submitClienteCambio(editCliente)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
               </div>
-            </div>
+            </AppModal>
           )}
           {creating && (
-            <div className="mt-3 border rounded p-3 bg-light">
-              <h3 className="small fw-bold mb-2">Nuevo cliente</h3>
+            <AppModal title="Nuevo cliente" icon="person-plus" onClose={()=>setCreating(false)}>
               <div className="grid grid-cols-2 gap-2">
                 <input className="form-control form-control-sm" placeholder="Primer nombre" value={nuevo.primer_nombre||''} onChange={e=>setNuevo({...nuevo, primer_nombre: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Segundo nombre" value={nuevo.segundo_nombre||''} onChange={e=>setNuevo({...nuevo, segundo_nombre: e.target.value})} />
@@ -171,8 +176,9 @@ export default function GestionPage() {
                 <input className="form-control form-control-sm" placeholder="Segundo apellido (deja vacío si no aplica)" value={nuevo.segundo_apellido||''} onChange={e=>setNuevo({...nuevo, segundo_apellido: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Teléfono celular" value={nuevo.telefono_celular||''} onChange={e=>setNuevo({...nuevo, telefono_celular: e.target.value})} />
                 <input className="form-control form-control-sm" placeholder="Email" value={nuevo.email||''} onChange={e=>setNuevo({...nuevo, email: e.target.value})} />
+                <input className="form-control form-control-sm" type="date" placeholder="Cumpleaños" value={nuevo.fecha_nacimiento || ''} onChange={e=>setNuevo({...nuevo, fecha_nacimiento: e.target.value})} />
               </div>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setCreating(false)}>Cancelar</button>
                 <button className="btn btn-sm btn-success" onClick={async()=>{
                   try {
@@ -183,16 +189,17 @@ export default function GestionPage() {
                       segundo_apellido: nuevo.segundo_apellido,
                       telefono_celular: nuevo.telefono_celular,
                       email: nuevo.email,
+                      fecha_nacimiento: nuevo.fecha_nacimiento || null,
                     })})
                     const j = await res.json()
                     if (!res.ok) { alert(j.error || 'Error al crear'); return }
                     setCreating(false)
-                    setNuevo({ id: '', telefono_celular: '' })
+                    setNuevo({ id: '', telefono_celular: '', fecha_nacimiento: null })
                     await load()
                   } catch { alert('Error al crear') }
                 }}>Crear</button>
               </div>
-            </div>
+            </AppModal>
           )}
         </section>
       )}

@@ -34,12 +34,13 @@ export default function VistaAsesorPage() {
   const [selectedCliente, setSelectedCliente] = React.useState<Cliente | null>(null)
   const [polizas, setPolizas] = React.useState<Poliza[]>([])
   const [loadingPolizas, setLoadingPolizas] = React.useState(false)
+  const [q, setQ] = React.useState('')
 
   React.useEffect(() => {
-    ;(async () => {
+  ;(async () => {
       try {
         setLoadingClientes(true)
-        const res = await fetch('/api/clientes?q=')
+    const res = await fetch(`/api/clientes?q=${encodeURIComponent(q)}`)
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Error clientes')
         setClientes(data.items || [])
@@ -49,8 +50,8 @@ export default function VistaAsesorPage() {
       } finally {
         setLoadingClientes(false)
       }
-    })()
-  }, [])
+  })()
+  }, [q])
 
   const loadPolizas = async (cliente: Cliente) => {
     setSelectedCliente(cliente)
@@ -78,7 +79,18 @@ export default function VistaAsesorPage() {
 
       {/* Paso 1: Seleccionar cliente */}
       <div className="card mb-4 shadow-sm">
-        <div className="card-header bg-light fw-semibold">Selecciona un cliente</div>
+        <div className="card-header bg-light fw-semibold d-flex align-items-center gap-2">
+          <span>Selecciona un cliente</span>
+          <input
+            value={q}
+            onChange={(e)=>setQ(e.target.value)}
+            onKeyDown={(e)=>{ if(e.key==='Enter'){ setQ((e.target as HTMLInputElement).value) } }}
+            placeholder="Buscar..."
+            className="form-control form-control-sm ms-auto"
+            style={{ maxWidth: 260 }}
+          />
+          <button className="btn btn-sm btn-outline-secondary" onClick={()=>setQ(q)}>Buscar</button>
+        </div>
         <div className="card-body">
           {loadingClientes ? (
             <div>Cargando clientes...</div>
