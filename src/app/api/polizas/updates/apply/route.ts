@@ -27,8 +27,34 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null) as { request_id?: string, debug?: boolean }
   if (!body?.request_id) return NextResponse.json({ error: 'Falta request_id' }, { status: 400 })
 
+  // Debug logs (se activan si body.debug=true o NODE_ENV=development)
+  const debugOn = body.debug || process.env.NODE_ENV === 'development'
+  if (debugOn) {
+    // Info de usuario y payload previo a la llamada RPC
+    console.debug('[apply_poliza_update][debug] user.id', auth.user.id)
+    console.debug('[apply_poliza_update][debug] request_id', body.request_id)
+    try {
+      const { data: usuarioRow } = await supa.from('usuarios').select('id,id_auth,rol,activo').eq('id_auth', auth.user.id).maybeSingle()
+      console.debug('[apply_poliza_update][debug] usuarios row', usuarioRow)
+      const { data: reqRow } = await supa.from('poliza_update_requests').select('id,estado,poliza_id,solicitante_id').eq('id', body.request_id).maybeSingle()
+      console.debug('[apply_poliza_update][debug] update_request row', reqRow)
+    } catch (e) {
+      console.debug('[apply_poliza_update][debug] error fetching pre-data', e)
+    }
+  }
+
   const rpc = await supa.rpc('apply_poliza_update', { p_request_id: body.request_id })
   if (rpc.error) {
+    if (debugOn) {
+      console.debug('[apply_poliza_update][debug] rpc.error', rpc.error)
+      // Intento adicional: evaluar is_super_role a través de un pequeño SELECT
+      try {
+        const { data: isSuper } = await supa.rpc('is_super_role_wrapper')
+        console.debug('[apply_poliza_update][debug] is_super_role_wrapper()', isSuper)
+      } catch (e) {
+        console.debug('[apply_poliza_update][debug] fallo wrapper is_super_role', e)
+      }
+    }
     let pending: unknown = null
     if (body.debug) {
       const { data: row } = await supa
