@@ -23,6 +23,16 @@ export default function PendientesPage() {
   const [scope, setScope] = useState<'all'|'cliente'|'poliza'>('all')
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState<string | null>(null)
+  const debugOn = useMemo(() => {
+    // Activa debug automáticamente en desarrollo o si la URL incluye ?debug=1
+    if (process.env.NODE_ENV !== 'production') return true
+    try {
+      const sp = new URLSearchParams(window.location.search)
+      return sp.has('debug') || sp.get('debug') === '1' || sp.get('debug') === 'true'
+    } catch {
+      return false
+    }
+  }, [])
 
   useEffect(() => {
     const run = async () => {
@@ -72,9 +82,9 @@ export default function PendientesPage() {
     setActing(it.id)
     try {
       if (it.tipo === 'cliente') {
-        await fetch('/api/clientes/updates/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, motivo }) })
+  await fetch('/api/clientes/updates/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, motivo, debug: debugOn }) })
       } else {
-        await fetch('/api/polizas/updates/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, motivo }) })
+  await fetch('/api/polizas/updates/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, motivo, debug: debugOn }) })
       }
       await refresh()
     } finally { setActing(null) }
