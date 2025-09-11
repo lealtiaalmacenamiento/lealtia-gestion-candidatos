@@ -25,6 +25,10 @@ type Poliza = {
   prima_moneda?: string|null
   sa_input?: number|null
   sa_moneda?: string|null
+  producto_nombre?: string|null
+  fecha_emision?: string|null
+  renovacion?: string|null
+  tipo_producto?: string|null
 }
 
 export default function GestionPage() {
@@ -126,8 +130,10 @@ export default function GestionPage() {
               <thead>
                 <tr>
                   <th>Número de cliente</th>
-                  <th>Nombre</th>
-                  <th>Email</th>
+                  <th>Contratante</th>
+                  <th>Teléfono</th>
+                  <th>Correo</th>
+                  <th>Cumpleaños</th>
                   <th></th>
                 </tr>
               </thead>
@@ -136,7 +142,9 @@ export default function GestionPage() {
                   <tr key={c.id}>
                     <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
                     <td className="text-xs">{fmtNombre(c)}</td>
+                    <td className="text-xs">{c.telefono_celular || '—'}</td>
                     <td className="text-xs">{c.email || '—'}</td>
+                    <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
                     <td className="text-end">
                       <div className="d-flex gap-2 justify-content-end">
                         <button className="btn btn-sm btn-outline-primary" onClick={()=>{ setSelectedCliente(c); setView('cliente') }}>Ver cliente</button>
@@ -146,7 +154,7 @@ export default function GestionPage() {
                     </td>
                   </tr>
                 ))}
-                {!clientes.length && <tr><td colSpan={4} className="text-center text-muted py-3">Sin resultados</td></tr>}
+                {!clientes.length && <tr><td colSpan={6} className="text-center text-muted py-3">Sin resultados</td></tr>}
               </tbody>
             </table>
           </div>
@@ -257,9 +265,13 @@ export default function GestionPage() {
             <table className="table table-sm table-striped align-middle">
               <thead>
                 <tr>
-                  <th>ID</th>
                   <th>No. Póliza</th>
+                  <th>Producto</th>
                   <th>Estatus</th>
+                  <th>Forma de pago</th>
+                  <th>Fecha de emisión</th>
+                  <th>Renovación</th>
+                  <th>Tipo</th>
                   <th>Prima</th>
                   <th></th>
                 </tr>
@@ -267,16 +279,20 @@ export default function GestionPage() {
               <tbody>
                 {polizas.map(p => (
                   <tr key={p.id}>
-                    <td className="font-mono text-xs">{p.id}</td>
                     <td className="text-xs">{p.numero_poliza || '—'}</td>
+                    <td className="text-xs">{p.producto_nombre || '—'}</td>
                     <td className="text-xs">{p.estatus || '—'}</td>
-                    <td className="text-xs">{p.prima_input ?? '—'} {p.prima_moneda || ''}</td>
+                    <td className="text-xs">{p.forma_pago || '—'}</td>
+                    <td className="text-xs">{p.fecha_emision ? new Date(p.fecha_emision).toLocaleDateString() : '—'}</td>
+                    <td className="text-xs">{p.renovacion ? new Date(p.renovacion).toLocaleDateString() : '—'}</td>
+                    <td className="text-xs">{p.tipo_producto || '—'}</td>
+                    <td className="text-xs">{(p.prima_input ?? '—')} {p.prima_moneda || ''}</td>
                     <td className="text-end">
                       <button className="btn btn-sm btn-primary" onClick={()=>setEditPoliza({...p})}>Editar</button>
                     </td>
                   </tr>
                 ))}
-                {!polizas.length && <tr><td colSpan={5} className="text-center text-muted py-3">Sin resultados</td></tr>}
+                {!polizas.length && <tr><td colSpan={9} className="text-center text-muted py-3">Sin resultados</td></tr>}
               </tbody>
             </table>
           </div>
