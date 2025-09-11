@@ -366,7 +366,7 @@ export default function GestionPage() {
                   </select>
                 </div>
                 <div className="d-flex flex-column">
-                  <label className="form-label small">Producto parametrizado</label>
+                  <label className="form-label small">Producto parametrizado (requerido)</label>
                   <select className="form-select form-select-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>{
                       const value = e.target.value || undefined
                       let updated = { ...nuevaPoliza, producto_parametro_id: value }
@@ -400,29 +400,22 @@ export default function GestionPage() {
                   </select>
                 </div>
                 <div className="d-flex flex-column">
-                  <label className="form-label small">Prima</label>
+                  <label className="form-label small">Prima anual</label>
                   <input className="form-control form-control-sm" value={nuevaPoliza.prima_input} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_input: e.target.value})} />
                 </div>
-                <div className="d-flex flex-column">
-                  <label className="form-label small">Moneda prima (desde producto)</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.prima_moneda} disabled readOnly />
-                </div>
-                <div className="d-flex flex-column">
-                  <label className="form-label small">Suma asegurada (desde producto)</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.sa_input || ''} disabled readOnly />
-                </div>
-                <div className="d-flex flex-column">
-                  <label className="form-label small">Moneda SA (desde producto)</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.sa_moneda || ''} disabled readOnly />
-                </div>
+                {/* Moneda prima oculta (autocompletada) */}
+                <input type="hidden" value={nuevaPoliza.prima_moneda} />
+                {/* Campos SA ocultos (autocompletados) */}
+                <input type="hidden" value={nuevaPoliza.sa_input || ''} />
+                <input type="hidden" value={nuevaPoliza.sa_moneda || ''} />
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" disabled={submittingNuevaPoliza} onClick={()=>setAddingPoliza(false)}>Cancelar</button>
                 <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza} onClick={async()=>{
                   if (submittingNuevaPoliza) return
                   const prima = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
-                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !nuevaPoliza.prima_moneda || !isFinite(prima)) {
-                    alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Forma de pago, Prima (y cliente seleccionado)')
+                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !isFinite(prima)) {
+                    alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Forma de pago, Prima anual (y cliente seleccionado)')
                     return
                   }
                   const payload: Record<string, unknown> = {

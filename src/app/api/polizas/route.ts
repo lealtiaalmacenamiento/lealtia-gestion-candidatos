@@ -137,9 +137,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  // Crear nueva póliza (solo superusuario vía service role). Los no-super reciben 403.
+  // Crear nueva póliza: super puede crear para cualquier cliente; agente solo para clientes propios
   const usuario = await getUsuarioSesion()
-  const role = (usuario?.rol || '').toLowerCase()
+  if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  const role = (usuario.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
 
   const body = await req.json().catch(() => null) as {
@@ -162,13 +163,40 @@ export async function POST(req: Request) {
   const fecha_emision = (body.fecha_emision || '').trim() // YYYY-MM-DD
   const forma_pago = (body.forma_pago || '').trim()
   const prima_input = typeof body.prima_input === 'number' ? body.prima_input : Number.NaN
-  const prima_moneda = (body.prima_moneda || '').trim()
-  if (!cliente_id || !numero_poliza || !fecha_emision || !forma_pago || !prima_moneda || !isFinite(prima_input)) {
-    return NextResponse.json({ error: 'Faltan campos requeridos: cliente_id, numero_poliza, fecha_emision, forma_pago, prima_input, prima_moneda' }, { status: 400 })
+  if (!cliente_id || !numero_poliza || !fecha_emision || !forma_pago || !isFinite(prima_input)) {
+    return NextResponse.json({ error: 'Faltan campos requeridos: cliente_id, numero_poliza, fecha_emision, forma_pago, prima_input' }, { status: 400 })
   }
 
+  // Si no es super, validar que el cliente pertenece al asesor (RLS también lo reforzará en SELECTs)
   if (!isSuper) {
-    return NextResponse.json({ error: 'Solo superusuario puede crear pólizas' }, { status: 403 })
+    try {
+      const admin = getServiceClient()
+      const { data: clienteRow, error: cErr } = await admin.from('clientes').select('id, asesor_id').eq('id', cliente_id).maybeSingle()
+      if (cErr || !clienteRow) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
+  interface UsuarioAuth { id_auth?: string | null }
+  const idAuth = (usuario as UsuarioAuth).id_auth || null
+      if (!idAuth || clienteRow.asesor_id !== idAuth) {
+        return NextResponse.json({ error: 'No autorizado para este cliente' }, { status: 403 })
+      }
+    } catch {
+      return NextResponse.json({ error: 'Error validando cliente' }, { status: 500 })
+    }
+  }
+
+  // Si viene producto_parametro_id, obtener moneda y rango SA para rellenar
+  let prima_moneda: string | null = null
+  let sa_moneda: string | null = null
+  let sa_input: number | null = null
+  if (body.producto_parametro_id) {
+    try {
+      const admin = getServiceClient()
+      const { data: prod } = await admin.from('producto_parametros').select('id, moneda, sa_min, sa_max').eq('id', body.producto_parametro_id).maybeSingle()
+      if (prod) {
+        prima_moneda = (prod.moneda || '').trim() || null
+        sa_moneda = prima_moneda
+        if (typeof prod.sa_min === 'number') sa_input = prod.sa_min
+      }
+    } catch {}
   }
 
   const insertPayload: Record<string, unknown> = {
@@ -178,11 +206,11 @@ export async function POST(req: Request) {
     fecha_emision,
     forma_pago,
     prima_input,
-    prima_moneda,
+    prima_moneda: prima_moneda || body.prima_moneda || null,
+    sa_input: sa_input ?? body.sa_input ?? null,
+    sa_moneda: sa_moneda || body.sa_moneda || null,
   }
   if (body.estatus) insertPayload.estatus = body.estatus
-  if (body.sa_input !== undefined) insertPayload.sa_input = body.sa_input
-  if (body.sa_moneda !== undefined) insertPayload.sa_moneda = body.sa_moneda
 
   try {
     const admin = getServiceClient()
@@ -196,7 +224,7 @@ export async function POST(req: Request) {
     if (dup && dup.length) {
       return NextResponse.json({ error: 'Ya existe una póliza con ese número para este cliente' }, { status: 409 })
     }
-    const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
+  const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ item: data }, { status: 201 })
   } catch (e) {
