@@ -24,10 +24,18 @@ export async function GET(req: Request) {
   if (!auth?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim().toLowerCase()
+  const clienteId = (url.searchParams.get('cliente_id') || '').trim()
 
-  let sel = supa.from('polizas').select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda').order('created_at', { ascending: false }).limit(100)
+  let sel = supa
+    .from('polizas')
+    .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda')
+    .order('created_at', { ascending: false })
+    .limit(100)
   if (q) {
     sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
+  }
+  if (clienteId) {
+    sel = sel.eq('cliente_id', clienteId)
   }
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

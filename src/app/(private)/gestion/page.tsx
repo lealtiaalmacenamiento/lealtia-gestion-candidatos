@@ -31,7 +31,8 @@ export default function GestionPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
   const [qClientes, setQClientes] = useState('')
-  const [qPolizas, setQPolizas] = useState('')
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
+  const [view, setView] = useState<'list' | 'cliente' | 'polizas'>('list')
   const [loading, setLoading] = useState(false)
 
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
@@ -40,15 +41,11 @@ export default function GestionPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [rc, rp] = await Promise.all([
-        fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`),
-        fetch(`/api/polizas?q=${encodeURIComponent(qPolizas)}`)
-      ])
-      const jc = await rc.json(); const jp = await rp.json()
+      const rc = await fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`)
+      const jc = await rc.json()
       setClientes(jc.items || [])
-      setPolizas(jp.items || [])
     } finally { setLoading(false) }
-  }, [qClientes, qPolizas])
+  }, [qClientes])
 
   useEffect(() => { void load() }, [load])
 
@@ -102,8 +99,7 @@ export default function GestionPage() {
     <div className="p-4">
       <h1 className="text-xl font-semibold mb-4">Clientes y Pólizas</h1>
       {loading && <p className="text-sm text-gray-600">Cargando…</p>}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Clientes */}
+      {view === 'list' && (
         <section className="border rounded p-3">
           <header className="flex items-center gap-2 mb-3">
             <h2 className="font-medium">Clientes</h2>
@@ -127,7 +123,11 @@ export default function GestionPage() {
                     <td className="text-xs">{fmtNombre(c)}</td>
                     <td className="text-xs">{c.email || '—'}</td>
                     <td className="text-end">
-                      <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                      <div className="d-flex gap-2 justify-content-end">
+                        <button className="btn btn-sm btn-outline-primary" onClick={()=>{ setSelectedCliente(c); setView('cliente') }}>Ver cliente</button>
+                        <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+                        <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -152,14 +152,56 @@ export default function GestionPage() {
             </div>
           )}
         </section>
+      )}
 
-        {/* Pólizas */}
+      {view === 'cliente' && selectedCliente && (
         <section className="border rounded p-3">
-          <header className="flex items-center gap-2 mb-3">
-            <h2 className="font-medium">Pólizas</h2>
-            <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qPolizas} onChange={e=>setQPolizas(e.target.value)} />
-            <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
-          </header>
+          <div className="d-flex align-items-center mb-3 gap-2">
+            <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
+            <h2 className="mb-0">Cliente</h2>
+            <span className="ms-auto small text-muted">ID: {selectedCliente.id}</span>
+          </div>
+          <div className="mb-3">
+            <div className="row g-2">
+              <div className="col-md-6">
+                <label className="form-label small">Nombre</label>
+                <div className="form-control form-control-sm">{fmtNombre(selectedCliente)}</div>
+              </div>
+              <div className="col-md-6">
+                <label className="form-label small">Email</label>
+                <div className="form-control form-control-sm">{selectedCliente.email || '—'}</div>
+              </div>
+            </div>
+          </div>
+          <div className="d-flex gap-2">
+            <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{ setView('polizas'); setLoading(true); try{ const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+            <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...selectedCliente})}>Editar</button>
+          </div>
+          {editCliente && (
+            <div className="mt-3 border rounded p-3 bg-light">
+              <h3 className="small fw-bold mb-2">Editar cliente</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="form-control form-control-sm" placeholder="Primer nombre" value={editCliente.primer_nombre||''} onChange={e=>setEditCliente({...editCliente, primer_nombre: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Segundo nombre" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Primer apellido" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Segundo apellido" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button className="btn btn-sm btn-secondary" onClick={()=>setEditCliente(null)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" onClick={()=>submitClienteCambio(editCliente)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {view === 'polizas' && selectedCliente && (
+        <section className="border rounded p-3">
+          <div className="d-flex align-items-center mb-3 gap-2">
+            <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
+            <h2 className="mb-0">Pólizas de {fmtNombre(selectedCliente) || selectedCliente.email || selectedCliente.id}</h2>
+          </div>
           <div className="table-responsive small">
             <table className="table table-sm table-striped align-middle">
               <thead>
@@ -206,7 +248,7 @@ export default function GestionPage() {
             </div>
           )}
         </section>
-      </div>
+      )}
     </div>
   )
 }
