@@ -138,7 +138,26 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   // Crear nueva póliza: super puede crear para cualquier cliente; agente solo para clientes propios
-  const usuario = await getUsuarioSesion()
+  let usuario = await getUsuarioSesion()
+  // Fallback SSR auth (cookies) si getUsuarioSesion devolvió null
+  if (!usuario) {
+    try {
+      const supa = await getSupa()
+      const { data: authRes } = await supa.auth.getUser()
+      const email = authRes?.user?.email
+      if (email) {
+        const { data: uRow } = await supa.from('usuarios').select('*').eq('email', email).maybeSingle()
+        if (uRow) {
+          interface UsuarioRow { id: number; email: string; rol: string; activo: boolean; id_auth?: string | null; nombre?: string|null; last_login?: string|null }
+          // Normalizar rol a cadena no vacía
+          const normalized = { ...uRow, rol: (uRow.rol || '').toString() } as UsuarioRow
+          usuario = normalized
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const role = (usuario.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)

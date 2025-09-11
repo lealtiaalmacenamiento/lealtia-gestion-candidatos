@@ -367,7 +367,7 @@ export default function GestionPage() {
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Producto parametrizado (requerido)</label>
-                  <select className="form-select form-select-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>{
+                  <select className="form-select form-select-sm" disabled={!tipoProducto} value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>{
                       const value = e.target.value || undefined
                       let updated = { ...nuevaPoliza, producto_parametro_id: value }
                       if (value) {
