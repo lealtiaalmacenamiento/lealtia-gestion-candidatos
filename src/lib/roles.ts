@@ -14,10 +14,10 @@ export function isActiveUser(user: { activo?: boolean | null } | null | undefine
 }
 
 // Granular permissions for producto_parametros
-// - Read: admin, superusuario/super_usuario, supervisor, editor, lector
+// - Read: admin, superusuario/super_usuario, supervisor, editor, lector, agente
 // - Create/Update: admin, superusuario/super_usuario, supervisor, editor
 // - Delete: admin, superusuario/super_usuario, supervisor
-const READ_ROLES: AppRole[] = ['admin','superusuario','super_usuario','supervisor','editor','lector']
+const READ_ROLES: AppRole[] = ['admin','superusuario','super_usuario','supervisor','editor','lector','agente']
 const WRITE_ROLES: AppRole[] = ['admin','superusuario','super_usuario','supervisor','editor']
 const DELETE_ROLES: AppRole[] = ['admin','superusuario','super_usuario','supervisor']
 
