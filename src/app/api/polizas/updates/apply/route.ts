@@ -28,7 +28,9 @@ export async function POST(req: Request) {
   if (!body?.request_id) return NextResponse.json({ error: 'Falta request_id' }, { status: 400 })
 
   const rpc = await supa.rpc('apply_poliza_update', { p_request_id: body.request_id })
-  if (rpc.error) return NextResponse.json({ error: rpc.error.message }, { status: 400 })
+  if (rpc.error) {
+    return NextResponse.json({ error: rpc.error.message, details: rpc.error.details, hint: rpc.error.hint, code: rpc.error.code }, { status: 400 })
+  }
 
   try {
     const { data: reqRow } = await supa
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
       .select('solicitante_id, poliza_id')
       .eq('id', body.request_id)
       .maybeSingle()
-  if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
+    if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
       if (user?.email) {
         await sendMail({ to: user.email, subject: 'Solicitud de póliza aprobada', html: `<p>Tu solicitud fue aprobada para la póliza ${reqRow.poliza_id}.</p>` })
