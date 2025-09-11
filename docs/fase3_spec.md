@@ -258,6 +258,67 @@ Tabla:
 - udi_values(fecha date PK, valor numeric(12,6), source text, fetched_at timestamptz, stale boolean)
 Función planificada: get_current_udi(fecha) -> valor (fallback al más reciente anterior; marca stale si fecha < hoy). Job diario fetch serie Banxico SP68257 (token BANXICO_TOKEN). Guardar udi_valor_aplicado en cálculos dependientes (p.ej. pagos).
 
+---
+
+## 9. Sprint 4 – Aprobación de cambios (Clientes y Pólizas) y Historial de Solicitudes
+
+Objetivo: que todo cambio sensible pase por aprobación de un supervisor/super_usuario y quede trazabilidad.
+
+### 9.1 Flujo Clientes
+
+- Tablas y funciones:
+  - `cliente_update_requests(id, cliente_id, solicitante_id, payload_propuesto jsonb, estado text, motivo_rechazo text, creado_at, resuelto_at, resuelto_por)`
+  - `submit_cliente_update(p_cliente_id uuid, p_payload jsonb) returns uuid`
+  - `apply_cliente_update(p_request_id uuid) returns void` (verifica rol, aplica cambios permitidos y registra `cliente_historial` con snapshot old/new)
+  - `reject_cliente_update(p_request_id uuid, p_motivo text) returns void`
+- RLS:
+  - SELECT en `cliente_update_requests`: solicitante o super
+  - INSERT en `cliente_update_requests`: solicitante (self)
+  - UPDATE de `clientes`: sólo super (a través de función)
+
+### 9.2 Flujo Pólizas
+
+- Tablas y funciones:
+  - `poliza_update_requests(id, poliza_id, solicitante_id, payload_propuesto jsonb, estado text, motivo_rechazo text, creado_at, resuelto_at, resuelto_por)`
+  - `submit_poliza_update(p_poliza_id uuid, p_payload jsonb) returns uuid`
+  - `apply_poliza_update(p_request_id uuid) returns void` (verifica rol, aplica cambios permitidos, inserta en `historial_costos_poliza` si cambió `prima_input`, y llama `recalc_puntos_poliza`)
+  - `reject_poliza_update(p_request_id uuid, p_motivo text) returns void`
+- RLS:
+  - SELECT en `polizas`: asesor del cliente dueño o super
+  - UPDATE en `polizas`: sólo super
+  - SELECT en `poliza_update_requests`: solicitante o super
+  - SELECT en `historial_costos_poliza`: sólo super
+
+### 9.3 Roles
+
+Funciones `jwt_role()` e `is_super_role()` leen el claim `role` del JWT para autorizar aplicar/rechazar. Asegurar que sesiones de supervisor/super_usuario incluyan dicho claim.
+
+### 9.4 Endpoints Next.js
+
+- Clientes:
+  - `GET/POST /api/clientes/updates` (listar/enviar)
+  - `POST /api/clientes/updates/apply` (aprobar)
+  - `POST /api/clientes/updates/reject` (rechazar)
+- Pólizas:
+  - `GET/POST /api/polizas/updates` (listar/enviar)
+  - `POST /api/polizas/updates/apply` (aprobar)
+  - `POST /api/polizas/updates/reject` (rechazar)
+- Historial unificado:
+  - `GET /api/historial/solicitudes` (combina cliente/póliza; incluye nombres/emails de solicitante y resolutor)
+
+Todos los endpoints registran auditoría y envían notificaciones por correo (cuando procede).
+
+### 9.5 UI mínima
+
+- `/(private)/clientes/updates`: lista, submit, aprobar/rechazar (acciones sólo visibles para super)
+- `/(private)/polizas/updates`: lista, submit, aprobar/rechazar (acciones sólo visibles para super)
+- `/(private)/historial`: feed unificado de solicitudes (pendientes, aprobadas, rechazadas) con filtros básicos
+
+### 9.6 Notas
+
+- El historial unificado muestra todas las solicitudes independientemente del resultado (aprobadas o rechazadas).
+- La vista de auditoría general permanece para trazabilidad de acciones del sistema.
+
 ## 9. Historial y Auditoría
 Tablas:
 - cliente_historial(id, cliente_id, cambio_tipo, payload_old jsonb, payload_new jsonb, actor_id, creado_at)

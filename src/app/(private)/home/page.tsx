@@ -14,6 +14,10 @@ const modules = [
   // Fase 2
   { key: 'prospectos', title: 'Prospectos', desc: 'Gestión semanal de prospectos', icon: 'people-fill', roles: ['agente','superusuario','admin'], color: 'info' },
   { key: 'planificacion', title: 'Planificación', desc: 'Bloques de actividades y citas', icon: 'calendar-week', roles: ['agente','superusuario','admin'], color: 'primary' },
+  // Sprint 4 – Aprobación de cambios a cliente
+  { key: 'clientes/updates', title: 'Cambios de cliente', desc: 'Enviar y aprobar cambios de datos', icon: 'person-gear', roles: ['editor','superusuario','admin'], color: 'primary' },
+  { key: 'polizas/updates', title: 'Cambios de póliza', desc: 'Aprobación de cambios de póliza', icon: 'file-earmark-check', roles: ['editor','superusuario','admin'], color: 'secondary' },
+  { key: 'historial', title: 'Historial de cambios', desc: 'Cliente y póliza', icon: 'journal-text', roles: ['superusuario','admin'], color: 'dark' },
 ];
 
 export default function HomeDashboard() {
