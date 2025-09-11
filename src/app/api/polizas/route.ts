@@ -52,8 +52,8 @@ export async function GET(req: Request) {
     try {
       const admin = getServiceClient()
       let sel = admin
-        .from('polizas')
-        .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto)')
+    .from('polizas')
+    .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto)')
         .order('fecha_alta_sistema', { ascending: false })
         .limit(100)
       if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
@@ -61,19 +61,21 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // map join + computed fields
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
+    type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
     const fecha_emision: string | null = r.fecha_emision ?? null
+      const fecha_renovacion: string | null = r.fecha_renovacion ?? null
     let renovacion: string | null = null
-    if (fecha_emision) {
+      if (fecha_emision && !fecha_renovacion) {
       try {
         const d = new Date(fecha_emision)
         d.setFullYear(d.getFullYear() + 1)
         renovacion = d.toISOString().slice(0,10)
       } catch {}
     }
+      if (fecha_renovacion) renovacion = fecha_renovacion
     return {
       id: r.id,
       cliente_id: r.cliente_id,
@@ -85,6 +87,10 @@ export async function GET(req: Request) {
       sa_input: r.sa_input,
       sa_moneda: r.sa_moneda,
       fecha_emision,
+        fecha_renovacion,
+        tipo_pago: r.tipo_pago ?? null,
+        dia_pago: r.dia_pago ?? null,
+        meses_check: r.meses_check ?? {},
       renovacion,
       producto_nombre,
       tipo_producto
@@ -98,8 +104,8 @@ export async function GET(req: Request) {
 
   const supa = await getSupa()
   let sel = supa
-    .from('polizas')
-  .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), clientes!inner(asesor_id)')
+      .from('polizas')
+    .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), clientes!inner(asesor_id)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
   if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
@@ -113,19 +119,21 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // quitar campo join anidado
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
-    const fecha_emision: string | null = r.fecha_emision ?? null
+      const fecha_emision: string | null = r.fecha_emision ?? null
+      const fecha_renovacion: string | null = r.fecha_renovacion ?? null
     let renovacion: string | null = null
-    if (fecha_emision) {
+      if (fecha_emision && !fecha_renovacion) {
       try {
         const d = new Date(fecha_emision)
         d.setFullYear(d.getFullYear() + 1)
         renovacion = d.toISOString().slice(0,10)
       } catch {}
     }
+      if (fecha_renovacion) renovacion = fecha_renovacion
     return {
       id: r.id,
       cliente_id: r.cliente_id,
@@ -137,6 +145,10 @@ export async function GET(req: Request) {
       sa_input: r.sa_input,
       sa_moneda: r.sa_moneda,
       fecha_emision,
+        fecha_renovacion,
+        tipo_pago: r.tipo_pago ?? null,
+        dia_pago: r.dia_pago ?? null,
+        meses_check: r.meses_check ?? {},
       renovacion,
       producto_nombre,
       tipo_producto
@@ -176,7 +188,11 @@ export async function POST(req: Request) {
     producto_parametro_id?: string | null
     numero_poliza?: string
     fecha_emision?: string
+  fecha_renovacion?: string
     forma_pago?: string
+  tipo_pago?: string
+  dia_pago?: number
+  meses_check?: Record<string, boolean>
     prima_input?: number
     prima_moneda?: string
     estatus?: string | null
@@ -189,7 +205,11 @@ export async function POST(req: Request) {
   const cliente_id = (body.cliente_id || '').trim()
   const numero_poliza = (body.numero_poliza || '').trim()
   const fecha_emision = (body.fecha_emision || '').trim() // YYYY-MM-DD
+  const fecha_renovacion = (body.fecha_renovacion || '').trim()
   const forma_pago = (body.forma_pago || '').trim()
+  const tipo_pago = (body.tipo_pago || '').trim()
+  const dia_pago = typeof body.dia_pago === 'number' ? body.dia_pago : null
+  const meses_check = body.meses_check && typeof body.meses_check === 'object' ? body.meses_check : null
   const prima_input = typeof body.prima_input === 'number' ? body.prima_input : Number.NaN
   const producto_parametro_id = (body.producto_parametro_id || '').trim()
   if (!cliente_id || !producto_parametro_id || !numero_poliza || !fecha_emision || !forma_pago || !isFinite(prima_input)) {
@@ -233,7 +253,11 @@ export async function POST(req: Request) {
   producto_parametro_id: producto_parametro_id || null,
     numero_poliza,
     fecha_emision,
+  fecha_renovacion: fecha_renovacion || null,
     forma_pago,
+  tipo_pago: tipo_pago || null,
+  dia_pago: dia_pago,
+  meses_check: meses_check || {},
     prima_input,
     prima_moneda: prima_moneda || body.prima_moneda || null,
     sa_input: sa_input ?? body.sa_input ?? null,
