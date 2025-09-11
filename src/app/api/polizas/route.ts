@@ -182,8 +182,9 @@ export async function POST(req: Request) {
   const fecha_emision = (body.fecha_emision || '').trim() // YYYY-MM-DD
   const forma_pago = (body.forma_pago || '').trim()
   const prima_input = typeof body.prima_input === 'number' ? body.prima_input : Number.NaN
-  if (!cliente_id || !numero_poliza || !fecha_emision || !forma_pago || !isFinite(prima_input)) {
-    return NextResponse.json({ error: 'Faltan campos requeridos: cliente_id, numero_poliza, fecha_emision, forma_pago, prima_input' }, { status: 400 })
+  const producto_parametro_id = (body.producto_parametro_id || '').trim()
+  if (!cliente_id || !producto_parametro_id || !numero_poliza || !fecha_emision || !forma_pago || !isFinite(prima_input)) {
+    return NextResponse.json({ error: 'Faltan campos requeridos: cliente_id, producto_parametro_id, numero_poliza, fecha_emision, forma_pago, prima_input' }, { status: 400 })
   }
 
   // Si no es super, validar que el cliente pertenece al asesor (RLS también lo reforzará en SELECTs)
@@ -220,7 +221,7 @@ export async function POST(req: Request) {
 
   const insertPayload: Record<string, unknown> = {
     cliente_id,
-    producto_parametro_id: body.producto_parametro_id || null,
+  producto_parametro_id: producto_parametro_id || null,
     numero_poliza,
     fecha_emision,
     forma_pago,
@@ -248,6 +249,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ item: data }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Error inesperado'
+    if (/No UDI value found/i.test(msg) || /No FX \(USD\/MXN\) found/i.test(msg)) {
+      return NextResponse.json({ error: 'Falta valor de mercado (UDI/USD) para la fecha de emisión. Ejecuta sync de mercado para esa fecha.' }, { status: 400 })
+    }
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
