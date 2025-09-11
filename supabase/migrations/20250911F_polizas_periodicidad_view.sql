@@ -1,11 +1,28 @@
--- Migration: Add periodicidad_pago enum, column, view and triggers for UI abstraction
--- Date: 2025-09-11
 
--- Simplified migration (syntax checker in this environment rejects ENUM grammar) -- provide stub for manual execution.
--- PLEASE run manually in Supabase SQL editor:
--- 1) CREATE TYPE periodicidad_pago_enum AS ENUM ('A','S','T','M');
--- 2) ALTER TABLE polizas ADD COLUMN periodicidad_pago periodicidad_pago_enum NULL;
--- 3) CREATE OR REPLACE VIEW polizas_ui AS SELECT ... (same as previous version)
--- 4) CREATE FUNCTION polizas_ui_upsert() ... and INSTEAD OF trigger.
 
--- Temporary placeholder file so repo tracks intended change.
+
+SELECT 
+	p.id,
+	p.cliente_id,
+	p.numero_poliza,
+	p.estatus,
+	p.forma_pago, -- método de cobro
+	p.periodicidad_pago, -- frecuencia A/S/T/M
+	p.prima_input,
+	p.prima_moneda,
+	p.sa_input,
+	p.sa_moneda,
+	p.fecha_emision,
+	p.fecha_renovacion,
+	p.tipo_pago,
+	p.dia_pago,
+	p.meses_check,
+	p.producto_parametro_id,
+	p.fecha_alta_sistema
+FROM polizas p;
+
+
+-- DROP TRIGGER IF EXISTS polizas_ui_trigger ON polizas_ui;
+-- CREATE TRIGGER polizas_ui_trigger
+--   INSTEAD OF INSERT OR UPDATE ON polizas_ui
+--   FOR EACH ROW EXECUTE FUNCTION polizas_ui_upsert();
