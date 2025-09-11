@@ -31,7 +31,6 @@ type Poliza = {
   renovacion?: string|null
   tipo_producto?: string|null
   fecha_renovacion?: string|null
-  tipo_pago?: string|null
   dia_pago?: number|null
   meses_check?: Record<string, boolean>|null
 }
@@ -57,7 +56,7 @@ export default function GestionPage() {
   const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
   const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string; moneda?: string|null; sa_min?: number|null; sa_max?: number|null }>>([])
   const [tipoProducto, setTipoProducto] = useState<string>('')
-  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; periodicidad_pago?: string; tipo_pago: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, tipo_pago: '', dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
+  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; periodicidad_pago?: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
 
   useEffect(() => {
     if (!addingPoliza) return
@@ -122,7 +121,7 @@ export default function GestionPage() {
       forma_pago: emptyAsUndef(p.forma_pago),
       fecha_emision: emptyAsUndef(p.fecha_emision),
       fecha_renovacion: emptyAsUndef(p.fecha_renovacion),
-      tipo_pago: emptyAsUndef(p.tipo_pago),
+  periodicidad_pago: emptyAsUndef(p.periodicidad_pago),
       dia_pago: p.dia_pago ?? undefined,
       prima_input: p.prima_input ?? undefined,
       prima_moneda: emptyAsUndef(p.prima_moneda),
@@ -294,7 +293,7 @@ export default function GestionPage() {
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Pólizas de {fmtNombre(selectedCliente) || selectedCliente.email || selectedCliente.id}</h2>
             {isSuper && (
-              <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', tipo_pago:'', dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
+              <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
             )}
           </div>
     <div className="table-responsive small">
@@ -309,7 +308,6 @@ export default function GestionPage() {
                   <th>Fecha de emisión</th>
                   <th>Fecha renovación</th>
                   <th>Tipo</th>
-                  <th>Tipo de pago</th>
                   <th>Día de pago</th>
                   <th>Prima</th>
                   {generateMonthKeys().map(m => <th key={m}>{shortMonthHeader(m)}</th>)}
@@ -327,9 +325,8 @@ export default function GestionPage() {
                     <td className="text-xs">{p.fecha_emision ? new Date(p.fecha_emision).toLocaleDateString() : '—'}</td>
                     <td className="text-xs">{p.fecha_renovacion ? new Date(p.fecha_renovacion).toLocaleDateString() : '—'}</td>
                     <td className="text-xs">{p.tipo_producto || '—'}</td>
-                    <td className="text-xs">{p.tipo_pago || '—'}</td>
                     <td className="text-xs">{p.dia_pago ?? '—'}</td>
-                    <td className="text-xs">{(p.prima_input ?? '—')} {p.prima_moneda || ''}</td>
+                    <td className="text-xs">{typeof p.prima_input === 'number' ? formatMoney(p.prima_input, p.prima_moneda) : '—'}</td>
                     {generateMonthKeys().map(m => <td key={m} className="text-center text-xs">{p.meses_check && p.meses_check[m] ? '✔' : ''}</td>)}
                     <td className="text-end">
                       <button className="btn btn-sm btn-primary" onClick={()=>setEditPoliza({...p})}>Editar</button>
@@ -364,15 +361,8 @@ export default function GestionPage() {
                 <div className="d-flex flex-column"><label className="form-label small">Fecha emisión</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_emision || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_emision: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Fecha renovación</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_renovacion || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_renovacion: e.target.value||undefined})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Tipo</label><input className="form-control form-control-sm" disabled value={editPoliza.tipo_producto || ''} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Tipo de pago</label>
-                  <select className="form-select form-select-sm" value={editPoliza.tipo_pago || ''} onChange={e=>setEditPoliza({...editPoliza, tipo_pago: e.target.value})}>
-                    <option value="">—</option>
-                    <option value="MODO_DIRECTO">Modo directo</option>
-                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
-                  </select>
-                </div>
                 <div className="d-flex flex-column"><label className="form-label small">Día de pago</label><input className="form-control form-control-sm" type="number" min={1} max={31} value={editPoliza.dia_pago ?? ''} onChange={e=>{ const v = parseInt(e.target.value,10); setEditPoliza({...editPoliza, dia_pago: isFinite(v)? v:null}) }} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Prima</label><input className="form-control form-control-sm" value={editPoliza.prima_input ?? ''} onChange={e=>setEditPoliza({...editPoliza, prima_input: toNumOrNull(e.target.value)})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Prima anual</label><input className="form-control form-control-sm" value={typeof editPoliza.prima_input==='number'? editPoliza.prima_input.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}): (editPoliza.prima_input??'')} onChange={e=>{ const raw=e.target.value.replace(/[^0-9.]/g,''); const n=Number(raw); setEditPoliza({...editPoliza, prima_input: isFinite(n)? n: null}); }} /></div>
               </div>
               <div className="mt-2 small">
                 <strong>Meses</strong>
@@ -458,20 +448,12 @@ export default function GestionPage() {
                   </select>
                 </div>
                 <div className="d-flex flex-column">
-                  <label className="form-label small">Tipo de pago</label>
-                  <select className="form-select form-select-sm" value={nuevaPoliza.tipo_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, tipo_pago: e.target.value})}>
-                    <option value="">Selecciona…</option>
-                    <option value="MODO_DIRECTO">Modo directo</option>
-                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
-                  </select>
+                  <label className="form-label small">Prima anual</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.prima_input ? Number(nuevaPoliza.prima_input).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}) : ''} onChange={e=>{ const raw=e.target.value.replace(/[^0-9.]/g,''); setNuevaPoliza({...nuevaPoliza, prima_input: raw}); }} placeholder="0.00" />
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Día de pago</label>
                   <input className="form-control form-control-sm" type="number" min={1} max={31} value={nuevaPoliza.dia_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, dia_pago: e.target.value})} />
-                </div>
-                <div className="d-flex flex-column">
-                  <label className="form-label small">Prima anual</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.prima_input} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_input: e.target.value})} />
                 </div>
                 {/* Moneda prima oculta autocompletada */}
                 <input type="hidden" value={nuevaPoliza.prima_moneda} />
@@ -490,7 +472,7 @@ export default function GestionPage() {
                     estatus: nuevaPoliza.estatus || null,
                     forma_pago: nuevaPoliza.forma_pago,
                     periodicidad_pago: nuevaPoliza.periodicidad_pago,
-                    tipo_pago: nuevaPoliza.tipo_pago || null,
+                    // tipo_pago removido
                     dia_pago: nuevaPoliza.dia_pago ? Number(nuevaPoliza.dia_pago) : null,
                     prima_input: primaNum,
                     prima_moneda: nuevaPoliza.prima_moneda || 'MXN',
@@ -522,7 +504,9 @@ function fmtNombre(c: Cliente) {
   return parts.length ? parts.join(' ') : '—'
 }
 function emptyAsUndef(v?: string|null) { const s = (v||'').trim(); return s ? s : undefined }
-function toNumOrNull(s: string) { const n = Number(s.replace(/,/g,'')); return isFinite(n) ? n : null }
+function formatMoney(v: number, moneda?: string|null) {
+  try { return (moneda ? (moneda + ' ') : '$') + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } catch { return (moneda? moneda+' ':'$') + v.toFixed(2) }
+}
 function generateMonthKeys() {
   // Meses fijos comenzando en enero 2025 (24 meses)
   const keys: string[] = []
