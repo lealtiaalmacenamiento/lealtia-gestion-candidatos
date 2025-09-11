@@ -334,15 +334,53 @@ export default function GestionPage() {
           )}
           {addingPoliza && (
             <AppModal title="Agregar póliza" icon="file-earmark-plus" onClose={()=>setAddingPoliza(false)}>
-              <div className="grid grid-cols-2 gap-2">
-                <input className="form-control form-control-sm" placeholder="No. Póliza" value={nuevaPoliza.numero_poliza} onChange={e=>setNuevaPoliza({...nuevaPoliza, numero_poliza: e.target.value})} />
-                <input className="form-control form-control-sm" type="date" placeholder="Fecha de emisión" value={nuevaPoliza.fecha_emision} onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_emision: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Forma de pago (MODO_DIRECTO/CARGO_AUTOMATICO)" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Prima" value={nuevaPoliza.prima_input} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_input: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Moneda prima (MXN/USD/UDI)" value={nuevaPoliza.prima_moneda} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_moneda: e.target.value})} />
-                <input className="form-control form-control-sm" placeholder="Producto (ID opcional)" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, producto_parametro_id: e.target.value || undefined})} />
-                <input className="form-control form-control-sm" placeholder="Suma asegurada (opcional)" value={nuevaPoliza.sa_input || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_input: e.target.value || undefined})} />
-                <input className="form-control form-control-sm" placeholder="Moneda SA (MXN/USD/UDI) opcional" value={nuevaPoliza.sa_moneda || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_moneda: e.target.value || undefined})} />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="d-flex flex-column">
+                  <label className="form-label small">No. Póliza</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.numero_poliza} onChange={e=>setNuevaPoliza({...nuevaPoliza, numero_poliza: e.target.value})} />
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Fecha de emisión</label>
+                  <input className="form-control form-control-sm" type="date" value={nuevaPoliza.fecha_emision} onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_emision: e.target.value})} />
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Forma de pago</label>
+                  <select className="form-select form-select-sm" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})}>
+                    <option value="">Selecciona…</option>
+                    <option value="MODO_DIRECTO">Modo directo</option>
+                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
+                  </select>
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Prima</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.prima_input} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_input: e.target.value})} />
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Moneda prima</label>
+                  <select className="form-select form-select-sm" value={nuevaPoliza.prima_moneda} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_moneda: e.target.value})}>
+                    <option value="">Selecciona…</option>
+                    <option value="MXN">MXN</option>
+                    <option value="USD">USD</option>
+                    <option value="UDI">UDI</option>
+                  </select>
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Producto (ID opcional)</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, producto_parametro_id: e.target.value || undefined})} />
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Suma asegurada (opcional)</label>
+                  <input className="form-control form-control-sm" value={nuevaPoliza.sa_input || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_input: e.target.value || undefined})} />
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Moneda SA (opcional)</label>
+                  <select className="form-select form-select-sm" value={nuevaPoliza.sa_moneda || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_moneda: e.target.value || undefined})}>
+                    <option value="">Selecciona…</option>
+                    <option value="MXN">MXN</option>
+                    <option value="USD">USD</option>
+                    <option value="UDI">UDI</option>
+                  </select>
+                </div>
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" disabled={submittingNuevaPoliza} onClick={()=>setAddingPoliza(false)}>Cancelar</button>
