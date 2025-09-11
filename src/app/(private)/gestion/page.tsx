@@ -1,0 +1,219 @@
+"use client"
+import React, { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/context/AuthProvider'
+
+type Cliente = {
+  id: string
+  primer_nombre?: string|null
+  segundo_nombre?: string|null
+  primer_apellido?: string|null
+  segundo_apellido?: string|null
+  email?: string|null
+}
+
+type Poliza = {
+  id: string
+  cliente_id: string
+  numero_poliza?: string|null
+  estatus?: string|null
+  forma_pago?: string|null
+  prima_input?: number|null
+  prima_moneda?: string|null
+  sa_input?: number|null
+  sa_moneda?: string|null
+}
+
+export default function GestionPage() {
+  const { user } = useAuth()
+  const role = (user?.rol || '').toLowerCase()
+  const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [polizas, setPolizas] = useState<Poliza[]>([])
+  const [qClientes, setQClientes] = useState('')
+  const [qPolizas, setQPolizas] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const [editCliente, setEditCliente] = useState<Cliente|null>(null)
+  const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [rc, rp] = await Promise.all([
+        fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`),
+        fetch(`/api/polizas?q=${encodeURIComponent(qPolizas)}`)
+      ])
+      const jc = await rc.json(); const jp = await rp.json()
+      setClientes(jc.items || [])
+      setPolizas(jp.items || [])
+    } finally { setLoading(false) }
+  }, [qClientes, qPolizas])
+
+  useEffect(() => { void load() }, [load])
+
+  async function submitClienteCambio(c: Cliente) {
+    // Construir payload mínimo desde el formulario
+    const payload: Record<string, unknown> = {
+      primer_nombre: c.primer_nombre ?? undefined,
+      segundo_nombre: c.segundo_nombre ?? undefined,
+      primer_apellido: c.primer_apellido ?? undefined,
+      segundo_apellido: c.segundo_apellido ?? undefined,
+      email: c.email ?? undefined,
+    }
+    const res = await fetch('/api/clientes/updates', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cliente_id: c.id, payload })
+    })
+    const j = await res.json()
+    if (!res.ok) { alert(j.error || 'Error al enviar solicitud'); return }
+    if (isSuper && j.id) {
+      // Opcional: aprobar de inmediato
+      await fetch('/api/clientes/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id }) })
+    }
+    alert(isSuper ? 'Guardado y aprobado' : 'Solicitud enviada')
+    setEditCliente(null)
+  }
+
+  async function submitPolizaCambio(p: Poliza) {
+    const payload: Record<string, unknown> = {
+      numero_poliza: emptyAsUndef(p.numero_poliza),
+      estatus: emptyAsUndef(p.estatus),
+      forma_pago: emptyAsUndef(p.forma_pago),
+      prima_input: p.prima_input ?? undefined,
+      prima_moneda: emptyAsUndef(p.prima_moneda),
+      sa_input: p.sa_input ?? undefined,
+      sa_moneda: emptyAsUndef(p.sa_moneda),
+    }
+    const res = await fetch('/api/polizas/updates', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poliza_id: p.id, payload })
+    })
+    const j = await res.json()
+    if (!res.ok) { alert(j.error || 'Error al enviar solicitud'); return }
+    if (isSuper && j.id) {
+      await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id }) })
+    }
+    alert(isSuper ? 'Guardado y aprobado' : 'Solicitud enviada')
+    setEditPoliza(null)
+  }
+
+  return (
+    <div className="p-4">
+      <h1 className="text-xl font-semibold mb-4">Clientes y Pólizas</h1>
+      {loading && <p className="text-sm text-gray-600">Cargando…</p>}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Clientes */}
+        <section className="border rounded p-3">
+          <header className="flex items-center gap-2 mb-3">
+            <h2 className="font-medium">Clientes</h2>
+            <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
+            <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
+          </header>
+          <div className="table-responsive small">
+            <table className="table table-sm table-striped align-middle">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nombre</th>
+                  <th>Email</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientes.map(c => (
+                  <tr key={c.id}>
+                    <td className="font-mono text-xs">{c.id}</td>
+                    <td className="text-xs">{fmtNombre(c)}</td>
+                    <td className="text-xs">{c.email || '—'}</td>
+                    <td className="text-end">
+                      <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                    </td>
+                  </tr>
+                ))}
+                {!clientes.length && <tr><td colSpan={4} className="text-center text-muted py-3">Sin resultados</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          {editCliente && (
+            <div className="mt-3 border rounded p-3 bg-light">
+              <h3 className="small fw-bold mb-2">Editar cliente</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="form-control form-control-sm" placeholder="Primer nombre" value={editCliente.primer_nombre||''} onChange={e=>setEditCliente({...editCliente, primer_nombre: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Segundo nombre" value={editCliente.segundo_nombre||''} onChange={e=>setEditCliente({...editCliente, segundo_nombre: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Primer apellido" value={editCliente.primer_apellido||''} onChange={e=>setEditCliente({...editCliente, primer_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Segundo apellido" value={editCliente.segundo_apellido||''} onChange={e=>setEditCliente({...editCliente, segundo_apellido: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Email" value={editCliente.email||''} onChange={e=>setEditCliente({...editCliente, email: e.target.value})} />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button className="btn btn-sm btn-secondary" onClick={()=>setEditCliente(null)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" onClick={()=>submitClienteCambio(editCliente)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Pólizas */}
+        <section className="border rounded p-3">
+          <header className="flex items-center gap-2 mb-3">
+            <h2 className="font-medium">Pólizas</h2>
+            <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qPolizas} onChange={e=>setQPolizas(e.target.value)} />
+            <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
+          </header>
+          <div className="table-responsive small">
+            <table className="table table-sm table-striped align-middle">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>No. Póliza</th>
+                  <th>Estatus</th>
+                  <th>Prima</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {polizas.map(p => (
+                  <tr key={p.id}>
+                    <td className="font-mono text-xs">{p.id}</td>
+                    <td className="text-xs">{p.numero_poliza || '—'}</td>
+                    <td className="text-xs">{p.estatus || '—'}</td>
+                    <td className="text-xs">{p.prima_input ?? '—'} {p.prima_moneda || ''}</td>
+                    <td className="text-end">
+                      <button className="btn btn-sm btn-primary" onClick={()=>setEditPoliza({...p})}>Editar</button>
+                    </td>
+                  </tr>
+                ))}
+                {!polizas.length && <tr><td colSpan={5} className="text-center text-muted py-3">Sin resultados</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          {editPoliza && (
+            <div className="mt-3 border rounded p-3 bg-light">
+              <h3 className="small fw-bold mb-2">Editar póliza</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="form-control form-control-sm" placeholder="Número de póliza" value={editPoliza.numero_poliza||''} onChange={e=>setEditPoliza({...editPoliza, numero_poliza: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Estatus (EN_VIGOR/ANULADA)" value={editPoliza.estatus||''} onChange={e=>setEditPoliza({...editPoliza, estatus: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Forma de pago" value={editPoliza.forma_pago||''} onChange={e=>setEditPoliza({...editPoliza, forma_pago: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Prima" value={editPoliza.prima_input ?? ''} onChange={e=>setEditPoliza({...editPoliza, prima_input: toNumOrNull(e.target.value)})} />
+                <input className="form-control form-control-sm" placeholder="Moneda prima (MXN/USD/UDI)" value={editPoliza.prima_moneda||''} onChange={e=>setEditPoliza({...editPoliza, prima_moneda: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Suma Asegurada" value={editPoliza.sa_input ?? ''} onChange={e=>setEditPoliza({...editPoliza, sa_input: toNumOrNull(e.target.value)})} />
+                <input className="form-control form-control-sm" placeholder="Moneda SA (MXN/USD/UDI)" value={editPoliza.sa_moneda||''} onChange={e=>setEditPoliza({...editPoliza, sa_moneda: e.target.value})} />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" onClick={()=>submitPolizaCambio(editPoliza)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function fmtNombre(c: Cliente) {
+  const parts = [c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido].filter(Boolean)
+  return parts.length ? parts.join(' ') : '—'
+}
+function emptyAsUndef(v?: string|null) { const s = (v||'').trim(); return s ? s : undefined }
+function toNumOrNull(s: string) { const n = Number(s.replace(/,/g,'')); return isFinite(n) ? n : null }
