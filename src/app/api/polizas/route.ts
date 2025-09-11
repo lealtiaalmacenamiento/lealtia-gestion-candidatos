@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   let sel = supa
     .from('polizas')
     .select('id, cliente_id, numero_poliza, estatus, forma_pago, prima_input, prima_moneda, sa_input, sa_moneda')
-    .order('created_at', { ascending: false })
+    .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
   if (q) {
     sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)

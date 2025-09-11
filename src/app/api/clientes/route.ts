@@ -27,10 +27,10 @@ export async function GET(req: Request) {
 
   let sel = supa
     .from('clientes')
-    .select('id, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email')
+    .select('id, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email:correo')
     .limit(100)
   if (q) {
-    sel = sel.or(`email.ilike.%${q}%,primer_nombre.ilike.%${q}%,segundo_nombre.ilike.%${q}%,primer_apellido.ilike.%${q}%,segundo_apellido.ilike.%${q}%`)
+    sel = sel.or(`correo.ilike.%${q}%,primer_nombre.ilike.%${q}%,segundo_nombre.ilike.%${q}%,primer_apellido.ilike.%${q}%,segundo_apellido.ilike.%${q}%`)
   }
   // Use a safe ordering column that is guaranteed to exist
   sel = sel.order('id', { ascending: true })
