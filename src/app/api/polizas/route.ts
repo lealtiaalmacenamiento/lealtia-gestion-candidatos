@@ -22,12 +22,21 @@ async function getSupa() {
 
 export async function GET(req: Request) {
   const usuario = await getUsuarioSesion()
-  if (!usuario?.email) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  let authUserId: string | null = null
+  if (!usuario?.email) {
+    const supaProbe = await getSupa()
+    const { data: auth } = await supaProbe.auth.getUser()
+    if (!auth?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    authUserId = auth.user.id
+  } else {
+    const anyU = usuario as unknown as { id_auth?: string | null }
+    authUserId = anyU?.id_auth ?? null
+  }
 
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim().toLowerCase()
   const clienteId = (url.searchParams.get('cliente_id') || '').trim()
-  const role = (usuario.rol || '').toLowerCase()
+  const role = (usuario?.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
 
   if (isSuper) {
@@ -60,6 +69,7 @@ export async function GET(req: Request) {
   type MaybeAuth = { id_auth?: string | null }
   const u = usuario as unknown as MaybeAuth
   if (u?.id_auth) sel = sel.eq('clientes.asesor_id', u.id_auth)
+  else if (authUserId) sel = sel.eq('clientes.asesor_id', authUserId)
 
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
