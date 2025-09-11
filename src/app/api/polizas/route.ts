@@ -135,3 +135,62 @@ export async function GET(req: Request) {
   })
   return NextResponse.json({ items })
 }
+
+export async function POST(req: Request) {
+  // Crear nueva póliza (solo superusuario vía service role). Los no-super reciben 403.
+  const usuario = await getUsuarioSesion()
+  const role = (usuario?.rol || '').toLowerCase()
+  const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+
+  const body = await req.json().catch(() => null) as {
+    cliente_id?: string
+    producto_parametro_id?: string | null
+    numero_poliza?: string
+    fecha_emision?: string
+    forma_pago?: string
+    prima_input?: number
+    prima_moneda?: string
+    estatus?: string | null
+    sa_input?: number | null
+    sa_moneda?: string | null
+  } | null
+  if (!body) return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
+
+  // Validaciones mínimas segun schema
+  const cliente_id = (body.cliente_id || '').trim()
+  const numero_poliza = (body.numero_poliza || '').trim()
+  const fecha_emision = (body.fecha_emision || '').trim() // YYYY-MM-DD
+  const forma_pago = (body.forma_pago || '').trim()
+  const prima_input = typeof body.prima_input === 'number' ? body.prima_input : Number.NaN
+  const prima_moneda = (body.prima_moneda || '').trim()
+  if (!cliente_id || !numero_poliza || !fecha_emision || !forma_pago || !prima_moneda || !isFinite(prima_input)) {
+    return NextResponse.json({ error: 'Faltan campos requeridos: cliente_id, numero_poliza, fecha_emision, forma_pago, prima_input, prima_moneda' }, { status: 400 })
+  }
+
+  if (!isSuper) {
+    return NextResponse.json({ error: 'Solo superusuario puede crear pólizas' }, { status: 403 })
+  }
+
+  const insertPayload: Record<string, unknown> = {
+    cliente_id,
+    producto_parametro_id: body.producto_parametro_id || null,
+    numero_poliza,
+    fecha_emision,
+    forma_pago,
+    prima_input,
+    prima_moneda,
+  }
+  if (body.estatus) insertPayload.estatus = body.estatus
+  if (body.sa_input !== undefined) insertPayload.sa_input = body.sa_input
+  if (body.sa_moneda !== undefined) insertPayload.sa_moneda = body.sa_moneda
+
+  try {
+    const admin = getServiceClient()
+    const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ item: data }, { status: 201 })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Error inesperado'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}

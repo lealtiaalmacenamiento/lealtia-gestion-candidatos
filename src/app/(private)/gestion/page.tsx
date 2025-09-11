@@ -47,6 +47,8 @@ export default function GestionPage() {
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
   const [creating, setCreating] = useState(false)
   const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
+  const [addingPoliza, setAddingPoliza] = useState(false)
+  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; forma_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; sa_input?: string; sa_moneda?: string }>({ numero_poliza: '', fecha_emision: '', forma_pago: '', prima_input: '', prima_moneda: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -147,7 +149,6 @@ export default function GestionPage() {
                     <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
                     <td className="text-end">
                       <div className="d-flex gap-2 justify-content-end">
-                        <button className="btn btn-sm btn-outline-primary" onClick={()=>{ setSelectedCliente(c); setView('cliente') }}>Ver cliente</button>
                         <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
                         <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
                       </div>
@@ -189,6 +190,11 @@ export default function GestionPage() {
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setCreating(false)}>Cancelar</button>
                 <button className="btn btn-sm btn-success" onClick={async()=>{
+                  // Validación mínima requerida por schema
+                  if (!nuevo.primer_nombre || !nuevo.primer_apellido || !nuevo.telefono_celular || !nuevo.email) {
+                    alert('Campos requeridos: Primer nombre, Primer apellido, Teléfono celular y Email')
+                    return
+                  }
                   try {
                     const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
                       primer_nombre: nuevo.primer_nombre,
@@ -254,12 +260,14 @@ export default function GestionPage() {
           )}
         </section>
       )}
-
       {view === 'polizas' && selectedCliente && (
         <section className="border rounded p-3">
           <div className="d-flex align-items-center mb-3 gap-2">
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Pólizas de {fmtNombre(selectedCliente) || selectedCliente.email || selectedCliente.id}</h2>
+            {isSuper && (
+              <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza: '', fecha_emision: '', forma_pago: '', prima_input: '', prima_moneda: '' }) }}>Agregar póliza</button>
+            )}
           </div>
           <div className="table-responsive small">
             <table className="table table-sm table-striped align-middle">
@@ -313,6 +321,51 @@ export default function GestionPage() {
                 <button className="btn btn-sm btn-success" onClick={()=>submitPolizaCambio(editPoliza)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
               </div>
             </div>
+          )}
+          {addingPoliza && (
+            <AppModal title="Agregar póliza" icon="file-earmark-plus" onClose={()=>setAddingPoliza(false)}>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="form-control form-control-sm" placeholder="No. Póliza" value={nuevaPoliza.numero_poliza} onChange={e=>setNuevaPoliza({...nuevaPoliza, numero_poliza: e.target.value})} />
+                <input className="form-control form-control-sm" type="date" placeholder="Fecha de emisión" value={nuevaPoliza.fecha_emision} onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_emision: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Forma de pago (MODO_DIRECTO/CARGO_AUTOMATICO)" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Prima" value={nuevaPoliza.prima_input} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_input: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Moneda prima (MXN/USD/UDI)" value={nuevaPoliza.prima_moneda} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_moneda: e.target.value})} />
+                <input className="form-control form-control-sm" placeholder="Producto (ID opcional)" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, producto_parametro_id: e.target.value || undefined})} />
+                <input className="form-control form-control-sm" placeholder="Suma asegurada (opcional)" value={nuevaPoliza.sa_input || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_input: e.target.value || undefined})} />
+                <input className="form-control form-control-sm" placeholder="Moneda SA (MXN/USD/UDI) opcional" value={nuevaPoliza.sa_moneda || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, sa_moneda: e.target.value || undefined})} />
+              </div>
+              <div className="mt-3 d-flex justify-content-end gap-2">
+                <button className="btn btn-sm btn-secondary" onClick={()=>setAddingPoliza(false)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" onClick={async()=>{
+                  const prima = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
+                  if (!selectedCliente?.id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !nuevaPoliza.prima_moneda || !isFinite(prima)) {
+                    alert('Campos requeridos: No. Póliza, Fecha de emisión, Forma de pago, Prima, Moneda (y cliente seleccionado)')
+                    return
+                  }
+                  const payload: Record<string, unknown> = {
+                    cliente_id: selectedCliente.id,
+                    numero_poliza: nuevaPoliza.numero_poliza,
+                    fecha_emision: nuevaPoliza.fecha_emision,
+                    forma_pago: nuevaPoliza.forma_pago,
+                    prima_input: prima,
+                    prima_moneda: nuevaPoliza.prima_moneda,
+                  }
+                  if (nuevaPoliza.producto_parametro_id) payload.producto_parametro_id = nuevaPoliza.producto_parametro_id
+                  if (nuevaPoliza.sa_input) payload.sa_input = Number((nuevaPoliza.sa_input||'').replace(/,/g,''))
+                  if (nuevaPoliza.sa_moneda) payload.sa_moneda = nuevaPoliza.sa_moneda
+                  try {
+                    const res = await fetch('/api/polizas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+                    const j = await res.json()
+                    if (!res.ok) { alert(j.error || 'Error al crear póliza'); return }
+                    setAddingPoliza(false)
+                    setLoading(true)
+                    try { const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) }
+                  } catch {
+                    alert('Error al crear póliza')
+                  }
+                }}>Crear</button>
+              </div>
+            </AppModal>
           )}
         </section>
       )}
