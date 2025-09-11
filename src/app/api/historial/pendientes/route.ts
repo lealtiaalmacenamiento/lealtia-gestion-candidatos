@@ -29,6 +29,8 @@ type PendingItem = {
   cliente_id?: string | null
   cliente_nombre?: string | null
   poliza_numero?: string | null
+  ref_label?: string | null
+  changes?: Array<{ campo: string, actual: unknown, propuesto: unknown }>
 }
 
 export async function GET() {
@@ -39,7 +41,7 @@ export async function GET() {
   // 1) Traer pendientes de ambas tablas
   const [cr, pr] = await Promise.all([
     supa.from('cliente_update_requests')
-      .select('id, cliente_id, solicitante_id, creado_at')
+      .select('id, cliente_id, solicitante_id, creado_at, payload_propuesto')
       .eq('estado', 'PENDIENTE')
       .order('creado_at', { ascending: false })
       .limit(200),
@@ -55,9 +57,10 @@ export async function GET() {
   const polizaIds = new Set<string>()
   const solicitantes = new Set<string>()
 
-  if (cr.data) {
-    for (const r of cr.data as Array<{ id: string, cliente_id: string, solicitante_id: string, creado_at: string }>) {
-      items.push({ id: r.id, tipo: 'cliente', ref_id: r.cliente_id, creado_at: r.creado_at, solicitante_id: r.solicitante_id, cliente_id: r.cliente_id })
+  const clienteReqs = (cr.data || []) as Array<{ id: string, cliente_id: string, solicitante_id: string, creado_at: string, payload_propuesto?: Record<string, unknown> }>
+  if (clienteReqs?.length) {
+    for (const r of clienteReqs) {
+      items.push({ id: r.id, tipo: 'cliente', ref_id: r.cliente_id, creado_at: r.creado_at, solicitante_id: r.solicitante_id, cliente_id: r.cliente_id, changes: [] })
       clienteIds.add(r.cliente_id)
       solicitantes.add(r.solicitante_id)
     }
@@ -101,20 +104,29 @@ export async function GET() {
   }
 
   // 4) Enriquecer: clientes -> nombre completo
-  const clienteMap = new Map<string, { nombre: string | null }>()
+  const clienteMap = new Map<string, { nombre: string | null, code?: string | null, row?: Record<string, unknown> }>()
   if (clienteIds.size) {
     try {
       const { data: cls } = await supa
         .from('clientes')
-        .select('id, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido')
+        .select('id, cliente_code, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email, telefono_celular, fecha_nacimiento')
         .in('id', Array.from(clienteIds))
-      for (const c of (cls || []) as Array<{ id: string, primer_nombre?: string | null, segundo_nombre?: string | null, primer_apellido?: string | null, segundo_apellido?: string | null }>) {
+      for (const c of (cls || []) as Array<{ id: string, cliente_code?: string|null, primer_nombre?: string | null, segundo_nombre?: string | null, primer_apellido?: string | null, segundo_apellido?: string | null, email?: string|null, telefono_celular?: string|null, fecha_nacimiento?: string|null }>) {
         const pn = (c.primer_nombre || '').toString().trim()
         const sn = (c.segundo_nombre || '').toString().trim()
         const pa = (c.primer_apellido || '').toString().trim()
         const sa = (c.segundo_apellido || '').toString().trim()
         const nombre = [pn, sn, pa, sa].filter(Boolean).join(' ').trim() || null
-        clienteMap.set(c.id, { nombre })
+        const row: Record<string, unknown> = {
+          primer_nombre: c.primer_nombre ?? null,
+          segundo_nombre: c.segundo_nombre ?? null,
+          primer_apellido: c.primer_apellido ?? null,
+          segundo_apellido: c.segundo_apellido ?? null,
+          email: c.email ?? null,
+          telefono_celular: c.telefono_celular ?? null,
+          fecha_nacimiento: c.fecha_nacimiento ?? null,
+        }
+        clienteMap.set(c.id, { nombre, code: c.cliente_code ?? null, row })
       }
     } catch { /* omit */ }
   }
@@ -130,7 +142,25 @@ export async function GET() {
     const cid = it.tipo === 'cliente' ? (it.cliente_id || it.ref_id) : (it.cliente_id || null)
     if (cid) {
       const c = clienteMap.get(cid)
-      if (c) it.cliente_nombre = c.nombre
+      if (c) {
+        it.cliente_nombre = c.nombre
+        // etiqueta de referencia amigable
+        it.ref_label = c.code || c.nombre || cid
+      }
+    }
+    // Construir diffs para cambios de cliente (si el request incluía payload)
+    if (it.tipo === 'cliente' && it.ref_id && Array.isArray(clienteReqs)) {
+      const req = clienteReqs.find(r => r.id === it.id)
+      if (req && req.payload_propuesto && typeof req.payload_propuesto === 'object') {
+        const c = clienteMap.get(req.cliente_id || it.ref_id)
+        const base: Record<string, unknown> = (c?.row || {}) as Record<string, unknown>
+        const diffs: Array<{ campo: string, actual: unknown, propuesto: unknown }> = []
+        for (const [k, v] of Object.entries(req.payload_propuesto)) {
+          const actual = base[k]
+          diffs.push({ campo: k, actual, propuesto: v as unknown })
+        }
+        it.changes = diffs
+      }
     }
   }
 

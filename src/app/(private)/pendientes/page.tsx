@@ -13,6 +13,8 @@ type Item = {
   cliente_id?: string | null
   cliente_nombre?: string | null
   poliza_numero?: string | null
+  ref_label?: string | null
+  changes?: Array<{ campo: string, actual: unknown, propuesto: unknown }>
 }
 
 export default function PendientesPage() {
@@ -115,10 +117,11 @@ export default function PendientesPage() {
             </tr>
           </thead>
           <tbody>
-            {view.map(r => (
+            {view.map((r) => (
+              <>
               <tr key={r.id}>
                 <td className="small">{r.tipo}</td>
-                <td className="small font-mono">{r.tipo==='poliza' ? (r.poliza_numero || r.ref_id) : r.ref_id}</td>
+                <td className="small">{r.tipo==='poliza' ? (r.poliza_numero || r.ref_id) : (r.ref_label || r.cliente_nombre || r.ref_id)}</td>
                 <td className="small">{r.cliente_nombre || r.cliente_id || '—'}</td>
                 <td className="small">{r.solicitante_nombre || r.solicitante_email || r.solicitante_id}</td>
                 <td className="small">{new Date(r.creado_at).toLocaleString()}</td>
@@ -133,6 +136,23 @@ export default function PendientesPage() {
                   )}
                 </td>
               </tr>
+              {r.tipo==='cliente' && Array.isArray(r.changes) && r.changes.length>0 && (
+                <tr key={`${r.id}-details`}>
+                  <td colSpan={6} className="bg-light">
+                    <div className="p-2 small">
+                      <strong>Cambios propuestos</strong>
+                      <ul className="mb-0 mt-1" style={{columns: 2, columnGap: '2rem'}}>
+                        {r.changes.map((c: { campo: string; actual: unknown; propuesto: unknown }, i: number) => (
+                          <li key={i} style={{breakInside:'avoid'}}>
+                            <span className="text-muted">{c.campo}:</span> {renderVal(c.actual)} → <strong>{renderVal(c.propuesto)}</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </>
             ))}
             {view.length===0 && (<tr><td colSpan={6} className="text-center text-muted small py-3">Sin pendientes</td></tr>)}
           </tbody>
@@ -140,4 +160,12 @@ export default function PendientesPage() {
       </div>
     </div>
   )
+}
+
+function renderVal(v: unknown) {
+  if (v === null || v === undefined) return '—'
+  if (typeof v === 'string') return v
+  if (typeof v === 'number') return v.toString()
+  if (typeof v === 'boolean') return v ? 'Sí' : 'No'
+  try { return JSON.stringify(v) } catch { return String(v) }
 }

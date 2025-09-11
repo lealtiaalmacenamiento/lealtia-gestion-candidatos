@@ -279,17 +279,24 @@ export async function POST(req: Request) {
 
   try {
     const admin = getServiceClient()
-    // Duplicado global por restricción UNIQUE (uq_polizas_numero): numero_poliza único en toda la tabla
+    // Guardar contra duplicados: misma póliza para el mismo cliente
     const { data: dup } = await admin
       .from('polizas')
-      .select('id, cliente_id')
+      .select('id')
+      .eq('cliente_id', cliente_id)
       .eq('numero_poliza', numero_poliza)
       .limit(1)
     if (dup && dup.length) {
-      return NextResponse.json({ error: 'Ya existe una póliza con ese número (en otro registro)' }, { status: 409 })
+      return NextResponse.json({ error: 'Ya existe una póliza con ese número para este cliente' }, { status: 409 })
     }
-  const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
+    if (error) {
+      // Atrapamos la restricción única global por numero_poliza
+      if (/uq_polizas_numero|unique/i.test(error.message)) {
+        return NextResponse.json({ error: 'El número de póliza ya existe en el sistema. Verifica que no esté registrada con otro cliente.' }, { status: 409 })
+      }
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     return NextResponse.json({ item: data }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Error inesperado'
