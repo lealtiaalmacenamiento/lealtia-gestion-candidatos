@@ -54,6 +54,21 @@ export default function GestionPage() {
   const [creating, setCreating] = useState(false)
   const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
   // creación de póliza deshabilitada temporalmente
+  const [addingPoliza, setAddingPoliza] = useState(false)
+  const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
+  const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string; moneda?: string|null }>>([])
+  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; tipo_pago: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', tipo_pago: '', dia_pago: '', prima_input: '', prima_moneda: '', meses_check: {} })
+
+  useEffect(() => {
+    if (!addingPoliza) return
+    ;(async()=>{
+      try {
+        const r = await fetch('/api/producto_parametros?debug=1', { cache: 'no-store' })
+        const j = await r.json()
+        if (r.ok && Array.isArray(j)) setProductos(j)
+      } catch {}
+    })()
+  }, [addingPoliza])
   // vista meses comprimida (sin toggle por ahora)
 
   const load = useCallback(async () => {
@@ -284,7 +299,9 @@ export default function GestionPage() {
           <div className="d-flex align-items-center mb-3 gap-2">
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Pólizas de {fmtNombre(selectedCliente) || selectedCliente.email || selectedCliente.id}</h2>
-            {/* Botón agregar póliza deshabilitado temporalmente */}
+            {isSuper && (
+              <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', tipo_pago:'', dia_pago:'', prima_input:'', prima_moneda:'', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
+            )}
           </div>
     <div className="table-responsive small">
             <table className="table table-sm table-striped align-middle">
@@ -355,6 +372,65 @@ export default function GestionPage() {
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
                 <button className="btn btn-sm btn-success" onClick={()=>submitPolizaCambio(editPoliza)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
+              </div>
+            </AppModal>
+          )}
+          {addingPoliza && (
+            <AppModal title="Nueva póliza" icon="file-earmark-plus" onClose={()=>!submittingNuevaPoliza && setAddingPoliza(false)}>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="d-flex flex-column"><label className="form-label small">No. Póliza</label><input className="form-control form-control-sm" value={nuevaPoliza.numero_poliza} onChange={e=>setNuevaPoliza({...nuevaPoliza, numero_poliza: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Estatus</label><input className="form-control form-control-sm" value={nuevaPoliza.estatus} onChange={e=>setNuevaPoliza({...nuevaPoliza, estatus: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Fecha emisión</label><input className="form-control form-control-sm" type="date" value={nuevaPoliza.fecha_emision} onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_emision: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Fecha renovación</label><input className="form-control form-control-sm" type="date" value={nuevaPoliza.fecha_renovacion} onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_renovacion: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Forma de pago</label><select className="form-select form-select-sm" value={nuevaPoliza.forma_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, forma_pago: e.target.value})}><option value="">Selecciona…</option><option value="MODO_DIRECTO">Modo directo</option><option value="CARGO_AUTOMATICO">Cargo automático</option></select></div>
+                <div className="d-flex flex-column"><label className="form-label small">Tipo de pago</label><input className="form-control form-control-sm" value={nuevaPoliza.tipo_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, tipo_pago: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Día de pago</label><input className="form-control form-control-sm" type="number" min={1} max={31} value={nuevaPoliza.dia_pago} onChange={e=>setNuevaPoliza({...nuevaPoliza, dia_pago: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Prima</label><input className="form-control form-control-sm" value={nuevaPoliza.prima_input} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_input: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Moneda Prima</label><input className="form-control form-control-sm" value={nuevaPoliza.prima_moneda} onChange={e=>setNuevaPoliza({...nuevaPoliza, prima_moneda: e.target.value.toUpperCase()})} placeholder="MXN/USD/UDI" /></div>
+                <div className="d-flex flex-column col-span-2"><label className="form-label small">Producto parametrizado</label><select className="form-select form-select-sm" value={nuevaPoliza.producto_parametro_id || ''} onChange={e=>{ const id = e.target.value || undefined; const prod = productos.find(p=>p.id===id); setNuevaPoliza(prev=>({ ...prev, producto_parametro_id: id, prima_moneda: prod?.moneda || prev.prima_moneda })); }}><option value="">Sin seleccionar</option>{productos.map(p=> <option key={p.id} value={p.id}>{p.nombre_comercial} ({p.tipo_producto})</option>)}</select></div>
+              </div>
+              <div className="mt-2 small">
+                <strong>Meses</strong>
+                <div style={{ maxHeight: 200, overflowY:'auto', border:'1px solid #ddd' }} className="p-2 mt-1">
+                  <div className="d-flex flex-wrap gap-3">
+                    {generateMonthKeys().map(m => (
+                      <label key={m} className="form-check-label d-flex align-items-center gap-1" style={{ width:'95px', fontSize:'11px' }}>
+                        <input type="checkbox" className="form-check-input" checked={!!nuevaPoliza.meses_check[m]} onChange={e=>{ const next = { ...nuevaPoliza.meses_check }; if (e.target.checked) next[m]=true; else delete next[m]; setNuevaPoliza({...nuevaPoliza, meses_check: next}) }} />{shortMonthHeader(m)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 d-flex justify-content-end gap-2">
+                <button className="btn btn-sm btn-secondary" disabled={submittingNuevaPoliza} onClick={()=>setAddingPoliza(false)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza} onClick={async()=>{
+                  if (submittingNuevaPoliza) return
+                  const primaNum = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
+                  if (!selectedCliente?.id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { alert('Faltan campos obligatorios'); return }
+                  const payload: Record<string, unknown> = {
+                    cliente_id: selectedCliente.id,
+                    numero_poliza: nuevaPoliza.numero_poliza,
+                    fecha_emision: nuevaPoliza.fecha_emision,
+                    fecha_renovacion: nuevaPoliza.fecha_renovacion || null,
+                    estatus: nuevaPoliza.estatus || null,
+                    forma_pago: nuevaPoliza.forma_pago,
+                    tipo_pago: nuevaPoliza.tipo_pago || null,
+                    dia_pago: nuevaPoliza.dia_pago ? Number(nuevaPoliza.dia_pago) : null,
+                    prima_input: primaNum,
+                    prima_moneda: nuevaPoliza.prima_moneda || 'MXN',
+                    meses_check: nuevaPoliza.meses_check,
+                  }
+                  if (nuevaPoliza.producto_parametro_id) payload.producto_parametro_id = nuevaPoliza.producto_parametro_id
+                  try {
+                    setSubmittingNuevaPoliza(true)
+                    const r = await fetch('/api/polizas', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+                    const j = await r.json()
+                    if (!r.ok) { alert(j.error || 'Error al crear'); return }
+                    setAddingPoliza(false)
+                    setLoading(true)
+                    try { const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items||[]) } finally { setLoading(false) }
+                  } catch { alert('Error al crear') } finally { setSubmittingNuevaPoliza(false) }
+                }}>Crear</button>
               </div>
             </AppModal>
           )}
