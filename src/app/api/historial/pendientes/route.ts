@@ -126,7 +126,7 @@ export async function GET() {
     try {
       const { data: cls } = await supa
         .from('clientes')
-        .select('id, cliente_code, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email, telefono_celular, fecha_nacimiento')
+        .select('id, cliente_code, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email:correo, telefono_celular, fecha_nacimiento')
         .in('id', Array.from(clienteIds))
       for (const c of (cls || []) as Array<{ id: string, cliente_code?: string|null, primer_nombre?: string | null, segundo_nombre?: string | null, primer_apellido?: string | null, segundo_apellido?: string | null, email?: string|null, telefono_celular?: string|null, fecha_nacimiento?: string|null }>) {
         const pn = (c.primer_nombre || '').toString().trim()

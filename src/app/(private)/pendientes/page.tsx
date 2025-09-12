@@ -122,8 +122,8 @@ export default function PendientesPage() {
               <>
               <tr key={r.id}>
                 <td className="small">{r.tipo}</td>
-                <td className="small">{r.tipo==='poliza' ? (r.poliza_numero || '—') : (r.cliente_code || r.ref_label || '—')}</td>
-                <td className="small">{r.cliente_nombre || r.cliente_id || '—'}</td>
+                <td className="small">{r.tipo==='poliza' ? (r.poliza_numero || '—') : (r.cliente_code || r.cliente_id || r.ref_label || '—')}</td>
+                <td className="small">{r.cliente_nombre || r.ref_label || '—'}</td>
                 <td className="small">{r.solicitante_nombre || r.solicitante_email || r.solicitante_id}</td>
                 <td className="small">{new Date(r.creado_at).toLocaleString()}</td>
                 <td className="small">
