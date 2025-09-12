@@ -87,7 +87,8 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
 
   // Traer registro de tabla usuarios intentando por id_auth y por email.
   // Primero con service role (evita RLS); si no se encuentra o no hay service key, usamos SSR.
-  const selectCols = 'id,email,rol,activo,nombre,last_login,id_auth'
+  // No uses last_login in select to avoid errors if column is missing in some environments
+  const selectCols = 'id,email,rol,activo,nombre,id_auth'
   async function lookupUsuarioBy(client: SupabaseClient): Promise<UsuarioSesion | null> {
     // 1) id_auth si existe
     try {
@@ -150,32 +151,7 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
     usuarioBD = await lookupUsuarioBy(supabase as unknown as SupabaseClient)
   }
   if (!usuarioBD) return null
-  // Actualizar last_login si la columna existe y han pasado >=5 min desde el último (para reducir escrituras)
-  interface UsuarioRow { id: number; last_login?: string | null }
-  const row = usuarioBD as unknown as UsuarioRow
-  const last = row.last_login ? new Date(row.last_login) : null
-  const now = new Date()
-  if (!last || (now.getTime() - last.getTime()) > 5*60*1000) {
-    // Intentar actualización con admin si existe; si no, con SSR. Si falla, ignorar.
-    try {
-      const admin = getServiceClient()
-      if (typeof row.id === 'number' && row.id > 0) {
-        await admin
-          .from('usuarios')
-          .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
-          .eq('id', row.id)
-      }
-    } catch {
-      try {
-        if (typeof row.id === 'number' && row.id > 0) {
-          await supabase
-            .from('usuarios')
-            .update({ last_login: now.toISOString() } as Partial<Database['public']['Tables']['usuarios']['Update']>)
-            .eq('id', row.id)
-        }
-      } catch {}
-    }
-    row.last_login = now.toISOString()
-  }
+  // Nota: dejamos de actualizar public.usuarios.last_login.
+  // Usa Supabase Auth user.last_sign_in_at para obtener el último acceso.
   return usuarioBD as UsuarioSesion
 }

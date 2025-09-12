@@ -171,7 +171,7 @@ export async function POST(req: Request) {
       if (email) {
         const { data: uRow } = await supa.from('usuarios').select('*').eq('email', email).maybeSingle()
         if (uRow) {
-          interface UsuarioRow { id: number; email: string; rol: string; activo: boolean; id_auth?: string | null; nombre?: string|null; last_login?: string|null }
+          interface UsuarioRow { id: number; email: string; rol: string; activo: boolean; id_auth?: string | null; nombre?: string|null }
           // Normalizar rol a cadena no vacía
           const normalized = { ...uRow, rol: (uRow.rol || '').toString() } as UsuarioRow
           usuario = normalized

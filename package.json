@@ -9,7 +9,8 @@
   "lint": "eslint",
   "typecheck": "tsc -p . --noEmit",
   "read:xlsx": "node scripts/read_xlsx.js",
-  "extract:docx": "node scripts/extract_docx_comments.js docs/fase_3_lealtia.docx"
+  "extract:docx": "node scripts/extract_docx_comments.js docs/fase_3_lealtia.docx",
+  "seed:fake": "node scripts/seed_fake_data.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

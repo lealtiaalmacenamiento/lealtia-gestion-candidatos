@@ -62,7 +62,7 @@ export async function POST(req: Request) {
           // buscar por id_auth o email con admin (sin RLS)
           const admin = getServiceClient()
           const byId = user.id ? await admin.from('usuarios').select('id,email,rol,activo').eq('id_auth', user.id).maybeSingle() : { data: null }
-          const row = byId.data ?? (await admin.from('usuarios').select('id,email,rol,activo,nombre,last_login').eq('email', user.email).maybeSingle()).data
+          const row = byId.data ?? (await admin.from('usuarios').select('id,email,rol,activo,nombre').eq('email', user.email).maybeSingle()).data
           if (row) {
             usuario = row as UsuarioSesion
           }
