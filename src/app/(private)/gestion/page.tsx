@@ -178,10 +178,22 @@ export default function GestionPage() {
                             setExpandedAgentes(prev=>({ ...prev, [key]: !expanded }))
                             if (!expanded && !clientesPorAgente[key]) {
                               try {
-                                const rc = await fetch(`/api/clientes/by-asesor?asesor_id=${encodeURIComponent(key)}`)
-                                const jc = await rc.json()
+                                // Preferir id_auth; si no existe, enviar usuario_id para que el API resuelva id_auth
+                                const url = ag.id_auth
+                                  ? `/api/clientes/by-asesor?asesor_id=${encodeURIComponent(ag.id_auth)}`
+                                  : `/api/clientes/by-asesor?usuario_id=${encodeURIComponent(String(ag.id))}`
+                                const rc = await fetch(url)
+                                const jc = await rc.json().catch(()=>({ error: 'parse' }))
+                                if (!rc.ok) {
+                                  console.error('Error cargando clientes por asesor', jc)
+                                  alert(jc?.error || 'Error al cargar clientes del asesor')
+                                  return
+                                }
                                 setClientesPorAgente(prev=>({ ...prev, [key]: jc.items || [] }))
-                              } catch {}
+                              } catch (e) {
+                                console.error(e)
+                                alert('Error al cargar clientes del asesor')
+                              }
                             }
                           }}
                         >
