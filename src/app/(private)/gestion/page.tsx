@@ -64,7 +64,6 @@ export default function GestionPage() {
   const [savingMeta, setSavingMeta] = useState(false)
   // Meta header inputs
   const [metaSelf, setMetaSelf] = useState<{ conexion: string; objetivo: string }>({ conexion: '', objetivo: '' })
-  const [metaSuper, setMetaSuper] = useState<{ usuario_id: string; conexion: string; objetivo: string }>({ usuario_id: '', conexion: '', objetivo: '' })
 
   useEffect(() => {
     if (!addingPoliza) return
@@ -92,7 +91,10 @@ export default function GestionPage() {
         // cargar meta propia (conexión/objetivo)
         try {
           const rm = await fetch('/api/agentes/meta', { cache: 'no-store' })
-          if (rm.ok) { const m = await rm.json(); setMetaSelf({ conexion: m?.fecha_conexion_text || '', objetivo: (m?.objetivo ?? '').toString() }) }
+          if (rm.ok) {
+            const m = await rm.json()
+            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: (m?.objetivo ?? '').toString() })
+          }
         } catch {}
       }
     } finally { setLoading(false) }
@@ -172,23 +174,6 @@ export default function GestionPage() {
               <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Agentes</h2>
                 <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
-                  <select className="form-select form-select-sm" value={metaSuper.usuario_id} onChange={async e=>{
-                    const v = e.target.value; setMetaSuper(prev=>({ ...prev, usuario_id: v }))
-                    if (v) {
-                      try { const r=await fetch(`/api/agentes/meta?usuario_id=${v}`, { cache: 'no-store' }); const j=await r.json(); if (r.ok) setMetaSuper({ usuario_id: v, conexion: j?.fecha_conexion_text||'', objetivo: (j?.objetivo??'').toString() }) } catch {}
-                    } else {
-                      setMetaSuper({ usuario_id: '', conexion: '', objetivo: '' })
-                    }
-                  }}>
-                    <option value="">(Agente para meta)</option>
-                    {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
-                  </select>
-                  <input className="form-control form-control-sm" style={{width:160}} placeholder="Conexión D/M/YYYY" value={metaSuper.conexion} onChange={e=> setMetaSuper(prev=>({ ...prev, conexion: e.target.value }))} />
-                  <input className="form-control form-control-sm" style={{width:120}} type="number" placeholder="Objetivo" value={metaSuper.objetivo} onChange={e=> setMetaSuper(prev=>({ ...prev, objetivo: e.target.value }))} />
-                  <button className="btn btn-sm btn-success" disabled={savingMeta || !metaSuper.usuario_id} onClick={async()=>{
-                    if (!metaSuper.usuario_id) return
-                    try { setSavingMeta(true); const body: { usuario_id?: number; fecha_conexion_text: string | null; objetivo: number | null } = { usuario_id: Number(metaSuper.usuario_id), fecha_conexion_text: metaSuper.conexion.trim() || null, objetivo: metaSuper.objetivo? Number(metaSuper.objetivo): null }; const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return } await load() } finally { setSavingMeta(false) }
-                  }}>Guardar meta</button>
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
                   <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
                 </div>
@@ -302,10 +287,25 @@ export default function GestionPage() {
                   <input className="border px-2 py-1 text-sm" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
                   {/* Meta rápida del asesor */}
-                  <input className="form-control form-control-sm" style={{width:160}} placeholder="Conexión D/M/YYYY" value={metaSelf.conexion} onChange={e=> setMetaSelf({ ...metaSelf, conexion: e.target.value })} />
-                  <input className="form-control form-control-sm" style={{width:120}} type="number" placeholder="Objetivo" value={metaSelf.objetivo} onChange={e=> setMetaSelf({ ...metaSelf, objetivo: e.target.value })} />
+                  <div className="d-flex flex-column" style={{width:180}}>
+                    <label className="form-label small mb-1">Conexión</label>
+                    <input className="form-control form-control-sm" type="date" value={metaSelf.conexion} onChange={e=> setMetaSelf({ ...metaSelf, conexion: e.target.value })} />
+                  </div>
+                  <div className="d-flex flex-column" style={{width:140}}>
+                    <label className="form-label small mb-1">Objetivo</label>
+                    <input className="form-control form-control-sm" type="number" value={metaSelf.objetivo} onChange={e=> setMetaSelf({ ...metaSelf, objetivo: e.target.value })} />
+                  </div>
                   <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
-                    try { setSavingMeta(true); const body: { fecha_conexion_text: string | null; objetivo: number | null } = { fecha_conexion_text: metaSelf.conexion.trim() || null, objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null }; const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return } await load() } finally { setSavingMeta(false) }
+                    try {
+                      setSavingMeta(true)
+                      const body: { fecha_conexion_text: string | null; objetivo: number | null } = {
+                        fecha_conexion_text: metaSelf.conexion ? toDMYFromISO(metaSelf.conexion) : null,
+                        objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
+                      }
+                      const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+                      const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return }
+                      await load()
+                    } finally { setSavingMeta(false) }
                   }}>Guardar meta</button>
                   <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
                 </div>
@@ -402,11 +402,10 @@ export default function GestionPage() {
           )}
           {editMeta && (
             <AppModal title="Editar meta del asesor" icon="pencil" onClose={()=> setEditMeta(null)}>
-              <div className="small text-muted mb-2">Formato de conexión: D/M/YYYY (ej. 17/3/2025)</div>
               <div className="d-flex flex-column gap-2">
                 <div>
                   <label className="form-label small">Conexión (fecha firma contrato)</label>
-                  <input className="form-control form-control-sm" placeholder="D/M/YYYY" value={editMeta.conexion} onChange={e=> setEditMeta({...editMeta, conexion: e.target.value})} />
+                  <input className="form-control form-control-sm" type="date" value={toISODateFromDMY(editMeta.conexion)} onChange={e=> setEditMeta({...editMeta, conexion: toDMYFromISO(e.target.value)})} />
                 </div>
                 <div>
                   <label className="form-label small">Objetivo</label>
@@ -418,7 +417,7 @@ export default function GestionPage() {
                 <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
                   try{
                     setSavingMeta(true)
-                    const body: { usuario_id?: number; fecha_conexion_text: string | null; objetivo: number | null } = { fecha_conexion_text: editMeta.conexion.trim() || null, objetivo: editMeta.objetivo? Number(editMeta.objetivo): null }
+                    const body: { usuario_id?: number; fecha_conexion_text: string | null; objetivo: number | null } = { fecha_conexion_text: editMeta.conexion ? editMeta.conexion.trim() : null, objetivo: editMeta.objetivo? Number(editMeta.objetivo): null }
                     if(isSuper && editMeta.usuario_id) body.usuario_id = editMeta.usuario_id
                     const r = await fetch('/api/agentes/meta', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
                     const j = await r.json()
@@ -709,4 +708,26 @@ function generateMonthKeys() {
 function shortMonthHeader(key: string) {
   const [y,m] = key.split('-')
   return `${m}/${y.slice(2)}`
+}
+
+// Helpers: convert between D/M/YYYY (API text) and YYYY-MM-DD (input type=date)
+function toISODateFromDMY(text: string): string {
+  if (!text) return ''
+  const parts = text.split('/')
+  if (parts.length !== 3) return ''
+  const [d, m, y] = parts.map(p=>p.trim())
+  const day = String(Number(d)).padStart(2, '0')
+  const mon = String(Number(m)).padStart(2, '0')
+  if (!y || day === 'NaN' || mon === 'NaN') return ''
+  return `${y}-${mon}-${day}`
+}
+function toDMYFromISO(iso: string): string {
+  if (!iso) return ''
+  const parts = iso.split('-')
+  if (parts.length !== 3) return ''
+  const [y, m, d] = parts
+  const day = String(Number(d)).replace(/^0+/, '') || '0'
+  const mon = String(Number(m)).replace(/^0+/, '') || '0'
+  if (!y || day === 'NaN' || mon === 'NaN') return ''
+  return `${day}/${mon}/${y}`
 }

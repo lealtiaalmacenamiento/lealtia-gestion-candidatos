@@ -2,15 +2,10 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 
-export async function GET(req: Request) {
+export async function GET() {
   const usuario = await getUsuarioSesion()
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  const role = (usuario.rol || '').toString().toLowerCase()
-  const isSuper = ['superusuario','super_usuario','supervisor','admin','root'].includes(role)
-  const url = new URL(req.url)
-  const usuarioId = Number(url.searchParams.get('usuario_id') || usuario.id)
-  if (!isFinite(usuarioId)) return NextResponse.json({ error: 'usuario_id inválido' }, { status: 400 })
-  if (!isSuper && usuarioId !== usuario.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const usuarioId = Number(usuario.id)
   const supa = getServiceClient()
   const { data, error } = await supa.from('agente_meta').select('*').eq('usuario_id', usuarioId).maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
@@ -20,12 +15,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const usuario = await getUsuarioSesion()
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  const role = (usuario.rol || '').toString().toLowerCase()
-  const isSuper = ['superusuario','super_usuario','supervisor','admin','root'].includes(role)
-  const body = await req.json().catch(()=>null) as { usuario_id?: number; fecha_conexion_text?: string | null; objetivo?: number | null } | null
+  const body = await req.json().catch(()=>null) as { fecha_conexion_text?: string | null; objetivo?: number | null } | null
   if (!body) return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
-  const targetId = (isSuper && body.usuario_id) ? Number(body.usuario_id) : usuario.id
-  if (!isFinite(targetId)) return NextResponse.json({ error: 'usuario_id inválido' }, { status: 400 })
+  const targetId = Number(usuario.id)
 
   // Validar formato D/M/YYYY si viene
   const txt = (body.fecha_conexion_text || '').trim()
