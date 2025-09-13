@@ -1,4 +1,4 @@
-interface UsuarioMini { id:number; nombre?:string|null; email:string; rol:string; activo:boolean }
+interface UsuarioMini { id:number; id_auth?: string | null; nombre?:string|null; email:string; rol:string; activo:boolean }
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
@@ -13,7 +13,7 @@ export async function GET() {
   if (!superuser) {
     // Usuario normal (agente u otro rol no privilegiado): mantener comportamiento previo (retorna sólo su propio registro si es agente)
     // Si quisiera verse a sí mismo aunque no tenga rol agente (pero está referenciado), lo incluimos igualmente
-    const { data: self, error: selfErr } = await supabase.from('usuarios').select('id,nombre,email,rol,activo').eq('id', usuario.id).eq('activo', true).maybeSingle()
+  const { data: self, error: selfErr } = await supabase.from('usuarios').select('id,id_auth,nombre,email,rol,activo').eq('id', usuario.id).eq('activo', true).maybeSingle()
     if (selfErr) return NextResponse.json({ error: selfErr.message }, { status: 500 })
     if (!self) return NextResponse.json([])
     // Si rol no es agente y NO está referenciado en candidatos, ocultarlo
@@ -26,7 +26,7 @@ export async function GET() {
   }
 
   // Superusuario/admin: construir conjunto ampliado
-  const agentesRolPromise = supabase.from('usuarios').select('id,nombre,email,rol,activo').eq('rol','agente').eq('activo', true)
+  const agentesRolPromise = supabase.from('usuarios').select('id,id_auth,nombre,email,rol,activo').eq('rol','agente').eq('activo', true)
   const emailsCandidatosPromise = supabase.from('candidatos').select('email_agente').not('email_agente','is', null)
 
   const [agentesRol, emailsCand] = await Promise.all([agentesRolPromise, emailsCandidatosPromise])
@@ -45,7 +45,7 @@ export async function GET() {
   if (emailSet.size > 0) {
     const emailsArray = Array.from(emailSet)
     // Supabase limita tamaño de in() (~ 1000). Asumimos <1000; si creciera se podría paginar.
-    const { data: extraUsers, error: extraErr } = await supabase.from('usuarios').select('id,nombre,email,rol,activo').in('email', emailsArray).eq('activo', true)
+  const { data: extraUsers, error: extraErr } = await supabase.from('usuarios').select('id,id_auth,nombre,email,rol,activo').in('email', emailsArray).eq('activo', true)
     if (extraErr) return NextResponse.json({ error: extraErr.message }, { status: 500 })
     extra = extraUsers || []
   }

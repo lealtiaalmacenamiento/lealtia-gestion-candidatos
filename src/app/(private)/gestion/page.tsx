@@ -42,6 +42,9 @@ export default function GestionPage() {
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
+  const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string }>>([])
+  const [expandedAgentes, setExpandedAgentes] = useState<Record<string, boolean>>({})
+  const [clientesPorAgente, setClientesPorAgente] = useState<Record<string, Cliente[]>>({})
   const [qClientes, setQClientes] = useState('')
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [view, setView] = useState<'list' | 'cliente' | 'polizas'>('list')
@@ -73,11 +76,17 @@ export default function GestionPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const rc = await fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`)
-      const jc = await rc.json()
-      setClientes(jc.items || [])
+      if (isSuper) {
+        const ra = await fetch('/api/agentes')
+        const ja = await ra.json()
+        if (Array.isArray(ja)) setAgentes(ja)
+      } else {
+        const rc = await fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`)
+        const jc = await rc.json()
+        setClientes(jc.items || [])
+      }
     } finally { setLoading(false) }
-  }, [qClientes])
+  }, [qClientes, isSuper])
 
   useEffect(() => { void load() }, [load])
 
@@ -148,44 +157,127 @@ export default function GestionPage() {
       {loading && <p className="text-sm text-gray-600">Cargando…</p>}
       {view === 'list' && (
         <section className="border rounded p-3">
-          <header className="flex items-center gap-2 mb-3">
-            <h2 className="font-medium">Clientes</h2>
-            <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
-            <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
-            <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
-          </header>
-          <div className="table-responsive small">
-            <table className="table table-sm table-striped align-middle">
-              <thead>
-                <tr>
-                  <th>Número de cliente</th>
-                  <th>Contratante</th>
-                  <th>Teléfono</th>
-                  <th>Correo</th>
-                  <th>Cumpleaños</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {clientes.map(c => (
-                  <tr key={c.id}>
-                    <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
-                    <td className="text-xs">{fmtNombre(c)}</td>
-                    <td className="text-xs">{c.telefono_celular || '—'}</td>
-                    <td className="text-xs">{c.email || '—'}</td>
-                    <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
-                    <td className="text-end">
-                      <div className="d-flex gap-2 justify-content-end">
-                        <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
-                        <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+          {isSuper ? (
+            <>
+              <header className="flex items-center gap-2 mb-3">
+                <h2 className="font-medium">Agentes</h2>
+                <button className="px-3 py-1 text-sm bg-gray-100 border rounded ml-auto" onClick={()=>load()}>Refrescar</button>
+                <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
+              </header>
+              <div className="accordion" id="agentesAccordion">
+                {agentes.map(ag => {
+                  const key = ag.id_auth || String(ag.id)
+                  const expanded = !!expandedAgentes[key]
+                  return (
+                    <div key={key} className="accordion-item mb-2">
+                      <h2 className="accordion-header">
+                        <button
+                          className={`accordion-button ${expanded ? '' : 'collapsed'}`}
+                          type="button"
+                          onClick={async()=>{
+                            setExpandedAgentes(prev=>({ ...prev, [key]: !expanded }))
+                            if (!expanded && !clientesPorAgente[key]) {
+                              try {
+                                const rc = await fetch(`/api/clientes/by-asesor?asesor_id=${encodeURIComponent(key)}`)
+                                const jc = await rc.json()
+                                setClientesPorAgente(prev=>({ ...prev, [key]: jc.items || [] }))
+                              } catch {}
+                            }
+                          }}
+                        >
+                          <div className="d-flex w-100 justify-content-between">
+                            <div>
+                              <div className="fw-semibold">{ag.nombre || ag.email}</div>
+                              <div className="small text-muted">{ag.email}</div>
+                            </div>
+                            <span className="badge bg-secondary align-self-center">{(clientesPorAgente[key]?.length) ?? 0} clientes</span>
+                          </div>
+                        </button>
+                      </h2>
+                      <div className={`accordion-collapse collapse ${expanded ? 'show' : ''}`}>
+                        <div className="accordion-body p-2">
+                          <div className="table-responsive small">
+                            <table className="table table-sm table-striped align-middle mb-0">
+                              <thead>
+                                <tr>
+                                  <th>Número de cliente</th>
+                                  <th>Contratante</th>
+                                  <th>Teléfono</th>
+                                  <th>Correo</th>
+                                  <th>Cumpleaños</th>
+                                  <th></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(clientesPorAgente[key] || []).map(c => (
+                                  <tr key={c.id}>
+                                    <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
+                                    <td className="text-xs">{fmtNombre(c)}</td>
+                                    <td className="text-xs">{c.telefono_celular || '—'}</td>
+                                    <td className="text-xs">{c.email || '—'}</td>
+                                    <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
+                                    <td className="text-end">
+                                      <div className="d-flex gap-2 justify-content-end">
+                                        <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+                                        <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {!((clientesPorAgente[key] || []).length) && <tr><td colSpan={6} className="text-center text-muted py-3">Sin clientes</td></tr>}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-                {!clientes.length && <tr><td colSpan={6} className="text-center text-muted py-3">Sin resultados</td></tr>}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  )
+                })}
+                {!agentes.length && <div className="text-center text-muted small">Sin agentes</div>}
+              </div>
+            </>
+          ) : (
+            <>
+              <header className="flex items-center gap-2 mb-3">
+                <h2 className="font-medium">Clientes</h2>
+                <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
+                <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
+                <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
+              </header>
+              <div className="table-responsive small">
+                <table className="table table-sm table-striped align-middle">
+                  <thead>
+                    <tr>
+                      <th>Número de cliente</th>
+                      <th>Contratante</th>
+                      <th>Teléfono</th>
+                      <th>Correo</th>
+                      <th>Cumpleaños</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientes.map(c => (
+                      <tr key={c.id}>
+                        <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
+                        <td className="text-xs">{fmtNombre(c)}</td>
+                        <td className="text-xs">{c.telefono_celular || '—'}</td>
+                        <td className="text-xs">{c.email || '—'}</td>
+                        <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
+                        <td className="text-end">
+                          <div className="d-flex gap-2 justify-content-end">
+                            <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+                            <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!clientes.length && <tr><td colSpan={6} className="text-center text-muted py-3">Sin resultados</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
           {editCliente && (
             <AppModal title="Editar cliente" icon="person-fill" onClose={()=>setEditCliente(null)}>
               <div className="grid grid-cols-2 gap-2">
