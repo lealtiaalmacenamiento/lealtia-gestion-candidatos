@@ -62,6 +62,9 @@ export default function GestionPage() {
   const [tipoProducto, setTipoProducto] = useState<string>('')
   const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; periodicidad_pago?: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
   const [savingMeta, setSavingMeta] = useState(false)
+  // Meta header inputs
+  const [metaSelf, setMetaSelf] = useState<{ conexion: string; objetivo: string }>({ conexion: '', objetivo: '' })
+  const [metaSuper, setMetaSuper] = useState<{ usuario_id: string; conexion: string; objetivo: string }>({ usuario_id: '', conexion: '', objetivo: '' })
 
   useEffect(() => {
     if (!addingPoliza) return
@@ -79,13 +82,18 @@ export default function GestionPage() {
     setLoading(true)
     try {
       if (isSuper) {
-  const ra = await fetch('/api/agentes', { cache: 'no-store' })
+        const ra = await fetch('/api/agentes', { cache: 'no-store' })
         const ja = await ra.json()
         if (Array.isArray(ja)) setAgentes(ja)
       } else {
         const rc = await fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`)
         const jc = await rc.json()
         setClientes(jc.items || [])
+        // cargar meta propia (conexión/objetivo)
+        try {
+          const rm = await fetch('/api/agentes/meta', { cache: 'no-store' })
+          if (rm.ok) { const m = await rm.json(); setMetaSelf({ conexion: m?.fecha_conexion_text || '', objetivo: (m?.objetivo ?? '').toString() }) }
+        } catch {}
       }
     } finally { setLoading(false) }
   }, [qClientes, isSuper])
@@ -161,10 +169,29 @@ export default function GestionPage() {
         <section className="border rounded p-3">
           {isSuper ? (
             <>
-              <header className="flex items-center gap-2 mb-3">
+              <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Agentes</h2>
-                <button className="px-3 py-1 text-sm bg-gray-100 border rounded ml-auto" onClick={()=>load()}>Refrescar</button>
-                <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
+                <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
+                  <select className="form-select form-select-sm" value={metaSuper.usuario_id} onChange={async e=>{
+                    const v = e.target.value; setMetaSuper(prev=>({ ...prev, usuario_id: v }))
+                    if (v) {
+                      try { const r=await fetch(`/api/agentes/meta?usuario_id=${v}`, { cache: 'no-store' }); const j=await r.json(); if (r.ok) setMetaSuper({ usuario_id: v, conexion: j?.fecha_conexion_text||'', objetivo: (j?.objetivo??'').toString() }) } catch {}
+                    } else {
+                      setMetaSuper({ usuario_id: '', conexion: '', objetivo: '' })
+                    }
+                  }}>
+                    <option value="">(Agente para meta)</option>
+                    {agentes.map(a=> <option key={a.id} value={a.id}>{a.nombre || a.email}</option>)}
+                  </select>
+                  <input className="form-control form-control-sm" style={{width:160}} placeholder="Conexión D/M/YYYY" value={metaSuper.conexion} onChange={e=> setMetaSuper(prev=>({ ...prev, conexion: e.target.value }))} />
+                  <input className="form-control form-control-sm" style={{width:120}} type="number" placeholder="Objetivo" value={metaSuper.objetivo} onChange={e=> setMetaSuper(prev=>({ ...prev, objetivo: e.target.value }))} />
+                  <button className="btn btn-sm btn-success" disabled={savingMeta || !metaSuper.usuario_id} onClick={async()=>{
+                    if (!metaSuper.usuario_id) return
+                    try { setSavingMeta(true); const body: { usuario_id?: number; fecha_conexion_text: string | null; objetivo: number | null } = { usuario_id: Number(metaSuper.usuario_id), fecha_conexion_text: metaSuper.conexion.trim() || null, objetivo: metaSuper.objetivo? Number(metaSuper.objetivo): null }; const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return } await load() } finally { setSavingMeta(false) }
+                  }}>Guardar meta</button>
+                  <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
+                  <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
+                </div>
               </header>
               <div className="accordion" id="agentesAccordion">
                 {agentes.map(ag => {
@@ -269,11 +296,19 @@ export default function GestionPage() {
             </>
           ) : (
             <>
-              <header className="flex items-center gap-2 mb-3">
+              <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Clientes</h2>
-                <input className="border px-2 py-1 text-sm ml-auto" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
-                <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
-                <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
+                <div className="d-flex ms-auto align-items-end gap-2 flex-wrap">
+                  <input className="border px-2 py-1 text-sm" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
+                  <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
+                  {/* Meta rápida del asesor */}
+                  <input className="form-control form-control-sm" style={{width:160}} placeholder="Conexión D/M/YYYY" value={metaSelf.conexion} onChange={e=> setMetaSelf({ ...metaSelf, conexion: e.target.value })} />
+                  <input className="form-control form-control-sm" style={{width:120}} type="number" placeholder="Objetivo" value={metaSelf.objetivo} onChange={e=> setMetaSelf({ ...metaSelf, objetivo: e.target.value })} />
+                  <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
+                    try { setSavingMeta(true); const body: { fecha_conexion_text: string | null; objetivo: number | null } = { fecha_conexion_text: metaSelf.conexion.trim() || null, objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null }; const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return } await load() } finally { setSavingMeta(false) }
+                  }}>Guardar meta</button>
+                  <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
+                </div>
               </header>
               <div className="table-responsive small">
                 <table className="table table-sm table-striped align-middle">
