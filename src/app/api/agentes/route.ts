@@ -1,4 +1,4 @@
-interface UsuarioMini { id:number; id_auth?: string | null; nombre?:string|null; email:string; rol:string; activo:boolean }
+interface UsuarioMini { id:number; id_auth?: string | null; nombre?:string|null; email:string; rol:string; activo:boolean; clientes_count?: number }
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
@@ -28,10 +28,16 @@ export async function GET() {
   // Superusuario/admin: construir conjunto ampliado
   const agentesRolPromise = supabase.from('usuarios').select('id,id_auth,nombre,email,rol,activo').eq('rol','agente').eq('activo', true)
   const emailsCandidatosPromise = supabase.from('candidatos').select('email_agente').not('email_agente','is', null)
+  // Precalcular conteo de clientes por asesor_id (id_auth) sin usar group() para evitar incompatibilidades de tipos
+  const clientesCountPromise = supabase
+    .from('clientes')
+    .select('asesor_id')
+    .not('asesor_id','is', null)
 
-  const [agentesRol, emailsCand] = await Promise.all([agentesRolPromise, emailsCandidatosPromise])
+  const [agentesRol, emailsCand, clientesCount] = await Promise.all([agentesRolPromise, emailsCandidatosPromise, clientesCountPromise])
   if (agentesRol.error) return NextResponse.json({ error: agentesRol.error.message }, { status: 500 })
   if (emailsCand.error) return NextResponse.json({ error: emailsCand.error.message }, { status: 500 })
+  if (clientesCount.error) return NextResponse.json({ error: clientesCount.error.message }, { status: 500 })
 
   const emailSet = new Set<string>()
   for (const r of emailsCand.data as { email_agente: string | null }[]) {
@@ -50,10 +56,18 @@ export async function GET() {
     extra = extraUsers || []
   }
 
+  // Mapear conteos por asesor_id (id_auth)
+  const countMap = new Map<string, number>()
+  for (const r of (clientesCount.data as unknown as Array<{ asesor_id: string|null }> | null) || []) {
+    if (!r || !r.asesor_id) continue
+    const key = String(r.asesor_id)
+    countMap.set(key, (countMap.get(key) || 0) + 1)
+  }
+
   // Unir y deduplicar
   const mergedMap = new Map<number, UsuarioMini>()
-  for (const u of agentesRol.data) mergedMap.set(u.id, u)
-  for (const u of extra) mergedMap.set(u.id, u)
+  for (const u of agentesRol.data) mergedMap.set(u.id, { ...u, clientes_count: u.id_auth ? (countMap.get(u.id_auth) || 0) : 0 })
+  for (const u of extra) mergedMap.set(u.id, { ...u, clientes_count: u.id_auth ? (countMap.get(u.id_auth) || 0) : 0 })
   const merged = Array.from(mergedMap.values())
   merged.sort((a,b)=> (a.nombre||'').localeCompare(b.nombre||'') || a.email.localeCompare(b.email))
 

@@ -37,11 +37,11 @@ export async function GET(req: Request) {
   }
 
   const admin = getServiceClient()
-  const { data, error } = await admin
+  const { data, error, count } = await admin
     .from('clientes')
-    .select('id, cliente_code, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, telefono_celular, email:correo, fecha_nacimiento')
+    .select('id, cliente_code, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, telefono_celular, email:correo, fecha_nacimiento', { count: 'exact' })
     .eq('asesor_id', asesorId)
     .order('id', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ items: data || [] })
+  return NextResponse.json({ items: data || [], count: typeof count === 'number' ? count : (data?.length || 0) })
 }

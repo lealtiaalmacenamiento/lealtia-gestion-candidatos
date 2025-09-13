@@ -42,7 +42,7 @@ export default function GestionPage() {
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
-  const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string }>>([])
+  const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string; clientes_count?: number }>>([])
   const [expandedAgentes, setExpandedAgentes] = useState<Record<string, boolean>>({})
   const [clientesPorAgente, setClientesPorAgente] = useState<Record<string, Cliente[]>>({})
   const [qClientes, setQClientes] = useState('')
@@ -202,12 +202,12 @@ export default function GestionPage() {
                               <div className="fw-semibold">{ag.nombre || ag.email}</div>
                               <div className="small text-muted">{ag.email}</div>
                             </div>
-                            <span className="badge bg-secondary align-self-center">{(clientesPorAgente[key]?.length) ?? 0} clientes</span>
+                            <span className="badge bg-secondary align-self-center">{(clientesPorAgente[key]?.length) ?? (ag.clientes_count || 0)} clientes</span>
                           </div>
                         </button>
                       </h2>
-                      <div className={`accordion-collapse collapse ${expanded ? 'show' : ''}`}>
-                        <div className="accordion-body p-2">
+                      {expanded && (
+                        <div className="accordion-body p-2" style={{ background: '#f8fafc' }}>
                           <div className="table-responsive small">
                             <table className="table table-sm table-striped align-middle mb-0">
                               <thead>
@@ -241,7 +241,7 @@ export default function GestionPage() {
                             </table>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )
                 })}
