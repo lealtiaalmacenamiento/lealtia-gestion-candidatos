@@ -42,7 +42,8 @@ export default function GestionPage() {
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
-  const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string; clientes_count?: number }>>([])
+  const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string; clientes_count?: number; badges?: { polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null } }>>([])
+  const [editMeta, setEditMeta] = useState<{ usuario_id: number; conexion: string; objetivo: string } | null>(null)
   const [expandedAgentes, setExpandedAgentes] = useState<Record<string, boolean>>({})
   const [clientesPorAgente, setClientesPorAgente] = useState<Record<string, Cliente[]>>({})
   const [qClientes, setQClientes] = useState('')
@@ -60,6 +61,7 @@ export default function GestionPage() {
   const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string; moneda?: string|null; sa_min?: number|null; sa_max?: number|null }>>([])
   const [tipoProducto, setTipoProducto] = useState<string>('')
   const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; periodicidad_pago?: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
+  const [savingMeta, setSavingMeta] = useState(false)
 
   useEffect(() => {
     if (!addingPoliza) return
@@ -197,12 +199,29 @@ export default function GestionPage() {
                             }
                           }}
                         >
-                          <div className="d-flex w-100 justify-content-between">
-                            <div>
+                          <div className="d-flex w-100 justify-content-between gap-2 align-items-center">
+                            <div className="me-2">
                               <div className="fw-semibold">{ag.nombre || ag.email}</div>
                               <div className="small text-muted">{ag.email}</div>
                             </div>
-                            <span className="badge bg-secondary align-self-center">{(clientesPorAgente[key]?.length) ?? (ag.clientes_count || 0)} clientes</span>
+                            <div className="d-flex flex-wrap gap-2 align-items-center ms-auto">
+                              <span className="badge bg-secondary">{(clientesPorAgente[key]?.length) ?? (ag.clientes_count || 0)} clientes</span>
+                              {ag.badges?.polizas_en_conteo!=null && <span className="badge bg-info text-dark">Pólizas en conteo: {ag.badges.polizas_en_conteo}</span>}
+                              {ag.badges?.conexion && <span className="badge bg-light text-dark border">Conexión: {ag.badges.conexion}</span>}
+                              {ag.badges?.meses_para_graduacion!=null && <span className="badge bg-warning text-dark">Meses para graduación: {ag.badges.meses_para_graduacion}</span>}
+                              {ag.badges?.polizas_para_graduacion!=null && <span className="badge bg-primary">Pólizas para graduación: {ag.badges.polizas_para_graduacion}</span>}
+                              {ag.badges?.necesita_mensualmente!=null && <span className="badge bg-success">Necesita mens.: {ag.badges.necesita_mensualmente}</span>}
+                              {ag.badges?.objetivo!=null && <span className="badge bg-dark">Objetivo: {ag.badges.objetivo}</span>}
+                              {(!isSuper && user && user.id===ag.id) && (
+                                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={async(e)=>{ e.stopPropagation();
+                                  try{
+                                    const r=await fetch(`/api/agentes/meta`)
+                                    const j=await r.json()
+                                    if(r.ok){ setEditMeta({ usuario_id: ag.id, conexion: j.fecha_conexion_text||'', objetivo: (j.objetivo??'').toString() }) }
+                                  }catch{}
+                                }}>Editar meta</button>
+                              )}
+                            </div>
                           </div>
                         </button>
                       </h2>
@@ -343,6 +362,36 @@ export default function GestionPage() {
                     await load()
                   } catch { alert('Error al crear') }
                 }}>Crear</button>
+              </div>
+            </AppModal>
+          )}
+          {editMeta && (
+            <AppModal title="Editar meta del asesor" icon="pencil" onClose={()=> setEditMeta(null)}>
+              <div className="small text-muted mb-2">Formato de conexión: D/M/YYYY (ej. 17/3/2025)</div>
+              <div className="d-flex flex-column gap-2">
+                <div>
+                  <label className="form-label small">Conexión (fecha firma contrato)</label>
+                  <input className="form-control form-control-sm" placeholder="D/M/YYYY" value={editMeta.conexion} onChange={e=> setEditMeta({...editMeta, conexion: e.target.value})} />
+                </div>
+                <div>
+                  <label className="form-label small">Objetivo</label>
+                  <input className="form-control form-control-sm" type="number" value={editMeta.objetivo} onChange={e=> setEditMeta({...editMeta, objetivo: e.target.value})} />
+                </div>
+              </div>
+              <div className="mt-3 d-flex justify-content-end gap-2">
+                <button className="btn btn-sm btn-secondary" onClick={()=> setEditMeta(null)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
+                  try{
+                    setSavingMeta(true)
+                    const body: { usuario_id?: number; fecha_conexion_text: string | null; objetivo: number | null } = { fecha_conexion_text: editMeta.conexion.trim() || null, objetivo: editMeta.objetivo? Number(editMeta.objetivo): null }
+                    if(isSuper && editMeta.usuario_id) body.usuario_id = editMeta.usuario_id
+                    const r = await fetch('/api/agentes/meta', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+                    const j = await r.json()
+                    if(!r.ok){ alert(j.error || 'Error al guardar meta'); return }
+                    setEditMeta(null)
+                    await load()
+                  } finally { setSavingMeta(false) }
+                }}>Guardar</button>
               </div>
             </AppModal>
           )}
