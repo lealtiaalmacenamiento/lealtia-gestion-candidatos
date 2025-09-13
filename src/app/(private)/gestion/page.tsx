@@ -77,7 +77,7 @@ export default function GestionPage() {
     setLoading(true)
     try {
       if (isSuper) {
-        const ra = await fetch('/api/agentes')
+  const ra = await fetch('/api/agentes', { cache: 'no-store' })
         const ja = await ra.json()
         if (Array.isArray(ja)) setAgentes(ja)
       } else {
@@ -182,7 +182,7 @@ export default function GestionPage() {
                                 const url = ag.id_auth
                                   ? `/api/clientes/by-asesor?asesor_id=${encodeURIComponent(ag.id_auth)}`
                                   : `/api/clientes/by-asesor?usuario_id=${encodeURIComponent(String(ag.id))}`
-                                const rc = await fetch(url)
+                                const rc = await fetch(url, { cache: 'no-store' })
                                 const jc = await rc.json().catch(()=>({ error: 'parse' }))
                                 if (!rc.ok) {
                                   console.error('Error cargando clientes por asesor', jc)
