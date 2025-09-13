@@ -106,8 +106,8 @@ export async function GET() {
       const val = 12 - diff
       return val
     })()
-    const polizasParaGraduacion = 36 - puntos
-    const necesitaMensual = (mesesGraduacion && mesesGraduacion > 0) ? Math.ceil(polizasParaGraduacion / mesesGraduacion) : null
+  const polizasParaGraduacion = Math.max(0, 36 - puntos)
+  const necesitaMensual = (mesesGraduacion && mesesGraduacion > 0) ? Math.ceil(polizasParaGraduacion / mesesGraduacion) : null
     return {
       ...a,
       clientes_count: a.clientes_count,
