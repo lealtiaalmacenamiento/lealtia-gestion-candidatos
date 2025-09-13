@@ -43,6 +43,7 @@ export default function GestionPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
   const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string; clientes_count?: number; badges?: { polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null } }>>([])
+  const [selfBadges, setSelfBadges] = useState<{ polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null } | null>(null)
   const [editMeta, setEditMeta] = useState<{ usuario_id: number; conexion: string; objetivo: string } | null>(null)
   const [expandedAgentes, setExpandedAgentes] = useState<Record<string, boolean>>({})
   const [clientesPorAgente, setClientesPorAgente] = useState<Record<string, Cliente[]>>({})
@@ -89,7 +90,7 @@ export default function GestionPage() {
           const rm = await fetch('/api/agentes/meta', { cache: 'no-store' })
           if (rm.ok) {
             const m = await rm.json()
-            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: (m?.objetivo ?? '').toString() })
+            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: ((m?.objetivo ?? 36)).toString() })
           }
         } catch {}
       } else {
@@ -101,8 +102,14 @@ export default function GestionPage() {
           const rm = await fetch('/api/agentes/meta', { cache: 'no-store' })
           if (rm.ok) {
             const m = await rm.json()
-            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: (m?.objetivo ?? '').toString() })
+            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: ((m?.objetivo ?? 36)).toString() })
           }
+        } catch {}
+        // cargar badges propios
+        try {
+          const ra = await fetch('/api/agentes', { cache: 'no-store' })
+          const ja = await ra.json()
+          if (Array.isArray(ja) && ja[0]?.badges) setSelfBadges(ja[0].badges)
         } catch {}
       }
     } finally { setLoading(false) }
@@ -340,6 +347,17 @@ export default function GestionPage() {
                       await load()
                     } finally { setSavingMeta(false) }
                   }}>Guardar meta</button>
+                  {/* Badges del asesor */}
+                  {selfBadges && (
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      {selfBadges.polizas_en_conteo!=null && <span className="badge bg-info text-dark">Pólizas en conteo: {selfBadges.polizas_en_conteo}</span>}
+                      {selfBadges.conexion && <span className="badge bg-light text-dark border">Conexión: {selfBadges.conexion}</span>}
+                      {selfBadges.meses_para_graduacion!=null && <span className="badge bg-warning text-dark">Meses para graduación: {selfBadges.meses_para_graduacion}</span>}
+                      {selfBadges.polizas_para_graduacion!=null && <span className="badge bg-primary">Pólizas para graduación: {selfBadges.polizas_para_graduacion}</span>}
+                      {selfBadges.necesita_mensualmente!=null && <span className="badge bg-success">Necesita mens.: {selfBadges.necesita_mensualmente}</span>}
+                      {selfBadges.objetivo!=null && <span className="badge bg-dark">Objetivo: {selfBadges.objetivo}</span>}
+                    </div>
+                  )}
                   <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
                 </div>
               </header>

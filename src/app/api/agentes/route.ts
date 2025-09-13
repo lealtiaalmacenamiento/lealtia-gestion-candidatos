@@ -23,7 +23,51 @@ export async function GET() {
       if (ref.error) return NextResponse.json({ error: ref.error.message }, { status: 500 })
       if (!ref.data || ref.data.length === 0) return NextResponse.json([])
     }
-    return NextResponse.json([self])
+    // Enriquecer con badges y conteos para el propio usuario
+    let clientes_count = 0
+    let puntos = 0
+    if (self.id_auth) {
+      const cc = await supabase.from('clientes').select('asesor_id').eq('asesor_id', self.id_auth)
+      if (cc.error) return NextResponse.json({ error: cc.error.message }, { status: 500 })
+      clientes_count = (cc.data || []).length
+      const pj = await supabase.from('polizas').select('puntos_actuales, clientes!inner(asesor_id)').eq('clientes.asesor_id', self.id_auth)
+      if (pj.error) return NextResponse.json({ error: pj.error.message }, { status: 500 })
+      for (const r of (pj.data as unknown as Array<{ puntos_actuales: number|null; clientes: { asesor_id: string|null } }> | null) || []) {
+        const add = typeof r.puntos_actuales === 'number' ? r.puntos_actuales : 0
+        puntos += add
+      }
+    }
+    const meta = await supabase.from('agente_meta').select('usuario_id, fecha_conexion_text, objetivo').eq('usuario_id', self.id).maybeSingle()
+    if (meta.error && meta.error.code !== 'PGRST116') { // ignore no rows
+      return NextResponse.json({ error: meta.error.message }, { status: 500 })
+    }
+    const m = (meta.data as MetaRow | null) || { usuario_id: self.id, fecha_conexion_text: null, objetivo: null }
+    const mesesGraduacion = (() => {
+      const t = (m.fecha_conexion_text || '').trim()
+      if (!t) return null
+      const parts = t.split('/')
+      if (parts.length !== 3) return null
+      const d = Number(parts[0]); const mo = Number(parts[1]); const y = Number(parts[2])
+      if (!isFinite(d) || !isFinite(mo) || !isFinite(y)) return null
+      const mesActual = new Date()
+      const diff = (mesActual.getFullYear() * 12 + mesActual.getMonth() + 1) - (y * 12 + mo)
+      return 12 - diff
+    })()
+    const polizasParaGraduacion = Math.max(0, 36 - puntos)
+    const necesitaMensual = (mesesGraduacion && mesesGraduacion > 0) ? Math.ceil(polizasParaGraduacion / mesesGraduacion) : null
+    const enriched = {
+      ...self,
+      clientes_count,
+      badges: {
+        polizas_en_conteo: puntos,
+        conexion: m.fecha_conexion_text || null,
+        meses_para_graduacion: mesesGraduacion,
+        polizas_para_graduacion: polizasParaGraduacion,
+        necesita_mensualmente: necesitaMensual,
+        objetivo: (m.objetivo ?? 36),
+      }
+    }
+    return NextResponse.json([enriched])
   }
 
   // Superusuario/admin: construir conjunto ampliado
@@ -117,7 +161,7 @@ export async function GET() {
         meses_para_graduacion: mesesGraduacion,
         polizas_para_graduacion: polizasParaGraduacion,
         necesita_mensualmente: necesitaMensual,
-        objetivo: meta.objetivo ?? null,
+        objetivo: (meta.objetivo ?? 36),
       }
     }
   })
