@@ -84,6 +84,14 @@ export default function GestionPage() {
         const ra = await fetch('/api/agentes', { cache: 'no-store' })
         const ja = await ra.json()
         if (Array.isArray(ja)) setAgentes(ja)
+        // Prefill own meta for super (in case super is also agent)
+        try {
+          const rm = await fetch('/api/agentes/meta', { cache: 'no-store' })
+          if (rm.ok) {
+            const m = await rm.json()
+            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: (m?.objetivo ?? '').toString() })
+          }
+        } catch {}
       } else {
         const rc = await fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`)
         const jc = await rc.json()
@@ -174,6 +182,31 @@ export default function GestionPage() {
               <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Agentes</h2>
                 <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
+                  {/* Meta rápida también para super si es agente */}
+                  {user && agentes.some(a=>a.id===user.id) && (
+                    <>
+                      <div className="d-flex flex-column" style={{width:180}}>
+                        <label className="form-label small mb-1">Conexión</label>
+                        <input className="form-control form-control-sm" type="date" value={metaSelf.conexion} onChange={e=> setMetaSelf({ ...metaSelf, conexion: e.target.value })} />
+                      </div>
+                      <div className="d-flex flex-column" style={{width:140}}>
+                        <label className="form-label small mb-1">Objetivo</label>
+                        <input className="form-control form-control-sm" type="number" value={metaSelf.objetivo} onChange={e=> setMetaSelf({ ...metaSelf, objetivo: e.target.value })} />
+                      </div>
+                      <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
+                        try {
+                          setSavingMeta(true)
+                          const body: { fecha_conexion_text: string | null; objetivo: number | null } = {
+                            fecha_conexion_text: metaSelf.conexion ? toDMYFromISO(metaSelf.conexion) : null,
+                            objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
+                          }
+                          const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+                          const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return }
+                          await load()
+                        } finally { setSavingMeta(false) }
+                      }}>Guardar meta</button>
+                    </>
+                  )}
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
                   <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
                 </div>
