@@ -103,19 +103,24 @@ export async function GET(req: Request) {
     }
   }
 
-  const supa = await getSupa()
-  let sel = supa
-      .from('polizas')
+  // Para agentes/supervisores no-super: usa service client para evitar redacciones por RLS a nivel de columnas,
+  // pero aplica explícitamente el filtro de propiedad por asesor_id para no abrir datos a terceros.
+  const admin = getServiceClient()
+  let sel = admin
+    .from('polizas')
     .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), clientes!inner(asesor_id)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
   if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
   if (clienteId) sel = sel.eq('cliente_id', clienteId)
-  // Filtrar por asesor_id si disponible (alineado con RLS)
+  // Aplicar filtro por asesor_id obligatorio en no-super
   type MaybeAuth = { id_auth?: string | null }
   const u = usuario as unknown as MaybeAuth
-  if (u?.id_auth) sel = sel.eq('clientes.asesor_id', u.id_auth)
-  else if (authUserId) sel = sel.eq('clientes.asesor_id', authUserId)
+  const asesorId = u?.id_auth || authUserId
+  if (!asesorId) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  }
+  sel = sel.eq('clientes.asesor_id', asesorId)
 
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
