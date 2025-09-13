@@ -224,7 +224,7 @@ export default function GestionPage() {
                               {ag.badges?.polizas_para_graduacion!=null && <span className="badge bg-primary">Pólizas para graduación: {ag.badges.polizas_para_graduacion}</span>}
                               {ag.badges?.necesita_mensualmente!=null && <span className="badge bg-success">Necesita mens.: {ag.badges.necesita_mensualmente}</span>}
                               {ag.badges?.objetivo!=null && <span className="badge bg-dark">Objetivo: {ag.badges.objetivo}</span>}
-                              {(!isSuper && user && user.id===ag.id) && (
+                              {(user && user.id===ag.id) && (
                                 <button className="btn btn-sm btn-outline-secondary" type="button" onClick={async(e)=>{ e.stopPropagation();
                                   try{
                                     const r=await fetch(`/api/agentes/meta`)
