@@ -65,6 +65,7 @@ export default function GestionPage() {
   const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string; moneda?: string|null; sa_min?: number|null; sa_max?: number|null }>>([])
   const [tipoProducto, setTipoProducto] = useState<string>('')
   const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; periodicidad_pago?: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
+  const [savingPoliza, setSavingPoliza] = useState<boolean>(false)
   const [savingMeta, setSavingMeta] = useState(false)
   // Meta header inputs
   const [metaSelf, setMetaSelf] = useState<{ conexion: string; objetivo: string }>({ conexion: '', objetivo: '' })
@@ -168,6 +169,11 @@ export default function GestionPage() {
   }
 
   async function submitPolizaCambio(p: Poliza) {
+    if (savingPoliza) return
+    setSavingPoliza(true)
+    // Guardar una referencia del estado esperado para verificación post-guardar
+    const expectedId = p.id
+    const expectedPrima = typeof p.prima_input === 'number' ? Number(p.prima_input.toFixed(2)) : null
     const payload: Record<string, unknown> = {
       numero_poliza: emptyAsUndef(p.numero_poliza),
       estatus: emptyAsUndef(p.estatus),
@@ -180,38 +186,57 @@ export default function GestionPage() {
       prima_moneda: emptyAsUndef(p.prima_moneda),
       meses_check: p.meses_check || {},
     }
-    const res = await fetch('/api/polizas/updates', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ poliza_id: p.id, payload })
-    })
-    const j = await res.json()
-    if (!res.ok) { alert(j.error || 'Error al enviar solicitud'); return }
-    if (isSuper && j.id) {
-      await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id }) })
-    }
-    // Refrescar datos para reflejar el recálculo en UI
     try {
-      // Recargar pólizas del cliente seleccionado si aplica
-      if (selectedCliente?.id) {
-        const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`, { cache: 'no-store' })
-        const jp = await rp.json().catch(()=>({}))
-        if (Array.isArray(jp.items)) setPolizas(jp.items)
-      }
-      // Refrescar badges/listados de agentes según el rol
-      try {
-        if (isSuper) {
-          const ra = await fetch('/api/agentes', { cache: 'no-store' })
-          const ja = await ra.json().catch(()=>[])
-          if (Array.isArray(ja)) setAgentes(ja)
-        } else {
-          const ra = await fetch('/api/agentes', { cache: 'no-store' })
-          const ja = await ra.json().catch(()=>[])
-          if (Array.isArray(ja) && ja[0]?.badges) setSelfBadges(ja[0].badges)
+      const res = await fetch('/api/polizas/updates', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ poliza_id: p.id, payload })
+      })
+      const j = await res.json().catch(()=>({}))
+      if (!res.ok) { alert(j.error || 'Error al enviar solicitud'); return }
+      if (isSuper && j.id) {
+        const ra = await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id, debug: true }) })
+        const ja = await ra.json().catch(()=>({}))
+        if (!ra.ok) {
+          const details = typeof ja === 'object' ? (ja.error || ja.details || ja.hint || ja.code) : null
+          alert(`Error al aprobar${details ? `: ${details}` : ''}`)
+          return
         }
-      } catch {}
+      } else if (!isSuper) {
+        alert('Solicitud enviada')
+      }
+
+      // Refrescar datos para reflejar el recálculo en UI (sólo si se aprobó o si queremos reflejar último estado)
+      try {
+        if (selectedCliente?.id) {
+          const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`, { cache: 'no-store' })
+          const jp = await rp.json().catch(()=>({}))
+          if (Array.isArray(jp.items)) {
+            setPolizas(jp.items)
+            // Verificación: si se aprobó como super, confirmar que la prima persistió
+            if (isSuper && expectedId) {
+              const updated = (jp.items as Array<{ id: string; prima_input?: number | null }>).find((it) => it.id === expectedId)
+              const backendPrima = typeof updated?.prima_input === 'number' ? Number(updated.prima_input.toFixed(2)) : null
+              if (expectedPrima != null && backendPrima != null && backendPrima !== expectedPrima) {
+                alert(`Aviso: el backend no reflejó el cambio de prima. Valor actual: ${backendPrima} (esperado ${expectedPrima}). Revisa permisos o validaciones.`)
+              }
+            }
+          }
+        }
+        try {
+          const ra = await fetch('/api/agentes', { cache: 'no-store' })
+          const ja = await ra.json().catch(()=>[])
+          if (isSuper) {
+            if (Array.isArray(ja)) setAgentes(ja)
+          } else {
+            if (Array.isArray(ja) && ja[0]?.badges) setSelfBadges(ja[0].badges)
+          }
+        } catch {}
+      } finally {
+        if (isSuper) alert('Guardado y aprobado')
+        setEditPoliza(null)
+      }
     } finally {
-      alert(isSuper ? 'Guardado y aprobado' : 'Solicitud enviada')
-      setEditPoliza(null)
+      setSavingPoliza(false)
     }
   }
 
@@ -749,7 +774,7 @@ export default function GestionPage() {
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" onClick={()=>submitPolizaCambio(editPoliza)}>{isSuper? 'Guardar y aprobar':'Enviar solicitud'}</button>
+                <button className="btn btn-sm btn-success" disabled={savingPoliza} onClick={()=>submitPolizaCambio(editPoliza)}>{savingPoliza ? 'Guardando…' : (isSuper? 'Guardar y aprobar':'Enviar solicitud')}</button>
               </div>
             </AppModal>
           )}
