@@ -163,7 +163,21 @@ export async function POST(req: Request) {
       if (fxErr) return NextResponse.json({ error: 'FX upsert failed', details: fxErr }, { status: 500 })
     }
 
-  return NextResponse.json({ ok: true, counts: { udi: udiRows.length, usd: fxRows.length }, range: { start: startStr, end: endStr }, note: notes.length ? notes.join('; ') : undefined })
+    // Optional: trigger mass recalc after market update (default ON). You can disable with ?recalc=0 and set limit with ?recalc_limit=NN.
+    let recalcAffected: number | null = null
+    const recalcParam = url.searchParams.get('recalc')
+    const wantRecalc = recalcParam == null ? true : recalcParam !== '0'
+    if (wantRecalc) {
+      const limitParam = url.searchParams.get('recalc_limit')
+      const limit = limitParam ? Number(limitParam) : null
+      const supaAdmin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+      try {
+        const rpc = await supaAdmin.rpc('recalc_puntos_poliza_all', { p_limit: (Number.isFinite(limit as number) && (limit as number) > 0) ? Math.floor(limit as number) : null }).single()
+        if (!rpc.error) recalcAffected = rpc.data as unknown as number
+      } catch { /* ignore recalc failures here */ }
+    }
+
+    return NextResponse.json({ ok: true, counts: { udi: udiRows.length, usd: fxRows.length }, range: { start: startStr, end: endStr }, note: notes.length ? notes.join('; ') : undefined, recalc: recalcAffected })
   } catch (e) {
     const msg = (e instanceof Error) ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })
