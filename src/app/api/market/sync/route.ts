@@ -76,7 +76,11 @@ export async function POST(req: Request) {
     const url = new URL(req.url)
     const qSecret = url.searchParams.get('secret') || ''
     const vercelCronHeader = req.headers.get('x-vercel-cron') // present when triggered by Vercel Cron
-    const ok = !!secret && (hdr === secret || qSecret === secret || !!vercelCronHeader)
+
+    // Authorize if:
+    // - Called by Vercel Cron (x-vercel-cron present), OR
+    // - A shared secret is configured and provided via header or query param
+    const ok = (!!vercelCronHeader) || (!!secret && (hdr === secret || qSecret === secret))
     if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     // Accept params via query string or JSON body for compatibility
@@ -194,9 +198,9 @@ export async function GET(req: Request) {
 
 export async function OPTIONS() {
   // Preflight support (useful if called cross-origin or with custom headers)
-  return new NextResponse(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
+  return new NextResponse(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,x-market-sync-secret,x-vercel-cron,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
 }
 
 export async function HEAD() {
-  return new NextResponse(null, { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
+  return new NextResponse(null, { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,x-market-sync-secret,x-vercel-cron,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
 }
