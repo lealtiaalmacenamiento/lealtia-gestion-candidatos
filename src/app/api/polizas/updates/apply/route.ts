@@ -36,8 +36,11 @@ export async function POST(req: Request) {
     try {
       const { data: usuarioRow } = await supa.from('usuarios').select('id,id_auth,rol,activo').eq('id_auth', auth.user.id).maybeSingle()
       console.debug('[apply_poliza_update][debug] usuarios row', usuarioRow)
-      const { data: reqRow } = await supa.from('poliza_update_requests').select('id,estado,poliza_id,solicitante_id').eq('id', body.request_id).maybeSingle()
+      const { data: reqRow } = await supa.from('poliza_update_requests').select('id,estado,poliza_id,solicitante_id,payload_propuesto').eq('id', body.request_id).maybeSingle()
       console.debug('[apply_poliza_update][debug] update_request row', reqRow)
+      if (reqRow?.payload_propuesto) {
+        console.debug('[apply_poliza_update][debug] payload_propuesto', reqRow.payload_propuesto)
+      }
     } catch (e) {
       console.debug('[apply_poliza_update][debug] error fetching pre-data', e)
     }
@@ -92,7 +95,7 @@ export async function POST(req: Request) {
   }
 
   let polizaId: string | null = null
-  let updatedPoliza: { id: string; prima_input?: number|null; prima_moneda?: string|null } | null = null
+  let updatedPoliza: { id: string; prima_input?: number|null; prima_moneda?: string|null; puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null }|null } | null = null
   try {
     const { data: reqRow } = await supa
       .from('poliza_update_requests')
@@ -103,10 +106,10 @@ export async function POST(req: Request) {
     if (polizaId) {
       const { data: pRow } = await supa
         .from('polizas')
-        .select('id, prima_input, prima_moneda')
+        .select('id, prima_input, prima_moneda, poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot)')
         .eq('id', polizaId)
         .maybeSingle()
-  if (pRow) updatedPoliza = { id: pRow.id, prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null, prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null }
+  if (pRow) updatedPoliza = { id: pRow.id, prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null, prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null, puntos_cache: (pRow as { poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null }|null }).poliza_puntos_cache ?? null }
   if (body?.debug) {
     console.debug('[apply_poliza_update][debug] updated poliza snapshot', updatedPoliza)
   }
