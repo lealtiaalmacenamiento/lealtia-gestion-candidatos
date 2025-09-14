@@ -217,7 +217,7 @@ export default function GestionPage() {
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
                   {/* Total comisiones (superusuario) */}
                   {agentes.length > 0 && (
-                    <span className="badge bg-purple-600 text-white">
+                    <span className="badge text-bg-primary">
                       Total comisiones: {
                         (()=>{
                           try {
@@ -278,7 +278,7 @@ export default function GestionPage() {
                               {ag.badges?.necesita_mensualmente!=null && <span className="badge bg-success">Necesita mens.: {ag.badges.necesita_mensualmente}</span>}
                               {ag.badges?.objetivo!=null && <span className="badge bg-dark">Objetivo: {ag.badges.objetivo}</span>}
                               {typeof ag.badges?.comisiones_mxn === 'number' && (
-                                <span className="badge bg-purple-600 text-white">
+                                <span className="badge text-bg-primary">
                                   Comisión: {(()=>{ try { return (ag.badges!.comisiones_mxn || 0).toLocaleString('es-MX', { style:'currency', currency:'MXN' }) } catch { return 'MXN $0.00' } })()}
                                 </span>
                               )}
