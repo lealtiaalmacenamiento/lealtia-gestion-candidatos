@@ -55,6 +55,8 @@ export default function GestionPage() {
 
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
+  // Edición cómoda de prima: mantener texto crudo para evitar saltos del cursor por formateo
+  const [editPrimaText, setEditPrimaText] = useState<string>('')
   const [creating, setCreating] = useState(false)
   const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
   // creación de póliza deshabilitada temporalmente
@@ -117,6 +119,15 @@ export default function GestionPage() {
   }, [qClientes, isSuper])
 
   useEffect(() => { void load() }, [load])
+
+  // Sincronizar texto de prima cuando se abre/cambia la póliza a editar
+  useEffect(() => {
+    if (editPoliza && typeof editPoliza.prima_input === 'number' && isFinite(editPoliza.prima_input)) {
+      setEditPrimaText(editPoliza.prima_input.toFixed(2))
+    } else if (editPoliza) {
+      setEditPrimaText('')
+    }
+  }, [editPoliza])
 
   // Vista unificada: se elimina redirección a /asesor para que agentes usen esta página directamente
 
@@ -672,14 +683,29 @@ export default function GestionPage() {
                 <div className="d-flex flex-column"><label className="form-label small">Fecha renovación</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_renovacion || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_renovacion: e.target.value||undefined})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Tipo</label><input className="form-control form-control-sm" disabled value={editPoliza.tipo_producto || ''} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Día de pago</label><input className="form-control form-control-sm" type="number" min={1} max={31} value={editPoliza.dia_pago ?? ''} onChange={e=>{ const v = parseInt(e.target.value,10); setEditPoliza({...editPoliza, dia_pago: isFinite(v)? v:null}) }} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Prima anual</label><input className="form-control form-control-sm" value={typeof editPoliza.prima_input==='number'? editPoliza.prima_input.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}): (editPoliza.prima_input??'')} onChange={e=>{ const raw=e.target.value.replace(/[^0-9.]/g,''); const n=Number(raw); setEditPoliza({...editPoliza, prima_input: isFinite(n)? n: null}); }} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Moneda de prima</label>
-                  <select className="form-select form-select-sm" value={editPoliza.prima_moneda || ''} onChange={e=> setEditPoliza({ ...editPoliza, prima_moneda: e.target.value })}>
-                    <option value="">—</option>
-                    <option value="MXN">MXN</option>
-                    <option value="USD">USD</option>
-                    <option value="UDI">UDI</option>
-                  </select>
+                <div className="d-flex flex-column"><label className="form-label small">Prima anual</label>
+                  <input
+                    className="form-control form-control-sm"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
+                    placeholder="0.00"
+                    value={editPrimaText}
+                    onChange={e=>{
+                      // Permitir dígitos, punto o coma como decimal; no aplicar formateo aquí
+                      const v = e.target.value
+                      // Limpiar caracteres no numéricos salvo separador decimal
+                      const cleaned = v.replace(/[^0-9.,]/g, '')
+                      setEditPrimaText(cleaned)
+                      // Convertir a número si es válido (usar '.' como separador interno)
+                      const asNumber = Number(cleaned.replace(',', '.'))
+                      setEditPoliza({ ...editPoliza, prima_input: isFinite(asNumber) ? asNumber : null })
+                    }}
+                    onBlur={() => {
+                      // Normalizar a 2 decimales si es un número válido
+                      const asNumber = Number(editPrimaText.replace(',', '.'))
+                      if (isFinite(asNumber)) setEditPrimaText(asNumber.toFixed(2))
+                    }}
+                  />
                 </div>
               </div>
               <div className="mt-2 small">
@@ -767,7 +793,24 @@ export default function GestionPage() {
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Prima anual</label>
-                  <input className="form-control form-control-sm" value={nuevaPoliza.prima_input ? Number(nuevaPoliza.prima_input).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}) : ''} onChange={e=>{ const raw=e.target.value.replace(/[^0-9.]/g,''); setNuevaPoliza({...nuevaPoliza, prima_input: raw}); }} placeholder="0.00" />
+                  <input
+                    className="form-control form-control-sm"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
+                    placeholder="0.00"
+                    value={nuevaPoliza.prima_input}
+                    onChange={e=>{
+                      const v = e.target.value
+                      const cleaned = v.replace(/[^0-9.,]/g, '')
+                      setNuevaPoliza({ ...nuevaPoliza, prima_input: cleaned })
+                    }}
+                    onBlur={()=>{
+                      const asNumber = Number((nuevaPoliza.prima_input||'').replace(',', '.'))
+                      if (isFinite(asNumber)) {
+                        setNuevaPoliza({ ...nuevaPoliza, prima_input: asNumber.toFixed(2) })
+                      }
+                    }}
+                  />
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Día de pago</label>
