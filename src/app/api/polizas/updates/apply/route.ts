@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { sendMail } from '@/lib/mailer'
 import { logAccion } from '@/lib/logger'
+import { getServiceClient } from '@/lib/supabaseAdmin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -95,7 +96,19 @@ export async function POST(req: Request) {
   }
 
   let polizaId: string | null = null
-  let updatedPoliza: { id: string; prima_input?: number|null; prima_moneda?: string|null; puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null }|null } | null = null
+  let updatedPoliza: {
+    id: string
+    prima_input?: number|null
+    prima_moneda?: string|null
+    puntos_cache?: {
+      base_factor?: number|null
+      year_factor?: number|null
+      prima_anual_snapshot?: number|null
+      puntos_total?: number|null
+      clasificacion?: string|null
+    }|null
+    comision_mxn?: number|null
+  } | null = null
   try {
     const { data: reqRow } = await supa
       .from('poliza_update_requests')
@@ -104,12 +117,33 @@ export async function POST(req: Request) {
       .maybeSingle()
     polizaId = reqRow?.poliza_id || null
     if (polizaId) {
+      // Forzar recálculo inmediato (fallback en caso de que el trigger o la RPC no actualicen el cache por RLS)
+      try {
+        const admin = getServiceClient()
+        // Intentar RPC directa primero
+        await admin.rpc('recalc_puntos_poliza', { p_poliza_id: polizaId })
+      } catch (e) {
+        if (debugOn) console.debug('[apply_poliza_update][debug] recalc_puntos_poliza via service client failed/ignored', e)
+      }
+
       const { data: pRow } = await supa
         .from('polizas')
-        .select('id, prima_input, prima_moneda, poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot)')
+        .select('id, prima_input, prima_moneda, poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot,puntos_total,clasificacion)')
         .eq('id', polizaId)
         .maybeSingle()
-  if (pRow) updatedPoliza = { id: pRow.id, prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null, prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null, puntos_cache: (pRow as { poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null }|null }).poliza_puntos_cache ?? null }
+  if (pRow) {
+    const puntos_cache = (pRow as { poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null; puntos_total?: number|null; clasificacion?: string|null }|null }).poliza_puntos_cache ?? null
+    const pct = puntos_cache?.base_factor ?? null
+    const primaMXN = puntos_cache?.prima_anual_snapshot ?? null
+    const comision_mxn = (pct!=null && primaMXN!=null) ? Number(((primaMXN * pct) / 100).toFixed(2)) : null
+    updatedPoliza = {
+      id: (pRow as { id: string }).id,
+      prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null,
+      prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null,
+      puntos_cache,
+      comision_mxn
+    }
+  }
   if (body?.debug) {
     console.debug('[apply_poliza_update][debug] updated poliza snapshot', updatedPoliza)
   }
