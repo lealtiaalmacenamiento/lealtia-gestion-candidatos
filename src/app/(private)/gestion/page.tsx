@@ -595,7 +595,16 @@ export default function GestionPage() {
             <AppModal title={`Editar póliza ${editPoliza.numero_poliza || ''}`} icon="file-earmark-text" onClose={()=>setEditPoliza(null)}>
               <div className="grid grid-cols-2 gap-2">
                 <div className="d-flex flex-column"><label className="form-label small">No. Póliza</label><input className="form-control form-control-sm" value={editPoliza.numero_poliza||''} onChange={e=>setEditPoliza({...editPoliza, numero_poliza: e.target.value})} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Estatus</label><input className="form-control form-control-sm" value={editPoliza.estatus||''} onChange={e=>setEditPoliza({...editPoliza, estatus: e.target.value})} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Estatus</label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={editPoliza.estatus || 'EN_VIGOR'}
+                    onChange={e=> setEditPoliza({ ...editPoliza, estatus: e.target.value })}
+                  >
+                    <option value="EN_VIGOR">En vigor</option>
+                    <option value="ANULADA">Anulada</option>
+                  </select>
+                </div>
                 <div className="d-flex flex-column"><label className="form-label small">Periodicidad</label>
                   <select className="form-select form-select-sm" value={editPoliza.periodicidad_pago||''} onChange={e=>setEditPoliza({...editPoliza, periodicidad_pago: e.target.value})}>
                     <option value="">—</option>
