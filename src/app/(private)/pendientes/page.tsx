@@ -70,10 +70,20 @@ export default function PendientesPage() {
     if (!isSuper) return
     setActing(it.id)
     try {
+      let res: Response
       if (it.tipo === 'cliente') {
-        await fetch('/api/clientes/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id }) })
+        res = await fetch('/api/clientes/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, debug: debugOn }) })
       } else {
-        await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id }) })
+        res = await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: it.id, debug: debugOn }) })
+      }
+      if (!res.ok) {
+        try {
+          const j = await res.json()
+          alert(`Error al aprobar: ${j.error || res.status} \n${j.details || ''} ${j.hint || ''}`)
+        } catch {
+          alert(`Error al aprobar (${res.status})`)
+        }
+        return
       }
       await refresh()
     } finally { setActing(null) }
@@ -143,11 +153,20 @@ export default function PendientesPage() {
                     <div className="p-2 small">
           <strong>Cambios propuestos {r.tipo==='poliza' ? 'de póliza' : 'de cliente'}</strong>
                       <ul className="mb-0 mt-1" style={{columns: 2, columnGap: '2rem'}}>
-                        {r.changes.map((c: { campo: string; actual: unknown; propuesto: unknown }, i: number) => (
-                          <li key={i} style={{breakInside:'avoid'}}>
-                            <span className="text-muted">{c.campo}:</span> {renderVal(c.actual)} → <strong>{renderVal(c.propuesto)}</strong>
-                          </li>
-                        ))}
+                        {r.changes.map((c: { campo: string; actual: unknown; propuesto: unknown }, i: number) => {
+                          let actual = renderVal(c.actual)
+                          let propuesto = renderVal(c.propuesto)
+                          if (c.campo === 'estatus') {
+                            const map: Record<string,string> = { EN_VIGOR: 'EN_VIGOR', ANULADA: 'ANULADA' }
+                            if (typeof c.actual === 'string') actual = map[c.actual] || c.actual
+                            if (typeof c.propuesto === 'string') propuesto = map[c.propuesto] || c.propuesto
+                          }
+                          return (
+                            <li key={i} style={{breakInside:'avoid'}}>
+                              <span className="text-muted">{c.campo}:</span> {actual} → <strong>{propuesto}</strong>
+                            </li>
+                          )
+                        })}
                       </ul>
                     </div>
                   </td>
