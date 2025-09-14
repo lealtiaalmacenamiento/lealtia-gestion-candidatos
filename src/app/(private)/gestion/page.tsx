@@ -42,8 +42,8 @@ export default function GestionPage() {
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
-  const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string; clientes_count?: number; badges?: { polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null } }>>([])
-  const [selfBadges, setSelfBadges] = useState<{ polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null } | null>(null)
+  const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string; clientes_count?: number; badges?: { polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null; comisiones_mxn?: number|null } }>>([])
+  const [selfBadges, setSelfBadges] = useState<{ polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null; comisiones_mxn?: number|null } | null>(null)
   const [editMeta, setEditMeta] = useState<{ usuario_id: number; conexion: string; objetivo: string } | null>(null)
   const [expandedAgentes, setExpandedAgentes] = useState<Record<string, boolean>>({})
   const [clientesPorAgente, setClientesPorAgente] = useState<Record<string, Cliente[]>>({})
@@ -215,6 +215,19 @@ export default function GestionPage() {
                     </>
                   )}
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
+                  {/* Total comisiones (superusuario) */}
+                  {agentes.length > 0 && (
+                    <span className="badge bg-purple-600 text-white">
+                      Total comisiones: {
+                        (()=>{
+                          try {
+                            const total = agentes.reduce((acc, a)=> acc + (a.badges?.comisiones_mxn || 0), 0)
+                            return (total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+                          } catch { return 'MXN $0.00' }
+                        })()
+                      }
+                    </span>
+                  )}
                   <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
                 </div>
               </header>
@@ -264,6 +277,11 @@ export default function GestionPage() {
                               {ag.badges?.polizas_para_graduacion!=null && <span className="badge bg-primary">Pólizas para graduación: {ag.badges.polizas_para_graduacion}</span>}
                               {ag.badges?.necesita_mensualmente!=null && <span className="badge bg-success">Necesita mens.: {ag.badges.necesita_mensualmente}</span>}
                               {ag.badges?.objetivo!=null && <span className="badge bg-dark">Objetivo: {ag.badges.objetivo}</span>}
+                              {typeof ag.badges?.comisiones_mxn === 'number' && (
+                                <span className="badge bg-purple-600 text-white">
+                                  Comisión: {(()=>{ try { return (ag.badges!.comisiones_mxn || 0).toLocaleString('es-MX', { style:'currency', currency:'MXN' }) } catch { return 'MXN $0.00' } })()}
+                                </span>
+                              )}
                               {(user && user.id===ag.id) && (
                                 <button className="btn btn-sm btn-outline-secondary" type="button" onClick={async(e)=>{ e.stopPropagation();
                                   try{

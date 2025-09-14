@@ -26,15 +26,25 @@ export async function GET() {
     // Enriquecer con badges y conteos para el propio usuario
     let clientes_count = 0
     let puntos = 0
+    let comisiones_mxn_total = 0
     if (self.id_auth) {
       const cc = await supabase.from('clientes').select('asesor_id').eq('asesor_id', self.id_auth)
       if (cc.error) return NextResponse.json({ error: cc.error.message }, { status: 500 })
       clientes_count = (cc.data || []).length
-      const pj = await supabase.from('polizas').select('puntos_actuales, clientes!inner(asesor_id)').eq('clientes.asesor_id', self.id_auth)
+      const pj = await supabase
+        .from('polizas')
+        .select('estatus, puntos_actuales, poliza_puntos_cache(base_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
+        .eq('clientes.asesor_id', self.id_auth)
       if (pj.error) return NextResponse.json({ error: pj.error.message }, { status: 500 })
-      for (const r of (pj.data as unknown as Array<{ puntos_actuales: number|null; clientes: { asesor_id: string|null } }> | null) || []) {
+      for (const r of (pj.data as unknown as Array<{ estatus?: string|null; puntos_actuales: number|null; poliza_puntos_cache?: { base_factor?: number|null; prima_anual_snapshot?: number|null }|null; clientes: { asesor_id: string|null } }> | null) || []) {
         const add = typeof r.puntos_actuales === 'number' ? r.puntos_actuales : 0
         puntos += add
+        // Comisión total: solo pólizas en vigor, con snapshot de prima y porcentaje válidos
+        const pct = r?.poliza_puntos_cache?.base_factor
+        const prima = r?.poliza_puntos_cache?.prima_anual_snapshot
+        if (r?.estatus === 'EN_VIGOR' && typeof pct === 'number' && typeof prima === 'number') {
+          comisiones_mxn_total += Number(((prima * pct) / 100).toFixed(2))
+        }
       }
     }
     const meta = await supabase.from('agente_meta').select('usuario_id, fecha_conexion_text, objetivo').eq('usuario_id', self.id).maybeSingle()
@@ -65,6 +75,7 @@ export async function GET() {
         polizas_para_graduacion: polizasParaGraduacion,
         necesita_mensualmente: necesitaMensual,
         objetivo: (m.objetivo ?? 36),
+        comisiones_mxn: comisiones_mxn_total,
       }
     }
     return NextResponse.json([enriched])
@@ -81,7 +92,7 @@ export async function GET() {
   // Sumar puntos_total por agente (desde poliza_puntos_cache join polizas -> clientes.asesor_id)
   const puntosJoinPromise = supabase
     .from('polizas')
-    .select('id, puntos_actuales, clientes!inner(asesor_id)')
+    .select('id, estatus, puntos_actuales, poliza_puntos_cache(base_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
 
   const metaPromise = supabase.from('agente_meta').select('usuario_id, fecha_conexion_text, objetivo')
   const [agentesRol, emailsCand, clientesCount, puntosJoin, metaRes] = await Promise.all([agentesRolPromise, emailsCandidatosPromise, clientesCountPromise, puntosJoinPromise, metaPromise])
@@ -115,14 +126,21 @@ export async function GET() {
     const key = String(r.asesor_id)
     countMap.set(key, (countMap.get(key) || 0) + 1)
   }
-  // Mapear puntos por asesor_id (sum puntos_actuales)
+  // Mapear puntos por asesor_id (sum puntos_actuales) y comisiones en MXN
   const puntosMap = new Map<string, number>()
-  for (const r of (puntosJoin.data as unknown as Array<{ puntos_actuales: number | null; clientes: { asesor_id: string|null } }> | null) || []) {
+  const comisionesMap = new Map<string, number>()
+  for (const r of (puntosJoin.data as unknown as Array<{ estatus?: string|null; puntos_actuales: number | null; poliza_puntos_cache?: { base_factor?: number|null; prima_anual_snapshot?: number|null }|null; clientes: { asesor_id: string|null } }> | null) || []) {
     const a = r?.clientes?.asesor_id
     if (!a) continue
     const current = puntosMap.get(a) || 0
     const add = typeof r.puntos_actuales === 'number' ? r.puntos_actuales : 0
     puntosMap.set(a, current + add)
+    const pct = r?.poliza_puntos_cache?.base_factor
+    const prima = r?.poliza_puntos_cache?.prima_anual_snapshot
+    if (r?.estatus === 'EN_VIGOR' && typeof pct === 'number' && typeof prima === 'number') {
+      const cprev = comisionesMap.get(a) || 0
+      comisionesMap.set(a, Number((cprev + (prima * pct) / 100).toFixed(2)))
+    }
   }
   // Mapear meta por usuario_id
   const metaMap = new Map<number, MetaRow>()
@@ -135,6 +153,7 @@ export async function GET() {
   // Construir arreglo y anexar badges calculados
   const merged = Array.from(mergedMap.values()).map(a => {
     const puntos = a.id_auth ? (puntosMap.get(a.id_auth) || 0) : 0
+  const comisiones = a.id_auth ? (comisionesMap.get(a.id_auth) || 0) : 0
     const meta = metaMap.get(a.id) || { usuario_id: a.id, fecha_conexion_text: null, objetivo: null }
     // Derivados: meses_graduacion y polizas_para_graduacion
     const mesesGraduacion = (() => {
@@ -162,6 +181,7 @@ export async function GET() {
         polizas_para_graduacion: polizasParaGraduacion,
         necesita_mensualmente: necesitaMensual,
         objetivo: (meta.objetivo ?? 36),
+        comisiones_mxn: comisiones,
       }
     }
   })

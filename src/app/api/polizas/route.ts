@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       const admin = getServiceClient()
       let sel = admin
     .from('polizas')
-  .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto)')
+  .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot)')
         .order('fecha_alta_sistema', { ascending: false })
         .limit(100)
       if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // map join + computed fields
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
@@ -76,6 +76,9 @@ export async function GET(req: Request) {
       } catch {}
     }
       if (fecha_renovacion) renovacion = fecha_renovacion
+    const pct = (r.poliza_puntos_cache?.base_factor ?? null)
+    const primaMXN = (r.poliza_puntos_cache?.prima_anual_snapshot ?? null)
+    const comision_mxn = (pct!=null && primaMXN!=null) ? Number(((primaMXN * pct) / 100).toFixed(2)) : null
     return {
       id: r.id,
       cliente_id: r.cliente_id,
@@ -94,7 +97,13 @@ export async function GET(req: Request) {
         meses_check: r.meses_check ?? {},
       renovacion,
       producto_nombre,
-      tipo_producto
+      tipo_producto,
+      comision: {
+        anio_vigencia: r.poliza_puntos_cache?.year_factor ?? null,
+        porcentaje: pct,
+        prima_mxn: primaMXN,
+        comision_mxn
+      }
     }
   })
   return NextResponse.json({ items })
@@ -108,7 +117,7 @@ export async function GET(req: Request) {
   const admin = getServiceClient()
   let sel = admin
     .from('polizas')
-    .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), clientes!inner(asesor_id)')
+    .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
   if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
@@ -125,7 +134,7 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // quitar campo join anidado
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
@@ -140,6 +149,9 @@ export async function GET(req: Request) {
       } catch {}
     }
       if (fecha_renovacion) renovacion = fecha_renovacion
+    const pct = (r.poliza_puntos_cache?.base_factor ?? null)
+    const primaMXN = (r.poliza_puntos_cache?.prima_anual_snapshot ?? null)
+    const comision_mxn = (pct!=null && primaMXN!=null) ? Number(((primaMXN * pct) / 100).toFixed(2)) : null
     return {
       id: r.id,
       cliente_id: r.cliente_id,
@@ -158,7 +170,13 @@ export async function GET(req: Request) {
         meses_check: r.meses_check ?? {},
       renovacion,
       producto_nombre,
-      tipo_producto
+      tipo_producto,
+      comision: {
+        anio_vigencia: r.poliza_puntos_cache?.year_factor ?? null,
+        porcentaje: pct,
+        prima_mxn: primaMXN,
+        comision_mxn
+      }
     }
   })
   return NextResponse.json({ items })
