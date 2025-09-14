@@ -673,6 +673,14 @@ export default function GestionPage() {
                 <div className="d-flex flex-column"><label className="form-label small">Tipo</label><input className="form-control form-control-sm" disabled value={editPoliza.tipo_producto || ''} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Día de pago</label><input className="form-control form-control-sm" type="number" min={1} max={31} value={editPoliza.dia_pago ?? ''} onChange={e=>{ const v = parseInt(e.target.value,10); setEditPoliza({...editPoliza, dia_pago: isFinite(v)? v:null}) }} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Prima anual</label><input className="form-control form-control-sm" value={typeof editPoliza.prima_input==='number'? editPoliza.prima_input.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}): (editPoliza.prima_input??'')} onChange={e=>{ const raw=e.target.value.replace(/[^0-9.]/g,''); const n=Number(raw); setEditPoliza({...editPoliza, prima_input: isFinite(n)? n: null}); }} /></div>
+                <div className="d-flex flex-column"><label className="form-label small">Moneda de prima</label>
+                  <select className="form-select form-select-sm" value={editPoliza.prima_moneda || ''} onChange={e=> setEditPoliza({ ...editPoliza, prima_moneda: e.target.value })}>
+                    <option value="">—</option>
+                    <option value="MXN">MXN</option>
+                    <option value="USD">USD</option>
+                    <option value="UDI">UDI</option>
+                  </select>
+                </div>
               </div>
               <div className="mt-2 small">
                 <strong>Meses</strong>
