@@ -1,0 +1,23 @@
+name: Market Sync (Banxico)
+
+on:
+  schedule:
+    - cron: '0 13 * * 1-5' # 7am CDMX (UTC-6/UTC-5 DST) approximated to 13:00 UTC Mon-Fri
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/market/sync (both series, 365 days)
+        env:
+          URL: ${{ secrets.MARKET_SYNC_URL }}
+          SECRET: ${{ secrets.MARKET_SYNC_SECRET }}
+        run: |
+          set -euo pipefail
+          : "${URL:?Need MARKET_SYNC_URL secret (e.g. https://your-app.vercel.app)}"
+          : "${SECRET:?Need MARKET_SYNC_SECRET secret}"
+          curl -sS -X POST "${URL%/}/api/market/sync?source=both&days_back=365" \
+            -H "x-cron-secret: ${SECRET}" \
+            -H 'content-type: application/json' \
+            -w '\nHTTP %{http_code}\n'

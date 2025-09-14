@@ -69,14 +69,29 @@ function parseFechaDDMMYYYY(s: string): string | null {
 
 export async function POST(req: Request) {
   try {
-    // Accept both env var names for compatibility with earlier docs
     const secret = process.env.CRON_SECRET || process.env.MARKET_SYNC_SECRET || ''
-    // Accept both header names for compatibility
     const hdr = req.headers.get('x-cron-secret') || req.headers.get('x-market-sync-secret') || ''
-    if (!secret || hdr !== secret) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
-    // Accept params via query string or JSON body for compatibility
     const url = new URL(req.url)
+    const qSecret = url.searchParams.get('secret') || ''
+  const vercelCronHeader = req.headers.get('x-vercel-cron')
+  const vercelScheduledHeader = req.headers.get('x-vercel-scheduled')
+    const ua = (req.headers.get('user-agent') || '').toLowerCase()
+    const vercelCronUA = ua.includes('vercel-cron')
+
+  const authorized = (!!vercelCronHeader) || (!!vercelScheduledHeader) || vercelCronUA || (!!secret && (hdr === secret || qSecret === secret))
+
+    if (!authorized) {
+      console.warn('[market/sync] Forbidden', {
+        hasVercelHeader: !!vercelCronHeader,
+        hasVercelScheduled: !!vercelScheduledHeader,
+        vercelCronUA,
+        hasSecretEnv: !!secret,
+        hasHeaderSecret: !!hdr,
+        hasQuerySecret: !!qSecret
+      })
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     let source = (url.searchParams.get('source') || '').toLowerCase()
     let daysBackStr = url.searchParams.get('days_back') || ''
     if (!source || !daysBackStr) {
@@ -103,8 +118,8 @@ export async function POST(req: Request) {
     const seriesUDI = process.env.BANXICO_SERIES_UDI || 'SP68257'
     const seriesUSD = process.env.BANXICO_SERIES_USD || 'SF43718'
 
-  const wantUDI = sourceNorm === 'both' || sourceNorm === 'udi'
-  const wantUSD = sourceNorm === 'both' || sourceNorm === 'usd'
+    const wantUDI = sourceNorm === 'both' || sourceNorm === 'udi'
+    const wantUSD = sourceNorm === 'both' || sourceNorm === 'usd'
 
     const tasks: Array<Promise<unknown>> = []
     if (wantUDI) tasks.push(fetchBanxicoSeries(seriesUDI, startStr, endStr, token))
@@ -170,16 +185,18 @@ export async function POST(req: Request) {
     if (wantRecalc) {
       const limitParam = url.searchParams.get('recalc_limit')
       const limit = limitParam ? Number(limitParam) : null
-      const supaAdmin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+      const supaAdmin2 = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
       try {
-        const rpc = await supaAdmin.rpc('recalc_puntos_poliza_all', { p_limit: (Number.isFinite(limit as number) && (limit as number) > 0) ? Math.floor(limit as number) : null }).single()
+        const rpc = await supaAdmin2.rpc('recalc_puntos_poliza_all', { p_limit: (Number.isFinite(limit as number) && (limit as number) > 0) ? Math.floor(limit as number) : null }).single()
         if (!rpc.error) recalcAffected = rpc.data as unknown as number
       } catch { /* ignore recalc failures here */ }
     }
 
+    console.info('[market/sync] done', { counts: { udi: udiRows.length, usd: fxRows.length }, range: { start: startStr, end: endStr }, recalc: recalcAffected })
     return NextResponse.json({ ok: true, counts: { udi: udiRows.length, usd: fxRows.length }, range: { start: startStr, end: endStr }, note: notes.length ? notes.join('; ') : undefined, recalc: recalcAffected })
   } catch (e) {
     const msg = (e instanceof Error) ? e.message : String(e)
+    console.error('[market/sync] error', msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
@@ -191,9 +208,9 @@ export async function GET(req: Request) {
 
 export async function OPTIONS() {
   // Preflight support (useful if called cross-origin or with custom headers)
-  return new NextResponse(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
+  return new NextResponse(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,x-market-sync-secret,x-vercel-cron,x-vercel-scheduled,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
 }
 
 export async function HEAD() {
-  return new NextResponse(null, { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
+  return new NextResponse(null, { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-cron-secret,x-market-sync-secret,x-vercel-cron,x-vercel-scheduled,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } })
 }
