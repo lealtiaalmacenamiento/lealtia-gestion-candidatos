@@ -77,6 +77,19 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: rpc.error.message, details: rpc.error.details, hint: rpc.error.hint, code: rpc.error.code, pending }, { status: 400 })
   }
+  // Si hay debug, volver a leer la solicitud para ver el estado post-aprobación
+  if (body?.debug) {
+    try {
+      const { data: reqAfter } = await supa
+        .from('poliza_update_requests')
+        .select('id,estado,poliza_id,solicitante_id,resuelto_at,resuelto_por')
+        .eq('id', body.request_id)
+        .maybeSingle()
+      console.debug('[apply_poliza_update][debug] request after RPC', reqAfter)
+    } catch (e) {
+      console.debug('[apply_poliza_update][debug] error fetching post-data', e)
+    }
+  }
 
   let polizaId: string | null = null
   let updatedPoliza: { id: string; prima_input?: number|null; prima_moneda?: string|null } | null = null
@@ -94,6 +107,9 @@ export async function POST(req: Request) {
         .eq('id', polizaId)
         .maybeSingle()
   if (pRow) updatedPoliza = { id: pRow.id, prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null, prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null }
+  if (body?.debug) {
+    console.debug('[apply_poliza_update][debug] updated poliza snapshot', updatedPoliza)
+  }
     }
     if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
