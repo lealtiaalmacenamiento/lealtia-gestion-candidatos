@@ -1,5 +1,5 @@
 "use client"
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
 
@@ -120,12 +120,17 @@ export default function GestionPage() {
 
   useEffect(() => { void load() }, [load])
 
-  // Sincronizar texto de prima cuando se abre/cambia la póliza a editar
+  // Sincronizar texto de prima SOLAMENTE cuando se cambia de póliza (por id),
+  // no en cada tecleo del usuario (cuando solo cambia prima_input).
+  const prevEditPolizaId = useRef<string|undefined>(undefined)
   useEffect(() => {
-    if (editPoliza && typeof editPoliza.prima_input === 'number' && isFinite(editPoliza.prima_input)) {
-      setEditPrimaText(editPoliza.prima_input.toFixed(2))
-    } else if (editPoliza) {
-      setEditPrimaText('')
+    const currentId = editPoliza?.id
+    if (prevEditPolizaId.current !== currentId) {
+      prevEditPolizaId.current = currentId
+      if (!editPoliza) { setEditPrimaText(''); return }
+      const v = editPoliza.prima_input
+      if (typeof v === 'number' && isFinite(v)) setEditPrimaText(v.toFixed(2))
+      else setEditPrimaText('')
     }
   }, [editPoliza])
 
@@ -184,8 +189,30 @@ export default function GestionPage() {
     if (isSuper && j.id) {
       await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id }) })
     }
-    alert(isSuper ? 'Guardado y aprobado' : 'Solicitud enviada')
-    setEditPoliza(null)
+    // Refrescar datos para reflejar el recálculo en UI
+    try {
+      // Recargar pólizas del cliente seleccionado si aplica
+      if (selectedCliente?.id) {
+        const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`, { cache: 'no-store' })
+        const jp = await rp.json().catch(()=>({}))
+        if (Array.isArray(jp.items)) setPolizas(jp.items)
+      }
+      // Refrescar badges/listados de agentes según el rol
+      try {
+        if (isSuper) {
+          const ra = await fetch('/api/agentes', { cache: 'no-store' })
+          const ja = await ra.json().catch(()=>[])
+          if (Array.isArray(ja)) setAgentes(ja)
+        } else {
+          const ra = await fetch('/api/agentes', { cache: 'no-store' })
+          const ja = await ra.json().catch(()=>[])
+          if (Array.isArray(ja) && ja[0]?.badges) setSelfBadges(ja[0].badges)
+        }
+      } catch {}
+    } finally {
+      alert(isSuper ? 'Guardado y aprobado' : 'Solicitud enviada')
+      setEditPoliza(null)
+    }
   }
 
   return (
