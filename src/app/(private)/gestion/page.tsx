@@ -39,6 +39,7 @@ export default function GestionPage() {
   const { user } = useAuth()
   const role = (user?.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+  const agentDisplayName = (user?.nombre && user.nombre.trim()) ? user.nombre.trim() : (user?.email || 'tu asesor')
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [polizas, setPolizas] = useState<Poliza[]>([])
@@ -314,8 +315,22 @@ export default function GestionPage() {
                                   <tr key={c.id}>
                                     <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
                                     <td className="text-xs">{fmtNombre(c)}</td>
-                                    <td className="text-xs">{c.telefono_celular || '—'}</td>
-                                    <td className="text-xs">{c.email || '—'}</td>
+                                    <td className="text-xs">
+                                      {c.telefono_celular ? (
+                                        <a
+                                          href={buildWhatsAppLink(c.telefono_celular, ag.nombre || ag.email || agentDisplayName)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          {c.telefono_celular}
+                                        </a>
+                                      ) : '—'}
+                                    </td>
+                                    <td className="text-xs">
+                                      {c.email ? (
+                                        <a href={`mailto:${c.email}`}>{c.email}</a>
+                                      ) : '—'}
+                                    </td>
                                     <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
                                     <td className="text-end">
                                       <div className="d-flex gap-2 justify-content-end">
@@ -396,8 +411,22 @@ export default function GestionPage() {
                       <tr key={c.id}>
                         <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
                         <td className="text-xs">{fmtNombre(c)}</td>
-                        <td className="text-xs">{c.telefono_celular || '—'}</td>
-                        <td className="text-xs">{c.email || '—'}</td>
+                        <td className="text-xs">
+                          {c.telefono_celular ? (
+                            <a
+                              href={buildWhatsAppLink(c.telefono_celular, agentDisplayName)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {c.telefono_celular}
+                            </a>
+                          ) : '—'}
+                        </td>
+                        <td className="text-xs">
+                          {c.email ? (
+                            <a href={`mailto:${c.email}`}>{c.email}</a>
+                          ) : '—'}
+                        </td>
                         <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
                         <td className="text-end">
                           <div className="d-flex gap-2 justify-content-end">
@@ -510,13 +539,31 @@ export default function GestionPage() {
           </div>
           <div className="mb-3">
             <div className="row g-2">
-              <div className="col-md-6">
+              <div className="col-md-4">
                 <label className="form-label small">Nombre</label>
                 <div className="form-control form-control-sm">{fmtNombre(selectedCliente)}</div>
               </div>
-              <div className="col-md-6">
+              <div className="col-md-4">
+                <label className="form-label small">Teléfono</label>
+                <div className="form-control form-control-sm">
+                  {selectedCliente.telefono_celular ? (
+                    <a
+                      href={buildWhatsAppLink(selectedCliente.telefono_celular, agentDisplayName)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {selectedCliente.telefono_celular}
+                    </a>
+                  ) : '—'}
+                </div>
+              </div>
+              <div className="col-md-4">
                 <label className="form-label small">Email</label>
-                <div className="form-control form-control-sm">{selectedCliente.email || '—'}</div>
+                <div className="form-control form-control-sm">
+                  {selectedCliente.email ? (
+                    <a href={`mailto:${selectedCliente.email}`}>{selectedCliente.email}</a>
+                  ) : '—'}
+                </div>
               </div>
             </div>
           </div>
@@ -808,4 +855,20 @@ function toDMYFromISO(iso: string): string {
   const mon = String(Number(m)).replace(/^0+/, '') || '0'
   if (!y || day === 'NaN' || mon === 'NaN') return ''
   return `${day}/${mon}/${y}`
+}
+
+// Helpers para hipervínculos
+function normalizePhoneMx(raw: string): string {
+  // Quitar todo excepto dígitos
+  const digits = (raw || '').replace(/\D/g, '')
+  // Si ya parece tener lada país (11-13 dígitos), devolver tal cual
+  if (digits.length >= 11) return digits
+  // Asumir México (+52)
+  return `52${digits}`
+}
+function buildWhatsAppLink(phone: string, agentName: string): string {
+  const normalized = normalizePhoneMx(phone)
+  const saludo = `Hola, soy ${agentName} tu asesor de seguros Lealtia`
+  const text = encodeURIComponent(saludo)
+  return `https://wa.me/${normalized}?text=${text}`
 }
