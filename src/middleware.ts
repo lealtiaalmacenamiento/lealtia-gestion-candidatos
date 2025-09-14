@@ -36,6 +36,19 @@ export async function middleware(req: NextRequest) {
   const isAsset = url.pathname.startsWith('/_next/') || url.pathname.startsWith('/favicon') || url.pathname.startsWith('/public/')
   const isPublic = publicPaths.has(url.pathname) || isAsset || isCronRequest || hasCronSecret
 
+  // Para asegurar autorización del Cron aunque el header no llegue, reescribimos agregando el secret como query interno
+  if (url.pathname === '/api/market/sync' && (isCronRequest || hasCronSecret)) {
+    const alreadyHas = url.searchParams.get('secret')
+    if (!alreadyHas) {
+      const cronSecret = process.env.CRON_SECRET || process.env.MARKET_SYNC_SECRET
+      if (cronSecret) {
+        const rewritten = new URL(url.toString())
+        rewritten.searchParams.set('secret', cronSecret)
+        return NextResponse.rewrite(rewritten)
+      }
+    }
+  }
+
   // Si no hay sesión y la ruta no es pública → redirigir a login
   if (!session && !isPublic) {
     const redirectUrl = new URL('/login', req.url)
