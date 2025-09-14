@@ -69,8 +69,10 @@ function parseFechaDDMMYYYY(s: string): string | null {
 
 export async function POST(req: Request) {
   try {
-    const secret = process.env.CRON_SECRET || ''
-    const hdr = req.headers.get('x-cron-secret') || ''
+    // Accept both env var names for compatibility with earlier docs
+    const secret = process.env.CRON_SECRET || process.env.MARKET_SYNC_SECRET || ''
+    // Accept both header names for compatibility
+    const hdr = req.headers.get('x-cron-secret') || req.headers.get('x-market-sync-secret') || ''
     if (!secret || hdr !== secret) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     // Accept params via query string or JSON body for compatibility

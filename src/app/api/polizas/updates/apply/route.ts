@@ -54,6 +54,17 @@ export async function POST(req: Request) {
       } catch (e) {
         console.debug('[apply_poliza_update][debug] fallo wrapper is_super_role', e)
       }
+      // Llamar helper de depuración si existe
+      try {
+        const dbg = await supa.rpc('apply_poliza_update_dbg', { p_request_id: body.request_id })
+        if (dbg.error) {
+          console.debug('[apply_poliza_update][debug] dbg.error', dbg.error)
+        } else {
+          console.debug('[apply_poliza_update][debug] dbg.data', dbg.data)
+        }
+      } catch (e) {
+        console.debug('[apply_poliza_update][debug] fallo apply_poliza_update_dbg', e)
+      }
     }
     let pending: unknown = null
     if (body.debug) {
