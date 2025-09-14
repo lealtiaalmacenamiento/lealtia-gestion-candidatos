@@ -135,6 +135,18 @@ export async function exportProspectosPDF(
   const { headerHeight, contentStartY } = drawHeader()
   doc.setFontSize(9)
   const GAP = 6
+  // Page metrics and helper to avoid drawing content that would be cut at page boundary
+  const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight()
+  const BOTTOM_MARGIN = 14
+  const ensure = (currentY:number, required:number) => {
+    const limit = PAGE_H - BOTTOM_MARGIN
+    if (currentY + required > limit) {
+      doc.addPage()
+      const hdr = drawHeader()
+      return hdr.contentStartY
+    }
+    return currentY
+  }
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
@@ -177,6 +189,8 @@ export async function exportProspectosPDF(
     y = (docWith.lastAutoTable?.finalY || tableStartY) + GAP
   }
   doc.setFontSize(10)
+  // Ensure space for the section title
+  y = ensure(y, 8)
   doc.setFont('helvetica','bold'); doc.text(agrupado? 'Resumen por agente':'Resumen',14,y); doc.setFont('helvetica','normal')
   y += 4
   if(!agrupado){
@@ -188,15 +202,22 @@ export async function exportProspectosPDF(
       ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
       ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
     ]
-  // 3 tarjetas por fila dentro de 182mm útiles: 3*56 + 2*6 = 180 <= 182
-  const cardW = 56; const cardH=12; let cx=14; let cy=y
+    // 3 tarjetas por fila dentro de 182mm útiles: 3*56 + 2*6 = 180 <= 182
+    const cardW = 56; const cardH=12; let cx=14; let cy=y
+    // Ensure space for the rows of cards
+    const rows = Math.max(1, Math.ceil(cards.length/3))
+    const requiredCards = rows*cardH + (rows-1)*4 + GAP
+    y = ensure(y, requiredCards)
     doc.setFontSize(8)
     cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10);
       if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   y = cy + cardH + GAP
   if(opts?.chartEstados){
       // Simple bar chart for estados
-      const chartY = y + 4
+  // Ensure space for chart + progress bar block
+  const requiredChart = 42 /* chartHeight */ + 12 /* progress */ + 8 /* spacing */
+  y = ensure(y, requiredChart)
+  const chartY = y + 4
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
         ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
@@ -238,15 +259,15 @@ export async function exportProspectosPDF(
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   // Más espacio tras barra de progreso para separar del siguiente bloque
-  y += 12
+      y += 12
     }
     // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
     if(opts?.extendedMetrics){
       const em = opts.extendedMetrics
       // Línea separadora sutil y extra espacio antes del título
+      // Ensure room for a separator and section heading
+      y = ensure(y, 10)
       doc.setDrawColor(230); doc.line(14, y, 196, y); y += 4
-      // Si queda poco espacio en la página, forzar salto antes del título
-  if(y > 240){ doc.addPage(); const hdr = drawHeader(); y = hdr.contentStartY }
       doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Métricas avanzadas',14,y)
       y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
   // Secciones relacionadas con citas dormidas (citas por hora, riesgo seguimiento sin cita) no se incluyen
@@ -336,6 +357,9 @@ export async function exportProspectosPDF(
     y = afterResumenTable + GAP
     // Global charts if requested (agrupado scenario)
     if(opts?.chartEstados){
+      // Ensure space for chart + progress bar + cards block on grouped report
+      const requiredChartAgg = 42 /* chart */ + 12 /* progress */ + 12 /* spacing */ + 4
+      y = ensure(y, requiredChartAgg)
       const chartTop = y
       const baseX = 14
   const barW = 16
@@ -372,7 +396,7 @@ export async function exportProspectosPDF(
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
   const chartBlockBottom = progressTop + 12
-      // Cards a la derecha
+  // Cards a la derecha
       const cards: Array<[string,string]> = [
         ['Total', String(resumen.total)],
         ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
@@ -385,10 +409,11 @@ export async function exportProspectosPDF(
       doc.setFontSize(8)
       cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
   // Añadir más espacio antes del siguiente bloque para que 'Métricas avanzadas' no quede pegado
-  y = Math.max(chartBlockBottom, cardY) + GAP + 12
+      y = Math.max(chartBlockBottom, cardY) + GAP + 12
     }
   // Métricas por agente agrupado
       if(opts?.perAgentExtended){
+        y = ensure(y, 10)
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
   const includeAgentDelta = !!opts?.perAgentDeltas
@@ -420,12 +445,8 @@ export async function exportProspectosPDF(
       // Resumen de planificación semanal por agente (si se proporcionó)
       if(opts?.planningSummaries){
         const totalAgg = Object.values(opts.planningSummaries).reduce((acc,cur)=>{ acc.prospeccion+=cur.prospeccion; acc.smnyl+=cur.smnyl; acc.total+=cur.total; return acc },{prospeccion:0,smnyl:0,total:0})
-        // Salto de página si poco espacio
-        if(y > 200){
-          doc.addPage()
-          const hdr = drawHeader()
-          y = hdr.contentStartY
-        }
+        // Asegurar espacio para título + tarjetas resumen
+        y = ensure(y, 8 + 12 + GAP)
         doc.setFontSize(10); doc.text('Planificación semanal (resumen y detalle por agente)',14,y); y+=4
         // Tarjetas resumen total
         const cardsPlan: Array<[string,string]> = [
@@ -435,7 +456,8 @@ export async function exportProspectosPDF(
         ]
   // 4 tarjetas en una fila: ajustar ancho para no exceder 210mm (14 + 4*W + 3*gap <= 210)
   // 4 tarjetas por fila: 4*42 + 3*6 = 186 -> bajamos a 41: 4*41 + 18 = 182
-  const cardW=41, cardH=12; let cx=14; let cy=y
+        const cardW=41, cardH=12; let cx=14; let cy=y
+        y = ensure(y, cardH + GAP)
         doc.setFontSize(8)
         cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   y = cy + cardH + GAP
@@ -459,17 +481,19 @@ export async function exportProspectosPDF(
     }
   // Sección de planificación para reporte individual de agente
   if(!agrupado && opts?.singleAgentPlanning){
-    if(y > 200){
-      doc.addPage()
-      const hdr2 = drawHeader()
-      y = hdr2.contentStartY
-    }
+    // Ensure space for title + one row of planning cards
+    y = ensure(y, 8 + 12 + GAP)
   let y2 = y + 4
     const plan = opts.singleAgentPlanning
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
   const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
   // 4 tarjetas por fila: usar 41mm para caber en 182mm con 3 gaps de 6mm
-  const cardW=41, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
+    const cardW=41, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
+    // Ensure cards fit on current page; if not, move and recompute y2
+    const rows2 = Math.max(1, Math.ceil(cardsPlan.length/4))
+    const requiredCards2 = rows2*cardH + (rows2-1)*4 + GAP
+    const ensuredY = ensure(y2, requiredCards2)
+    if (ensuredY !== y2) { y2 = ensuredY; cx = 14; cy = y2 }
     cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   cy += cardH + GAP
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
@@ -482,7 +506,10 @@ export async function exportProspectosPDF(
   b.activity==='PROSPECCION'? 'Prospección': b.activity,
         (b.prospecto_nombre? b.prospecto_nombre: '') + (b.notas? (b.prospecto_nombre? ' - ':'')+ b.notas: '')
       ])
-      // @ts-expect-error autotable
+  // Ensure there is sufficient vertical space for at least a few rows before starting the table
+      const minTableBlock = 24
+      cy = ensure(cy, minTableBlock)
+  // @ts-expect-error autotable
       doc.autoTable({
         startY: cy,
         head:[headPlan],
@@ -494,7 +521,7 @@ export async function exportProspectosPDF(
         didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
       })
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-  y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
+      y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
       y = y2
     }
   }
