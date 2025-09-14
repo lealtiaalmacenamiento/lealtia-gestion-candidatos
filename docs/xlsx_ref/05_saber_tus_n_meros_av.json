@@ -1,0 +1,15 @@
+{
+  "sheet": "Saber tus números - AV",
+  "headerRow": -1,
+  "meta": [],
+  "headers": [],
+  "rowCount": 0,
+  "comments": [
+    {
+      "cell": "C50",
+      "text": "Si 50% o más es GM, 0.5\nSi 50% o más es VIDA, 1\nSi 60% o más es doble, 1.5\nSi 60% o más es triple, 2\n\t-Jesús Humberto Carrillo Ortega"
+    }
+  ],
+  "sample": [],
+  "allRows": []
+}

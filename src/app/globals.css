@@ -55,8 +55,15 @@ a:hover {
 .table-nowrap td span,
 .table-nowrap th span { white-space: nowrap !important; }
 .table-responsive { overflow-x: auto; }
-.table-sticky thead th { position: sticky; top:0; z-index:2; background:#212529; }
+.table-sticky thead th { position: sticky; top:0; z-index:5; background:#212529; color:#fff; }
 .table-nowrap td span[title] { white-space: nowrap; }
+
+/* Ayudas para columnas fijas (sticky left) */
+.table-sticky .sticky-col { position: sticky; left: 0; background: #ffffff; }
+.table-sticky thead .sticky-col { z-index: 6; background:#212529; color:#fff; }
+.table-sticky tbody .sticky-col { z-index: 1; background: #ffffff; }
+/* Sombra en el borde derecho de la última columna fija para separar visualmente */
+.table-sticky .sticky-shadow { box-shadow: 3px 0 0 rgba(0,0,0,.08); }
 
 button { cursor:pointer; border:none; border-radius:4px; padding:0.4rem 0.8rem; font-size:0.9rem; }
 

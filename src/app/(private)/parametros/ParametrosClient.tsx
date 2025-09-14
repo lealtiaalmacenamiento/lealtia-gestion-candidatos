@@ -14,8 +14,8 @@ const buildDiffs = (orig: unknown, edited: unknown): Diff[] => {
     .map(k => ({ campo: k, antes: String(o[k] ?? ''), despues: String(e[k] ?? '') }))
 }
 import BasePage from '@/components/BasePage';
-import type { CedulaA1, Efc } from '@/types';
-import { getCedulaA1, updateCedulaA1, getEfc, updateEfc } from '@/lib/api';
+import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza } from '@/types';
+import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro } from '@/lib/api';
 import AppModal from '@/components/ui/AppModal';
 
 export default function ParametrosClient(){
@@ -29,6 +29,17 @@ export default function ParametrosClient(){
   const [notif, setNotif] = useState<{msg:string; type:'success'|'danger'|'info'|'warning'}|null>(null);
   const [openMes, setOpenMes] = useState(false);
   const [openEfc, setOpenEfc] = useState(false);
+  const [openProductos, setOpenProductos] = useState(false);
+  // Productos (Fase 3)
+  const [productos, setProductos] = useState<ProductoParametro[]>([])
+  const [editProdId, setEditProdId] = useState<string|null>(null)
+  const [editProd, setEditProd] = useState<Partial<ProductoParametro>|null>(null)
+  const [editCondExpr, setEditCondExpr] = useState<string>('')
+  const [newCondExpr, setNewCondExpr] = useState<string>('')
+  type Op = '<' | '<=' | '>' | '>='
+  const [newProd, setNewProd] = useState<Partial<ProductoParametro>>({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
+  const [savingProdEdit, setSavingProdEdit] = useState(false)
+  const [savingProdNew, setSavingProdNew] = useState(false)
   // Fase 2 metas
   const [openFase2,setOpenFase2]=useState(false)
   const [metaProspectos,setMetaProspectos]=useState<number|null>(null)
@@ -40,9 +51,10 @@ export default function ParametrosClient(){
   const loadAll = async () => {
     try {
       setLoading(true);
-      const [mes, efc] = await Promise.all([getCedulaA1(), getEfc()]);
+  const [mes, efc, prods] = await Promise.all([getCedulaA1(), getEfc(), getProductoParametros()]);
       setMesRows([...mes].sort((a,b)=>a.id - b.id));
       setEfcRows([...efc].sort((a,b)=>a.id - b.id));
+  setProductos([...prods]);
       // Cargar fase2 metas
       try {
         const r = await fetch('/api/parametros?tipo=fase2')
@@ -105,6 +117,127 @@ export default function ParametrosClient(){
   const saveEditEfc = openConfirmEfc;
   const cancelEditEfc = ()=>{ setEditEfcId(null); setEditEfcRow(null); };
 
+  // Handlers productos
+  const formatCondExpr = (p: Partial<ProductoParametro>): string => {
+    const fmtNum = (n: number)=> n.toLocaleString('es-MX')
+    if (p.sa_min!=null || p.sa_max!=null) {
+      if (p.sa_min!=null && p.sa_max==null) return `>= ${fmtNum(Number(p.sa_min))}`
+      if (p.sa_max!=null && p.sa_min==null) return `< ${fmtNum(Number(p.sa_max))}`
+      if (p.sa_min!=null && p.sa_max!=null) return `>= ${fmtNum(Number(p.sa_min))} y <= ${fmtNum(Number(p.sa_max))}`
+    }
+    if (p.edad_min!=null || p.edad_max!=null) {
+  if (p.edad_min!=null && p.edad_max==null) return `> ${Number(p.edad_min)} años`
+  if (p.edad_max!=null && p.edad_min==null) return `<= ${Number(p.edad_max)} años`
+  if (p.edad_min!=null && p.edad_max!=null) return `> ${Number(p.edad_min)} años y <= ${Number(p.edad_max)} años`
+    }
+    return ''
+  }
+  const parseCondExpr = (expr: string): Partial<ProductoParametro> => {
+    const out: Partial<ProductoParametro> = {}
+    if (!expr) return out
+    const re = /(<=|>=|<|>)\s*([\d.,]+)/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(expr)) !== null) {
+      const op = m[1] as Op
+      const raw = m[2]
+      const num = Number(raw.replace(/\./g,'').replace(/,/g,''))
+      if (!isFinite(num)) continue
+      const isAge = num <= 200 && !raw.includes(',') && num < 1000
+      if (isAge) {
+        if (op === '<' || op === '<=') { out.edad_max = num; out.condicion_edad_tipo = op }
+        else { out.edad_min = num; out.condicion_edad_tipo = op }
+      } else {
+        if (op === '<' || op === '<=') { out.sa_max = num; out.condicion_sa_tipo = op }
+        else { out.sa_min = num; out.condicion_sa_tipo = op }
+      }
+    }
+    return out
+  }
+  const startEditProd = (p: ProductoParametro)=>{ setEditProdId(p.id); setEditProd({ ...p }); setEditCondExpr(formatCondExpr(p)) }
+  const cancelEditProd = ()=>{ setEditProdId(null); setEditProd(null) }
+  const onChangeEditProd = (e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=> setEditProd(prev=> {
+    if(!prev) return prev
+    const name = e.target.name
+    const val = (e.target as HTMLInputElement).type === 'number'
+      ? (e.target.value === '' ? null : Number(e.target.value))
+      : (e.target.value === '' ? null : e.target.value)
+    // Clamp 0-100 for percent fields
+    const isPercent = /^anio_([1-9]|10|11)_/.test(name)
+    const clamped = (isPercent && typeof val === 'number') ? Math.max(0, Math.min(100, val)) : val
+    return { ...prev, [name]: clamped }
+  })
+  const onChangeNewProd = (e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=> setNewProd(prev=> {
+    const name = e.target.name
+    const val = (e.target as HTMLInputElement).type === 'number'
+      ? (e.target.value === '' ? null : Number(e.target.value))
+      : (e.target.value === '' ? null : e.target.value)
+    return { ...prev, [name]: val }
+  })
+  const saveEditProd = async ()=>{
+    if(!editProdId||!editProd) return
+    try {
+  setSavingProdEdit(true)
+      // Round percent fields to 2 decimals before sending
+      const payload: Partial<ProductoParametro> = { ...editProd }
+      type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
+      for (const n of [1,2,3,4,5,6,7,8,9,10] as const) {
+        const key = `anio_${n}_percent` as AnioKey
+        const v = (payload as Partial<Record<AnioKey, number|null>>)[key]
+        if (typeof v === 'number') (payload as Partial<Record<AnioKey, number|null>>)[key] = Number(v.toFixed(2))
+      }
+      if (typeof payload.anio_11_plus_percent === 'number') payload.anio_11_plus_percent = Number(payload.anio_11_plus_percent.toFixed(2))
+      // Mapear expresión SA/Edad a campos (vacío => limpia)
+      const exprTrim = (editCondExpr||'').trim()
+      const parsed = parseCondExpr(exprTrim)
+      if (exprTrim === '') {
+        payload.condicion_sa_tipo = null
+        payload.sa_min = null
+        payload.sa_max = null
+        payload.condicion_edad_tipo = null
+        payload.edad_min = null
+        payload.edad_max = null
+      } else {
+        payload.condicion_sa_tipo = (parsed.condicion_sa_tipo as string|undefined) ?? null
+        payload.sa_min = (parsed.sa_min as number|undefined) ?? null
+        payload.sa_max = (parsed.sa_max as number|undefined) ?? null
+        payload.condicion_edad_tipo = (parsed.condicion_edad_tipo as string|undefined) ?? null
+        payload.edad_min = (parsed.edad_min as number|undefined) ?? null
+        payload.edad_max = (parsed.edad_max as number|undefined) ?? null
+      }
+      const upd = await updateProductoParametro(editProdId, payload)
+      setProductos(list=> list.map(p=> p.id===upd.id? upd: p))
+      setNotif({msg:'Producto actualizado', type:'success'})
+    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { setSavingProdEdit(false); cancelEditProd() }
+  }
+  const addNewProd = async ()=>{
+    if(!newProd.nombre_comercial || !newProd.tipo_producto){ setNotif({msg:'Completa al menos nombre y tipo', type:'warning'}); return }
+    try {
+      setSavingProdNew(true)
+      // normaliza tipos
+  const payload: Partial<ProductoParametro> = { ...newProd }
+  const parsed = parseCondExpr((newCondExpr||'').trim())
+  payload.condicion_sa_tipo = (parsed.condicion_sa_tipo as string|undefined) ?? null
+  payload.sa_min = (parsed.sa_min as number|undefined) ?? null
+  payload.sa_max = (parsed.sa_max as number|undefined) ?? null
+  payload.condicion_edad_tipo = (parsed.condicion_edad_tipo as string|undefined) ?? null
+  payload.edad_min = (parsed.edad_min as number|undefined) ?? null
+  payload.edad_max = (parsed.edad_max as number|undefined) ?? null
+      const created = await createProductoParametro(payload)
+      setProductos(list=> [created, ...list])
+  setNewProd({ activo:true, puntos_multiplicador:1, tipo_producto:'VI', nombre_comercial:'' })
+  setNewCondExpr('')
+      setNotif({msg:'Producto creado', type:'success'})
+  } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { setSavingProdNew(false) }
+  }
+  const removeProd = async (id: string)=>{
+    if(!window.confirm(`¿Eliminar la variante de producto?`)) return
+    try {
+      await deleteProductoParametro(id)
+      setProductos(list=> list.filter(p=> p.id!==id))
+      setNotif({msg:'Producto eliminado', type:'success'})
+    } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) }
+  }
+
   const saveFase2 = async()=>{
     if(metaProspectos==null || metaCitas==null){ setNotif({msg:'Complete ambos valores', type:'warning'}); return }
     setSavingFase2(true)
@@ -131,6 +264,184 @@ export default function ParametrosClient(){
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
       {!loading && (
         <div className="d-flex flex-column gap-5">
+          <section className="border rounded p-3 bg-white shadow-sm">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <button type="button" onClick={()=>setOpenProductos(o=>!o)} aria-expanded={openProductos} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
+                <i className={`bi bi-caret-${openProductos? 'down':'right'}-fill`}></i>
+                <span className="fw-bold small text-uppercase">Productos parametrizados (Fase 3)</span>
+              </button>
+              {openProductos && (
+                <span className="small text-muted">Variantes y porcentajes por año</span>
+              )}
+            </div>
+            {openProductos && (
+              <div className="mt-3">
+                <div className="border rounded p-2 mb-3 bg-light">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12 col-md-3">
+                      <label className="form-label small mb-1">Nombre comercial</label>
+                      <input name="nombre_comercial" value={newProd.nombre_comercial||''} onChange={onChangeNewProd} className="form-control form-control-sm" />
+                    </div>
+                    <div className="col-6 col-md-2">
+                      <label className="form-label small mb-1">Tipo</label>
+                      <select name="tipo_producto" value={newProd.tipo_producto as TipoProducto} onChange={onChangeNewProd} className="form-select form-select-sm">
+                        <option value="VI">VI</option>
+                        <option value="GMM">GMM</option>
+                      </select>
+                    </div>
+                    <div className="col-6 col-md-2">
+                      <label className="form-label small mb-1">Moneda</label>
+                      <select name="moneda" value={(newProd.moneda||'') as MonedaPoliza|''} onChange={onChangeNewProd} className="form-select form-select-sm">
+                        <option value="">Cualquiera</option>
+                        <option value="MXN">MXN</option>
+                        <option value="USD">USD</option>
+                        <option value="UDI">UDI</option>
+                      </select>
+                    </div>
+                    <div className="col-6 col-md-2">
+                      <label className="form-label small mb-1">Duración (años)</label>
+                      <input name="duracion_anios" value={newProd.duracion_anios??''} onChange={onChangeNewProd} type="number" className="form-control form-control-sm" />
+                    </div>
+                    <div className="col-12 col-md-3">
+                      <label className="form-label small mb-1">Suma Asegurada (SA)</label>
+                      <input value={newCondExpr} onChange={e=> setNewCondExpr(e.target.value)} className="form-control form-control-sm" placeholder=">= 500,000 | < 1,500,000 | <=45 años | >65 años" />
+                      <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45 años&quot;, &quot;&gt;65 años&quot;</div>
+                    </div>
+                    <div className="col-12 col-md-2 d-grid">
+                      <button type="button" onClick={addNewProd} disabled={savingProdNew} className="btn btn-primary btn-sm">{savingProdNew? 'Agregando…':'Agregar'}</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered align-middle mb-0 table-nowrap">
+          <thead className="table-light">
+                      <tr>
+            <th>Producto</th>
+            <th>Tipo</th>
+            <th>Moneda</th>
+            <th>Duración (años)</th>
+            <th>Suma Asegurada (SA)</th>
+            <th>AÑO 1 (%)</th>
+            <th>AÑO 2 (%)</th>
+            <th>AÑO 3 (%)</th>
+            <th>AÑO 4 (%)</th>
+            <th>AÑO 5 (%)</th>
+            <th>AÑO 6 (%)</th>
+            <th>AÑO 7 (%)</th>
+            <th>AÑO 8 (%)</th>
+            <th>AÑO 9 (%)</th>
+            <th>AÑO 10 (%)</th>
+            <th>AÑO 11+ (%)</th>
+                        <th style={{width:150}}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productos.length===0 && (<tr><td colSpan={16} className="text-center small">Sin variantes</td></tr>)}
+                      {productos.map(p=> (
+                        <tr key={p.id}>
+                          <td>{p.nombre_comercial}</td>
+                          <td>{p.tipo_producto}</td>
+                          <td>{p.moneda||''}</td>
+                          <td>{p.duracion_anios??''}</td>
+                          <td>{formatCondExpr(p)}</td>
+              {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
+                            type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
+                            const key = `anio_${n}_percent` as AnioKey
+                            const val = ((p as unknown) as Record<string, unknown>)[key] as number | null | undefined
+                            return (
+                              <td key={n}>{val!=null? `${Number(val).toFixed(2)}%` : ''}</td>
+                            )
+                          })}
+                          <td>{p.anio_11_plus_percent!=null? `${Number(p.anio_11_plus_percent).toFixed(2)}%` : ''}</td>
+                          <td style={{whiteSpace:'nowrap'}}>
+                            <>
+                              <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditProd(p)}>Editar</button>
+                              <button type="button" className="btn btn-outline-danger btn-sm" onClick={()=>removeProd(p.id)}>Eliminar</button>
+                            </>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Modal de edición de producto */}
+                {editProdId && editProd && (
+                  <AppModal
+                    title={`Editar producto: ${editProd.nombre_comercial || ''}`}
+                    icon="pencil-square"
+                    width={900}
+                    onClose={cancelEditProd}
+          footer={
+                      <>
+            <button type="button" className="btn btn-soft-secondary btn-sm" onClick={cancelEditProd} disabled={savingProdEdit}>Cancelar</button>
+            <button type="button" className="btn btn-success btn-sm" onClick={saveEditProd} disabled={savingProdEdit}>{savingProdEdit? 'Guardando…':'Guardar'}</button>
+                      </>
+                    }
+                  >
+                    <div className="container-fluid small">
+                      <div className="row g-2">
+                        <div className="col-12 col-md-6">
+                          <label className="form-label small mb-1">Nombre comercial</label>
+                          <input name="nombre_comercial" value={editProd.nombre_comercial ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                        </div>
+                        <div className="col-6 col-md-3">
+                          <label className="form-label small mb-1">Tipo</label>
+                          <select name="tipo_producto" value={(editProd.tipo_producto as TipoProducto) || 'VI'} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <option value="VI">VI</option>
+                            <option value="GMM">GMM</option>
+                          </select>
+                        </div>
+                        <div className="col-6 col-md-3">
+                          <label className="form-label small mb-1">Moneda</label>
+                          <select name="moneda" value={(editProd.moneda as MonedaPoliza) || ''} onChange={onChangeEditProd} className="form-select form-select-sm">
+                            <option value="">Cualquiera</option>
+                            <option value="MXN">MXN</option>
+                            <option value="USD">USD</option>
+                            <option value="UDI">UDI</option>
+                          </select>
+                        </div>
+                        <div className="col-6 col-md-3">
+                          <label className="form-label small mb-1">Duración (años)</label>
+                          <input name="duracion_anios" type="number" value={editProd.duracion_anios ?? ''} onChange={onChangeEditProd} className="form-control form-control-sm" />
+                        </div>
+                        <div className="col-12 col-md-3">
+                          <label className="form-label small mb-1">Suma Asegurada (SA)</label>
+                          <input value={editCondExpr} onChange={e=> setEditCondExpr(e.target.value)} className="form-control form-control-sm" placeholder=">= 500,000 | < 1,500,000 | <=45 años | >65 años" />
+                          <div className="form-text">Acepta formatos: &quot;&lt; 500,000&quot;, &quot;&gt;= 1,500,000&quot;, &quot;&lt;=45 años&quot;, &quot;&gt;65 años&quot;</div>
+                        </div>
+                      </div>
+                      <hr />
+                      <div className="row g-2">
+                        {([1,2,3,4,5,6,7,8,9,10] as const).map(n=> {
+                          type AnioKey = `anio_${1|2|3|4|5|6|7|8|9|10}_percent`
+                          const key = `anio_${n}_percent` as AnioKey
+                          const val = (editProd as Partial<Record<AnioKey, number|null>>)[key]
+                          return (
+                            <div className="col-6 col-md-2" key={n}>
+                              <label className="form-label small mb-1">AÑO {n}</label>
+                              <div className="input-group input-group-sm">
+                                <input name={key} type="number" step="0.01" min={0} max={100} value={val ?? ''} onChange={onChangeEditProd} className="form-control" />
+                                <span className="input-group-text">%</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div className="col-6 col-md-2">
+                          <label className="form-label small mb-1">AÑO 11+</label>
+                          <div className="input-group input-group-sm">
+                            <input name="anio_11_plus_percent" type="number" step="0.01" min={0} max={100} value={editProd.anio_11_plus_percent ?? ''} onChange={onChangeEditProd} className="form-control" />
+                            <span className="input-group-text">%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </AppModal>
+                )}
+              </div>
+            )}
+          </section>
           <section className="border rounded p-3 bg-white shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenMes(o=>!o)} aria-expanded={openMes} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">

@@ -1,0 +1,3 @@
+-- NOTE: Some linters in this environment flag DO $$ blocks; apply this manually if needed:
+-- alter table public.usuarios add column if not exists last_login timestamptz null;
+-- comment on column public.usuarios.last_login is 'Última vez que el usuario inició sesión (UTC).';

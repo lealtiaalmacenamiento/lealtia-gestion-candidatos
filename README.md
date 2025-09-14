@@ -41,10 +41,21 @@ Durante build sin variables, el código usa proxys placeholder para evitar fallo
 `/api/efc/debug/[id]` es sólo diagnóstico. Elimínalo antes de producción final si no se requiere.
 
 ## Mejoras pendientes
-- Restaurar `"strict": true` en `tsconfig.json` y tipar consultas Supabase con tipos generados (@supabase/cli gen types).
-- Migrar de paquetes deprecated de auth helpers a `@supabase/ssr` completamente (ya parcialmente incluido).
 
----
 Actualizado automáticamente.
+## Fase 3: Productos parametrizados
+
+- Columnas visibles en la tabla: Producto, Tipo, Moneda, Duración (años), Suma Asegurada (SA), AÑO 1–10, AÑO 11+.
+- Formato de condición SA/Edad:
+	- Por monto: ">= 500,000", "< 1,500,000", ">= 500,000 y <= 1,500,000".
+	- Por edad: "> 45 años", "<= 65 años", "> 45 años y <= 65 años".
+	- El campo de entrada acepta ejemplos como: ">= 500,000" | "< 1,500,000" | "<=45 años" | ">65 años".
+- Reglas de permisos (centralizado en `src/lib/roles.ts` y aplicado en API `producto_parametros`):
+	- Lectura: admin, superusuario/super_usuario, supervisor, editor, lector.
+	- Alta/Edición: admin, superusuario/super_usuario, supervisor, editor.
+	- Borrado: admin, superusuario/super_usuario, supervisor.
+
+\n+## Marca de despliegue
+Redeploy marker: sprint6-roles-fix 2025-09-09T00:00:00Z
 \n+## Marca de despliegue
 Commit forzado para redeploy: ajuste timestamp ${(new Date()).toISOString()}.

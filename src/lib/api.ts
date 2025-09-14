@@ -1,4 +1,4 @@
-import { Auditoria, Candidato, CedulaA1, Efc, Usuario } from '@/types'
+import { Auditoria, Candidato, CedulaA1, Efc, Usuario, ProductoParametro } from '@/types'
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const data = await res.json()
@@ -193,5 +193,30 @@ export async function getAuditoria(): Promise<Auditoria[]> {
 }
 export async function deleteAuditoria(id: number): Promise<{ success: boolean }> {
   const res = await fetch(`/api/auditoria/${id}`, { method: 'DELETE' })
+  return handleResponse<{ success: boolean }>(res)
+}
+
+/* ========= PRODUCTO PARAMETROS (Fase 3) ========= */
+export async function getProductoParametros(): Promise<ProductoParametro[]> {
+  const res = await fetch('/api/producto_parametros?debug=1', { cache: 'no-store' })
+  return handleResponse<ProductoParametro[]>(res)
+}
+
+export async function createProductoParametro(payload: Partial<ProductoParametro>): Promise<ProductoParametro> {
+  const res = await fetch('/api/producto_parametros?debug=1', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  })
+  return handleResponse<ProductoParametro>(res)
+}
+
+export async function updateProductoParametro(id: string, payload: Partial<ProductoParametro>): Promise<ProductoParametro> {
+  const res = await fetch(`/api/producto_parametros/${id}?debug=1`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  })
+  return handleResponse<ProductoParametro>(res)
+}
+
+export async function deleteProductoParametro(id: string): Promise<{ success: boolean }> {
+  const res = await fetch(`/api/producto_parametros/${id}?debug=1`, { method: 'DELETE' })
   return handleResponse<{ success: boolean }>(res)
 }

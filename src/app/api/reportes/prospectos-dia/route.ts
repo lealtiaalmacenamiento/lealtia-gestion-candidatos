@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
+import type { UsuarioSesion } from '@/lib/auth'
 import { sendMail } from '@/lib/mailer'
 import * as XLSX from 'xlsx'
 import { logAccion } from '@/lib/logger'
@@ -36,24 +39,55 @@ export async function POST(req: Request) {
   const secretHeader = req.headers.get('x-cron-key') || ''
   const secretEnv = process.env.REPORTES_CRON_SECRET || ''
   let usuarioEmail: string | null = null
+  const url = new URL(req.url)
+  const debug = url.searchParams.get('debug') === '1'
   // Si hay secret válido, permitimos ejecución sin sesión; si no, validamos sesión admin/superusuario
   if (!secretEnv || secretHeader !== secretEnv) {
-    const usuario = await getUsuarioSesion()
-    if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    let usuario = await getUsuarioSesion(req.headers)
+    if (!usuario) {
+      // Fallback robusto: leer usuario de Auth vía SSR cookies y cruzar contra tabla usuarios por id_auth/email
+      try {
+        const cookieStore = await cookies()
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        const supa = createServerClient(supabaseUrl, supabaseKey, {
+          cookies: {
+            get(name: string) { return cookieStore.get(name)?.value },
+            set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
+            remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }) }
+          }
+        })
+        const { data: { user } } = await supa.auth.getUser()
+        if (user?.email) {
+          // buscar por id_auth o email con admin (sin RLS)
+          const admin = getServiceClient()
+          const byId = user.id ? await admin.from('usuarios').select('id,email,rol,activo').eq('id_auth', user.id).maybeSingle() : { data: null }
+          const row = byId.data ?? (await admin.from('usuarios').select('id,email,rol,activo,nombre').eq('email', user.email).maybeSingle()).data
+          if (row) {
+            usuario = row as UsuarioSesion
+          }
+        }
+      } catch {}
+    }
+    if (!usuario) {
+      const cookieNames = debug ? (await cookies()).getAll().map(c => c.name) : undefined
+      return NextResponse.json({ error: 'No autenticado', cookieNames }, { status: 401 })
+    }
     if (!(usuario.rol === 'admin' || usuario.rol === 'superusuario')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+      const info = debug ? { rol: usuario.rol, email: usuario.email } : undefined
+      return NextResponse.json({ error: 'No autorizado', info }, { status: 403 })
     }
     usuarioEmail = usuario.email
   } else {
     usuarioEmail = 'cron'
   }
-  const url = new URL(req.url)
   const mode = url.searchParams.get('mode') || ''
   const startQ = url.searchParams.get('start')
   const endQ = url.searchParams.get('end')
   const hoursQ = url.searchParams.get('hours')
   const modeAll = url.searchParams.get('mode') === 'all'
   const dry = url.searchParams.get('dry') === '1'
+  const skipIfEmpty = url.searchParams.get('skipIfEmpty') === '1'
   let range: { start: string; end: string }
   if (startQ && endQ) {
     range = { start: new Date(startQ).toISOString(), end: new Date(endQ).toISOString() }
@@ -144,37 +178,13 @@ export async function POST(req: Request) {
   }).join('')
   const year = new Date().getFullYear()
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
-  const html = `
-  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
-    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
-      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
-        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
-      </span>
-      <h2 style="margin:0;font-size:20px;">${title}</h2>
-      <div style="opacity:0.9;font-size:12px;">${dateLabel}</div>
-    </div>
-    <div style="padding:24px;background-color:#fff;">
-      <p>Total de eventos: <strong>${(historial||[]).length}</strong></p>
-      <div style="overflow:auto">
-        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
-          <thead style="background:#f3f4f6">
-            <tr>
-              <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
-            </tr>
-          </thead>
-          <tbody>${rows||''}</tbody>
-        </table>
-      </div>
-      <p style="margin-top:12px;color:#6b7280">Nota: contenido de notas no se incluye por privacidad. Consulte la plataforma para detalles.</p>
-    </div>
-    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
-      <p>© ${year} Lealtia — Todos los derechos reservados</p>
-      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
-    </div>
-  </div>`
 
   if (dry) {
-    return NextResponse.json({ success: true, dry: true, meta, sample: (historial||[]).slice(0, 10) })
+    const would_send = (recipients.length > 0) && (!skipIfEmpty || (historial||[]).length > 0)
+    return NextResponse.json({ success: true, dry: true, would_send, meta, sample: (historial||[]).slice(0, 10) })
+  }
+  if (skipIfEmpty && (historial||[]).length === 0) {
+    return NextResponse.json({ success: true, sent: 0, detalle: 'skipIfEmpty: no hay eventos en el rango' })
   }
   // Generar adjunto XLSX con las mismas columnas mostradas en el correo
   const aoa: Array<Array<string>> = []
@@ -195,12 +205,94 @@ export async function POST(req: Request) {
   const ws = XLSX.utils.aoa_to_sheet(aoa)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
+
+  // Agregar segunda hoja: última conexión de cada usuario (vía Auth last_sign_in_at)
+  type UsuarioRow = { email: string; nombre?: string | null }
+  const { data: usersTable } = await supabase.from('usuarios').select('email,nombre')
+  // Cargar todos los usuarios de Auth con paginación
+  const authMap = new Map<string, string | null>() // email(lower) -> last_sign_in_at ISO
+  try {
+    const perPage = 1000
+    for (let page = 1; page <= 100; page++) {
+      const { data: authData, error: authErr } = await supabase.auth.admin.listUsers({ page, perPage })
+      if (authErr) break
+      const list = (authData?.users || []) as Array<{ email: string | null; last_sign_in_at: string | null }>
+      for (const u of list) {
+        if (u.email) authMap.set(u.email.toLowerCase(), u.last_sign_in_at)
+      }
+      if (!list || list.length < perPage) break
+    }
+  } catch {
+    // Si falla (falta service role), generamos adjunto vacío para no romper el flujo
+  }
+  const usersAoa: Array<Array<string>> = []
+  usersAoa.push(['Email','Nombre','Última conexión (CDMX)'])
+  let usersRowsHtml = ''
+  if (usersTable) {
+    for (const u of usersTable as UsuarioRow[]) {
+      const key = (u.email || '').toLowerCase()
+      const raw = authMap.get(key)
+      let display = ''
+      if (raw) display = new Date(raw).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', hour12: false })
+      usersAoa.push([u.email, u.nombre || '', display])
+      usersRowsHtml += `<tr>
+        <td>${u.email}</td>
+        <td>${u.nombre || ''}</td>
+        <td>${display}</td>
+      </tr>`
+    }
+  }
+  const wsU = XLSX.utils.aoa_to_sheet(usersAoa)
+  XLSX.utils.book_append_sheet(wb, wsU, 'Usuarios - Última conexión')
+  // Construir HTML final con sección de cambios y sección de última conexión
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">${title}</h2>
+      <div style="opacity:0.9;font-size:12px;">${dateLabel}</div>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <h3 style="margin:0 0 8px 0;font-size:16px;">Cambios en prospectos</h3>
+      <p>Total de eventos: <strong>${(historial||[]).length}</strong></p>
+      <div style="overflow:auto">
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
+          <thead style="background:#f3f4f6">
+            <tr>
+              <th>Fecha</th><th>Prospecto</th><th>Pertenece a</th><th>Usuario (modificó)</th><th>De</th><th>A</th><th>Nota agregada</th>
+            </tr>
+          </thead>
+          <tbody>${rows||''}</tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;color:#6b7280">Nota: contenido de notas no se incluye por privacidad. Consulte la plataforma para detalles.</p>
+
+      <h3 style="margin:24px 0 8px 0;font-size:16px;">Usuarios — Última conexión (CDMX)</h3>
+      <div style="overflow:auto">
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;width:100%">
+          <thead style="background:#f3f4f6">
+            <tr>
+              <th>Email</th><th>Nombre</th><th>Última conexión (CDMX)</th>
+            </tr>
+          </thead>
+          <tbody>${usersRowsHtml}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
+  // Escribir el workbook final con ambas hojas (Cambios y UltimaConexion)
   const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
   const attachment = { filename: `reporte_prospectos_${dateLabel}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
 
   // Enviar a todos en un solo correo (BCC sería ideal; aquí simple to: join)
   try {
-    await sendMail({ to: recipients.join(','), subject: `${title} — ${dateLabel}`, html, attachments: [attachment] })
+  await sendMail({ to: recipients.join(','), subject: `${title} — ${dateLabel}`, html, attachments: [attachment] })
     await logAccion('reporte_prospectos_diario_enviado', { usuario: usuarioEmail, tabla_afectada: 'prospectos_historial', snapshot: { ...meta, recipients: recipients.length } })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Mailer error' }, { status: 500 })

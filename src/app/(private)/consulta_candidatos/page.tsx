@@ -179,11 +179,13 @@ function ConsultaCandidatosInner() {
     });
   }, [data, sortKey, sortDir]);
 
-  const columns = useMemo(() => ([
-    { key: 'id_candidato', label: 'ID', sortable: true },
-    { key: 'ct', label: 'CT', sortable: true },
-  { key: 'candidato', label: 'Candidato', sortable: true },
-  { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
+  type ColumnDef = { key: AnyColKey; label: string; sortable?: boolean; width?: string; stickyLeft?: number; thClassName?: string; tdClassName?: string }
+  const columns: ColumnDef[] = useMemo(() => ([
+    // Para evitar solapamientos, fijamos también la primera columna (ID)
+    { key: 'id_candidato', label: 'ID', sortable: true, width: '70px', stickyLeft: 0, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'ct', label: 'CT', sortable: true, width: '90px', stickyLeft: 72, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'candidato', label: 'Candidato', sortable: true, width: '240px', stickyLeft: 164, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente', width: '240px', stickyLeft: 408, thClassName: 'sticky-col sticky-shadow', tdClassName: 'sticky-col sticky-shadow' },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'proceso', label: 'Proceso' },
   { key: 'mes', label: 'Cédula A1', sortable: true },
@@ -204,6 +206,48 @@ function ConsultaCandidatosInner() {
     { key: 'usuario_creador', label: 'Creador' },
     { key: 'usuario_que_actualizo', label: 'Actualizó' }
   ]), []);
+
+  // ---- Sticky: offsets dinámicos (calcula left con base en anchos reales del thead) ----
+  const tableRef = useRef<HTMLTableElement | null>(null)
+  // Índices de columnas que son sticky (por tener stickyLeft definido en columnas)
+  const stickyIndices = useMemo(() => columns
+    .map((c, i) => (typeof c.stickyLeft === 'number') ? i : -1)
+    .filter((i): i is number => i >= 0), [columns])
+  // Mapa de índice de columna -> posición relativa dentro de las sticky (0..n-1)
+  const stickyRankByIndex = useMemo(() => {
+    const m = new Map<number, number>()
+    let r = 0
+    columns.forEach((c, i) => { if (typeof c.stickyLeft === 'number') { m.set(i, r); r++ } })
+    return m
+  }, [columns])
+  const [stickyLefts, setStickyLefts] = useState<number[]>([])
+  useEffect(() => {
+    const compute = () => {
+      const tbl = tableRef.current
+      if (!tbl) return
+      const ths = tbl.querySelectorAll<HTMLTableCellElement>('thead tr:first-child th')
+      if (!ths || ths.length === 0) return
+      const lefts: number[] = []
+      let acc = 0
+      for (let s = 0; s < stickyIndices.length; s++) {
+        const colIndex = stickyIndices[s]
+        if (s === 0) {
+          lefts[s] = 0
+          const w = ths[colIndex]?.getBoundingClientRect().width || 0
+          acc = w
+        } else {
+          lefts[s] = Math.round(acc)
+          const w = ths[colIndex]?.getBoundingClientRect().width || 0
+          acc += w
+        }
+      }
+      setStickyLefts(lefts)
+    }
+    const id = requestAnimationFrame(compute)
+    const onResize = () => compute()
+    window.addEventListener('resize', onResize)
+    return () => { cancelAnimationFrame(id); window.removeEventListener('resize', onResize) }
+  }, [filtered, columns, stickyIndices])
 
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -306,7 +350,7 @@ function ConsultaCandidatosInner() {
       </div>
       {loading && (
         <div className="table-responsive fade-in-scale">
-          <table className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
+          <table ref={tableRef} className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-light"><tr><th colSpan={columns.length + (readOnly ? 0 : 1)}>Cargando...</th></tr></thead>
             <tbody>
               {Array.from({ length: 6 }).map((_, i) => (
@@ -325,19 +369,35 @@ function ConsultaCandidatosInner() {
 
   {!loading && filtered.length > 0 && (
         <div className="table-responsive fade-in-scale">
-          <table className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
+          <table ref={tableRef} className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-dark">
               <tr>
-                {columns.map(col => (
-                  <Th key={col.key} label={col.label} k={col.key as AnyColKey} sortKey={sortKey} sortDir={sortDir} onSort={col.sortable ? toggleSort : undefined} sortable={col.sortable} />
-                ))}
+                {columns.map((col, colIdx) => {
+                  const rank = stickyRankByIndex.get(colIdx)
+                  const stickyLeft = (typeof rank === 'number') ? stickyLefts[rank] : undefined
+                  const isLastSticky = typeof rank === 'number' && rank === stickyIndices.length - 1
+                  return (
+                    <Th
+                      key={col.key}
+                      label={col.label}
+                      k={col.key as AnyColKey}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={col.sortable ? toggleSort : undefined}
+                      sortable={col.sortable}
+                      width={col.width}
+                      className={[col.thClassName || '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')}
+                      stickyLeft={stickyLeft}
+                    />
+                  )
+                })}
                 {!readOnly && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
                   {filtered.map((c, idx) => (
                 <tr key={c.id_candidato} className={`dash-anim stagger-${(idx % 6)+1}`}> 
-                  {columns.map(col => {
+                  {columns.map((col, colIdx) => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
@@ -369,8 +429,23 @@ function ConsultaCandidatosInner() {
                     const checked = !!etapas[etKey]?.completed
                     const meta = etapas[etKey]
                     const rawProceso = (isAgente ? 'Agente' : ((c as unknown as { proceso?: string }).proceso || ''))
+                    const rank = stickyRankByIndex.get(colIdx)
+                    const stickyLeft = (typeof rank === 'number') ? stickyLefts[rank] : undefined
+                    const isLastSticky = typeof rank === 'number' && rank === stickyIndices.length - 1
+                    const stickyStyle = typeof stickyLeft === 'number'
+                      ? {
+                          position: 'sticky' as const,
+                          left: stickyLeft,
+                          zIndex: 2, // under thead (z-index 5/6 from CSS), above non-sticky tds
+                          background: '#ffffff',
+                          width: col.width,
+                          minWidth: col.width,
+                          maxWidth: col.width,
+                        }
+                      : undefined
+                    const tdClass = [cls, col.tdClassName, isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')
                     return (
-                      <td key={col.key} className={cls} title={col.key==='proceso' ? rawProceso : undefined}>
+                      <td key={col.key} className={tdClass} title={col.key==='proceso' ? rawProceso : undefined} style={stickyStyle}>
                         <div className="d-flex flex-column gap-1">
                           <Cell v={display} />
                           {isEtapa && (
@@ -515,13 +590,24 @@ interface ThProps {
   onSort?: (k: SortKey) => void;
   sortable?: boolean;
   width?: string;
+  className?: string;
+  stickyLeft?: number;
 }
 
-function Th({ label, k, sortKey, sortDir, onSort, sortable, width }: ThProps) {
+function Th({ label, k, sortKey, sortDir, onSort, sortable, width, className, stickyLeft }: ThProps) {
   const active = sortable && sortKey === k;
   const handle = () => { if (sortable && onSort) onSort(k as SortKey); };
+  const style = {
+    whiteSpace: 'nowrap' as const,
+    cursor: sortable ? 'pointer' as const : 'default' as const,
+    width,
+    maxWidth: width,
+    minWidth: width,
+    // Let CSS control z-index for thead sticky cells to avoid layering issues
+    ...(typeof stickyLeft === 'number' ? { position: 'sticky' as const, left: stickyLeft } : {})
+  }
   return (
-    <th role={sortable ? 'button' : undefined} onClick={handle} className={sortable ? 'user-select-none' : ''} style={{ whiteSpace: 'nowrap', cursor: sortable ? 'pointer' : 'default', width, maxWidth: width }}>
+    <th role={sortable ? 'button' : undefined} onClick={handle} className={[sortable ? 'user-select-none' : '', className].filter(Boolean).join(' ')} style={style}>
       {label} {active && (<i className={`bi bi-caret-${sortDir === 'asc' ? 'up' : 'down'}-fill text-secondary ms-1`}></i>)}
     </th>
   );

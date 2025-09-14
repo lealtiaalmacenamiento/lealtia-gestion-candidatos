@@ -28,10 +28,13 @@ export async function middleware(req: NextRequest) {
     '/', '/login', '/api/login', '/api/logout',
     // Endpoints usados por Cron/diagnóstico
     '/api/reports/prospectos-daily-changes',
+    '/api/market/sync',
     '/api/auth_debug', '/api/env-check'
   ])
+  // Si viene el secreto de cron (header o query), tratarlo como solicitud de cron
+  const hasCronSecret = !!req.headers.get('x-cron-secret') || !!url.searchParams.get('secret')
   const isAsset = url.pathname.startsWith('/_next/') || url.pathname.startsWith('/favicon') || url.pathname.startsWith('/public/')
-  const isPublic = publicPaths.has(url.pathname) || isAsset || isCronRequest
+  const isPublic = publicPaths.has(url.pathname) || isAsset || isCronRequest || hasCronSecret
 
   // Si no hay sesión y la ruta no es pública → redirigir a login
   if (!session && !isPublic) {
