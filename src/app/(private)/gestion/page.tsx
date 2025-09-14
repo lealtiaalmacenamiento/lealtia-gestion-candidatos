@@ -250,6 +250,44 @@ export default function GestionPage() {
     }
   }
 
+  // Parser robusto para montos con separadores de miles y decimal en diferentes formatos
+  function parseMoneyInput(text: string): number | null {
+    if (!text) return null
+    const s0 = text.trim()
+    if (!s0) return null
+    // Mantener sign negativo si aplica
+    const sign = s0.startsWith('-') ? -1 : 1
+    const s = sign === -1 ? s0.slice(1) : s0
+    // Si no hay separadores, intenta parsear directo
+    if (!/[.,]/.test(s)) {
+      const n = Number(s.replace(/\s+/g, ''))
+      return Number.isFinite(n) ? sign * n : null
+    }
+    // Determinar último separador como decimal
+    const lastDot = s.lastIndexOf('.')
+    const lastComma = s.lastIndexOf(',')
+    const lastSep = Math.max(lastDot, lastComma)
+    const decSep = lastSep >= 0 ? s.charAt(lastSep) : null
+    if (!decSep) {
+      const n = Number(s.replace(/[^0-9-]/g, ''))
+      return Number.isFinite(n) ? sign * n : null
+    }
+    const otherSep = decSep === ',' ? '.' : ','
+    // Quitar todos los separadores distintos al decimal
+    const noOther = s.replace(new RegExp(`\\${otherSep}`, 'g'), '')
+    // Dividir por el separador decimal (puede aparecer múltiples veces). Usar la última como decimal
+    const parts = noOther.split(decSep)
+    if (parts.length === 1) {
+      const n = Number(parts[0].replace(/[^0-9]/g, ''))
+      return Number.isFinite(n) ? sign * n : null
+    }
+    const decimalPart = parts.pop() || ''
+    const intPart = parts.join('')
+    const assembled = `${intPart}.${decimalPart}`
+    const n = Number(assembled)
+    return Number.isFinite(n) ? sign * n : null
+  }
+
   return (
     <div className="p-4">
       <div className="d-flex align-items-center mb-4 gap-2">
@@ -755,17 +793,16 @@ export default function GestionPage() {
                     onChange={e=>{
                       // Permitir dígitos, punto o coma como decimal; no aplicar formateo aquí
                       const v = e.target.value
-                      // Limpiar caracteres no numéricos salvo separador decimal
-                      const cleaned = v.replace(/[^0-9.,]/g, '')
+                      // Mantener sólo dígitos, separadores y signo
+                      const cleaned = v.replace(/[^0-9.,-]/g, '')
                       setEditPrimaText(cleaned)
-                      // Convertir a número si es válido (usar '.' como separador interno)
-                      const asNumber = Number(cleaned.replace(',', '.'))
-                      setEditPoliza({ ...editPoliza, prima_input: isFinite(asNumber) ? asNumber : null })
+                      const asNumber = parseMoneyInput(cleaned)
+                      setEditPoliza({ ...editPoliza, prima_input: (asNumber!=null && Number.isFinite(asNumber)) ? asNumber : null })
                     }}
                     onBlur={() => {
                       // Normalizar a 2 decimales si es un número válido
-                      const asNumber = Number(editPrimaText.replace(',', '.'))
-                      if (isFinite(asNumber)) setEditPrimaText(asNumber.toFixed(2))
+                      const asNumber = parseMoneyInput(editPrimaText)
+                      if (asNumber!=null && Number.isFinite(asNumber)) setEditPrimaText(asNumber.toFixed(2))
                     }}
                   />
                 </div>
