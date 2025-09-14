@@ -73,10 +73,13 @@ export async function POST(req: Request) {
     const secret = process.env.CRON_SECRET || process.env.MARKET_SYNC_SECRET || ''
     // Accept both header names for compatibility
     const hdr = req.headers.get('x-cron-secret') || req.headers.get('x-market-sync-secret') || ''
-    if (!secret || hdr !== secret) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const url = new URL(req.url)
+    const qSecret = url.searchParams.get('secret') || ''
+    const vercelCronHeader = req.headers.get('x-vercel-cron') // present when triggered by Vercel Cron
+    const ok = !!secret && (hdr === secret || qSecret === secret || !!vercelCronHeader)
+    if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     // Accept params via query string or JSON body for compatibility
-    const url = new URL(req.url)
     let source = (url.searchParams.get('source') || '').toLowerCase()
     let daysBackStr = url.searchParams.get('days_back') || ''
     if (!source || !daysBackStr) {
@@ -103,8 +106,8 @@ export async function POST(req: Request) {
     const seriesUDI = process.env.BANXICO_SERIES_UDI || 'SP68257'
     const seriesUSD = process.env.BANXICO_SERIES_USD || 'SF43718'
 
-  const wantUDI = sourceNorm === 'both' || sourceNorm === 'udi'
-  const wantUSD = sourceNorm === 'both' || sourceNorm === 'usd'
+    const wantUDI = sourceNorm === 'both' || sourceNorm === 'udi'
+    const wantUSD = sourceNorm === 'both' || sourceNorm === 'usd'
 
     const tasks: Array<Promise<unknown>> = []
     if (wantUDI) tasks.push(fetchBanxicoSeries(seriesUDI, startStr, endStr, token))
