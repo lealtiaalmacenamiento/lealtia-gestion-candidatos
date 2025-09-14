@@ -201,6 +201,17 @@ export default function GestionPage() {
           alert(`Error al aprobar${details ? `: ${details}` : ''}`)
           return
         }
+        // Usar la respuesta para validar que la prima persistió y reflejar en UI al instante
+        const approvedPrima = (typeof ja?.poliza?.prima_input === 'number') ? Number(ja.poliza.prima_input.toFixed(2)) : null
+        if (ja?.poliza?.id && typeof ja?.poliza?.id === 'string') {
+          // Optimistic update inmediata en la lista actual (si visible)
+          setPolizas(prev => prev.map(it => it.id === ja.poliza.id ? { ...it, prima_input: (typeof ja.poliza.prima_input === 'number' ? ja.poliza.prima_input : it.prima_input), prima_moneda: (typeof ja.poliza.prima_moneda === 'string' ? ja.poliza.prima_moneda : it.prima_moneda) } : it))
+        }
+        if (expectedPrima != null && approvedPrima != null && approvedPrima !== expectedPrima) {
+          alert(`Aviso: el backend no reflejó el cambio de prima. Valor actual: ${approvedPrima} (esperado ${expectedPrima}). Revisa permisos o validaciones.`)
+        } else {
+          alert('Guardado y aprobado')
+        }
       } else if (!isSuper) {
         alert('Solicitud enviada')
       }
@@ -232,7 +243,6 @@ export default function GestionPage() {
           }
         } catch {}
       } finally {
-        if (isSuper) alert('Guardado y aprobado')
         setEditPoliza(null)
       }
     } finally {

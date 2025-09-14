@@ -78,12 +78,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: rpc.error.message, details: rpc.error.details, hint: rpc.error.hint, code: rpc.error.code, pending }, { status: 400 })
   }
 
+  let polizaId: string | null = null
+  let updatedPoliza: { id: string; prima_input?: number|null; prima_moneda?: string|null } | null = null
   try {
     const { data: reqRow } = await supa
       .from('poliza_update_requests')
       .select('solicitante_id, poliza_id')
       .eq('id', body.request_id)
       .maybeSingle()
+    polizaId = reqRow?.poliza_id || null
+    if (polizaId) {
+      const { data: pRow } = await supa
+        .from('polizas')
+        .select('id, prima_input, prima_moneda')
+        .eq('id', polizaId)
+        .maybeSingle()
+  if (pRow) updatedPoliza = { id: pRow.id, prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null, prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null }
+    }
     if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
       if (user?.email) {
@@ -93,5 +104,5 @@ export async function POST(req: Request) {
   } catch {}
 
   await logAccion('apply_poliza_update', { tabla_afectada: 'poliza_update_requests', snapshot: { id: body.request_id } })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, poliza_id: polizaId, poliza: updatedPoliza })
 }
