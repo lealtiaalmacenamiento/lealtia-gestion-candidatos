@@ -183,9 +183,9 @@ function ConsultaCandidatosInner() {
   const columns: ColumnDef[] = useMemo(() => ([
     // Para evitar solapamientos, fijamos también la primera columna (ID)
     { key: 'id_candidato', label: 'ID', sortable: true, width: '70px', stickyLeft: 0, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
-    { key: 'ct', label: 'CT', sortable: true, width: '90px', stickyLeft: 70, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
-    { key: 'candidato', label: 'Candidato', sortable: true, width: '220px', stickyLeft: 160, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
-    { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente', width: '220px', stickyLeft: 380, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'ct', label: 'CT', sortable: true, width: '90px', stickyLeft: 72, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'candidato', label: 'Candidato', sortable: true, width: '240px', stickyLeft: 164, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente', width: '240px', stickyLeft: 408, thClassName: 'sticky-col sticky-shadow', tdClassName: 'sticky-col sticky-shadow' },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'proceso', label: 'Proceso' },
   { key: 'mes', label: 'Cédula A1', sortable: true },
