@@ -58,6 +58,11 @@ a:hover {
 .table-sticky thead th { position: sticky; top:0; z-index:2; background:#212529; }
 .table-nowrap td span[title] { white-space: nowrap; }
 
+/* Ayudas para columnas fijas (sticky left) */
+.table-sticky .sticky-col { position: sticky; left: 0; z-index: 2; background: #ffffff; }
+.table-sticky thead .sticky-col { z-index: 3; }
+.table-sticky tbody .sticky-col { background: #ffffff; }
+
 button { cursor:pointer; border:none; border-radius:4px; padding:0.4rem 0.8rem; font-size:0.9rem; }
 
 

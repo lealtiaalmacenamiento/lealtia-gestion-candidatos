@@ -179,11 +179,13 @@ function ConsultaCandidatosInner() {
     });
   }, [data, sortKey, sortDir]);
 
-  const columns = useMemo(() => ([
-    { key: 'id_candidato', label: 'ID', sortable: true },
-    { key: 'ct', label: 'CT', sortable: true },
-  { key: 'candidato', label: 'Candidato', sortable: true },
-  { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
+  type ColumnDef = { key: AnyColKey; label: string; sortable?: boolean; width?: string; stickyLeft?: number; thClassName?: string; tdClassName?: string }
+  const columns: ColumnDef[] = useMemo(() => ([
+    // Para evitar solapamientos, fijamos también la primera columna (ID)
+    { key: 'id_candidato', label: 'ID', sortable: true, width: '70px', stickyLeft: 0, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'ct', label: 'CT', sortable: true, width: '90px', stickyLeft: 70, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'candidato', label: 'Candidato', sortable: true, width: '220px', stickyLeft: 160, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
+    { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente', width: '220px', stickyLeft: 380, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'proceso', label: 'Proceso' },
   { key: 'mes', label: 'Cédula A1', sortable: true },
@@ -329,7 +331,18 @@ function ConsultaCandidatosInner() {
             <thead className="table-dark">
               <tr>
                 {columns.map(col => (
-                  <Th key={col.key} label={col.label} k={col.key as AnyColKey} sortKey={sortKey} sortDir={sortDir} onSort={col.sortable ? toggleSort : undefined} sortable={col.sortable} />
+                  <Th
+                    key={col.key}
+                    label={col.label}
+                    k={col.key as AnyColKey}
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={col.sortable ? toggleSort : undefined}
+                    sortable={col.sortable}
+                    width={col.width}
+                    className={col.thClassName}
+                    stickyLeft={typeof col.stickyLeft === 'number' ? col.stickyLeft : undefined}
+                  />
                 ))}
                 {!readOnly && <th>Acciones</th>}
               </tr>
@@ -369,8 +382,10 @@ function ConsultaCandidatosInner() {
                     const checked = !!etapas[etKey]?.completed
                     const meta = etapas[etKey]
                     const rawProceso = (isAgente ? 'Agente' : ((c as unknown as { proceso?: string }).proceso || ''))
+                    const stickyStyle = typeof col.stickyLeft === 'number' ? { position: 'sticky' as const, left: col.stickyLeft, zIndex: 1, background: '#ffffff' } : undefined
+                    const tdClass = [cls, col.tdClassName].filter(Boolean).join(' ')
                     return (
-                      <td key={col.key} className={cls} title={col.key==='proceso' ? rawProceso : undefined}>
+                      <td key={col.key} className={tdClass} title={col.key==='proceso' ? rawProceso : undefined} style={stickyStyle}>
                         <div className="d-flex flex-column gap-1">
                           <Cell v={display} />
                           {isEtapa && (
@@ -515,13 +530,22 @@ interface ThProps {
   onSort?: (k: SortKey) => void;
   sortable?: boolean;
   width?: string;
+  className?: string;
+  stickyLeft?: number;
 }
 
-function Th({ label, k, sortKey, sortDir, onSort, sortable, width }: ThProps) {
+function Th({ label, k, sortKey, sortDir, onSort, sortable, width, className, stickyLeft }: ThProps) {
   const active = sortable && sortKey === k;
   const handle = () => { if (sortable && onSort) onSort(k as SortKey); };
+  const style = {
+    whiteSpace: 'nowrap' as const,
+    cursor: sortable ? 'pointer' as const : 'default' as const,
+    width,
+    maxWidth: width,
+    ...(typeof stickyLeft === 'number' ? { position: 'sticky' as const, left: stickyLeft, zIndex: 3 } : {})
+  }
   return (
-    <th role={sortable ? 'button' : undefined} onClick={handle} className={sortable ? 'user-select-none' : ''} style={{ whiteSpace: 'nowrap', cursor: sortable ? 'pointer' : 'default', width, maxWidth: width }}>
+    <th role={sortable ? 'button' : undefined} onClick={handle} className={[sortable ? 'user-select-none' : '', className].filter(Boolean).join(' ')} style={style}>
       {label} {active && (<i className={`bi bi-caret-${sortDir === 'asc' ? 'up' : 'down'}-fill text-secondary ms-1`}></i>)}
     </th>
   );
