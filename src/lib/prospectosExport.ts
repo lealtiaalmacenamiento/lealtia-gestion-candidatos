@@ -1,5 +1,6 @@
-import type { Prospecto } from '@/types'
+import type { Prospecto, ProspectoEstado } from '@/types'
 import type { ExtendedMetrics, PreviousWeekDelta } from './prospectosMetrics'
+import { ESTADO_LABEL } from './prospectosUI'
 // import eliminado: fechas de cita dormidas
 
 async function loadJSPDF() { return (await import('jspdf')).jsPDF }
@@ -7,6 +8,14 @@ async function loadAutoTable() { return (await import('jspdf-autotable')).defaul
 
 function pct(part:number,total:number){ if(!total) return '0%'; return ((part/total)*100).toFixed(1)+'%' }
 const MX_TZ='America/Mexico_City'
+// Colores de barras alineados a Bootstrap (como en UI):
+// pendiente -> secondary (gris), seguimiento -> warning (amarillo), con_cita -> success (verde), descartado -> danger (rojo)
+const ESTADO_COLORS: Record<ProspectoEstado,string> = {
+  pendiente: '#6c757d',
+  seguimiento: '#ffc107',
+  con_cita: '#198754',
+  descartado: '#dc3545'
+}
 // Citas dormidas: evitamos mostrar fechas de cita en tablas
 function nowMX(){
   const d=new Date()
@@ -37,7 +46,7 @@ async function fetchLogoDataUrl(): Promise<string|undefined>{
   return
 }
 
-interface ResumenAgente { agente?: string; total:number; por_estado: Record<string,number> }
+interface ResumenAgente { agente?: string; total:number; por_estado: Record<ProspectoEstado,number> }
 type ExtendedProspecto = Prospecto & { agente_id?: number }
 
 export async function exportProspectosPDF(
@@ -199,6 +208,7 @@ export async function exportProspectosPDF(
       ['Prospectos totales', String(resumen.total)],
       ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
       ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
+      ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
       ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
       ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
     ]
@@ -213,23 +223,41 @@ export async function exportProspectosPDF(
       if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
   y = cy + cardH + GAP
   if(opts?.chartEstados){
-      // Simple bar chart for estados
-  // Ensure space for chart + progress bar block
-  const requiredChart = 42 /* chartHeight */ + 12 /* progress */ + 8 /* spacing */
-  y = ensure(y, requiredChart)
-  const chartY = y + 4
+    // Simple bar chart for estados con leyenda
+    // Ensure space for legend + chart + progress bar block
+    const legendH = 8
+    const requiredChart = (42 + legendH) /* chartHeight + legend */ + 12 /* progress */ + 8 /* spacing */
+    y = ensure(y, requiredChart)
+    const chartY = y + 4
       const dataEntries: Array<[string, number, string]> = [
-        ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
-        ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
-        ['descartado', resumen.por_estado.descartado||0, '#dc3545']
+        ['pendiente', resumen.por_estado.pendiente||0, ESTADO_COLORS.pendiente],
+        ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
+        ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
+        ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
-  const baseX = 14
-  const barW = 16
-  const gap = 6
-  const baseY = chartY + 40
+      const baseX = 14
+      const barW = 16
+      const gap = 6
+      const baseY = chartY + 40 + legendH
+      // Legend (horizontal)
+      doc.setFontSize(7)
+  let lx = baseX; const ly = chartY + 5
+      const itemW = 36
+  dataEntries.forEach(([key, , color]) => {
+        const hex = color.startsWith('#')? color.substring(1): color
+        const r = parseInt(hex.substring(0,2),16)
+        const g = parseInt(hex.substring(2,4),16)
+        const b = parseInt(hex.substring(4,6),16)
+        doc.setFillColor(r,g,b)
+        doc.rect(lx, ly - 3, 4, 4, 'F')
+        doc.setTextColor(0,0,0)
+        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
+        doc.text(label, lx + 6, ly)
+        lx += itemW
+      })
       doc.setFontSize(8)
-      dataEntries.forEach((d,i)=>{
+  dataEntries.forEach((d,i)=>{
         const [key,val,color] = d
         const h = (val/maxV)*30
         const x = baseX + i*(barW+gap)
@@ -243,7 +271,8 @@ export async function exportProspectosPDF(
   doc.setFillColor(r,g,b)
         doc.rect(x, yBar, barW, h, 'F')
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
-        doc.text(key.replace('_',' '), x+barW/2, baseY+4, {align:'center'})
+        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
+        doc.text(label, x+barW/2, baseY+4, {align:'center'})
       })
   y = baseY + GAP
       // Añadir progreso contra metas debajo del chart
@@ -302,39 +331,42 @@ export async function exportProspectosPDF(
     for(const p of prospectos){
       const ep = p as ExtendedProspecto
       const agName = agentesMap[ep.agente_id ?? -1] || `Ag ${ ep.agente_id}`
-  if(!porAgente[agName]) porAgente[agName] = { agente: agName, total:0, por_estado:{ pendiente:0, seguimiento:0, descartado:0 } }
+      if(!porAgente[agName]) porAgente[agName] = { agente: agName, total:0, por_estado:{ pendiente:0, seguimiento:0, con_cita:0, descartado:0 } }
       const bucket = porAgente[agName]
       bucket.total++
       if(bucket.por_estado[p.estado] !== undefined) bucket.por_estado[p.estado]++
     }
-  const includeAgentDeltaResumen = !!opts?.perAgentDeltas
-  const head2 = ['Agente','Total','Pendiente','Seguimiento','Descartado', ...(includeAgentDeltaResumen? ['Prospectos vs semana anterior']: [])]
-  const body2 = Object.entries(porAgente).map(([agNameKey, r])=> {
+    const includeAgentDeltaResumen = !!opts?.perAgentDeltas
+    const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado', ...(includeAgentDeltaResumen? ['Prospectos vs semana anterior']: [])]
+    const body2 = Object.entries(porAgente).map(([agNameKey, r])=> {
       const agId = Object.entries(agentesMap).find(([,name])=> name===agNameKey)?.[0]
       const deltas = includeAgentDeltaResumen && agId? opts?.perAgentDeltas?.[Number(agId)] : undefined
       return [
         r.agente,
         r.total,
         r.por_estado.pendiente,
-  r.por_estado.seguimiento,
-  r.por_estado.descartado,
+        r.por_estado.seguimiento,
+        r.por_estado.con_cita,
+        r.por_estado.descartado,
   ...(includeAgentDeltaResumen? [ deltas? (deltas.totalDelta>=0? '+'+deltas.totalDelta: String(deltas.totalDelta)):'-' ]: [])
       ]
     })
     // Totales al final
-  const totals = Object.values(porAgente).reduce((acc, r)=>{
+    const totals = Object.values(porAgente).reduce((acc, r)=>{
       acc.total += r.total
       acc.pendiente += r.por_estado.pendiente
       acc.seguimiento += r.por_estado.seguimiento
+      acc.con_cita += r.por_estado.con_cita || 0
       acc.descartado += r.por_estado.descartado
       return acc
-  }, { total:0, pendiente:0, seguimiento:0, descartado:0 })
+    }, { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0 })
     const footerRows = [ [
       'TOTAL',
       totals.total,
       totals.pendiente,
-  totals.seguimiento,
-  totals.descartado,
+      totals.seguimiento,
+  totals.con_cita,
+      totals.descartado,
   ...(includeAgentDeltaResumen? ['']: [])
     ] ]
   // @ts-expect-error autotable plugin
@@ -358,31 +390,48 @@ export async function exportProspectosPDF(
     // Global charts if requested (agrupado scenario)
     if(opts?.chartEstados){
       // Ensure space for chart + progress bar + cards block on grouped report
-      const requiredChartAgg = 42 /* chart */ + 12 /* progress */ + 12 /* spacing */ + 4
+      const legendH = 8
+      const requiredChartAgg = (42 + legendH) /* chart + legend */ + 12 /* progress */ + 12 /* spacing */ + 4
       y = ensure(y, requiredChartAgg)
       const chartTop = y
       const baseX = 14
   const barW = 16
   const barGap = 6
-      const chartHeight = 42 // altura destino (30 barras + labels + margen)
+      const chartHeight = 42 + legendH // altura destino (30 barras + labels + margen + leyenda)
       const dataEntries: Array<[string, number, string]> = [
-        ['pendiente', resumen.por_estado.pendiente||0, '#0d6efd'],
-        ['seguimiento', resumen.por_estado.seguimiento||0, '#6f42c1'],
-        ['descartado', resumen.por_estado.descartado||0, '#dc3545']
+        ['pendiente', resumen.por_estado.pendiente||0, ESTADO_COLORS.pendiente],
+        ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
+        ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
+        ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
+      // Legend (horizontal)
+      doc.setFontSize(7)
+  let lx = baseX; const ly = chartTop + 5
+      const itemW = 36
+  dataEntries.forEach(([key, , color]) => {
+        const hex = color.replace('#','')
+        const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
+        doc.setFillColor(r,g,b)
+        doc.rect(lx, ly - 3, 4, 4, 'F')
+        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
+        doc.setTextColor(0,0,0)
+        doc.text(label, lx + 6, ly)
+        lx += itemW
+      })
       doc.setFontSize(8)
       dataEntries.forEach((d,i)=>{
         const [key,val,color] = d
         const h = (val/maxV)*30
         const x = baseX + i*(barW+barGap)
-        const yBar = chartTop + 30 - h
+        const yBar = chartTop + legendH + 30 - h
         const hex = color.replace('#','')
         const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
         doc.setFillColor(r,g,b)
         doc.rect(x,yBar,barW,h,'F')
         doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
-        doc.text(key.replace('_',' '), x+barW/2, chartTop+32, {align:'center'})
+        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
+        doc.text(label, x+barW/2, chartTop + legendH + 32, {align:'center'})
       })
       // Progresos bajo chart
       const progressTop = chartTop + chartHeight
@@ -400,7 +449,8 @@ export async function exportProspectosPDF(
       const cards: Array<[string,string]> = [
         ['Total', String(resumen.total)],
         ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
-  ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
+        ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
+        ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
         ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`]
       ]
       const cardX = 110
