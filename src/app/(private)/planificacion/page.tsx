@@ -50,7 +50,8 @@ export default function PlanificacionPage(){
       // Normalizar horas a 'HH'
       plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
       // Si había cambios locales pendientes y este es un fetch forzado (post-guardado), mergeamos bloques manuales que aún no estén en remoto
-      if(force && data && data.bloques && data.bloques.length){
+      // Solo mergear manuales locales tras un guardado exitoso; evitar mezclar al cambiar de semana/agente
+      if(force && trigger==='postsave' && data && data.bloques && data.bloques.length){
         const remoteKeys = new Set(plan.bloques.map(b=> `${b.day}-${b.hour}-${b.activity}`))
         for(const b of data.bloques){
           if(b.origin !== 'auto'){
@@ -66,15 +67,15 @@ export default function PlanificacionPage(){
   setData(plan)
   if(showLoading) setLoading(false)
   }
-  useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[agenteId, semana, anio])
-
-  // Al cambiar agente/semana/año, limpiar estado local para evitar arrastre entre agentes
+  // Al cambiar agente/semana/año, limpiar estado y forzar fetch sin mezclar manuales previos
   useEffect(()=>{
     localManualRef.current = []
     lastSavedManualRef.current = ''
     setDirty(false)
     setData(null)
+    // Forzar un fetch limpio para la nueva selección (sin merge de manuales)
+    fetchData(true, 'manual')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
 
   // Cargar agentes para superuser
