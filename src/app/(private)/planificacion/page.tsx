@@ -239,7 +239,7 @@ export default function PlanificacionPage(){
           <div className="progress mb-2" role="progressbar" aria-valuenow={horasSmnyl} aria-valuemin={0} aria-valuemax={metaSmnyl}>
             <div className={`progress-bar ${horasSmnyl>=metaSmnyl? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasSmnyl/metaSmnyl)*100)}%`}}>{horasSmnyl}/{metaSmnyl}</div>
           </div>
-          <div className="mb-3 small fw-semibold text-success">
+          <div className="mb-3 fw-bold text-success fs-5">
             Puedes ganar: {(puedesGanar||0).toLocaleString('es-MX',{ style:'currency', currency:'MXN', minimumFractionDigits:2, maximumFractionDigits:2 })}
           </div>
           {/* Switch eliminado: ahora siempre se congelan todos los bloques (manual y auto) */}
