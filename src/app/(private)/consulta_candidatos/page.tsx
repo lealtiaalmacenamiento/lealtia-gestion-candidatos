@@ -40,6 +40,8 @@ function ConsultaCandidatosInner() {
   const [pendingUncheck, setPendingUncheck] = useState<{ c: CandidatoExt; key: keyof Candidato } | null>(null)
   const [uncheckReason, setUncheckReason] = useState('')
   const [unchecking, setUnchecking] = useState(false)
+  // Búsqueda por nombre de candidato
+  const [nameQuery, setNameQuery] = useState('')
 
   // Si todas las etapas están marcadas como completadas, mostrar "Agente" en Proceso
   const areAllEtapasCompleted = (c: CandidatoExt): boolean => {
@@ -162,7 +164,15 @@ function ConsultaCandidatosInner() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtered = useMemo(() => {
-    return [...data].sort((a, b) => {
+    const norm = (s: string) => s
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLocaleLowerCase('es')
+    const q = norm(nameQuery.trim())
+    const base = q
+      ? data.filter(c => norm(String(c.candidato || ''))?.includes(q))
+      : data
+    return [...base].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
       if (av == null && bv == null) return 0;
@@ -177,7 +187,7 @@ function ConsultaCandidatosInner() {
       else comp = String(av).localeCompare(String(bv), 'es', { numeric: true, sensitivity: 'base' });
       return comp * (sortDir === 'asc' ? 1 : -1);
     });
-  }, [data, sortKey, sortDir]);
+  }, [data, sortKey, sortDir, nameQuery]);
 
   type ColumnDef = { key: AnyColKey; label: string; sortable?: boolean; width?: string; stickyLeft?: number; thClassName?: string; tdClassName?: string }
   const columns: ColumnDef[] = useMemo(() => ([
@@ -344,6 +354,15 @@ function ConsultaCandidatosInner() {
       <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
         <div></div>
         <div className="d-flex align-items-center gap-2">
+          <input
+            type="text"
+            className="form-control form-control-sm"
+            placeholder="Buscar candidato..."
+            value={nameQuery}
+            onChange={e=>setNameQuery(e.target.value)}
+            style={{ minWidth: 240 }}
+            title="Buscar por nombre de candidato"
+          />
           <button className="btn btn-outline-secondary btn-sm" onClick={fetchData} disabled={loading}>{loading ? '...' : 'Recargar'}</button>
           <button className="btn btn-outline-success btn-sm" onClick={exportExcelXlsx} disabled={loading || filtered.length===0} title="Exportar listado a Excel">Exportar Excel</button>
         </div>

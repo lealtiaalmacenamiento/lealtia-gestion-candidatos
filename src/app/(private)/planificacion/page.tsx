@@ -50,7 +50,8 @@ export default function PlanificacionPage(){
       // Normalizar horas a 'HH'
       plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
       // Si había cambios locales pendientes y este es un fetch forzado (post-guardado), mergeamos bloques manuales que aún no estén en remoto
-      if(force && data && data.bloques && data.bloques.length){
+      // Solo mergear manuales locales tras un guardado exitoso; evitar mezclar al cambiar de semana/agente
+      if(force && trigger==='postsave' && data && data.bloques && data.bloques.length){
         const remoteKeys = new Set(plan.bloques.map(b=> `${b.day}-${b.hour}-${b.activity}`))
         for(const b of data.bloques){
           if(b.origin !== 'auto'){
@@ -66,15 +67,15 @@ export default function PlanificacionPage(){
   setData(plan)
   if(showLoading) setLoading(false)
   }
-  useEffect(()=>{fetchData() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[agenteId, semana, anio])
-
-  // Al cambiar agente/semana/año, limpiar estado local para evitar arrastre entre agentes
+  // Al cambiar agente/semana/año, limpiar estado y forzar fetch sin mezclar manuales previos
   useEffect(()=>{
     localManualRef.current = []
     lastSavedManualRef.current = ''
     setDirty(false)
     setData(null)
+    // Forzar un fetch limpio para la nueva selección (sin merge de manuales)
+    fetchData(true, 'manual')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[agenteId, semana, anio])
 
   // Cargar agentes para superuser
@@ -117,6 +118,8 @@ export default function PlanificacionPage(){
   },[data])
   // Conteo de SMNYL para meta/progreso
   const horasSmnyl = data?.bloques.filter(b=>b.activity==='SMNYL').length || 0
+  // Cálculo de "puedes ganar" = prima anual promedio * (porcentaje comisión/100) * bloques SMNYL
+  const puedesGanar = (data?.prima_anual_promedio || 0) * ((data?.porcentaje_comision || 0) / 100) * horasSmnyl
 
   const guardar = async()=>{
     if(!data) return 
@@ -224,19 +227,20 @@ export default function PlanificacionPage(){
               <span className="input-group-text">$</span>
               <input type="number" className="form-control" value={data.prima_anual_promedio} onChange={e=>setData({...data,prima_anual_promedio:Number(e.target.value)})}/>
             </div>
-            <div className="form-text">{(data.prima_anual_promedio??0).toLocaleString('es-MX',{ style:'currency', currency:'MXN', minimumFractionDigits:2, maximumFractionDigits:2 })}</div>
           </div>
           <div className="mb-2 small">
-            <label className="form-label small mb-1">Porcentaje de comisino promedio</label>
+            <label className="form-label small mb-1">Porcentaje de comisión promedio</label>
             <div className="input-group input-group-sm">
               <span className="input-group-text">%</span>
               <input type="number" className="form-control" value={data.porcentaje_comision} onChange={e=>setData({...data,porcentaje_comision:Number(e.target.value)})}/>
             </div>
-            <div className="form-text">%{(data.porcentaje_comision??0).toLocaleString('es-MX',{maximumFractionDigits:2})}</div>
           </div>
           <div className="mb-2 small">Meta SMNYL semanal: {metaSmnyl}</div>
           <div className="progress mb-2" role="progressbar" aria-valuenow={horasSmnyl} aria-valuemin={0} aria-valuemax={metaSmnyl}>
             <div className={`progress-bar ${horasSmnyl>=metaSmnyl? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasSmnyl/metaSmnyl)*100)}%`}}>{horasSmnyl}/{metaSmnyl}</div>
+          </div>
+          <div className="mb-3 fw-bold text-success fs-5">
+            Puedes ganar: {(puedesGanar||0).toLocaleString('es-MX',{ style:'currency', currency:'MXN', minimumFractionDigits:2, maximumFractionDigits:2 })}
           </div>
           {/* Switch eliminado: ahora siempre se congelan todos los bloques (manual y auto) */}
           <button className="btn btn-primary btn-sm" onClick={guardar} disabled={loading || (typeof semana==='string') || !dirty}>Guardar</button>
