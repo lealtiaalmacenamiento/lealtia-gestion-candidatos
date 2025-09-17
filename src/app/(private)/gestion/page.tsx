@@ -58,6 +58,7 @@ export default function GestionPage() {
   // Edición cómoda de prima: mantener texto crudo para evitar saltos del cursor por formateo
   const [editPrimaText, setEditPrimaText] = useState<string>('')
   const [creating, setCreating] = useState(false)
+  const [submittingNuevoCliente, setSubmittingNuevoCliente] = useState(false)
   const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
   // creación de póliza deshabilitada temporalmente
   const [addingPoliza, setAddingPoliza] = useState(false)
@@ -571,7 +572,7 @@ export default function GestionPage() {
             </AppModal>
           )}
           {creating && (
-            <AppModal title="Nuevo cliente" icon="person-plus" onClose={()=>setCreating(false)}>
+            <AppModal title="Nuevo cliente" icon="person-plus" onClose={()=>!submittingNuevoCliente && setCreating(false)}>
               <div className="grid grid-cols-2 gap-2">
                 <div className="d-flex flex-column"><label className="form-label small">Primer nombre</label><input className="form-control form-control-sm" value={nuevo.primer_nombre||''} onChange={e=>setNuevo({...nuevo, primer_nombre: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Segundo nombre</label><input className="form-control form-control-sm" value={nuevo.segundo_nombre||''} onChange={e=>setNuevo({...nuevo, segundo_nombre: e.target.value})} /></div>
@@ -582,14 +583,16 @@ export default function GestionPage() {
                 <div className="d-flex flex-column"><label className="form-label small">Cumpleaños</label><input className="form-control form-control-sm" type="date" value={nuevo.fecha_nacimiento || ''} onChange={e=>setNuevo({...nuevo, fecha_nacimiento: e.target.value})} /></div>
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
-                <button className="btn btn-sm btn-secondary" onClick={()=>setCreating(false)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" onClick={async()=>{
+                <button className="btn btn-sm btn-secondary" disabled={submittingNuevoCliente} onClick={()=>setCreating(false)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" disabled={submittingNuevoCliente} onClick={async()=>{
+                  if (submittingNuevoCliente) return
                   // Validación mínima requerida por schema
                   if (!nuevo.primer_nombre || !nuevo.primer_apellido || !nuevo.telefono_celular || !nuevo.email) {
                     alert('Campos requeridos: Primer nombre, Primer apellido, Teléfono celular y Email')
                     return
                   }
                   try {
+                    setSubmittingNuevoCliente(true)
                     const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
                       primer_nombre: nuevo.primer_nombre,
                       segundo_nombre: nuevo.segundo_nombre,
@@ -604,7 +607,7 @@ export default function GestionPage() {
                     setCreating(false)
                     setNuevo({ id: '', telefono_celular: '', fecha_nacimiento: null })
                     await load()
-                  } catch { alert('Error al crear') }
+                  } catch { alert('Error al crear') } finally { setSubmittingNuevoCliente(false) }
                 }}>Crear</button>
               </div>
             </AppModal>
@@ -715,8 +718,8 @@ export default function GestionPage() {
                   <th>No. Póliza</th>
                   <th>Producto</th>
                   <th>Estatus</th>
-                    <th>Periodicidad</th>
-                    <th>Método pago</th>
+                  <th>Periodicidad</th>
+                  <th>Método pago</th>
                   <th>Fecha de emisión</th>
                   <th>Fecha renovación</th>
                   <th>Tipo</th>
@@ -745,7 +748,6 @@ export default function GestionPage() {
                     </td>
                   </tr>
                 ))}
-                {!polizas.length && <tr><td colSpan={12 + generateMonthKeys().length} className="text-center text-muted py-3">Sin resultados</td></tr>}
               </tbody>
             </table>
           </div>
@@ -920,7 +922,12 @@ export default function GestionPage() {
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" disabled={submittingNuevaPoliza} onClick={()=>setAddingPoliza(false)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza} onClick={async()=>{
+                {(() => {
+                  const dup = !!(nuevaPoliza.numero_poliza && polizas.some(p => (p.numero_poliza||'').trim() === nuevaPoliza.numero_poliza.trim()))
+                  return (
+                    <>
+                      {dup && <span className="text-danger small me-2">Este número de póliza ya existe en la lista.</span>}
+                      <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza || dup} onClick={async()=>{
                   if (submittingNuevaPoliza) return
                   const primaNum = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
                   if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.periodicidad_pago || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Periodicidad, Método de pago, Prima anual'); return }
@@ -949,6 +956,9 @@ export default function GestionPage() {
                     try { const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items||[]) } finally { setLoading(false) }
                   } catch { alert('Error al crear') } finally { setSubmittingNuevaPoliza(false) }
                 }}>Crear</button>
+                    </>
+                  )
+                })()}
               </div>
             </AppModal>
           )}
