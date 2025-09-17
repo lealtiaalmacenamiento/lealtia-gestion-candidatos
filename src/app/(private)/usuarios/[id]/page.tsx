@@ -6,6 +6,7 @@ import { getUsuarioById, updateUsuario, deleteUsuario, resetPasswordUsuario } fr
 import AppModal from '@/components/ui/AppModal'
 import Notification from '@/components/ui/Notification'
 import type { Usuario } from '@/types'
+import { useDialog } from '@/components/ui/DialogProvider'
 
 const ROLES = [
   { value: 'editor', label: 'Editor' },
@@ -16,6 +17,7 @@ const ROLES = [
 export default function UsuarioEditPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const dialog = useDialog()
   const [form, setForm] = useState<Partial<Usuario>>({})
   const [resetting, setResetting] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
@@ -48,7 +50,8 @@ export default function UsuarioEditPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm('¿Eliminar este usuario?')) return
+    const ok = await dialog.confirm('¿Eliminar este usuario?', { icon: 'exclamation-triangle-fill', confirmText: 'Eliminar', cancelText: 'Cancelar' })
+    if (!ok) return
     try {
       await deleteUsuario(Number(params.id))
       router.push('/usuarios')

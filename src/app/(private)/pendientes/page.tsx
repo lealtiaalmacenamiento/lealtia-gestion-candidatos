@@ -1,6 +1,7 @@
 "use client"
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
+import { useDialog } from '@/components/ui/DialogProvider'
 
 type Item = {
   id: string
@@ -20,6 +21,7 @@ type Item = {
 
 export default function PendientesPage() {
   const { user } = useAuth()
+  const dialog = useDialog()
   const role = (user?.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
   const [items, setItems] = useState<Item[]>([])
@@ -79,9 +81,9 @@ export default function PendientesPage() {
       if (!res.ok) {
         try {
           const j = await res.json()
-          alert(`Error al aprobar: ${j.error || res.status} \n${j.details || ''} ${j.hint || ''}`)
+          await dialog.alert(`Error al aprobar: ${j.error || res.status} \n${j.details || ''} ${j.hint || ''}`)
         } catch {
-          alert(`Error al aprobar (${res.status})`)
+          await dialog.alert(`Error al aprobar (${res.status})`)
         }
         return
       }
@@ -91,7 +93,7 @@ export default function PendientesPage() {
 
   async function rechazar(it: Item) {
     if (!isSuper) return
-    const motivo = prompt('Motivo de rechazo') || ''
+  const motivo = await dialog.prompt('Motivo de rechazo', { icon: 'pencil-square', inputLabel: 'Motivo', placeholder: 'Escribe el motivo...' }) || ''
     setActing(it.id)
     try {
       if (it.tipo === 'cliente') {

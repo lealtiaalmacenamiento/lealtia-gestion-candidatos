@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthProvider'
 import type { BloquePlanificacion } from '@/types'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
 import { fetchFase2Metas } from '@/lib/fase2Params'
+import { useDialog } from '@/components/ui/DialogProvider'
 
 interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:number; anio:number; bloques:BloquePlanificacion[]; prima_anual_promedio:number; porcentaje_comision:number }
 
@@ -17,6 +18,7 @@ const HORAS_BASE = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2,
 
 export default function PlanificacionPage(){
   const { user } = useAuth()
+  const dialog = useDialog()
   const superuser = user?.rol==='superusuario' || user?.rol==='admin'
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
@@ -127,9 +129,9 @@ export default function PlanificacionPage(){
     // Confirmación explícita si un superusuario está actuando sobre otro agente
     if (superuser) {
       const targetId = agenteId ? Number(agenteId) : null
-      if (!targetId) { alert('Seleccione un agente antes de guardar.'); return }
+      if (!targetId) { await dialog.alert('Seleccione un agente antes de guardar.'); return }
       if (user?.id && targetId !== user.id) {
-        const proceed = confirm(`Guardarás planificación para el agente #${targetId} como ${user.email}. ¿Confirmas?`)
+        const proceed = await dialog.confirm(`Guardarás planificación para el agente #${targetId} como ${user.email}. ¿Confirmas?`, { icon: 'question-circle-fill' })
         if (!proceed) return
       }
     }
@@ -260,11 +262,12 @@ function BloqueEditor({ modal, semanaBase, onSave, onDelete }: { modal:{day:numb
   const dias = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
   const [tipo,setTipo]=useState< 'PROSPECCION'|'SMNYL' | ''>(modal.blk? (modal.blk.activity==='CITAS'? '' : modal.blk.activity) : '')
   const [notas,setNotas]=useState(modal.blk?.notas || '')
-  const guardar=()=>{
+  const dialog = useDialog()
+  const guardar=async()=>{
     if(!tipo){ onSave(null); return }
   // Bloquear guardar en pasado (recalcular con lógica local consistente)
   const target = new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour), 0,0,0)
-  if(target.getTime() < Date.now()-60000){ alert('No se puede editar un bloque en el pasado'); return }
+  if(target.getTime() < Date.now()-60000){ await dialog.alert('No se puede editar un bloque en el pasado'); return }
     // Notas opcionales
     const base: BloquePlanificacion = {day:modal.day, hour:modal.hour, activity:tipo, origin:'manual'}
     base.notas = notas.trim()

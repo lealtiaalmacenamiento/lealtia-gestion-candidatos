@@ -4,6 +4,7 @@ import { AuthProvider } from '@/context/AuthProvider'
 import { PageTitleProvider } from '@/context/PageTitleContext'
 import React from 'react';
 import Footer from '@/components/Footer'
+import { DialogProvider } from '@/components/ui/DialogProvider'
 
 interface RootLayoutProps {
   children: React.ReactNode;
@@ -36,9 +37,11 @@ export default function RootLayout({ children }: RootLayoutProps) {
         )}
         <AuthProvider>
           <PageTitleProvider>
-            <div style={{ marginTop: showBanner ? 28 : 0 }}>
-              {children}
-            </div>
+            <DialogProvider>
+              <div style={{ marginTop: showBanner ? 28 : 0 }}>
+                {children}
+              </div>
+            </DialogProvider>
             <Footer />
           </PageTitleProvider>
         </AuthProvider>

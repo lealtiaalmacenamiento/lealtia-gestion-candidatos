@@ -17,8 +17,10 @@ import BasePage from '@/components/BasePage';
 import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza } from '@/types';
 import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro } from '@/lib/api';
 import AppModal from '@/components/ui/AppModal';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 export default function ParametrosClient(){
+  const dialog = useDialog();
   const [mesRows, setMesRows] = useState<CedulaA1[]>([]);
   const [editMesId, setEditMesId] = useState<number|null>(null);
   const [editMesRow, setEditMesRow] = useState<CedulaA1|null>(null);
@@ -230,7 +232,8 @@ export default function ParametrosClient(){
   } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { setSavingProdNew(false) }
   }
   const removeProd = async (id: string)=>{
-    if(!window.confirm(`¿Eliminar la variante de producto?`)) return
+  const ok = await dialog.confirm(`¿Eliminar la variante de producto?`, { icon: 'exclamation-triangle-fill', confirmText: 'Eliminar' })
+  if(!ok) return
     try {
       await deleteProductoParametro(id)
       setProductos(list=> list.filter(p=> p.id!==id))

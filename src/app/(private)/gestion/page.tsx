@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
+import { useDialog } from '@/components/ui/DialogProvider'
 
 type Cliente = {
   id: string
@@ -37,6 +38,7 @@ type Poliza = {
 
 export default function GestionPage() {
   const { user } = useAuth()
+  const dialog = useDialog()
   const role = (user?.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
   const agentDisplayName = (user?.nombre && user.nombre.trim()) ? user.nombre.trim() : (user?.email || 'tu asesor')
@@ -58,6 +60,7 @@ export default function GestionPage() {
   // Edición cómoda de prima: mantener texto crudo para evitar saltos del cursor por formateo
   const [editPrimaText, setEditPrimaText] = useState<string>('')
   const [creating, setCreating] = useState(false)
+  const [submittingNuevoCliente, setSubmittingNuevoCliente] = useState(false)
   const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
   // creación de póliza deshabilitada temporalmente
   const [addingPoliza, setAddingPoliza] = useState(false)
@@ -156,14 +159,14 @@ export default function GestionPage() {
       body: JSON.stringify({ cliente_id: c.id, payload })
     })
     const j = await res.json()
-    if (!res.ok) { alert(j.error || 'Error al enviar solicitud'); return }
+    if (!res.ok) { await dialog.alert(j.error || 'Error al enviar solicitud'); return }
     if (isSuper && j.id) {
       const ra = await fetch('/api/clientes/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id }) })
       const ja = await ra.json().catch(()=>({}))
-      if (!ra.ok) { alert(ja.error || 'Error al aprobar'); return }
-      alert('Guardado y aprobado')
+      if (!ra.ok) { await dialog.alert(ja.error || 'Error al aprobar'); return }
+      await dialog.alert('Guardado y aprobado')
     } else {
-      alert('Solicitud enviada')
+      await dialog.alert('Solicitud enviada')
     }
     setEditCliente(null)
   }
@@ -192,13 +195,13 @@ export default function GestionPage() {
         body: JSON.stringify({ poliza_id: p.id, payload })
       })
       const j = await res.json().catch(()=>({}))
-      if (!res.ok) { alert(j.error || 'Error al enviar solicitud'); return }
+      if (!res.ok) { await dialog.alert(j.error || 'Error al enviar solicitud'); return }
       if (isSuper && j.id) {
         const ra = await fetch('/api/polizas/updates/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: j.id, debug: true }) })
         const ja = await ra.json().catch(()=>({}))
         if (!ra.ok) {
           const details = typeof ja === 'object' ? (ja.error || ja.details || ja.hint || ja.code) : null
-          alert(`Error al aprobar${details ? `: ${details}` : ''}`)
+          await dialog.alert(`Error al aprobar${details ? `: ${details}` : ''}`)
           return
         }
         // Usar la respuesta para validar que la prima persistió y reflejar en UI al instante
@@ -208,12 +211,12 @@ export default function GestionPage() {
           setPolizas(prev => prev.map(it => it.id === ja.poliza.id ? { ...it, prima_input: (typeof ja.poliza.prima_input === 'number' ? ja.poliza.prima_input : it.prima_input), prima_moneda: (typeof ja.poliza.prima_moneda === 'string' ? ja.poliza.prima_moneda : it.prima_moneda) } : it))
         }
         if (expectedPrima != null && approvedPrima != null && approvedPrima !== expectedPrima) {
-          alert(`Aviso: el backend no reflejó el cambio de prima. Valor actual: ${approvedPrima} (esperado ${expectedPrima}). Revisa permisos o validaciones.`)
+          await dialog.alert(`Aviso: el backend no reflejó el cambio de prima. Valor actual: ${approvedPrima} (esperado ${expectedPrima}). Revisa permisos o validaciones.`)
         } else {
-          alert('Guardado y aprobado')
+          await dialog.alert('Guardado y aprobado')
         }
       } else if (!isSuper) {
-        alert('Solicitud enviada')
+        await dialog.alert('Solicitud enviada')
       }
 
       // Refrescar datos para reflejar el recálculo en UI (sólo si se aprobó o si queremos reflejar último estado)
@@ -228,7 +231,7 @@ export default function GestionPage() {
               const updated = (jp.items as Array<{ id: string; prima_input?: number | null }>).find((it) => it.id === expectedId)
               const backendPrima = typeof updated?.prima_input === 'number' ? Number(updated.prima_input.toFixed(2)) : null
               if (expectedPrima != null && backendPrima != null && backendPrima !== expectedPrima) {
-                alert(`Aviso: el backend no reflejó el cambio de prima. Valor actual: ${backendPrima} (esperado ${expectedPrima}). Revisa permisos o validaciones.`)
+                await dialog.alert(`Aviso: el backend no reflejó el cambio de prima. Valor actual: ${backendPrima} (esperado ${expectedPrima}). Revisa permisos o validaciones.`)
               }
             }
           }
@@ -320,7 +323,7 @@ export default function GestionPage() {
                             objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
                           }
                           const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
-                          const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return }
+                          const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar meta'); return }
                           await load()
                         } finally { setSavingMeta(false) }
                       }}>Guardar meta</button>
@@ -365,13 +368,13 @@ export default function GestionPage() {
                                 const jc = await rc.json().catch(()=>({ error: 'parse' }))
                                 if (!rc.ok) {
                                   console.error('Error cargando clientes por asesor', jc)
-                                  alert(jc?.error || 'Error al cargar clientes del asesor')
+                                  await dialog.alert(jc?.error || 'Error al cargar clientes del asesor')
                                   return
                                 }
                                 setClientesPorAgente(prev=>({ ...prev, [key]: jc.items || [] }))
                               } catch (e) {
                                 console.error(e)
-                                alert('Error al cargar clientes del asesor')
+                                await dialog.alert('Error al cargar clientes del asesor')
                               }
                             }
                           }}
@@ -487,7 +490,7 @@ export default function GestionPage() {
                         objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
                       }
                       const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
-                      const j=await r.json(); if (!r.ok) { alert(j.error || 'Error al guardar meta'); return }
+                      const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar meta'); return }
                       await load()
                     } finally { setSavingMeta(false) }
                   }}>Guardar meta</button>
@@ -571,7 +574,7 @@ export default function GestionPage() {
             </AppModal>
           )}
           {creating && (
-            <AppModal title="Nuevo cliente" icon="person-plus" onClose={()=>setCreating(false)}>
+            <AppModal title="Nuevo cliente" icon="person-plus" onClose={()=>!submittingNuevoCliente && setCreating(false)}>
               <div className="grid grid-cols-2 gap-2">
                 <div className="d-flex flex-column"><label className="form-label small">Primer nombre</label><input className="form-control form-control-sm" value={nuevo.primer_nombre||''} onChange={e=>setNuevo({...nuevo, primer_nombre: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Segundo nombre</label><input className="form-control form-control-sm" value={nuevo.segundo_nombre||''} onChange={e=>setNuevo({...nuevo, segundo_nombre: e.target.value})} /></div>
@@ -582,14 +585,16 @@ export default function GestionPage() {
                 <div className="d-flex flex-column"><label className="form-label small">Cumpleaños</label><input className="form-control form-control-sm" type="date" value={nuevo.fecha_nacimiento || ''} onChange={e=>setNuevo({...nuevo, fecha_nacimiento: e.target.value})} /></div>
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
-                <button className="btn btn-sm btn-secondary" onClick={()=>setCreating(false)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" onClick={async()=>{
+                <button className="btn btn-sm btn-secondary" disabled={submittingNuevoCliente} onClick={()=>setCreating(false)}>Cancelar</button>
+                <button className="btn btn-sm btn-success" disabled={submittingNuevoCliente} onClick={async()=>{
+                  if (submittingNuevoCliente) return
                   // Validación mínima requerida por schema
                   if (!nuevo.primer_nombre || !nuevo.primer_apellido || !nuevo.telefono_celular || !nuevo.email) {
-                    alert('Campos requeridos: Primer nombre, Primer apellido, Teléfono celular y Email')
+                    await dialog.alert('Campos requeridos: Primer nombre, Primer apellido, Teléfono celular y Email')
                     return
                   }
                   try {
+                    setSubmittingNuevoCliente(true)
                     const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
                       primer_nombre: nuevo.primer_nombre,
                       segundo_nombre: nuevo.segundo_nombre,
@@ -600,11 +605,11 @@ export default function GestionPage() {
                       fecha_nacimiento: nuevo.fecha_nacimiento || null,
                     })})
                     const j = await res.json()
-                    if (!res.ok) { alert(j.error || 'Error al crear'); return }
+                    if (!res.ok) { await dialog.alert(j.error || 'Error al crear'); return }
                     setCreating(false)
                     setNuevo({ id: '', telefono_celular: '', fecha_nacimiento: null })
                     await load()
-                  } catch { alert('Error al crear') }
+                  } catch { await dialog.alert('Error al crear') } finally { setSubmittingNuevoCliente(false) }
                 }}>Crear</button>
               </div>
             </AppModal>
@@ -630,7 +635,7 @@ export default function GestionPage() {
                     if(isSuper && editMeta.usuario_id) body.usuario_id = editMeta.usuario_id
                     const r = await fetch('/api/agentes/meta', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
                     const j = await r.json()
-                    if(!r.ok){ alert(j.error || 'Error al guardar meta'); return }
+                    if(!r.ok){ await dialog.alert(j.error || 'Error al guardar meta'); return }
                     setEditMeta(null)
                     await load()
                   } finally { setSavingMeta(false) }
@@ -715,8 +720,8 @@ export default function GestionPage() {
                   <th>No. Póliza</th>
                   <th>Producto</th>
                   <th>Estatus</th>
-                    <th>Periodicidad</th>
-                    <th>Método pago</th>
+                  <th>Periodicidad</th>
+                  <th>Método pago</th>
                   <th>Fecha de emisión</th>
                   <th>Fecha renovación</th>
                   <th>Tipo</th>
@@ -745,7 +750,6 @@ export default function GestionPage() {
                     </td>
                   </tr>
                 ))}
-                {!polizas.length && <tr><td colSpan={12 + generateMonthKeys().length} className="text-center text-muted py-3">Sin resultados</td></tr>}
               </tbody>
             </table>
           </div>
@@ -920,10 +924,15 @@ export default function GestionPage() {
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" disabled={submittingNuevaPoliza} onClick={()=>setAddingPoliza(false)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza} onClick={async()=>{
+                {(() => {
+                  const dup = !!(nuevaPoliza.numero_poliza && polizas.some(p => (p.numero_poliza||'').trim() === nuevaPoliza.numero_poliza.trim()))
+                  return (
+                    <>
+                      {dup && <span className="text-danger small me-2">Este número de póliza ya existe en la lista.</span>}
+                      <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza || dup} onClick={async()=>{
                   if (submittingNuevaPoliza) return
                   const primaNum = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
-                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.periodicidad_pago || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Periodicidad, Método de pago, Prima anual'); return }
+                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.periodicidad_pago || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { await dialog.alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Periodicidad, Método de pago, Prima anual'); return }
                   const payload: Record<string, unknown> = {
                     cliente_id: selectedCliente.id,
                     numero_poliza: nuevaPoliza.numero_poliza,
@@ -943,12 +952,15 @@ export default function GestionPage() {
                     setSubmittingNuevaPoliza(true)
                     const r = await fetch('/api/polizas', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
                     const j = await r.json()
-                    if (!r.ok) { alert(j.error || 'Error al crear'); return }
+                    if (!r.ok) { await dialog.alert(j.error || 'Error al crear'); return }
                     setAddingPoliza(false)
                     setLoading(true)
                     try { const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items||[]) } finally { setLoading(false) }
-                  } catch { alert('Error al crear') } finally { setSubmittingNuevaPoliza(false) }
+                  } catch { await dialog.alert('Error al crear') } finally { setSubmittingNuevaPoliza(false) }
                 }}>Crear</button>
+                    </>
+                  )
+                })()}
               </div>
             </AppModal>
           )}
