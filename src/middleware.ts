@@ -40,7 +40,10 @@ export async function middleware(req: NextRequest) {
   if ((url.pathname === '/api/market/sync' || url.pathname === '/api/reports/prospectos-daily-changes') && (isCronRequest || hasCronSecret)) {
     const alreadyHas = url.searchParams.get('secret')
     if (!alreadyHas) {
-      const cronSecret = process.env.CRON_SECRET || process.env.MARKET_SYNC_SECRET
+      // Elegir la env var correcta según endpoint
+      const cronSecret = url.pathname === '/api/reports/prospectos-daily-changes'
+        ? (process.env.REPORTES_CRON_SECRET || process.env.CRON_SECRET)
+        : (process.env.CRON_SECRET || process.env.MARKET_SYNC_SECRET)
       if (cronSecret) {
         const rewritten = new URL(url.toString())
         rewritten.searchParams.set('secret', cronSecret)
