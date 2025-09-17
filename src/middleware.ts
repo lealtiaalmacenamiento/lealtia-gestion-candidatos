@@ -37,7 +37,7 @@ export async function middleware(req: NextRequest) {
   const isPublic = publicPaths.has(url.pathname) || isAsset || isCronRequest || hasCronSecret
 
   // Para asegurar autorización del Cron aunque el header no llegue, reescribimos agregando el secret como query interno
-  if (url.pathname === '/api/market/sync' && (isCronRequest || hasCronSecret)) {
+  if ((url.pathname === '/api/market/sync' || url.pathname === '/api/reports/prospectos-daily-changes') && (isCronRequest || hasCronSecret)) {
     const alreadyHas = url.searchParams.get('secret')
     if (!alreadyHas) {
       const cronSecret = process.env.CRON_SECRET || process.env.MARKET_SYNC_SECRET
