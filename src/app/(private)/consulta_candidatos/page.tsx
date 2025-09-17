@@ -42,6 +42,14 @@ function ConsultaCandidatosInner() {
   const [unchecking, setUnchecking] = useState(false)
   // Búsqueda por nombre de candidato
   const [nameQuery, setNameQuery] = useState('')
+  // Responsive: deshabilitar sticky en pantallas pequeñas
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = () => setIsMobile(window.innerWidth < 992) // < lg
+    mq()
+    window.addEventListener('resize', mq)
+    return () => window.removeEventListener('resize', mq)
+  }, [])
 
   // Si todas las etapas están marcadas como completadas, mostrar "Agente" en Proceso
   const areAllEtapasCompleted = (c: CandidatoExt): boolean => {
@@ -233,6 +241,7 @@ function ConsultaCandidatosInner() {
   const [stickyLefts, setStickyLefts] = useState<number[]>([])
   useEffect(() => {
     const compute = () => {
+      if (isMobile) { setStickyLefts([]); return }
       const tbl = tableRef.current
       if (!tbl) return
       const ths = tbl.querySelectorAll<HTMLTableCellElement>('thead tr:first-child th')
@@ -257,7 +266,7 @@ function ConsultaCandidatosInner() {
     const onResize = () => compute()
     window.addEventListener('resize', onResize)
     return () => { cancelAnimationFrame(id); window.removeEventListener('resize', onResize) }
-  }, [filtered, columns, stickyIndices])
+  }, [filtered, columns, stickyIndices, isMobile])
 
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -393,8 +402,8 @@ function ConsultaCandidatosInner() {
               <tr>
                 {columns.map((col, colIdx) => {
                   const rank = stickyRankByIndex.get(colIdx)
-                  const stickyLeft = (typeof rank === 'number') ? stickyLefts[rank] : undefined
-                  const isLastSticky = typeof rank === 'number' && rank === stickyIndices.length - 1
+                  const stickyLeft = (!isMobile && typeof rank === 'number') ? stickyLefts[rank] : undefined
+                  const isLastSticky = !isMobile && typeof rank === 'number' && rank === stickyIndices.length - 1
                   return (
                     <Th
                       key={col.key}
@@ -405,7 +414,7 @@ function ConsultaCandidatosInner() {
                       onSort={col.sortable ? toggleSort : undefined}
                       sortable={col.sortable}
                       width={col.width}
-                      className={[col.thClassName || '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')}
+                      className={[!isMobile ? (col.thClassName || '') : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')}
                       stickyLeft={stickyLeft}
                     />
                   )
@@ -449,9 +458,9 @@ function ConsultaCandidatosInner() {
                     const meta = etapas[etKey]
                     const rawProceso = (isAgente ? 'Agente' : ((c as unknown as { proceso?: string }).proceso || ''))
                     const rank = stickyRankByIndex.get(colIdx)
-                    const stickyLeft = (typeof rank === 'number') ? stickyLefts[rank] : undefined
-                    const isLastSticky = typeof rank === 'number' && rank === stickyIndices.length - 1
-                    const stickyStyle = typeof stickyLeft === 'number'
+                    const stickyLeft = (!isMobile && typeof rank === 'number') ? stickyLefts[rank] : undefined
+                    const isLastSticky = !isMobile && typeof rank === 'number' && rank === stickyIndices.length - 1
+                    const stickyStyle = (!isMobile && typeof stickyLeft === 'number')
                       ? {
                           position: 'sticky' as const,
                           left: stickyLeft,
@@ -462,7 +471,7 @@ function ConsultaCandidatosInner() {
                           maxWidth: col.width,
                         }
                       : undefined
-                    const tdClass = [cls, col.tdClassName, isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')
+                    const tdClass = [cls, !isMobile ? col.tdClassName : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')
                     return (
                       <td key={col.key} className={tdClass} title={col.key==='proceso' ? rawProceso : undefined} style={stickyStyle}>
                         <div className="d-flex flex-column gap-1">
