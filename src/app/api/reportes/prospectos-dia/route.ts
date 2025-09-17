@@ -35,14 +35,27 @@ function lastHoursRange(hours: number) {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
+function isCronAuthorized(req: Request): boolean {
+  const secretEnv = (process.env.REPORTES_CRON_SECRET || '').trim()
+  const allowVercelHeader = (process.env.ALLOW_VERCEL_CRON_WITH_HEADER || '').trim() === '1'
+  if (!secretEnv) return true
+  const url = new URL(req.url)
+  const hKey = req.headers.get('x-cron-key') || req.headers.get('x-cron-secret') || ''
+  if (hKey && hKey === secretEnv) return true
+  const q = url.searchParams.get('secret') || ''
+  if (q && q === secretEnv) return true
+  const auth = req.headers.get('authorization') || ''
+  if (auth.toLowerCase().startsWith('bearer ') && auth.slice(7).trim() === secretEnv) return true
+  if (allowVercelHeader && !!req.headers.get('x-vercel-cron')) return true
+  return false
+}
+
 export async function POST(req: Request) {
-  const secretHeader = req.headers.get('x-cron-key') || ''
-  const secretEnv = process.env.REPORTES_CRON_SECRET || ''
   let usuarioEmail: string | null = null
   const url = new URL(req.url)
   const debug = url.searchParams.get('debug') === '1'
-  // Si hay secret válido, permitimos ejecución sin sesión; si no, validamos sesión admin/superusuario
-  if (!secretEnv || secretHeader !== secretEnv) {
+  // Si hay autorización por secret/header/bearer/vercel-cron, permitimos sin sesión; de lo contrario validamos sesión
+  if (!isCronAuthorized(req)) {
     let usuario = await getUsuarioSesion(req.headers)
     if (!usuario) {
       // Fallback robusto: leer usuario de Auth vía SSR cookies y cruzar contra tabla usuarios por id_auth/email

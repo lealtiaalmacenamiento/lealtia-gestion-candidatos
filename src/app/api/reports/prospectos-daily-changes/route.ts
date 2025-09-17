@@ -10,10 +10,27 @@ export const dynamic = 'force-dynamic'
 
 function okCronSecret(req: Request): boolean {
   const secret = (process.env.REPORTES_CRON_SECRET || '').trim()
-  if (!secret) return true // sin secreto definido, no se aplica restricción
+  const allowVercelHeader = (process.env.ALLOW_VERCEL_CRON_WITH_HEADER || '').trim() === '1'
+  // Si no hay secreto, permitir siempre (modo abierto)
+  if (!secret) return true
+
   const url = new URL(req.url)
-  const hdr = req.headers.get('x-cron-secret') || url.searchParams.get('secret')
-  return !!hdr && hdr === secret
+  const byHeader = req.headers.get('x-cron-secret') || req.headers.get('x-cron-key') || undefined
+  const byQuery = url.searchParams.get('secret') || undefined
+  const auth = req.headers.get('authorization') || ''
+  const asBearer = auth.toLowerCase().startsWith('bearer ')
+    ? auth.slice(7).trim()
+    : ''
+
+  if (byHeader && byHeader === secret) return true
+  if (byQuery && byQuery === secret) return true
+  if (asBearer && asBearer === secret) return true
+
+  // Permitir Cron de Vercel sólo con header si está habilitado explícitamente
+  const isVercelCron = !!req.headers.get('x-vercel-cron')
+  if (allowVercelHeader && isVercelCron) return true
+
+  return false
 }
 
 // Tipado de filas de historial
