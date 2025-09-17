@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react';
 import { getCedulaA1, createCedulaA1, updateCedulaA1, deleteCedulaA1 } from '@/lib/api';
 import type { CedulaA1 } from '@/types';
 import BasePage from '@/components/BasePage';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 export default function CedulaA1Page() {
+  const dialog = useDialog();
   const [rows, setRows] = useState<CedulaA1[]>([]);
   const [newRow, setNewRow] = useState<{ mes: string }>({ mes: '' });
   const [editRow, setEditRow] = useState<CedulaA1 | null>(null);
@@ -69,7 +71,8 @@ export default function CedulaA1Page() {
   };
 
   const remove = async (id: number) => {
-    if (!confirm('¿Eliminar este MES?')) return;
+    const ok = await dialog.confirm('¿Eliminar este MES?', { icon: 'exclamation-triangle-fill', confirmText: 'Eliminar' });
+    if (!ok) return;
     try {
       await deleteCedulaA1(id);
       setNotif({ msg: 'MES eliminado', type: 'success' });

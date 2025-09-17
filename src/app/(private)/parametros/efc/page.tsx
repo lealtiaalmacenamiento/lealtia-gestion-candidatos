@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react';
 import { getEfc, createEfc, updateEfc, deleteEfc } from '@/lib/api';
 import type { Efc } from '@/types';
 import BasePage from '@/components/BasePage';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 export default function EfcPage() {
+  const dialog = useDialog();
   const [rows, setRows] = useState<Efc[]>([]);
   const [newRow, setNewRow] = useState<Partial<Efc>>({});
   const [editId, setEditId] = useState<number | null>(null);
@@ -66,7 +68,8 @@ export default function EfcPage() {
   };
 
   const remove = async (id: number) => {
-    if (!confirm('¿Eliminar este EFC?')) return;
+    const ok = await dialog.confirm('¿Eliminar este EFC?', { icon: 'exclamation-triangle-fill', confirmText: 'Eliminar' });
+    if (!ok) return;
     try {
       await deleteEfc(id);
       setNotif({ msg: 'EFC eliminado', type: 'success' });

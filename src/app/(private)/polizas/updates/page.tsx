@@ -1,6 +1,7 @@
 "use client"
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
+import { useDialog } from '@/components/ui/DialogProvider'
 
 type ReqItem = {
   id: string
@@ -16,6 +17,7 @@ type ReqItem = {
 
 export default function PolizaUpdatesPage() {
   const { user } = useAuth()
+  const dialog = useDialog()
   const role = (user?.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
   const [items, setItems] = useState<ReqItem[]>([])
@@ -39,7 +41,7 @@ export default function PolizaUpdatesPage() {
       const parsed = JSON.parse(payload)
       await fetch('/api/polizas/updates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ poliza_id: polizaId, payload: parsed }) })
     } catch {
-      alert('JSON inválido en payload')
+      await dialog.alert('JSON inválido en payload')
     } finally {
       setLoading(false)
       await load()
@@ -52,7 +54,7 @@ export default function PolizaUpdatesPage() {
     await load()
   }
   async function reject(id: string) {
-    const motivo = prompt('Motivo de rechazo') || ''
+    const motivo = await dialog.prompt('Motivo de rechazo', { icon: 'pencil-square', inputLabel: 'Motivo', placeholder: 'Escribe el motivo...' }) || ''
     setLoading(true)
     await fetch('/api/polizas/updates/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: id, motivo }) })
     setLoading(false)
