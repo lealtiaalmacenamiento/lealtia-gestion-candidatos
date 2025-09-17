@@ -42,14 +42,8 @@ function ConsultaCandidatosInner() {
   const [unchecking, setUnchecking] = useState(false)
   // Búsqueda por nombre de candidato
   const [nameQuery, setNameQuery] = useState('')
-  // Responsive: deshabilitar sticky en pantallas pequeñas
-  const [isMobile, setIsMobile] = useState(false)
-  useEffect(() => {
-    const mq = () => setIsMobile(window.innerWidth < 992) // < lg
-    mq()
-    window.addEventListener('resize', mq)
-    return () => window.removeEventListener('resize', mq)
-  }, [])
+  // Deshabilitar sticky de columnas globalmente
+  const disableSticky = true
 
   // Si todas las etapas están marcadas como completadas, mostrar "Agente" en Proceso
   const areAllEtapasCompleted = (c: CandidatoExt): boolean => {
@@ -241,7 +235,7 @@ function ConsultaCandidatosInner() {
   const [stickyLefts, setStickyLefts] = useState<number[]>([])
   useEffect(() => {
     const compute = () => {
-      if (isMobile) { setStickyLefts([]); return }
+      if (disableSticky) { setStickyLefts([]); return }
       const tbl = tableRef.current
       if (!tbl) return
       const ths = tbl.querySelectorAll<HTMLTableCellElement>('thead tr:first-child th')
@@ -266,7 +260,7 @@ function ConsultaCandidatosInner() {
     const onResize = () => compute()
     window.addEventListener('resize', onResize)
     return () => { cancelAnimationFrame(id); window.removeEventListener('resize', onResize) }
-  }, [filtered, columns, stickyIndices, isMobile])
+  }, [filtered, columns, stickyIndices, disableSticky])
 
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -402,24 +396,25 @@ function ConsultaCandidatosInner() {
               <tr>
                 {columns.map((col, colIdx) => {
                   const rank = stickyRankByIndex.get(colIdx)
-                  const stickyLeft = (!isMobile && typeof rank === 'number') ? stickyLefts[rank] : undefined
-                  const isLastSticky = !isMobile && typeof rank === 'number' && rank === stickyIndices.length - 1
+                  const stickyLeft = (!disableSticky && typeof rank === 'number') ? stickyLefts[rank] : undefined
+                  const isLastSticky = !disableSticky && typeof rank === 'number' && rank === stickyIndices.length - 1
                   return (
-                    <Th
-                      key={col.key}
-                      label={col.label}
-                      k={col.key as AnyColKey}
-                      sortKey={sortKey}
-                      sortDir={sortDir}
-                      onSort={col.sortable ? toggleSort : undefined}
-                      sortable={col.sortable}
-                      width={col.width}
-                      className={[!isMobile ? (col.thClassName || '') : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')}
-                      stickyLeft={stickyLeft}
-                    />
+                    <React.Fragment key={String(col.key)}>
+                      <Th
+                        label={col.label}
+                        k={col.key as AnyColKey}
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onSort={col.sortable ? toggleSort : undefined}
+                        sortable={col.sortable}
+                        width={col.width}
+                        className={[!disableSticky ? (col.thClassName || '') : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')}
+                        stickyLeft={stickyLeft}
+                      />
+                      {!readOnly && col.key === ('email_agente' as unknown as keyof Candidato) && (<th>Acciones</th>)}
+                    </React.Fragment>
                   )
                 })}
-                {!readOnly && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -458,9 +453,9 @@ function ConsultaCandidatosInner() {
                     const meta = etapas[etKey]
                     const rawProceso = (isAgente ? 'Agente' : ((c as unknown as { proceso?: string }).proceso || ''))
                     const rank = stickyRankByIndex.get(colIdx)
-                    const stickyLeft = (!isMobile && typeof rank === 'number') ? stickyLefts[rank] : undefined
-                    const isLastSticky = !isMobile && typeof rank === 'number' && rank === stickyIndices.length - 1
-                    const stickyStyle = (!isMobile && typeof stickyLeft === 'number')
+                    const stickyLeft = (!disableSticky && typeof rank === 'number') ? stickyLefts[rank] : undefined
+                    const isLastSticky = !disableSticky && typeof rank === 'number' && rank === stickyIndices.length - 1
+                    const stickyStyle = (!disableSticky && typeof stickyLeft === 'number')
                       ? {
                           position: 'sticky' as const,
                           left: stickyLeft,
@@ -471,46 +466,48 @@ function ConsultaCandidatosInner() {
                           maxWidth: col.width,
                         }
                       : undefined
-                    const tdClass = [cls, !isMobile ? col.tdClassName : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')
+                    const tdClass = [cls, !disableSticky ? col.tdClassName : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')
                     return (
-                      <td key={col.key} className={tdClass} title={col.key==='proceso' ? rawProceso : undefined} style={stickyStyle}>
-                        <div className="d-flex flex-column gap-1">
-                          <Cell v={display} />
-                          {isEtapa && (
-                            <label className="small d-flex align-items-center gap-2">
-                              <input type="checkbox" className="form-check-input" checked={checked} disabled={savingFlag===c.id_candidato || !!c.eliminado}
-                                onChange={()=>toggleEtapa(c, col.key as AnyColKey)} />
-                              <span>Completado</span>
-                            </label>
-                          )}
-                          {isEtapa && checked && meta?.at && (
-                            <div className="form-text small">
-                              Marcado el {formatDate(meta.at)} por {meta.by?.nombre || ''} {meta.by?.email ? `(${meta.by.email})` : ''}
-                            </div>
-                          )}
-                        </div>
-                      </td>
+                      <React.Fragment key={String(col.key)}>
+                        <td className={tdClass} title={col.key==='proceso' ? rawProceso : undefined} style={stickyStyle}>
+                          <div className="d-flex flex-column gap-1">
+                            <Cell v={display} />
+                            {isEtapa && (
+                              <label className="small d-flex align-items-center gap-2">
+                                <input type="checkbox" className="form-check-input" checked={checked} disabled={savingFlag===c.id_candidato || !!c.eliminado}
+                                  onChange={()=>toggleEtapa(c, col.key as AnyColKey)} />
+                                <span>Completado</span>
+                              </label>
+                            )}
+                            {isEtapa && checked && meta?.at && (
+                              <div className="form-text small">
+                                Marcado el {formatDate(meta.at)} por {meta.by?.nombre || ''} {meta.by?.email ? `(${meta.by.email})` : ''}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        {!readOnly && col.key === ('email_agente' as unknown as keyof Candidato) && (
+                          <td style={{whiteSpace:'nowrap'}}>
+                            <button
+                              className="btn btn-sm btn-primary me-1"
+                              onClick={() => handleEdit(c.id_candidato)}
+                              disabled={deleting === c.id_candidato}
+                            >Editar</button>
+                            <button
+                              className="btn btn-sm btn-outline-secondary me-1"
+                              onClick={() => exportCandidatoPDF(c)}
+                            >PDF</button>
+                            {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => setPendingDelete(c)}
+                              disabled={deleting === c.id_candidato}
+                            >{deleting === c.id_candidato ? '...' : 'Eliminar'}</button>
+                          </td>
+                        )}
+                      </React.Fragment>
                     )
                   })}
-          {!readOnly && (
-                    <td style={{whiteSpace:'nowrap'}}>
-                      <button
-                        className="btn btn-sm btn-primary me-1"
-                        onClick={() => handleEdit(c.id_candidato)}
-                        disabled={deleting === c.id_candidato}
-                      >Editar</button>
-                      <button
-                        className="btn btn-sm btn-outline-secondary me-1"
-                        onClick={() => exportCandidatoPDF(c)}
-                      >PDF</button>
-            {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => setPendingDelete(c)}
-                        disabled={deleting === c.id_candidato}
-                      >{deleting === c.id_candidato ? '...' : 'Eliminar'}</button>
-                    </td>
-                  )}
                 </tr>
               ))}
             </tbody>
