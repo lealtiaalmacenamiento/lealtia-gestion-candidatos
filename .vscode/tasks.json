@@ -10,6 +10,23 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "pre-push checks",
+			"type": "shell",
+			"command": "pwsh",
+			"args": [
+				"-NoLogo",
+				"-NoProfile",
+				"-Command",
+				"npm run -s typecheck; if ($LASTEXITCODE -ne 0) { exit 1 }; npm run -s lint; if ($LASTEXITCODE -ne 0) { exit 1 }; git add -A; git commit -m \"feat(gestion): super client search; remove meta editing; pólizas search UX\\n- Add superuser client search input and results table\\n- Remove 'Editar meta' UI and modal entirely\\n- Rename 'Guardar meta' to 'Guardar conexión y objetivo'\\n- Remove 'Buscar' button in pólizas; keep Enter search\\n- Wire polizas q filter across fetches\"; if ($LASTEXITCODE -ne 0) { exit 0 }"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc",
+				"$eslint - stylish"
+			],
+			"group": "build"
 		}
 	]
 }
