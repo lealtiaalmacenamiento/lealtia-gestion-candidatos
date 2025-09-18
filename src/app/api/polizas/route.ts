@@ -56,7 +56,7 @@ export async function GET(req: Request) {
   .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot)')
         .order('fecha_alta_sistema', { ascending: false })
         .limit(100)
-      if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
+  if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,producto_parametros.nombre_comercial.ilike.%${q}%`)
       if (clienteId) sel = sel.eq('cliente_id', clienteId)
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
@@ -120,7 +120,7 @@ export async function GET(req: Request) {
     .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
-  if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
+  if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,producto_parametros.nombre_comercial.ilike.%${q}%`)
   if (clienteId) sel = sel.eq('cliente_id', clienteId)
   // Aplicar filtro por asesor_id obligatorio en no-super
   type MaybeAuth = { id_auth?: string | null }

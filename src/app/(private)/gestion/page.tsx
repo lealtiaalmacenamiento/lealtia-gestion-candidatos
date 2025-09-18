@@ -187,8 +187,8 @@ export default function GestionPage() {
           const all: Poliza[] = Array.isArray(jp2.items) ? (jp2.items as Poliza[]) : []
           items = all.filter((p: Poliza) => {
             const num = (p?.numero_poliza || '').toString().toLowerCase()
-            const est = (p?.estatus || '').toString().toLowerCase()
-            return num.includes(q) || est.includes(q)
+            const prod = (p?.producto_nombre || '').toString().toLowerCase()
+            return num.includes(q) || prod.includes(q)
           })
         } catch {}
       }
@@ -220,8 +220,8 @@ export default function GestionPage() {
             const ql = q.toLowerCase()
             items = all.filter((p: Poliza) => {
               const num = (p?.numero_poliza || '').toString().toLowerCase()
-              const est = (p?.estatus || '').toString().toLowerCase()
-              return num.includes(ql) || est.includes(ql)
+              const prod = (p?.producto_nombre || '').toString().toLowerCase()
+              return num.includes(ql) || prod.includes(ql)
             })
           } catch {}
         }
@@ -825,7 +825,7 @@ export default function GestionPage() {
             <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
               <div className="d-flex flex-column" style={{minWidth: 220}}>
                 <label className="form-label small mb-1">Buscar pólizas</label>
-                <input className="form-control form-control-sm" placeholder="No. póliza o estatus" value={qPolizas} onChange={e=>setQPolizas(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter' && selectedCliente) { void openPolizas(selectedCliente) } }} />
+                <input className="form-control form-control-sm" placeholder="No. póliza o producto" value={qPolizas} onChange={e=>setQPolizas(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter' && selectedCliente) { void openPolizas(selectedCliente) } }} />
               </div>
               <button className="btn btn-sm btn-success" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
             </div>
