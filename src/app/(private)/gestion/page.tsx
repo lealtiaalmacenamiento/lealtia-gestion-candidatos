@@ -175,7 +175,24 @@ export default function GestionPage() {
       if (qPolizas.trim()) url.searchParams.set('q', qPolizas.trim())
       const rp = await fetch(url.toString(), { cache: 'no-store' })
       const jp = await rp.json().catch(()=>({}))
-      setPolizas(jp.items || [])
+      let items = jp.items || []
+      const q = qPolizas.trim().toLowerCase()
+      // Fallback: si el servidor devolvió vacío con q, intentar traer sin q y filtrar en cliente
+      if (q && (!Array.isArray(items) || items.length === 0)) {
+        try {
+          const url2 = new URL('/api/polizas', window.location.origin)
+          url2.searchParams.set('cliente_id', c.id)
+          const rp2 = await fetch(url2.toString(), { cache: 'no-store' })
+          const jp2 = await rp2.json().catch(()=>({}))
+          const all: Poliza[] = Array.isArray(jp2.items) ? (jp2.items as Poliza[]) : []
+          items = all.filter((p: Poliza) => {
+            const num = (p?.numero_poliza || '').toString().toLowerCase()
+            const est = (p?.estatus || '').toString().toLowerCase()
+            return num.includes(q) || est.includes(q)
+          })
+        } catch {}
+      }
+      setPolizas(items)
     } finally { setLoading(false) }
   }, [qPolizas])
 
@@ -191,7 +208,24 @@ export default function GestionPage() {
         if (q) url.searchParams.set('q', q)
         const rp = await fetch(url.toString(), { cache: 'no-store' })
         const jp = await rp.json().catch(()=>({}))
-        setPolizas(jp.items || [])
+        let items = jp.items || []
+        // Fallback client-side si vacío con q
+        if (q && (!Array.isArray(items) || items.length === 0)) {
+          try {
+            const url2 = new URL('/api/polizas', window.location.origin)
+            url2.searchParams.set('cliente_id', selectedCliente.id)
+            const rp2 = await fetch(url2.toString(), { cache: 'no-store' })
+            const jp2 = await rp2.json().catch(()=>({}))
+            const all: Poliza[] = Array.isArray(jp2.items) ? (jp2.items as Poliza[]) : []
+            const ql = q.toLowerCase()
+            items = all.filter((p: Poliza) => {
+              const num = (p?.numero_poliza || '').toString().toLowerCase()
+              const est = (p?.estatus || '').toString().toLowerCase()
+              return num.includes(ql) || est.includes(ql)
+            })
+          } catch {}
+        }
+        setPolizas(items)
       } finally { setLoading(false) }
     }, 400)
     return () => clearTimeout(t)
