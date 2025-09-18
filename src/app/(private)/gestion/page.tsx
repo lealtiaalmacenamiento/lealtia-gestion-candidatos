@@ -140,6 +140,16 @@ export default function GestionPage() {
     } finally { setSearchingSuper(false) }
   }, [qClientesSuper, isSuper])
 
+  // Auto-buscar clientes (super) con debounce al escribir
+  useEffect(() => {
+    if (!isSuper) return
+    const q = qClientesSuper.trim()
+    // Limpia resultados si vacío
+    if (!q) { setClientesSuper([]); return }
+    const t = setTimeout(() => { void searchClientesSuper() }, 400)
+    return () => clearTimeout(t)
+  }, [qClientesSuper, isSuper, searchClientesSuper])
+
   // Sincronizar texto de prima SOLAMENTE cuando se cambia de póliza (por id),
   // no en cada tecleo del usuario (cuando solo cambia prima_input).
   const prevEditPolizaId = useRef<string|undefined>(undefined)
@@ -168,6 +178,24 @@ export default function GestionPage() {
       setPolizas(jp.items || [])
     } finally { setLoading(false) }
   }, [qPolizas])
+
+  // Auto-buscar pólizas con debounce cuando hay cliente seleccionado y vista 'polizas'
+  useEffect(() => {
+    if (view !== 'polizas' || !selectedCliente) return
+    const q = qPolizas.trim()
+    const t = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const url = new URL('/api/polizas', window.location.origin)
+        url.searchParams.set('cliente_id', selectedCliente.id)
+        if (q) url.searchParams.set('q', q)
+        const rp = await fetch(url.toString(), { cache: 'no-store' })
+        const jp = await rp.json().catch(()=>({}))
+        setPolizas(jp.items || [])
+      } finally { setLoading(false) }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [qPolizas, view, selectedCliente])
 
   // Vista unificada: se elimina redirección a /asesor para que agentes usen esta página directamente
 
