@@ -562,7 +562,7 @@ export async function exportProspectosPDF(
   cy += cardH + GAP
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
   const blocksSorted = [...plan.bloques].filter(b=> b.activity !== 'CITAS').sort((a,b)=> a.day===b.day? a.hour.localeCompare(b.hour): a.day-b.day)
-    if(blocksSorted.length){
+  if(blocksSorted.length){
       const headPlan = ['Día','Hora','Actividad','Detalle']
       const bodyPlan = blocksSorted.map(b=> [
         DAY_NAMES[b.day]||String(b.day),
@@ -587,13 +587,16 @@ export async function exportProspectosPDF(
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
       y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
       y = y2
+    } else {
+      // Si no hay tabla de bloques, avanzar y debajo de las tarjetas
+      y = Math.max(y, cy)
     }
   }
   // Sección: Actividad semanal (solo reporte individual)
   if(!agrupado && opts?.activityWeekly && Array.isArray(opts.activityWeekly.counts) && opts.activityWeekly.counts.length){
     // Dimensiones del bloque
-    const chartH = 40
-    const xLabelSpace = 8 // espacio para etiquetas del eje X bajo la gráfica
+  const chartH = 38
+  const xLabelSpace = 10 // espacio para etiquetas del eje X bajo la gráfica
     // Tarjetas de breakdown: 10 ítems, 4 por fila -> 3 filas
     const totalItems = 10
     const perRow = 4
@@ -620,14 +623,14 @@ export async function exportProspectosPDF(
     const rightPad = 6
     const plotX = baseX + leftPad
     const plotW = width - (leftPad + rightPad)
-  const plotTop = y
+  const plotTop = y + 2 // pequeño padding superior del área de gráfica
   const plotBottom = y + chartH
     // Y axis (simple ticks at 0, max)
     doc.setDrawColor(200)
     doc.line(plotX, plotTop, plotX, plotBottom)
     doc.line(plotX, plotBottom, plotX + plotW, plotBottom)
     doc.setFontSize(7)
-    doc.text('0', plotX - 3, plotBottom + 3, { align: 'right' })
+  doc.text('0', plotX - 3, plotBottom + 4, { align: 'right' })
     doc.text(String(maxV), plotX - 3, plotTop + 2, { align: 'right' })
     // Polyline
     const n = values.length
@@ -651,10 +654,12 @@ export async function exportProspectosPDF(
     for (let i = 0; i < n; i++){
       const x = plotX + step * i
       const label = labels[i] || String(i+1)
-      doc.text(label, x, plotBottom + 6, { align: 'center' })
+  doc.text(label, x, plotBottom + 7, { align: 'center' })
     }
-    // Tarjetas de desglose
-    y = plotBottom + 10
+  // Separador sutil bajo la línea base antes de las tarjetas
+  doc.setDrawColor(230); doc.line(14, plotBottom + xLabelSpace - 2, 196, plotBottom + xLabelSpace - 2)
+  // Tarjetas de desglose
+  y = plotBottom + xLabelSpace
     if (opts.activityWeekly.breakdown){
       const b = opts.activityWeekly.breakdown
       const items: Array<[string, number]> = [
@@ -662,7 +667,7 @@ export async function exportProspectosPDF(
         ['Prospectos', b.prospectos], ['Planificación', b.planificacion], ['Clientes', b.clientes],
         ['Pólizas', b.polizas], ['Usuarios', b.usuarios], ['Parámetros', b.parametros], ['Reportes', b.reportes]
       ]
-      const cardW = 41, cardH = 10
+  const cardW = 40, cardH = 10
       let cx = 14, cy = y
       doc.setFontSize(7)
       for (let i = 0; i < items.length; i++){
