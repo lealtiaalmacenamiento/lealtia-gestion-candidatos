@@ -279,7 +279,9 @@ export async function exportProspectosPDF(
   y = baseY + GAP + 2
       // Añadir progreso contra metas debajo del chart
       // Progreso Prospectos
-      const progY = y
+  const progY = y
+  // Separador horizontal entre gráfica y barra de progreso (no agrupado)
+  doc.setDrawColor(230); doc.line(14, progY - 2, 196, progY - 2)
       const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
         const pctVal = meta? Math.min(1, val/meta): 0
         const barWTotal = 80; const barH = 6
@@ -439,8 +441,10 @@ export async function exportProspectosPDF(
   // Category label under bars area
   doc.text(label, x+barW/2, barsTop + 32, {align:'center'})
       })
-      // Progresos bajo chart
+  // Progresos bajo chart
   const progressTop = chartTop + chartHeight
+  // Separador horizontal entre gráfica y progreso
+  doc.setDrawColor(230); doc.line(14, progressTop - 2, 196, progressTop - 2)
       const drawProgress = (label:string, val:number, meta:number, lineY:number)=>{
         const pctVal = meta? Math.min(1,val/meta):0
         const totalW=80, h=6
@@ -463,9 +467,11 @@ export async function exportProspectosPDF(
       let cardY = chartTop
       const cardW = 80, cardH = 12
       doc.setFontSize(8)
-      cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
+  cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
+  // Separador vertical sutil entre la gráfica (izquierda) y las tarjetas (derecha)
+  const vX = cardX - 6; doc.setDrawColor(230); doc.line(vX, chartTop, vX, Math.max(chartBlockBottom, cardY))
   // Añadir más espacio antes del siguiente bloque para que 'Métricas avanzadas' no quede pegado
-      y = Math.max(chartBlockBottom, cardY) + GAP + 12
+  y = Math.max(chartBlockBottom, cardY) + GAP + 12
     }
   // Métricas por agente agrupado
       if(opts?.perAgentExtended){
