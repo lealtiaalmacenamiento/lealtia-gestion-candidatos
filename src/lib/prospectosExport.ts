@@ -67,6 +67,8 @@ export async function exportProspectosPDF(
   perAgentDeltas?: Record<number,{ totalDelta:number }>
   planningSummaries?: Record<number,{ prospeccion:number; smnyl:number; total:number }>
   singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
+  // Weekly activity (UI + domain) for line chart in single-agent reports
+  activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number } }
   }
 ){
   if(!prospectos.length) return
@@ -585,6 +587,80 @@ export async function exportProspectosPDF(
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
       y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
       y = y2
+    }
+  }
+  // Sección: Actividad semanal (solo reporte individual)
+  if(!agrupado && opts?.activityWeekly && Array.isArray(opts.activityWeekly.counts) && opts.activityWeekly.counts.length){
+    // Ensure space for title + chart + legend
+    const chartH = 40
+    const legendH = 12
+    y = ensure(y, 8 + chartH + legendH + GAP)
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana',14,y); doc.setFont('helvetica','normal'); y += 4
+    const labels = opts.activityWeekly.labels || []
+    const values = opts.activityWeekly.counts
+    const maxV = Math.max(1, ...values)
+    const baseX = 14
+    const width = 182
+    const leftPad = 12
+    const rightPad = 6
+    const plotX = baseX + leftPad
+    const plotW = width - (leftPad + rightPad)
+    const plotTop = y
+    const plotBottom = y + chartH
+    // Y axis (simple ticks at 0, max)
+    doc.setDrawColor(200)
+    doc.line(plotX, plotTop, plotX, plotBottom)
+    doc.line(plotX, plotBottom, plotX + plotW, plotBottom)
+    doc.setFontSize(7)
+    doc.text('0', plotX - 3, plotBottom + 3, { align: 'right' })
+    doc.text(String(maxV), plotX - 3, plotTop + 2, { align: 'right' })
+    // Polyline
+    const n = values.length
+    const step = n > 1 ? plotW / (n - 1) : plotW
+    // Path color
+    doc.setDrawColor(7,46,64)
+    let prevX = plotX, prevY = plotBottom - (values[0] / maxV) * chartH
+    for (let i = 1; i < n; i++){
+      const x = plotX + step * i
+      const yVal = plotBottom - (values[i] / maxV) * chartH
+      doc.line(prevX, prevY, x, yVal)
+      prevX = x; prevY = yVal
+    }
+    // Draw points
+    for (let i = 0; i < n; i++){
+      const x = plotX + step * i
+      const yVal = plotBottom - (values[i] / maxV) * chartH
+      doc.circle(x, yVal, 0.8, 'F')
+    }
+    // X labels
+    for (let i = 0; i < n; i++){
+      const x = plotX + step * i
+      const label = labels[i] || String(i+1)
+      doc.text(label, x, plotBottom + 6, { align: 'center' })
+    }
+    // Legend: small cards summarizing breakdown
+    y = plotBottom + 10
+    if (opts.activityWeekly.breakdown){
+      const b = opts.activityWeekly.breakdown
+      const items: Array<[string, number]> = [
+        ['Vistas', b.views], ['Clicks', b.clicks], ['Formularios', b.forms],
+        ['Prospectos', b.prospectos], ['Planificación', b.planificacion], ['Clientes', b.clientes],
+        ['Pólizas', b.polizas], ['Usuarios', b.usuarios], ['Parámetros', b.parametros], ['Reportes', b.reportes]
+      ]
+      const cardW = 41, cardH = 10
+      let cx = 14, cy = y
+      doc.setFontSize(7)
+      for (let i = 0; i < items.length; i++){
+        const [label, val] = items[i]
+        doc.setDrawColor(220); doc.setFillColor(248,250,252)
+        doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD')
+        doc.setFont('helvetica','bold'); doc.text(label, cx + 3, cy + 4)
+        doc.setFont('helvetica','normal'); doc.text(String(val), cx + 3, cy + 9)
+        if ((i+1) % 4 === 0){ cx = 14; cy += cardH + 4 } else { cx += cardW + 6 }
+      }
+      y = cy + cardH + GAP
+    } else {
+      y += GAP
     }
   }
   // Footer with pagination

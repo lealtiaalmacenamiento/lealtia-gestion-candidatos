@@ -27,6 +27,15 @@
 				"$eslint - stylish"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Typecheck project",
+			"type": "shell",
+			"command": "npm run typecheck",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }
