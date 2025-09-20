@@ -602,8 +602,12 @@ export async function exportProspectosPDF(
     const rowGap = 4
     const cardsHeight = rows * cardH + (rows - 1) * rowGap
     // Asegurar espacio total: título (8) + gráfico + etiquetas X + margen entre gráfica y tarjetas (10) + tarjetas + GAP
-    const required = 8 + chartH + xLabelSpace + 10 + cardsHeight + GAP
-    y = ensure(y, required)
+  const required = 8 + chartH + xLabelSpace + 10 + cardsHeight + GAP
+  // Forzar salto de página si el espacio libre es menor a 70mm para mantener la sección cohesionada
+  const limit = PAGE_H - BOTTOM_MARGIN
+  const free = limit - y
+  if (free < 70) { doc.addPage(); const hdr = drawHeader(); y = hdr.contentStartY }
+  y = ensure(y, required)
     // Separador sutil con el bloque previo
     doc.setDrawColor(230); doc.line(14, y, 196, y); y += 4
     doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana',14,y); doc.setFont('helvetica','normal'); y += 4
