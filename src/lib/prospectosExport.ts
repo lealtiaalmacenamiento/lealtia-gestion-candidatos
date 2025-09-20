@@ -225,8 +225,8 @@ export async function exportProspectosPDF(
   if(opts?.chartEstados){
     // Simple bar chart for estados con leyenda
     // Ensure space for legend + chart + progress bar block
-    const legendH = 8
-    const requiredChart = (42 + legendH) /* chartHeight + legend */ + 12 /* progress */ + 8 /* spacing */
+    const legendH = 10
+    const requiredChart = (46 + legendH) /* chartHeight + legend */ + 14 /* progress */ + 12 /* spacing */
     y = ensure(y, requiredChart)
     const chartY = y + 4
       const dataEntries: Array<[string, number, string]> = [
@@ -235,14 +235,16 @@ export async function exportProspectosPDF(
         ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
         ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
       ]
-      const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
+    const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       const baseX = 14
       const barW = 16
       const gap = 6
-      const baseY = chartY + 40 + legendH
+    const legendGap = 6
+    const barsTop = chartY + legendH + legendGap
+    const baseY = barsTop + 30
       // Legend (horizontal)
       doc.setFontSize(7)
-  let lx = baseX; const ly = chartY + 5
+  let lx = baseX; const ly = chartY + 6
       const itemW = 36
   dataEntries.forEach(([key, , color]) => {
         const hex = color.startsWith('#')? color.substring(1): color
@@ -261,7 +263,7 @@ export async function exportProspectosPDF(
         const [key,val,color] = d
         const h = (val/maxV)*30
         const x = baseX + i*(barW+gap)
-        const yBar = baseY - h
+    const yBar = baseY - h
         // color fill
   // color in hex -> convert to rgb
   const hex = color.startsWith('#')? color.substring(1): color
@@ -270,11 +272,11 @@ export async function exportProspectosPDF(
   const b = parseInt(hex.substring(4,6),16)
   doc.setFillColor(r,g,b)
         doc.rect(x, yBar, barW, h, 'F')
-        doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
+        doc.text(String(val), x+barW/2, yBar-3, {align:'center'})
         const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-        doc.text(label, x+barW/2, baseY+4, {align:'center'})
+        doc.text(label, x+barW/2, barsTop + 32, {align:'center'})
       })
-  y = baseY + GAP
+  y = baseY + GAP + 2
       // Añadir progreso contra metas debajo del chart
       // Progreso Prospectos
       const progY = y
@@ -288,7 +290,7 @@ export async function exportProspectosPDF(
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   // Más espacio tras barra de progreso para separar del siguiente bloque
-      y += 12
+      y += 14
     }
     // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
     if(opts?.extendedMetrics){
