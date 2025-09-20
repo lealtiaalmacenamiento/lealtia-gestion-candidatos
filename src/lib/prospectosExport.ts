@@ -390,14 +390,14 @@ export async function exportProspectosPDF(
     // Global charts if requested (agrupado scenario)
     if(opts?.chartEstados){
       // Ensure space for chart + progress bar + cards block on grouped report
-      const legendH = 8
-      const requiredChartAgg = (42 + legendH) /* chart + legend */ + 12 /* progress */ + 12 /* spacing */ + 4
+    const legendH = 10
+    const requiredChartAgg = (46 + legendH) /* chart + legend */ + 14 /* progress */ + 16 /* spacing */ + 4
       y = ensure(y, requiredChartAgg)
       const chartTop = y
       const baseX = 14
   const barW = 16
   const barGap = 6
-      const chartHeight = 42 + legendH // altura destino (30 barras + labels + margen + leyenda)
+    const chartHeight = 46 + legendH // altura destino (30 barras + labels + margen + leyenda)
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, ESTADO_COLORS.pendiente],
         ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
@@ -407,7 +407,7 @@ export async function exportProspectosPDF(
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       // Legend (horizontal)
       doc.setFontSize(7)
-  let lx = baseX; const ly = chartTop + 5
+  let lx = baseX; const ly = chartTop + 6
       const itemW = 36
   dataEntries.forEach(([key, , color]) => {
         const hex = color.replace('#','')
@@ -422,19 +422,23 @@ export async function exportProspectosPDF(
       doc.setFontSize(8)
       dataEntries.forEach((d,i)=>{
         const [key,val,color] = d
-        const h = (val/maxV)*30
-        const x = baseX + i*(barW+barGap)
-        const yBar = chartTop + legendH + 30 - h
+  const h = (val/maxV)*30
+  const x = baseX + i*(barW+barGap)
+  const legendGap = 6
+  const barsTop = chartTop + legendH + legendGap
+  const yBar = barsTop + 30 - h
         const hex = color.replace('#','')
         const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
         doc.setFillColor(r,g,b)
-        doc.rect(x,yBar,barW,h,'F')
-        doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
+  doc.rect(x,yBar,barW,h,'F')
+  // Value label above bar with a bit more padding
+  doc.text(String(val), x+barW/2, yBar-3, {align:'center'})
         const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-        doc.text(label, x+barW/2, chartTop + legendH + 32, {align:'center'})
+  // Category label under bars area
+  doc.text(label, x+barW/2, barsTop + 32, {align:'center'})
       })
       // Progresos bajo chart
-      const progressTop = chartTop + chartHeight
+  const progressTop = chartTop + chartHeight
       const drawProgress = (label:string, val:number, meta:number, lineY:number)=>{
         const pctVal = meta? Math.min(1,val/meta):0
         const totalW=80, h=6
@@ -444,7 +448,7 @@ export async function exportProspectosPDF(
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+totalW/2, lineY+h-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
-  const chartBlockBottom = progressTop + 12
+  const chartBlockBottom = progressTop + 14
   // Cards a la derecha
       const cards: Array<[string,string]> = [
         ['Total', String(resumen.total)],
