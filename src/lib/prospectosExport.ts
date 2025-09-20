@@ -660,7 +660,7 @@ export async function exportProspectosPDF(
   doc.setDrawColor(230); doc.line(14, plotBottom + xLabelSpace - 2, 196, plotBottom + xLabelSpace - 2)
   // Tarjetas de desglose
   y = plotBottom + xLabelSpace
-    if (opts.activityWeekly.breakdown){
+  if (opts.activityWeekly.breakdown){
       const b = opts.activityWeekly.breakdown
       const items: Array<[string, number]> = [
         ['Vistas', b.views], ['Clicks', b.clicks], ['Formularios', b.forms],
@@ -679,7 +679,7 @@ export async function exportProspectosPDF(
         if ((i+1) % 4 === 0){ cx = 14; cy += cardH + 4 } else { cx += cardW + 6 }
       }
       y = cy + cardH + GAP
-      // Tabla compacta por día con categorías principales (si hay datos)
+  // Tabla compacta por día con categorías principales (si hay datos)
       if (Array.isArray(opts.activityWeekly.dailyBreakdown) && opts.activityWeekly.dailyBreakdown.length === values.length){
         const head = ['Día','Vistas','Clicks','Forms','Prospectos','Planif.','Clientes','Pólizas','Usuarios']
         const rows = values.map((_, i) => {
@@ -700,6 +700,59 @@ export async function exportProspectosPDF(
         })
         const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
         y = (withAuto.lastAutoTable?.finalY || y) + GAP
+      }
+      // Bloque adicional: resumen de acciones específicas y tabla diaria detallada (si la API las provee via details/detailsDaily en fetch y se inyectan al exporter más adelante)
+      // Notas: Para mantener compatibilidad, este bloque se activa si opts.activityWeekly incluye keys 'details' y 'detailsDaily'
+  type ActionDetails = { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
+  const anyAW = opts.activityWeekly as unknown as { details?: ActionDetails; detailsDaily?: ActionDetails[] }
+      if (anyAW && anyAW.details){
+        // Tarjetas resumen
+        y = ensure(y, 28)
+        doc.setDrawColor(230); doc.line(14, y-2, 196, y-2)
+        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += 4
+        const d = anyAW.details as { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
+        const items: Array<[string, number]> = [
+          ['Altas prospectos', d.prospectos_altas||0],
+          ['Cambios de estado', d.prospectos_cambios_estado||0],
+          ['Notas en prospectos', d.prospectos_notas||0],
+          ['Ediciones planificación', d.planificacion_ediciones||0],
+          ['Altas clientes', d.clientes_altas||0],
+          ['Cambios clientes', d.clientes_modificaciones||0],
+          ['Altas pólizas', d.polizas_altas||0],
+          ['Cambios pólizas', d.polizas_modificaciones||0]
+        ]
+        const cardW2 = 44, cardH2 = 10
+        let cx2 = 14, cy2 = y
+        doc.setFontSize(7)
+        for (let i = 0; i < items.length; i++){
+          const [label, val] = items[i]
+          doc.setDrawColor(220); doc.setFillColor(248,250,252)
+          doc.roundedRect(cx2, cy2, cardW2, cardH2, 2, 2, 'FD')
+          doc.setFont('helvetica','bold'); doc.text(label, cx2 + 3, cy2 + 4)
+          doc.setFont('helvetica','normal'); doc.text(String(val), cx2 + 3, cy2 + 9)
+          if ((i+1) % 4 === 0){ cx2 = 14; cy2 += cardH2 + 4 } else { cx2 += cardW2 + 6 }
+        }
+        y = cy2 + cardH2 + GAP
+      }
+  if (anyAW && Array.isArray(anyAW.detailsDaily) && anyAW.detailsDaily.length === values.length){
+        const head = ['Día','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas client.','Modif. client.','Altas pól.','Modif. pól.']
+        const rows = values.map((_, i) => {
+          const d = anyAW.detailsDaily![i] as ActionDetails
+          return [labels[i] || String(i+1), String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
+        })
+        y = ensure(y, 24)
+        // @ts-expect-error autotable
+        doc.autoTable({
+          startY: y,
+          head: [head],
+          body: rows,
+          styles: { fontSize: 6, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 7 }, theme: 'grid',
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          columnStyles: { 0: { halign: 'left' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
+        const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
+        y = (withAuto2.lastAutoTable?.finalY || y) + GAP
       }
     } else {
       y += GAP
