@@ -520,7 +520,7 @@ export async function exportProspectosPDF(
         ]
   // 4 tarjetas en una fila: ajustar ancho para no exceder 210mm (14 + 4*W + 3*gap <= 210)
   // 4 tarjetas por fila: 4*42 + 3*6 = 186 -> bajamos a 41: 4*41 + 18 = 182
-        const cardW=41, cardH=12; let cx=14; let cy=y
+  const cardW=40, cardH=12; let cx=14; let cy=y
         y = ensure(y, cardH + GAP)
         doc.setFontSize(8)
         cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
@@ -552,7 +552,7 @@ export async function exportProspectosPDF(
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
   const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
   // 4 tarjetas por fila: usar 41mm para caber en 182mm con 3 gaps de 6mm
-    const cardW=41, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
+  const cardW=40, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
     // Ensure cards fit on current page; if not, move and recompute y2
     const rows2 = Math.max(1, Math.ceil(cardsPlan.length/4))
     const requiredCards2 = rows2*cardH + (rows2-1)*4 + GAP
@@ -591,10 +591,21 @@ export async function exportProspectosPDF(
   }
   // Sección: Actividad semanal (solo reporte individual)
   if(!agrupado && opts?.activityWeekly && Array.isArray(opts.activityWeekly.counts) && opts.activityWeekly.counts.length){
-    // Ensure space for title + chart + legend
+    // Dimensiones del bloque
     const chartH = 40
-    const legendH = 12
-    y = ensure(y, 8 + chartH + legendH + GAP)
+    const xLabelSpace = 8 // espacio para etiquetas del eje X bajo la gráfica
+    // Tarjetas de breakdown: 10 ítems, 4 por fila -> 3 filas
+    const totalItems = 10
+    const perRow = 4
+    const rows = Math.ceil(totalItems / perRow)
+    const cardH = 10
+    const rowGap = 4
+    const cardsHeight = rows * cardH + (rows - 1) * rowGap
+    // Asegurar espacio total: título (8) + gráfico + etiquetas X + margen entre gráfica y tarjetas (10) + tarjetas + GAP
+    const required = 8 + chartH + xLabelSpace + 10 + cardsHeight + GAP
+    y = ensure(y, required)
+    // Separador sutil con el bloque previo
+    doc.setDrawColor(230); doc.line(14, y, 196, y); y += 4
     doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana',14,y); doc.setFont('helvetica','normal'); y += 4
     const labels = opts.activityWeekly.labels || []
     const values = opts.activityWeekly.counts
@@ -605,8 +616,8 @@ export async function exportProspectosPDF(
     const rightPad = 6
     const plotX = baseX + leftPad
     const plotW = width - (leftPad + rightPad)
-    const plotTop = y
-    const plotBottom = y + chartH
+  const plotTop = y
+  const plotBottom = y + chartH
     // Y axis (simple ticks at 0, max)
     doc.setDrawColor(200)
     doc.line(plotX, plotTop, plotX, plotBottom)
@@ -638,7 +649,7 @@ export async function exportProspectosPDF(
       const label = labels[i] || String(i+1)
       doc.text(label, x, plotBottom + 6, { align: 'center' })
     }
-    // Legend: small cards summarizing breakdown
+    // Tarjetas de desglose
     y = plotBottom + 10
     if (opts.activityWeekly.breakdown){
       const b = opts.activityWeekly.breakdown
