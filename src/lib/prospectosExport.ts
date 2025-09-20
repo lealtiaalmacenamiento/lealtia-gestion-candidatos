@@ -68,7 +68,7 @@ export async function exportProspectosPDF(
   planningSummaries?: Record<number,{ prospeccion:number; smnyl:number; total:number }>
   singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
   // Weekly activity (UI + domain) for line chart in single-agent reports
-  activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number } }
+  activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }, dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> }
   }
 ){
   if(!prospectos.length) return
@@ -679,6 +679,28 @@ export async function exportProspectosPDF(
         if ((i+1) % 4 === 0){ cx = 14; cy += cardH + 4 } else { cx += cardW + 6 }
       }
       y = cy + cardH + GAP
+      // Tabla compacta por día con categorías principales (si hay datos)
+      if (Array.isArray(opts.activityWeekly.dailyBreakdown) && opts.activityWeekly.dailyBreakdown.length === values.length){
+        const head = ['Día','Vistas','Clicks','Forms','Prospectos','Planif.','Clientes','Pólizas','Usuarios']
+        const rows = values.map((_, i) => {
+          const d = opts.activityWeekly!.dailyBreakdown![i]
+          return [labels[i] || String(i+1), String(d.views||0), String(d.clicks||0), String(d.forms||0), String(d.prospectos||0), String(d.planificacion||0), String(d.clientes||0), String(d.polizas||0), String(d.usuarios||0)]
+        })
+        // Reservar altura mínima de tabla compacta
+        y = ensure(y, 24)
+        // @ts-expect-error autotable
+        doc.autoTable({
+          startY: y,
+          head: [head],
+          body: rows,
+          styles: { fontSize: 6, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 7 }, theme: 'grid',
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          columnStyles: { 0: { halign: 'left' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
+        const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
+        y = (withAuto.lastAutoTable?.finalY || y) + GAP
+      }
     } else {
       y += GAP
     }

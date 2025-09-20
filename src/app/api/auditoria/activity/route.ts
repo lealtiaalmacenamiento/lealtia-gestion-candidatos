@@ -57,8 +57,9 @@ export async function GET(req: Request) {
       rows = q2.data as Array<{ fecha: string; usuario: string | null; accion: string | null; tabla_afectada: string | null }> | null
     }
 
-    const counts = new Array(7).fill(0) as number[]
-    const breakdown: ActivityBreakdown = { views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0 }
+  const counts = new Array(7).fill(0) as number[]
+  const breakdown: ActivityBreakdown = { views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0 }
+  const dailyCats: ActivityBreakdown[] = Array.from({ length: 7 }, () => ({ views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0 }))
     const safeRows = rows || []
     for (const r of safeRows) {
       const ts = new Date(r.fecha)
@@ -72,17 +73,23 @@ export async function GET(req: Request) {
         else if (a === 'ui_click') breakdown.clicks += 1
         else if (a === 'ui_form_submit') breakdown.forms += 1
         else breakdown.otros += 1
+        if (dayIndex >= 0 && dayIndex < 7) {
+          if (a === 'ui_page_view') dailyCats[dayIndex].views += 1
+          else if (a === 'ui_click') dailyCats[dayIndex].clicks += 1
+          else if (a === 'ui_form_submit') dailyCats[dayIndex].forms += 1
+          else dailyCats[dayIndex].otros += 1
+        }
         continue
       }
       // Clasificación por módulos/acciones clave
-      if (a.includes('prospecto') || t.includes('prospectos')) breakdown.prospectos += 1
-      else if (a.includes('planificacion') || t.includes('planificaciones')) breakdown.planificacion += 1
-      else if (a.includes('cliente') || t.includes('clientes')) breakdown.clientes += 1
-      else if (a.includes('poliza') || t.includes('polizas')) breakdown.polizas += 1
-      else if (a.includes('usuario') || t.includes('usuarios')) breakdown.usuarios += 1
-      else if (a.includes('parametro') || t.includes('parametros')) breakdown.parametros += 1
-      else if (a.includes('reporte') || t.includes('reportes')) breakdown.reportes += 1
-      else breakdown.otros += 1
+      if (a.includes('prospecto') || t.includes('prospectos')) { breakdown.prospectos += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].prospectos += 1 }
+      else if (a.includes('planificacion') || t.includes('planificaciones')) { breakdown.planificacion += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].planificacion += 1 }
+      else if (a.includes('cliente') || t.includes('clientes')) { breakdown.clientes += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].clientes += 1 }
+      else if (a.includes('poliza') || t.includes('polizas')) { breakdown.polizas += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].polizas += 1 }
+      else if (a.includes('usuario') || t.includes('usuarios')) { breakdown.usuarios += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].usuarios += 1 }
+      else if (a.includes('parametro') || t.includes('parametros')) { breakdown.parametros += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].parametros += 1 }
+      else if (a.includes('reporte') || t.includes('reportes')) { breakdown.reportes += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].reportes += 1 }
+      else { breakdown.otros += 1; if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].otros += 1 }
     }
 
     const labels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
@@ -90,7 +97,8 @@ export async function GET(req: Request) {
       success: true,
       range: { inicio: start.toISOString(), fin: end.toISOString() },
       daily: { labels, counts },
-      breakdown
+      breakdown,
+      dailyBreakdown: dailyCats
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'error'
