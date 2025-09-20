@@ -256,7 +256,7 @@ export default function ParametrosClient(){
       if(mp) reqs.push(fetch('/api/parametros',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ id: mp.id, valor:String(metaProspectos), solicitante })}))
       if(mc) reqs.push(fetch('/api/parametros',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ id: mc.id, valor:String(metaCitas), solicitante })}))
       await Promise.all(reqs)
-      setNotif({msg:'Metas fase 2 actualizadas', type:'success'})
+  setNotif({msg:'Metas actualizadas', type:'success'})
     } catch {
       setNotif({msg:'Error guardando metas', type:'danger'})
     } finally { setSavingFase2(false) }
@@ -271,7 +271,7 @@ export default function ParametrosClient(){
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenProductos(o=>!o)} aria-expanded={openProductos} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
                 <i className={`bi bi-caret-${openProductos? 'down':'right'}-fill`}></i>
-                <span className="fw-bold small text-uppercase">Productos parametrizados (Fase 3)</span>
+                <span className="fw-bold small text-uppercase">Productos parametrizados</span>
               </button>
               {openProductos && (
                 <span className="small text-muted">Variantes y porcentajes por año</span>
@@ -548,7 +548,7 @@ export default function ParametrosClient(){
         <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <button type="button" onClick={()=>setOpenFase2(o=>!o)} aria-expanded={openFase2} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
             <i className={`bi bi-caret-${openFase2? 'down':'right'}-fill`}></i>
-            <span className="fw-bold small text-uppercase">Metas Fase 2</span>
+            <span className="fw-bold small text-uppercase">Metas</span>
           </button>
           {openFase2 && <span className="small text-muted">Prospectos y Citas</span>}
         </div>
