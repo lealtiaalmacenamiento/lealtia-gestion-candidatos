@@ -146,6 +146,7 @@ export async function exportProspectosPDF(
   const { headerHeight, contentStartY } = drawHeader()
   doc.setFontSize(9)
   const GAP = 6
+  const SECTION_GAP = 8
   // Page metrics and helper to avoid drawing content that would be cut at page boundary
   const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight()
   const BOTTOM_MARGIN = 14
@@ -605,15 +606,16 @@ export async function exportProspectosPDF(
     const rowGap = 4
     const cardsHeight = rows * cardH + (rows - 1) * rowGap
     // Asegurar espacio total: título (8) + gráfico + etiquetas X + margen entre gráfica y tarjetas (10) + tarjetas + GAP
-  const required = 8 + chartH + xLabelSpace + 10 + cardsHeight + GAP
+  // Reservar además el GAP superior para el separador y espacio antes del título
+  const required = SECTION_GAP + 8 + chartH + xLabelSpace + 10 + cardsHeight + GAP
   // Forzar salto de página si el espacio libre es menor a 70mm para mantener la sección cohesionada
   const limit = PAGE_H - BOTTOM_MARGIN
   const free = limit - y
   if (free < 70) { doc.addPage(); const hdr = drawHeader(); y = hdr.contentStartY }
   y = ensure(y, required)
-    // Separador sutil con el bloque previo
-    doc.setDrawColor(230); doc.line(14, y, 196, y); y += 4
-    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana',14,y); doc.setFont('helvetica','normal'); y += 4
+  // Separador sutil con el bloque previo, con separación segura
+  doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
     const labels = opts.activityWeekly.labels || []
     const values = opts.activityWeekly.counts
     const maxV = Math.max(1, ...values)
@@ -729,11 +731,11 @@ export async function exportProspectosPDF(
         const cardW2 = Math.floor((availW - gapX2 * (perRow2 - 1)) / perRow2) // ancho dinámico que cabe en 4 columnas
         const rows2 = Math.ceil(items.length / perRow2)
         const cardsHeight2 = rows2 * cardH2 + (rows2 - 1) * 4
-        // Reservar espacio para título + tarjetas + separación
-        y = ensure(y, 4 + cardsHeight2 + GAP)
+  // Reservar espacio para título + tarjetas + separación segura
+  y = ensure(y, GAP + cardsHeight2 + GAP)
         // Título y separador
         doc.setDrawColor(230); doc.line(14, y-2, 196, y-2)
-        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += 4
+  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += GAP
         // Tarjetas
         let cx2 = 14, cy2 = y
         doc.setFontSize(7)
