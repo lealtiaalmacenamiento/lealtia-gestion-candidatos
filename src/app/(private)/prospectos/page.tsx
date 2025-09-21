@@ -252,6 +252,8 @@ export default function ProspectosPage(){
       daily?: { labels?: string[]; counts?: number[] }
       breakdown?: { views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number; usuarios?:number; parametros?:number; reportes?:number; otros?:number }
       details?: { prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number }
+      dailyBreakdown?: Array<{ views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number; usuarios?:number; parametros?:number; reportes?:number; otros?:number }>
+      detailsDaily?: Array<{ prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number }>
     }
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
@@ -302,7 +304,7 @@ export default function ProspectosPage(){
       }
     }
       // Actividad semanal por usuario (solo si semana específica)
-      let perAgentActivity: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number } }> | undefined
+      let perAgentActivity: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }> | undefined
       try {
         if (semana !== 'ALL'){
           const weekNum = semana as number
@@ -325,6 +327,7 @@ export default function ProspectosPage(){
             if(data && data.success && data.daily && Array.isArray(data.daily.counts)){
               const b = data.breakdown || {}
               const d = data.details || undefined
+              const dd = Array.isArray(data.detailsDaily) ? data.detailsDaily : undefined
               const normalizedDetails = d ? {
                 prospectos_altas: Number(d.prospectos_altas||0),
                 prospectos_cambios_estado: Number(d.prospectos_cambios_estado||0),
@@ -352,7 +355,17 @@ export default function ProspectosPage(){
                   reportes: Number(b.reportes||0),
                   otros: Number(b.otros||0)
                 },
-                ...(normalizedDetails ? { details: normalizedDetails } : {})
+                ...(normalizedDetails ? { details: normalizedDetails } : {}),
+                ...(dd ? { detailsDaily: dd.map(d0=>({
+                  prospectos_altas: Number(d0.prospectos_altas||0),
+                  prospectos_cambios_estado: Number(d0.prospectos_cambios_estado||0),
+                  prospectos_notas: Number(d0.prospectos_notas||0),
+                  planificacion_ediciones: Number(d0.planificacion_ediciones||0),
+                  clientes_altas: Number(d0.clientes_altas||0),
+                  clientes_modificaciones: Number(d0.clientes_modificaciones||0),
+                  polizas_altas: Number(d0.polizas_altas||0),
+                  polizas_modificaciones: Number(d0.polizas_modificaciones||0)
+                })) } : {})
               }
             }
           }
