@@ -31,11 +31,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'anio/semana inválidos' }, { status: 400 })
     }
     const MX_TZ = 'America/Mexico_City'
+    const MX_OFFSET = '-06:00' // CDMX sin horario de verano (a partir de 2023)
+    const ymdParts = (d: Date) => {
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: MX_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d)
+      const get = (t: string) => parts.find(p => p.type === t)?.value || '00'
+      const y = Number(get('year')); const m = Number(get('month')); const da = Number(get('day'))
+      return { y, m, da }
+    }
+    const localToUTC = (y: number, m: number, da: number, hh = 0, mm = 0, ss = 0, ms = 0) => {
+      const M = String(m).padStart(2,'0'), D = String(da).padStart(2,'0')
+      const H = String(hh).padStart(2,'0'), Mi = String(mm).padStart(2,'0'), S = String(ss).padStart(2,'0'), Ms = String(ms).padStart(3,'0')
+      return new Date(`${y}-${M}-${D}T${H}:${Mi}:${S}.${Ms}${MX_OFFSET}`)
+    }
     const sem = semanaDesdeNumero(anio, semana)
     // Como Date nativa no permite getTimezoneOffset arbitrario, aproximamos el rango CDMX en UTC ampliando el rango:
     // 06:00-29:59 UTC abarca 00:00-23:59 CDMX con DST típico (-6/-5). Si se requiere ajuste fino, considerar una función con librería TZ.
-    const start = new Date(Date.UTC(sem.inicio.getUTCFullYear(), sem.inicio.getUTCMonth(), sem.inicio.getUTCDate(), 6, 0, 0))
-    const end = new Date(Date.UTC(sem.fin.getUTCFullYear(), sem.fin.getUTCMonth(), sem.fin.getUTCDate(), 29, 59, 59, 999))
+  const sParts = ymdParts(sem.inicio)
+  const eParts = ymdParts(sem.fin)
+  const start = localToUTC(sParts.y, sParts.m, sParts.da, 0, 0, 0, 0)
+  const end = localToUTC(eParts.y, eParts.m, eParts.da, 23, 59, 59, 999)
     // Nota: 06:00-29:59 UTC abarca 00:00-23:59 CDMX considerando el desfase típico (-6/-5). Si fuera necesario, podemos ajustar con offsets dinámicos por DST.
 
     // Intentar tabla camelCase luego snake_case
@@ -87,11 +101,10 @@ export async function GET(req: Request) {
     const safeRows = rows || []
     for (const r of safeRows) {
   const ts = new Date(r.fecha)
-  // Mapear a índice 0..6 relativo a inicio de semana en CDMX: convertimos timestamp a fecha local CDMX (YYYY-MM-DD) y comparamos con el día 1 de la semana en esa misma TZ
-  const fTZ = new Intl.DateTimeFormat('en-CA', { timeZone: MX_TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
-  const tsLocal = fTZ.format(ts) // 'YYYY-MM-DD' en TZ
-  const startLocal = fTZ.format(sem.inicio)
-  const dayIndex = Math.floor((Date.parse(tsLocal) - Date.parse(startLocal)) / 86400000)
+  // Índice 0..6 relativo a inicio (ambos en calendario local CDMX)
+  const tp = ymdParts(ts)
+  const s = sParts
+  const dayIndex = Math.floor((Date.UTC(tp.y, tp.m - 1, tp.da) - Date.UTC(s.y, s.m - 1, s.da)) / 86400000)
       if (dayIndex >= 0 && dayIndex < 7) counts[dayIndex] += 1
       const a = (r.accion || '').toLowerCase()
       const t = (r.tabla_afectada || '').toLowerCase()
@@ -158,7 +171,8 @@ export async function GET(req: Request) {
       if (!histErr && Array.isArray(hist)){
         for (const h of hist as Array<{ created_at: string; usuario_email: string|null; estado_anterior: string|null; estado_nuevo: string|null; nota_agregada: boolean|null }>){
           const ts = new Date(h.created_at)
-          const di = Math.floor((Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate()) - Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())) / 86400000)
+          const tt = ymdParts(ts)
+          const di = Math.floor((Date.UTC(tt.y, tt.m - 1, tt.da) - Date.UTC(sParts.y, sParts.m - 1, sParts.da)) / 86400000)
           const safeDay = di >= 0 && di < 7 ? di : -1
           const esAlta = !h.estado_anterior || h.estado_anterior === ''
           const cambioEstado = !!(h.estado_anterior && h.estado_nuevo && h.estado_anterior !== h.estado_nuevo)
