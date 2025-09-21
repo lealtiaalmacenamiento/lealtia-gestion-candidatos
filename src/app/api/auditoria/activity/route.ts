@@ -112,12 +112,9 @@ export async function GET(req: Request) {
       if (a.includes('prospecto') || t.includes('prospectos')) {
         breakdown.prospectos += 1
         if (dayIndex >= 0 && dayIndex < 7) dailyCats[dayIndex].prospectos += 1
-        // Subclasificar acciones de prospectos si vienen por auditoría
-        if (a.includes('alta_prospecto')) { detailTotals.prospectos_altas += 1; if (dayIndex >= 0 && dayIndex < 7) detailDaily[dayIndex].prospectos_altas += 1 }
-        if (a.includes('cambio_estado') || a.includes('estado_') || a.includes('edicion_prospecto')) {
-          // edicion_prospecto puede ser cambio de estado o notas; se contará mejor desde prospectos_historial abajo
-        }
-        if (a.includes('nota')) { detailTotals.prospectos_notas += 1; if (dayIndex >= 0 && dayIndex < 7) detailDaily[dayIndex].prospectos_notas += 1 }
+        // Nota: Para evitar doble conteo, NO incrementamos aquí altas/notas de prospectos.
+        // Esas métricas se calculan exclusivamente desde prospectos_historial más abajo.
+        // Si aparecen acciones como 'edicion_prospecto' o 'cambio_estado', el detalle se deriva del historial.
       }
       else if (a.includes('planificacion') || t.includes('planificaciones')) {
         breakdown.planificacion += 1
