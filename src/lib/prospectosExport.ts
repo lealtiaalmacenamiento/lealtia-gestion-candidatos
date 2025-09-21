@@ -69,6 +69,8 @@ export async function exportProspectosPDF(
   singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
   // Weekly activity (UI + domain) for line chart in single-agent reports
   activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }, dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> }
+  // Per-agent weekly activity for grouped (general) reports
+  perAgentActivity?: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number } }>
   }
 ){
   if(!prospectos.length) return
@@ -777,6 +779,42 @@ export async function exportProspectosPDF(
     } else {
       y += GAP
     }
+  }
+  // En reporte general (agrupado), mostrar "Actividad de la semana" y "Acciones específicas" por usuario
+  if(agrupado && opts?.perAgentActivity && Object.keys(opts.perAgentActivity).length){
+    // Título de sección general
+    y = ensure(y, 8)
+    doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana (por usuario)',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+    // Tabla compacta por usuario con total de eventos (suma de counts)
+    const head1 = ['Usuario','Total actividad','Views','Clicks','Forms','Prospectos','Planif.','Clientes','Pólizas']
+    const rows1: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
+      const total = Array.isArray(act.counts)? act.counts.reduce((a,b)=>a+b,0) : 0
+      const b: { views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number } = act.breakdown || {}
+      const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
+      return [userLabel, String(total), String(b.views||0), String(b.clicks||0), String(b.forms||0), String(b.prospectos||0), String(b.planificacion||0), String(b.clientes||0), String(b.polizas||0)]
+    })
+    y = ensure(y, 24)
+    // @ts-expect-error autotable
+    doc.autoTable({ startY: y, head: [head1], body: rows1, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+    const withAutoA = doc as unknown as { lastAutoTable?: { finalY?: number } }
+    y = (withAutoA.lastAutoTable?.finalY || y) + GAP
+
+    // Segunda sección: Acciones específicas por usuario (tarjetas resumidas en tabla)
+    y = ensure(y, 8)
+    doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas (por usuario)',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+    const head2 = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
+    const rows2: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
+      const d: { prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number } = act.details || {}
+      const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
+      return [userLabel, String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
+    })
+    y = ensure(y, 24)
+    // @ts-expect-error autotable
+    doc.autoTable({ startY: y, head: [head2], body: rows2, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+    const withAutoB = doc as unknown as { lastAutoTable?: { finalY?: number } }
+    y = (withAutoB.lastAutoTable?.finalY || y) + GAP
   }
   // Footer with pagination
   const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()

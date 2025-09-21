@@ -246,6 +246,13 @@ export default function ProspectosPage(){
       : `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`
   const hoy = new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay()
   if(agrupado){
+    // Tipo para la respuesta de actividad semanal (por usuario)
+    type ActivityResponse = {
+      success?: boolean
+      daily?: { labels?: string[]; counts?: number[] }
+      breakdown?: { views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number; usuarios?:number; parametros?:number; reportes?:number; otros?:number }
+      details?: { prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number }
+    }
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
@@ -294,7 +301,65 @@ export default function ProspectosPage(){
         } catch { /* ignorar errores de delta */ }
       }
     }
-  exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries })
+      // Actividad semanal por usuario (solo si semana específica)
+      let perAgentActivity: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number } }> | undefined
+      try {
+        if (semana !== 'ALL'){
+          const weekNum = semana as number
+          const agentIds = Object.keys(grouped)
+          const responses = await Promise.all(agentIds.map(async id=>{
+            const ag = agentes.find(a=> String(a.id)===String(id))
+            const email = ag?.email
+            if(!email) return { id:Number(id), data:null as ActivityResponse|null }
+            const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(weekNum), usuario: email })
+            try {
+              const r = await fetch('/api/auditoria/activity?' + paramsAct.toString())
+              if(!r.ok) return { id:Number(id), data:null as ActivityResponse|null }
+              const j = await r.json() as ActivityResponse
+              return { id:Number(id), data:j, email }
+            } catch { return { id:Number(id), data:null as ActivityResponse|null } }
+          }))
+          perAgentActivity = {}
+          for(const resp of responses){
+            const { id, data, email } = resp as { id:number; data: ActivityResponse | null; email?:string }
+            if(data && data.success && data.daily && Array.isArray(data.daily.counts)){
+              const b = data.breakdown || {}
+              const d = data.details || undefined
+              const normalizedDetails = d ? {
+                prospectos_altas: Number(d.prospectos_altas||0),
+                prospectos_cambios_estado: Number(d.prospectos_cambios_estado||0),
+                prospectos_notas: Number(d.prospectos_notas||0),
+                planificacion_ediciones: Number(d.planificacion_ediciones||0),
+                clientes_altas: Number(d.clientes_altas||0),
+                clientes_modificaciones: Number(d.clientes_modificaciones||0),
+                polizas_altas: Number(d.polizas_altas||0),
+                polizas_modificaciones: Number(d.polizas_modificaciones||0)
+              } : undefined
+              perAgentActivity[id] = {
+                email,
+                labels: data.daily.labels || [],
+                counts: data.daily.counts || [],
+                breakdown: {
+                  views: Number(b.views||0),
+                  clicks: Number(b.clicks||0),
+                  forms: Number(b.forms||0),
+                  prospectos: Number(b.prospectos||0),
+                  planificacion: Number(b.planificacion||0),
+                  clientes: Number(b.clientes||0),
+                  polizas: Number(b.polizas||0),
+                  usuarios: Number(b.usuarios||0),
+                  parametros: Number(b.parametros||0),
+                  reportes: Number(b.reportes||0),
+                  otros: Number(b.otros||0)
+                },
+                ...(normalizedDetails ? { details: normalizedDetails } : {})
+              }
+            }
+          }
+          if(Object.keys(perAgentActivity).length === 0) perAgentActivity = undefined
+        }
+      } catch { /* ignore activity errors */ }
+      exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity })
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
