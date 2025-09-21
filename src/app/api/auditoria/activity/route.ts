@@ -41,26 +41,32 @@ export async function GET(req: Request) {
   const end = new Date(weekStartUTCms + (7 * 86400000) - 1)
     // Nota: 06:00-29:59 UTC abarca 00:00-23:59 CDMX considerando el desfase típico (-6/-5). Si fuera necesario, podemos ajustar con offsets dinámicos por DST.
 
-    // Intentar tabla camelCase luego snake_case
+    // Leer de ambas tablas (camelCase y snake_case) y combinar resultados para evitar falsos vacíos
     const sel = 'fecha,usuario,accion,tabla_afectada'
-    const q1 = await supabase
-      .from('RegistroAcciones')
-      .select(sel)
-      .gte('fecha', start.toISOString())
-      .lte('fecha', end.toISOString())
-      .ilike('usuario', usuario)
-      .order('fecha', { ascending: true })
-  let rows = q1.data as Array<{ fecha: string; usuario: string | null; accion: string | null; tabla_afectada: string | null }> | null
-    if (q1.error) {
-      const q2 = await supabase
+    const [qCamel, qSnake] = await Promise.all([
+      supabase
+        .from('RegistroAcciones')
+        .select(sel)
+        .gte('fecha', start.toISOString())
+        .lte('fecha', end.toISOString())
+        .ilike('usuario', usuario)
+        .order('fecha', { ascending: true }),
+      supabase
         .from('registro_acciones')
         .select(sel)
         .gte('fecha', start.toISOString())
         .lte('fecha', end.toISOString())
         .ilike('usuario', usuario)
         .order('fecha', { ascending: true })
-      if (q2.error) return NextResponse.json({ error: q2.error.message }, { status: 500 })
-      rows = q2.data as Array<{ fecha: string; usuario: string | null; accion: string | null; tabla_afectada: string | null }> | null
+    ])
+    const rowsCamel = (!qCamel.error && Array.isArray(qCamel.data) ? qCamel.data : []) as Array<{ fecha: string; usuario: string | null; accion: string | null; tabla_afectada: string | null }>
+    const rowsSnake = (!qSnake.error && Array.isArray(qSnake.data) ? qSnake.data : []) as Array<{ fecha: string; usuario: string | null; accion: string | null; tabla_afectada: string | null }>
+    // Deduplicar por (fecha|usuario|accion|tabla_afectada)
+    const seen = new Set<string>()
+    const rows: Array<{ fecha: string; usuario: string | null; accion: string | null; tabla_afectada: string | null }> = []
+    for (const r of [...rowsCamel, ...rowsSnake]) {
+      const key = [r.fecha, r.usuario || '', r.accion || '', r.tabla_afectada || ''].join('|')
+      if (!seen.has(key)) { seen.add(key); rows.push(r) }
     }
 
     const counts = new Array(7).fill(0) as number[]
@@ -87,7 +93,7 @@ export async function GET(req: Request) {
       polizas_altas: 0,
       polizas_modificaciones: 0
     }))
-    const safeRows = rows || []
+  const safeRows = rows
     for (const r of safeRows) {
   const ts = new Date(r.fecha)
   // Índice 0..6 relativo a inicio local CDMX (weekStartUTCms)
