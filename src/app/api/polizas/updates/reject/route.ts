@@ -69,6 +69,6 @@ export async function POST(req: Request) {
     }
   } catch {}
 
-  await logAccion('reject_poliza_update', { tabla_afectada: 'poliza_update_requests', snapshot: { id: body.request_id } })
+  await logAccion('reject_poliza_update', { usuario: auth.user.email || undefined, tabla_afectada: 'poliza_update_requests', snapshot: { id: body.request_id } })
   return NextResponse.json({ ok: true })
 }

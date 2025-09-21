@@ -44,6 +44,6 @@ export async function POST(req: Request) {
     }
   } catch {}
 
-  await logAccion('reject_cliente_update', { tabla_afectada: 'cliente_update_requests', snapshot: { id: body.request_id } })
+  await logAccion('reject_cliente_update', { usuario: auth.user.email || undefined, tabla_afectada: 'cliente_update_requests', snapshot: { id: body.request_id } })
   return NextResponse.json({ ok: true })
 }
