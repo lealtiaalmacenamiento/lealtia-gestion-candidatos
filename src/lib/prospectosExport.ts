@@ -731,11 +731,15 @@ export async function exportProspectosPDF(
         const cardW2 = Math.floor((availW - gapX2 * (perRow2 - 1)) / perRow2) // ancho dinámico que cabe en 4 columnas
         const rows2 = Math.ceil(items.length / perRow2)
         const cardsHeight2 = rows2 * cardH2 + (rows2 - 1) * 4
-  // Reservar espacio para título + tarjetas + separación segura
-  y = ensure(y, GAP + cardsHeight2 + GAP)
-        // Título y separador
-        doc.setDrawColor(230); doc.line(14, y-2, 196, y-2)
-  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += GAP
+        // Reservar espacio para separador + título + tarjetas + separaciones
+        // 1) separador (2) + SECTION_GAP (8) para bajar
+        // 2) título (aprox 6-8mm) -> usamos 8
+        // 3) tarjetas (cardsHeight2)
+        // 4) GAP final
+        y = ensure(y, 2 + SECTION_GAP + 8 + cardsHeight2 + GAP)
+        // Separador y título como en otras secciones
+        doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
         // Tarjetas
         let cx2 = 14, cy2 = y
         doc.setFontSize(7)
@@ -749,12 +753,13 @@ export async function exportProspectosPDF(
         }
         y = cy2 + cardH2 + GAP
       }
-  if (anyAW && Array.isArray(anyAW.detailsDaily) && anyAW.detailsDaily.length === values.length){
+      if (anyAW && Array.isArray(anyAW.detailsDaily) && anyAW.detailsDaily.length === values.length){
         const head = ['Día','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas client.','Modif. client.','Altas pól.','Modif. pól.']
         const rows = values.map((_, i) => {
           const d = anyAW.detailsDaily![i] as ActionDetails
           return [labels[i] || String(i+1), String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
         })
+        // Asegurar altura mínima para que la tabla no se empalme con el título o tarjetas
         y = ensure(y, 24)
         // @ts-expect-error autotable
         doc.autoTable({
