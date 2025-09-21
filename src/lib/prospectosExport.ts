@@ -658,7 +658,7 @@ export async function exportProspectosPDF(
     }
   // Separador sutil bajo la línea base antes de las tarjetas
   doc.setDrawColor(230); doc.line(14, plotBottom + xLabelSpace - 2, 196, plotBottom + xLabelSpace - 2)
-  // Tarjetas de desglose
+  // Tarjetas de desglose (ancho dinámico para respetar márgenes)
   y = plotBottom + xLabelSpace
   if (opts.activityWeekly.breakdown){
       const b = opts.activityWeekly.breakdown
@@ -667,7 +667,11 @@ export async function exportProspectosPDF(
         ['Prospectos', b.prospectos], ['Planificación', b.planificacion], ['Clientes', b.clientes],
         ['Pólizas', b.polizas], ['Usuarios', b.usuarios], ['Parámetros', b.parametros], ['Reportes', b.reportes]
       ]
-  const cardW = 40, cardH = 10
+      const perRow = 4
+      const gapX = 6
+      const cardH = 10
+      const availW = 182
+      const cardW = Math.floor((availW - gapX * (perRow - 1)) / perRow)
       let cx = 14, cy = y
       doc.setFontSize(7)
       for (let i = 0; i < items.length; i++){
@@ -676,7 +680,7 @@ export async function exportProspectosPDF(
         doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD')
         doc.setFont('helvetica','bold'); doc.text(label, cx + 3, cy + 4)
         doc.setFont('helvetica','normal'); doc.text(String(val), cx + 3, cy + 9)
-        if ((i+1) % 4 === 0){ cx = 14; cy += cardH + 4 } else { cx += cardW + 6 }
+        if ((i+1) % perRow === 0){ cx = 14; cy += cardH + 4 } else { cx += cardW + gapX }
       }
       y = cy + cardH + GAP
   // Tabla compacta por día con categorías principales (si hay datos)
