@@ -706,10 +706,7 @@ export async function exportProspectosPDF(
   type ActionDetails = { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
   const anyAW = opts.activityWeekly as unknown as { details?: ActionDetails; detailsDaily?: ActionDetails[] }
       if (anyAW && anyAW.details){
-        // Tarjetas resumen
-        y = ensure(y, 28)
-        doc.setDrawColor(230); doc.line(14, y-2, 196, y-2)
-        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += 4
+        // Tarjetas resumen (asegurar márgenes seguros y no desbordar)
         const d = anyAW.details as { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
         const items: Array<[string, number]> = [
           ['Altas prospectos', d.prospectos_altas||0],
@@ -721,7 +718,19 @@ export async function exportProspectosPDF(
           ['Altas pólizas', d.polizas_altas||0],
           ['Cambios pólizas', d.polizas_modificaciones||0]
         ]
-        const cardW2 = 44, cardH2 = 10
+        const perRow2 = 4
+        const gapX2 = 6
+        const cardH2 = 10
+        const availW = 182 // ancho útil entre márgenes 14..196
+        const cardW2 = Math.floor((availW - gapX2 * (perRow2 - 1)) / perRow2) // ancho dinámico que cabe en 4 columnas
+        const rows2 = Math.ceil(items.length / perRow2)
+        const cardsHeight2 = rows2 * cardH2 + (rows2 - 1) * 4
+        // Reservar espacio para título + tarjetas + separación
+        y = ensure(y, 4 + cardsHeight2 + GAP)
+        // Título y separador
+        doc.setDrawColor(230); doc.line(14, y-2, 196, y-2)
+        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += 4
+        // Tarjetas
         let cx2 = 14, cy2 = y
         doc.setFontSize(7)
         for (let i = 0; i < items.length; i++){
@@ -730,7 +739,7 @@ export async function exportProspectosPDF(
           doc.roundedRect(cx2, cy2, cardW2, cardH2, 2, 2, 'FD')
           doc.setFont('helvetica','bold'); doc.text(label, cx2 + 3, cy2 + 4)
           doc.setFont('helvetica','normal'); doc.text(String(val), cx2 + 3, cy2 + 9)
-          if ((i+1) % 4 === 0){ cx2 = 14; cy2 += cardH2 + 4 } else { cx2 += cardW2 + 6 }
+          if ((i+1) % perRow2 === 0){ cx2 = 14; cy2 += cardH2 + 4 } else { cx2 += cardW2 + gapX2 }
         }
         y = cy2 + cardH2 + GAP
       }
