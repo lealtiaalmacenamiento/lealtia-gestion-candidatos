@@ -30,10 +30,13 @@ export async function GET(req: Request) {
     if (!Number.isFinite(anio) || !Number.isFinite(semana)) {
       return NextResponse.json({ error: 'anio/semana inválidos' }, { status: 400 })
     }
+    const MX_TZ = 'America/Mexico_City'
     const sem = semanaDesdeNumero(anio, semana)
-    // Rango UTC de la semana ISO [inicio 00:00:00, fin 23:59:59]
-    const start = new Date(Date.UTC(sem.inicio.getUTCFullYear(), sem.inicio.getUTCMonth(), sem.inicio.getUTCDate(), 0, 0, 0))
-    const end = new Date(Date.UTC(sem.fin.getUTCFullYear(), sem.fin.getUTCMonth(), sem.fin.getUTCDate(), 23, 59, 59, 999))
+    // Como Date nativa no permite getTimezoneOffset arbitrario, aproximamos el rango CDMX en UTC ampliando el rango:
+    // 06:00-29:59 UTC abarca 00:00-23:59 CDMX con DST típico (-6/-5). Si se requiere ajuste fino, considerar una función con librería TZ.
+    const start = new Date(Date.UTC(sem.inicio.getUTCFullYear(), sem.inicio.getUTCMonth(), sem.inicio.getUTCDate(), 6, 0, 0))
+    const end = new Date(Date.UTC(sem.fin.getUTCFullYear(), sem.fin.getUTCMonth(), sem.fin.getUTCDate(), 29, 59, 59, 999))
+    // Nota: 06:00-29:59 UTC abarca 00:00-23:59 CDMX considerando el desfase típico (-6/-5). Si fuera necesario, podemos ajustar con offsets dinámicos por DST.
 
     // Intentar tabla camelCase luego snake_case
     const sel = 'fecha,usuario,accion,tabla_afectada'
@@ -83,9 +86,12 @@ export async function GET(req: Request) {
     }))
     const safeRows = rows || []
     for (const r of safeRows) {
-      const ts = new Date(r.fecha)
-      // Mapear a índice 0..6 relativo a inicio UTC
-      const dayIndex = Math.floor((Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate()) - Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())) / 86400000)
+  const ts = new Date(r.fecha)
+  // Mapear a índice 0..6 relativo a inicio de semana en CDMX: convertimos timestamp a fecha local CDMX (YYYY-MM-DD) y comparamos con el día 1 de la semana en esa misma TZ
+  const fTZ = new Intl.DateTimeFormat('en-CA', { timeZone: MX_TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+  const tsLocal = fTZ.format(ts) // 'YYYY-MM-DD' en TZ
+  const startLocal = fTZ.format(sem.inicio)
+  const dayIndex = Math.floor((Date.parse(tsLocal) - Date.parse(startLocal)) / 86400000)
       if (dayIndex >= 0 && dayIndex < 7) counts[dayIndex] += 1
       const a = (r.accion || '').toLowerCase()
       const t = (r.tabla_afectada || '').toLowerCase()
