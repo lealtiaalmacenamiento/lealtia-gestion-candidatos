@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
+import { getServiceClient } from '@/lib/supabaseAdmin'
 import { semanaDesdeNumero } from '@/lib/semanaIso'
 
 type ActivityBreakdown = {
@@ -171,6 +172,55 @@ export async function GET(req: Request) {
         }
       }
     } catch { /* ignore */ }
+
+    // Fallback: si por alguna razón no hay logs de altas en RegistroAcciones,
+    // inferir desde tablas de dominio por ventana semanal CDMX y cartera del usuario.
+    try {
+      const admin = getServiceClient()
+      // Resolver id_auth del usuario (para filtrar por cartera/asesor)
+      const { data: uRow } = await admin
+        .from('usuarios')
+        .select('id_auth')
+        .ilike('email', usuario)
+        .maybeSingle()
+      const idAuth = (uRow as { id_auth?: string | null } | null)?.id_auth || null
+      if (idAuth) {
+        // Altas clientes inferidas
+        if (detailTotals.clientes_altas === 0) {
+          const { data: cliNew } = await admin
+            .from('clientes')
+            .select('creado_at')
+            .eq('asesor_id', idAuth)
+            .gte('creado_at', start.toISOString())
+            .lte('creado_at', end.toISOString())
+          if (Array.isArray(cliNew)) {
+            for (const c of cliNew as Array<{ creado_at: string }>) {
+              const ts = new Date(c.creado_at)
+              const di = Math.floor((ts.getTime() - weekStartUTCms) / 86400000)
+              if (di >= 0 && di < 7) detailDaily[di].clientes_altas += 1
+              detailTotals.clientes_altas += 1
+            }
+          }
+        }
+        // Altas pólizas inferidas (por cartera del cliente)
+        if (detailTotals.polizas_altas === 0) {
+          const { data: polNew } = await admin
+            .from('polizas')
+            .select('creado_at, clientes!inner(asesor_id)')
+            .eq('clientes.asesor_id', idAuth)
+            .gte('creado_at', start.toISOString())
+            .lte('creado_at', end.toISOString())
+          if (Array.isArray(polNew)) {
+            for (const p of polNew as Array<{ creado_at: string }>) {
+              const ts = new Date(p.creado_at)
+              const di = Math.floor((ts.getTime() - weekStartUTCms) / 86400000)
+              if (di >= 0 && di < 7) detailDaily[di].polizas_altas += 1
+              detailTotals.polizas_altas += 1
+            }
+          }
+        }
+      }
+    } catch { /* ignore fallback errors */ }
 
     const labels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
     return NextResponse.json({
