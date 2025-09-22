@@ -817,7 +817,7 @@ export async function exportProspectosPDF(
         if(free < 70){ doc.addPage(); const hdr=drawHeader(); y = hdr.contentStartY }
         // Separador
         doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
-        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad total (línea agregada)',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad total',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
         const baseX = 14; const width=182; const leftPad=12; const rightPad=6
         const plotX = baseX + leftPad; const plotW = width - (leftPad+rightPad)
         const plotTop = y + 2; const plotBottom = y + chartH
@@ -876,7 +876,7 @@ export async function exportProspectosPDF(
     // Segunda sección: Acciones específicas por usuario (tarjetas resumidas en tabla)
     y = ensure(y, 8)
     doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
-    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas (por usuario)',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas en la semana',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
     const head2 = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
     const rows2: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
       const d: { prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number } = act.details || {}
