@@ -71,6 +71,6 @@ export async function POST(req: Request) {
     if (emails.length) await sendMail({ to: emails.join(','), subject, html })
   } catch {}
 
-  await logAccion('submit_poliza_update', { tabla_afectada: 'poliza_update_requests', snapshot: { id: requestId, poliza_id: body.poliza_id } })
+  await logAccion('submit_poliza_update', { usuario: auth.user.email || undefined, tabla_afectada: 'poliza_update_requests', snapshot: { id: requestId, poliza_id: body.poliza_id } })
   return NextResponse.json({ ok: true, id: requestId })
 }

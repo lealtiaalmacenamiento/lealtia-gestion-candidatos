@@ -14,8 +14,8 @@ import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
 
 interface Aggregate { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean }
-
-export default function ProspectosPage() {
+ 
+export default function ProspectosPage(){
   const { user } = useAuth()
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
@@ -246,6 +246,15 @@ export default function ProspectosPage() {
       : `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`
   const hoy = new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay()
   if(agrupado){
+    // Tipo para la respuesta de actividad semanal (por usuario)
+    type ActivityResponse = {
+      success?: boolean
+      daily?: { labels?: string[]; counts?: number[] }
+      breakdown?: { views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number; usuarios?:number; parametros?:number; reportes?:number; otros?:number }
+      details?: { prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number }
+      dailyBreakdown?: Array<{ views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number; usuarios?:number; parametros?:number; reportes?:number; otros?:number }>
+      detailsDaily?: Array<{ prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number }>
+    }
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
@@ -294,7 +303,76 @@ export default function ProspectosPage() {
         } catch { /* ignorar errores de delta */ }
       }
     }
-  exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries })
+      // Actividad semanal por usuario (solo si semana específica)
+      let perAgentActivity: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }> | undefined
+      try {
+        if (semana !== 'ALL'){
+          const weekNum = semana as number
+          const agentIds = Object.keys(grouped)
+          const responses = await Promise.all(agentIds.map(async id=>{
+            const ag = agentes.find(a=> String(a.id)===String(id))
+            const email = ag?.email
+            if(!email) return { id:Number(id), data:null as ActivityResponse|null }
+            const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(weekNum), usuario: email })
+            try {
+              const r = await fetch('/api/auditoria/activity?' + paramsAct.toString())
+              if(!r.ok) return { id:Number(id), data:null as ActivityResponse|null }
+              const j = await r.json() as ActivityResponse
+              return { id:Number(id), data:j, email }
+            } catch { return { id:Number(id), data:null as ActivityResponse|null } }
+          }))
+          perAgentActivity = {}
+          for(const resp of responses){
+            const { id, data, email } = resp as { id:number; data: ActivityResponse | null; email?:string }
+            if(data && data.success && data.daily && Array.isArray(data.daily.counts)){
+              const b = data.breakdown || {}
+              const d = data.details || undefined
+              const dd = Array.isArray(data.detailsDaily) ? data.detailsDaily : undefined
+              const normalizedDetails = d ? {
+                prospectos_altas: Number(d.prospectos_altas||0),
+                prospectos_cambios_estado: Number(d.prospectos_cambios_estado||0),
+                prospectos_notas: Number(d.prospectos_notas||0),
+                planificacion_ediciones: Number(d.planificacion_ediciones||0),
+                clientes_altas: Number(d.clientes_altas||0),
+                clientes_modificaciones: Number(d.clientes_modificaciones||0),
+                polizas_altas: Number(d.polizas_altas||0),
+                polizas_modificaciones: Number(d.polizas_modificaciones||0)
+              } : undefined
+              perAgentActivity[id] = {
+                email,
+                labels: data.daily.labels || [],
+                counts: data.daily.counts || [],
+                breakdown: {
+                  views: Number(b.views||0),
+                  clicks: Number(b.clicks||0),
+                  forms: Number(b.forms||0),
+                  prospectos: Number(b.prospectos||0),
+                  planificacion: Number(b.planificacion||0),
+                  clientes: Number(b.clientes||0),
+                  polizas: Number(b.polizas||0),
+                  usuarios: Number(b.usuarios||0),
+                  parametros: Number(b.parametros||0),
+                  reportes: Number(b.reportes||0),
+                  otros: Number(b.otros||0)
+                },
+                ...(normalizedDetails ? { details: normalizedDetails } : {}),
+                ...(dd ? { detailsDaily: dd.map(d0=>({
+                  prospectos_altas: Number(d0.prospectos_altas||0),
+                  prospectos_cambios_estado: Number(d0.prospectos_cambios_estado||0),
+                  prospectos_notas: Number(d0.prospectos_notas||0),
+                  planificacion_ediciones: Number(d0.planificacion_ediciones||0),
+                  clientes_altas: Number(d0.clientes_altas||0),
+                  clientes_modificaciones: Number(d0.clientes_modificaciones||0),
+                  polizas_altas: Number(d0.polizas_altas||0),
+                  polizas_modificaciones: Number(d0.polizas_modificaciones||0)
+                })) } : {})
+              }
+            }
+          }
+          if(Object.keys(perAgentActivity).length === 0) perAgentActivity = undefined
+        }
+      } catch { /* ignore activity errors */ }
+      exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity })
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
@@ -304,6 +382,43 @@ export default function ProspectosPage() {
       return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 }
     })()
     const extended = computeExtendedMetrics(filtered,{ diaSemanaActual })
+    // Actividad semanal del agente (para línea de actividad)
+  let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined
+    try {
+      if (semana !== 'ALL'){
+  const who = (superuser && agenteId) ? (agentes.find(a=> String(a.id)===agenteId)?.email || '') : (user?.email || '')
+        if (who){
+          const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who })
+          const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString())
+          if (rAct.ok){
+            const j = await rAct.json()
+            if (j && j.success && j.daily && Array.isArray(j.daily.counts)){
+              const b = j.breakdown || {}
+              activityWeekly = {
+                labels: j.daily.labels || [],
+                counts: j.daily.counts || [],
+                breakdown: {
+                  views: Number(b.views||0),
+                  clicks: Number(b.clicks||0),
+                  forms: Number(b.forms||0),
+                  prospectos: Number(b.prospectos||0),
+                  planificacion: Number(b.planificacion||0),
+                  clientes: Number(b.clientes||0),
+                  polizas: Number(b.polizas||0),
+                  usuarios: Number(b.usuarios||0),
+                  parametros: Number(b.parametros||0),
+                  reportes: Number(b.reportes||0),
+                  otros: Number(b.otros||0)
+                },
+                dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined,
+                ...(j.details ? { details: j.details } : {}),
+                ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {})
+              }
+            }
+          }
+        }
+      }
+    } catch { /* ignore activity errors */ }
     // Planificación single agente
   let singleAgentPlanning: { bloques:BloquePlanificacion[]; summary:{ prospeccion:number; smnyl:number; total:number } } | undefined
     try {
@@ -322,7 +437,7 @@ export default function ProspectosPage() {
         }
       }
     } catch {/*ignore*/}
-  exportProspectosPDF(filtered, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning })
+  exportProspectosPDF(filtered, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning, activityWeekly })
   }
   }}>PDF</button>
     </div>}
@@ -333,7 +448,7 @@ export default function ProspectosPage() {
           {Object.entries(agg.por_estado).map(([k,v])=> { const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}}>{ESTADO_LABEL[k as ProspectoEstado]} {v}</button>})}
           <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')} title="Progreso a meta">{agg.total>=metaProspectos? `Meta ${metaProspectos} ok` : ('<'+metaProspectos+' prospectos')}</span>
           {!superuser && (
-            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; const extended = computeExtendedMetrics(filtered,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 } })(); exportProspectosPDF(filtered, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename }) }}>PDF</button>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; const extended = computeExtendedMetrics(filtered,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 } })(); let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined; try { if (semana !== 'ALL') { const who = user?.email || ''; if (who) { const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who }); const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString()); if (rAct.ok) { const j = await rAct.json(); if (j && j.success && j.daily && Array.isArray(j.daily.counts)) { const b = j.breakdown || {}; activityWeekly = { labels: j.daily.labels || [], counts: j.daily.counts || [], breakdown: { views: Number(b.views||0), clicks: Number(b.clicks||0), forms: Number(b.forms||0), prospectos: Number(b.prospectos||0), planificacion: Number(b.planificacion||0), clientes: Number(b.clientes||0), polizas: Number(b.polizas||0), usuarios: Number(b.usuarios||0), parametros: Number(b.parametros||0), reportes: Number(b.reportes||0), otros: Number(b.otros||0) }, dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined, ...(j.details ? { details: j.details } : {}), ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {}) }; } } } } } catch { /* ignore */ } exportProspectosPDF(filtered, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly }) }}>PDF</button>
           )}
         </div>
         {(!superuser || (superuser && agenteId)) && <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>

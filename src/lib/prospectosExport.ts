@@ -67,6 +67,10 @@ export async function exportProspectosPDF(
   perAgentDeltas?: Record<number,{ totalDelta:number }>
   planningSummaries?: Record<number,{ prospeccion:number; smnyl:number; total:number }>
   singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
+  // Weekly activity (UI + domain) for line chart in single-agent reports
+  activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }, dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> }
+  // Per-agent weekly activity for grouped (general) reports
+  perAgentActivity?: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }>
   }
 ){
   if(!prospectos.length) return
@@ -144,6 +148,7 @@ export async function exportProspectosPDF(
   const { headerHeight, contentStartY } = drawHeader()
   doc.setFontSize(9)
   const GAP = 6
+  const SECTION_GAP = 8
   // Page metrics and helper to avoid drawing content that would be cut at page boundary
   const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight()
   const BOTTOM_MARGIN = 14
@@ -225,8 +230,8 @@ export async function exportProspectosPDF(
   if(opts?.chartEstados){
     // Simple bar chart for estados con leyenda
     // Ensure space for legend + chart + progress bar block
-    const legendH = 8
-    const requiredChart = (42 + legendH) /* chartHeight + legend */ + 12 /* progress */ + 8 /* spacing */
+    const legendH = 10
+    const requiredChart = (46 + legendH) /* chartHeight + legend */ + 14 /* progress */ + 12 /* spacing */
     y = ensure(y, requiredChart)
     const chartY = y + 4
       const dataEntries: Array<[string, number, string]> = [
@@ -235,14 +240,16 @@ export async function exportProspectosPDF(
         ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
         ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
       ]
-      const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
+    const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       const baseX = 14
       const barW = 16
       const gap = 6
-      const baseY = chartY + 40 + legendH
+    const legendGap = 6
+    const barsTop = chartY + legendH + legendGap
+    const baseY = barsTop + 30
       // Legend (horizontal)
       doc.setFontSize(7)
-  let lx = baseX; const ly = chartY + 5
+  let lx = baseX; const ly = chartY + 6
       const itemW = 36
   dataEntries.forEach(([key, , color]) => {
         const hex = color.startsWith('#')? color.substring(1): color
@@ -261,7 +268,7 @@ export async function exportProspectosPDF(
         const [key,val,color] = d
         const h = (val/maxV)*30
         const x = baseX + i*(barW+gap)
-        const yBar = baseY - h
+    const yBar = baseY - h
         // color fill
   // color in hex -> convert to rgb
   const hex = color.startsWith('#')? color.substring(1): color
@@ -270,14 +277,16 @@ export async function exportProspectosPDF(
   const b = parseInt(hex.substring(4,6),16)
   doc.setFillColor(r,g,b)
         doc.rect(x, yBar, barW, h, 'F')
-        doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
+        doc.text(String(val), x+barW/2, yBar-3, {align:'center'})
         const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-        doc.text(label, x+barW/2, baseY+4, {align:'center'})
+        doc.text(label, x+barW/2, barsTop + 32, {align:'center'})
       })
-  y = baseY + GAP
+  y = baseY + GAP + 2
       // Añadir progreso contra metas debajo del chart
       // Progreso Prospectos
-      const progY = y
+  const progY = y
+  // Separador horizontal entre gráfica y barra de progreso (no agrupado)
+  doc.setDrawColor(230); doc.line(14, progY - 2, 196, progY - 2)
       const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
         const pctVal = meta? Math.min(1, val/meta): 0
         const barWTotal = 80; const barH = 6
@@ -288,7 +297,7 @@ export async function exportProspectosPDF(
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
   // Más espacio tras barra de progreso para separar del siguiente bloque
-      y += 12
+      y += 14
     }
     // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
     if(opts?.extendedMetrics){
@@ -390,14 +399,14 @@ export async function exportProspectosPDF(
     // Global charts if requested (agrupado scenario)
     if(opts?.chartEstados){
       // Ensure space for chart + progress bar + cards block on grouped report
-      const legendH = 8
-      const requiredChartAgg = (42 + legendH) /* chart + legend */ + 12 /* progress */ + 12 /* spacing */ + 4
+    const legendH = 10
+    const requiredChartAgg = (46 + legendH) /* chart + legend */ + 14 /* progress */ + 16 /* spacing */ + 4
       y = ensure(y, requiredChartAgg)
       const chartTop = y
       const baseX = 14
   const barW = 16
   const barGap = 6
-      const chartHeight = 42 + legendH // altura destino (30 barras + labels + margen + leyenda)
+    const chartHeight = 46 + legendH // altura destino (30 barras + labels + margen + leyenda)
       const dataEntries: Array<[string, number, string]> = [
         ['pendiente', resumen.por_estado.pendiente||0, ESTADO_COLORS.pendiente],
         ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
@@ -407,7 +416,7 @@ export async function exportProspectosPDF(
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       // Legend (horizontal)
       doc.setFontSize(7)
-  let lx = baseX; const ly = chartTop + 5
+  let lx = baseX; const ly = chartTop + 6
       const itemW = 36
   dataEntries.forEach(([key, , color]) => {
         const hex = color.replace('#','')
@@ -422,19 +431,25 @@ export async function exportProspectosPDF(
       doc.setFontSize(8)
       dataEntries.forEach((d,i)=>{
         const [key,val,color] = d
-        const h = (val/maxV)*30
-        const x = baseX + i*(barW+barGap)
-        const yBar = chartTop + legendH + 30 - h
+  const h = (val/maxV)*30
+  const x = baseX + i*(barW+barGap)
+  const legendGap = 6
+  const barsTop = chartTop + legendH + legendGap
+  const yBar = barsTop + 30 - h
         const hex = color.replace('#','')
         const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
         doc.setFillColor(r,g,b)
-        doc.rect(x,yBar,barW,h,'F')
-        doc.text(String(val), x+barW/2, yBar-2, {align:'center'})
+  doc.rect(x,yBar,barW,h,'F')
+  // Value label above bar with a bit more padding
+  doc.text(String(val), x+barW/2, yBar-3, {align:'center'})
         const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-        doc.text(label, x+barW/2, chartTop + legendH + 32, {align:'center'})
+  // Category label under bars area
+  doc.text(label, x+barW/2, barsTop + 32, {align:'center'})
       })
-      // Progresos bajo chart
-      const progressTop = chartTop + chartHeight
+  // Progresos bajo chart
+  const progressTop = chartTop + chartHeight
+  // Separador horizontal entre gráfica y progreso
+  doc.setDrawColor(230); doc.line(14, progressTop - 2, 196, progressTop - 2)
       const drawProgress = (label:string, val:number, meta:number, lineY:number)=>{
         const pctVal = meta? Math.min(1,val/meta):0
         const totalW=80, h=6
@@ -444,7 +459,7 @@ export async function exportProspectosPDF(
         doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+totalW/2, lineY+h-1, {align:'center'}); doc.setTextColor(0,0,0)
       }
   drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
-  const chartBlockBottom = progressTop + 12
+  const chartBlockBottom = progressTop + 14
   // Cards a la derecha
       const cards: Array<[string,string]> = [
         ['Total', String(resumen.total)],
@@ -457,9 +472,11 @@ export async function exportProspectosPDF(
       let cardY = chartTop
       const cardW = 80, cardH = 12
       doc.setFontSize(8)
-      cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
+  cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
+  // Separador vertical sutil entre la gráfica (izquierda) y las tarjetas (derecha)
+  const vX = cardX - 6; doc.setDrawColor(230); doc.line(vX, chartTop, vX, Math.max(chartBlockBottom, cardY))
   // Añadir más espacio antes del siguiente bloque para que 'Métricas avanzadas' no quede pegado
-      y = Math.max(chartBlockBottom, cardY) + GAP + 12
+  y = Math.max(chartBlockBottom, cardY) + GAP + 12
     }
   // Métricas por agente agrupado
       if(opts?.perAgentExtended){
@@ -506,7 +523,7 @@ export async function exportProspectosPDF(
         ]
   // 4 tarjetas en una fila: ajustar ancho para no exceder 210mm (14 + 4*W + 3*gap <= 210)
   // 4 tarjetas por fila: 4*42 + 3*6 = 186 -> bajamos a 41: 4*41 + 18 = 182
-        const cardW=41, cardH=12; let cx=14; let cy=y
+  const cardW=40, cardH=12; let cx=14; let cy=y
         y = ensure(y, cardH + GAP)
         doc.setFontSize(8)
         cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
@@ -538,7 +555,7 @@ export async function exportProspectosPDF(
     doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
   const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
   // 4 tarjetas por fila: usar 41mm para caber en 182mm con 3 gaps de 6mm
-    const cardW=41, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
+  const cardW=40, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
     // Ensure cards fit on current page; if not, move and recompute y2
     const rows2 = Math.max(1, Math.ceil(cardsPlan.length/4))
     const requiredCards2 = rows2*cardH + (rows2-1)*4 + GAP
@@ -548,7 +565,7 @@ export async function exportProspectosPDF(
   cy += cardH + GAP
     const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
   const blocksSorted = [...plan.bloques].filter(b=> b.activity !== 'CITAS').sort((a,b)=> a.day===b.day? a.hour.localeCompare(b.hour): a.day-b.day)
-    if(blocksSorted.length){
+  if(blocksSorted.length){
       const headPlan = ['Día','Hora','Actividad','Detalle']
       const bodyPlan = blocksSorted.map(b=> [
         DAY_NAMES[b.day]||String(b.day),
@@ -573,7 +590,304 @@ export async function exportProspectosPDF(
       const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
       y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
       y = y2
+    } else {
+      // Si no hay tabla de bloques, avanzar y debajo de las tarjetas
+      y = Math.max(y, cy)
     }
+  }
+  // Sección: Actividad semanal (solo reporte individual)
+  if(!agrupado && opts?.activityWeekly && Array.isArray(opts.activityWeekly.counts) && opts.activityWeekly.counts.length){
+    // Dimensiones del bloque
+  const chartH = 38
+  const xLabelSpace = 10 // espacio para etiquetas del eje X bajo la gráfica
+    // Tarjetas de breakdown: 10 ítems, 4 por fila -> 3 filas
+    const totalItems = 10
+    const perRow = 4
+    const rows = Math.ceil(totalItems / perRow)
+    const cardH = 10
+    const rowGap = 4
+    const cardsHeight = rows * cardH + (rows - 1) * rowGap
+    // Asegurar espacio total: título (8) + gráfico + etiquetas X + margen entre gráfica y tarjetas (10) + tarjetas + GAP
+  // Reservar además el GAP superior para el separador y espacio antes del título
+  const required = SECTION_GAP + 8 + chartH + xLabelSpace + 10 + cardsHeight + GAP
+  // Forzar salto de página si el espacio libre es menor a 70mm para mantener la sección cohesionada
+  const limit = PAGE_H - BOTTOM_MARGIN
+  const free = limit - y
+  if (free < 70) { doc.addPage(); const hdr = drawHeader(); y = hdr.contentStartY }
+  y = ensure(y, required)
+  // Separador sutil con el bloque previo, con separación segura
+  doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+    const labels = opts.activityWeekly.labels || []
+    const values = opts.activityWeekly.counts
+    const maxV = Math.max(1, ...values)
+    const baseX = 14
+    const width = 182
+    const leftPad = 12
+    const rightPad = 6
+    const plotX = baseX + leftPad
+    const plotW = width - (leftPad + rightPad)
+  const plotTop = y + 2 // pequeño padding superior del área de gráfica
+  const plotBottom = y + chartH
+    // Y axis (simple ticks at 0, max)
+    doc.setDrawColor(200)
+    doc.line(plotX, plotTop, plotX, plotBottom)
+    doc.line(plotX, plotBottom, plotX + plotW, plotBottom)
+    doc.setFontSize(7)
+  doc.text('0', plotX - 3, plotBottom + 4, { align: 'right' })
+    doc.text(String(maxV), plotX - 3, plotTop + 2, { align: 'right' })
+    // Polyline
+    const n = values.length
+    const step = n > 1 ? plotW / (n - 1) : plotW
+    // Path color
+    doc.setDrawColor(7,46,64)
+    let prevX = plotX, prevY = plotBottom - (values[0] / maxV) * chartH
+    for (let i = 1; i < n; i++){
+      const x = plotX + step * i
+      const yVal = plotBottom - (values[i] / maxV) * chartH
+      doc.line(prevX, prevY, x, yVal)
+      prevX = x; prevY = yVal
+    }
+    // Draw points
+    for (let i = 0; i < n; i++){
+      const x = plotX + step * i
+      const yVal = plotBottom - (values[i] / maxV) * chartH
+      doc.circle(x, yVal, 0.8, 'F')
+    }
+    // X labels
+    for (let i = 0; i < n; i++){
+      const x = plotX + step * i
+      const label = labels[i] || String(i+1)
+  doc.text(label, x, plotBottom + 7, { align: 'center' })
+    }
+  // Separador sutil bajo la línea base antes de las tarjetas
+  doc.setDrawColor(230); doc.line(14, plotBottom + xLabelSpace - 2, 196, plotBottom + xLabelSpace - 2)
+  // Tarjetas de desglose (ancho dinámico para respetar márgenes)
+  y = plotBottom + xLabelSpace
+  if (opts.activityWeekly.breakdown){
+      const b = opts.activityWeekly.breakdown
+      const items: Array<[string, number]> = [
+        ['Vistas', b.views], ['Clicks', b.clicks], ['Formularios', b.forms],
+        ['Prospectos', b.prospectos], ['Planificación', b.planificacion], ['Clientes', b.clientes],
+        ['Pólizas', b.polizas], ['Usuarios', b.usuarios], ['Parámetros', b.parametros], ['Reportes', b.reportes]
+      ]
+      const perRow = 4
+      const gapX = 6
+      const cardH = 10
+      const availW = 182
+      const cardW = Math.floor((availW - gapX * (perRow - 1)) / perRow)
+      let cx = 14, cy = y
+      doc.setFontSize(7)
+      for (let i = 0; i < items.length; i++){
+        const [label, val] = items[i]
+        doc.setDrawColor(220); doc.setFillColor(248,250,252)
+        doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD')
+        doc.setFont('helvetica','bold'); doc.text(label, cx + 3, cy + 4)
+        doc.setFont('helvetica','normal'); doc.text(String(val), cx + 3, cy + 9)
+        if ((i+1) % perRow === 0){ cx = 14; cy += cardH + 4 } else { cx += cardW + gapX }
+      }
+      y = cy + cardH + GAP
+  // Tabla compacta por día con categorías principales (si hay datos)
+      if (Array.isArray(opts.activityWeekly.dailyBreakdown) && opts.activityWeekly.dailyBreakdown.length === values.length){
+        const head = ['Día','Vistas','Clicks','Forms','Prospectos','Planif.','Clientes','Pólizas','Usuarios']
+        const rows = values.map((_, i) => {
+          const d = opts.activityWeekly!.dailyBreakdown![i]
+          return [labels[i] || String(i+1), String(d.views||0), String(d.clicks||0), String(d.forms||0), String(d.prospectos||0), String(d.planificacion||0), String(d.clientes||0), String(d.polizas||0), String(d.usuarios||0)]
+        })
+        // Reservar altura mínima de tabla compacta
+        y = ensure(y, 24)
+        // @ts-expect-error autotable
+        doc.autoTable({
+          startY: y,
+          head: [head],
+          body: rows,
+          styles: { fontSize: 6, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 7 }, theme: 'grid',
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          columnStyles: { 0: { halign: 'left' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
+        const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
+        y = (withAuto.lastAutoTable?.finalY || y) + GAP
+      }
+      // Bloque adicional: resumen de acciones específicas y tabla diaria detallada (si la API las provee via details/detailsDaily en fetch y se inyectan al exporter más adelante)
+      // Notas: Para mantener compatibilidad, este bloque se activa si opts.activityWeekly incluye keys 'details' y 'detailsDaily'
+  type ActionDetails = { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
+  const anyAW = opts.activityWeekly as unknown as { details?: ActionDetails; detailsDaily?: ActionDetails[] }
+      if (anyAW && anyAW.details){
+        // Tarjetas resumen (asegurar márgenes seguros y no desbordar)
+        const d = anyAW.details as { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
+        const items: Array<[string, number]> = [
+          ['Altas prospectos', d.prospectos_altas||0],
+          ['Cambios de estado', d.prospectos_cambios_estado||0],
+          ['Notas en prospectos', d.prospectos_notas||0],
+          ['Ediciones planificación', d.planificacion_ediciones||0],
+          ['Altas clientes', d.clientes_altas||0],
+          ['Cambios clientes', d.clientes_modificaciones||0],
+          ['Altas pólizas', d.polizas_altas||0],
+          ['Cambios pólizas', d.polizas_modificaciones||0]
+        ]
+        const perRow2 = 4
+        const gapX2 = 6
+        const cardH2 = 10
+        const availW = 182 // ancho útil entre márgenes 14..196
+        const cardW2 = Math.floor((availW - gapX2 * (perRow2 - 1)) / perRow2) // ancho dinámico que cabe en 4 columnas
+        const rows2 = Math.ceil(items.length / perRow2)
+        const cardsHeight2 = rows2 * cardH2 + (rows2 - 1) * 4
+        // Reservar espacio para separador + título + tarjetas + separaciones
+        // 1) separador (2) + SECTION_GAP (8) para bajar
+        // 2) título (aprox 6-8mm) -> usamos 8
+        // 3) tarjetas (cardsHeight2)
+        // 4) GAP final
+        y = ensure(y, 2 + SECTION_GAP + 8 + cardsHeight2 + GAP)
+        // Separador y título como en otras secciones
+        doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+        // Tarjetas
+        let cx2 = 14, cy2 = y
+        doc.setFontSize(7)
+        for (let i = 0; i < items.length; i++){
+          const [label, val] = items[i]
+          doc.setDrawColor(220); doc.setFillColor(248,250,252)
+          doc.roundedRect(cx2, cy2, cardW2, cardH2, 2, 2, 'FD')
+          doc.setFont('helvetica','bold'); doc.text(label, cx2 + 3, cy2 + 4)
+          doc.setFont('helvetica','normal'); doc.text(String(val), cx2 + 3, cy2 + 9)
+          if ((i+1) % perRow2 === 0){ cx2 = 14; cy2 += cardH2 + 4 } else { cx2 += cardW2 + gapX2 }
+        }
+        y = cy2 + cardH2 + GAP
+      }
+      if (anyAW && Array.isArray(anyAW.detailsDaily) && anyAW.detailsDaily.length === values.length){
+        const head = ['Día','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas client.','Modif. client.','Altas pól.','Modif. pól.']
+        const rows = values.map((_, i) => {
+          const d = anyAW.detailsDaily![i] as ActionDetails
+          return [labels[i] || String(i+1), String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
+        })
+        // Asegurar altura mínima para que la tabla no se empalme con el título o tarjetas
+        y = ensure(y, 24)
+        // @ts-expect-error autotable
+        doc.autoTable({
+          startY: y,
+          head: [head],
+          body: rows,
+          styles: { fontSize: 6, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 7 }, theme: 'grid',
+          margin: { top: headerHeight + 6, left: 14, right: 14 },
+          columnStyles: { 0: { halign: 'left' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
+          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+        })
+        const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
+        y = (withAuto2.lastAutoTable?.finalY || y) + GAP
+      }
+    } else {
+      y += GAP
+    }
+  }
+  // En reporte general (agrupado), mostrar "Actividad de la semana" y "Acciones específicas" por usuario
+  if(agrupado && opts?.perAgentActivity && Object.keys(opts.perAgentActivity).length){
+    // Título de sección general
+    y = ensure(y, 8)
+    doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana (por usuario)',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+    // Tabla compacta por usuario con total de eventos (suma de counts)
+    const head1 = ['Usuario','Total actividad','Views','Clicks','Forms','Prospectos','Planif.','Clientes','Pólizas']
+    const rows1: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
+      const total = Array.isArray(act.counts)? act.counts.reduce((a,b)=>a+b,0) : 0
+      const b: { views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number } = act.breakdown || {}
+      const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
+      return [userLabel, String(total), String(b.views||0), String(b.clicks||0), String(b.forms||0), String(b.prospectos||0), String(b.planificacion||0), String(b.clientes||0), String(b.polizas||0)]
+    })
+    y = ensure(y, 24)
+    // @ts-expect-error autotable
+    doc.autoTable({ startY: y, head: [head1], body: rows1, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+    const withAutoA = doc as unknown as { lastAutoTable?: { finalY?: number } }
+    y = (withAutoA.lastAutoTable?.finalY || y) + GAP
+
+    // Gráfica de línea agregada (suma de todos los usuarios)
+    try {
+      const first = Object.values(opts.perAgentActivity)[0]
+      const labelsAgg = (first?.labels && first.labels.length) ? first.labels : ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+      const n = labelsAgg.length
+      const countsAgg: number[] = Array.from({length:n}, (_,i)=>{
+        let s = 0
+        for(const act of Object.values(opts.perAgentActivity!)) s += Number(act.counts?.[i]||0)
+        return s
+      })
+      if(countsAgg.some(v=>v>0)){
+        const chartH = 38; const xLabelSpace = 10
+        // Si queda poco espacio, pasar a nueva página para mantener cohesión
+        const limit = PAGE_H - BOTTOM_MARGIN; const free = limit - y
+        if(free < 70){ doc.addPage(); const hdr=drawHeader(); y = hdr.contentStartY }
+        // Separador
+        doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad total',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+        const baseX = 14; const width=182; const leftPad=12; const rightPad=6
+        const plotX = baseX + leftPad; const plotW = width - (leftPad+rightPad)
+        const plotTop = y + 2; const plotBottom = y + chartH
+        const maxV = Math.max(1, ...countsAgg)
+        // Ejes
+        doc.setDrawColor(200)
+        doc.line(plotX, plotTop, plotX, plotBottom)
+        doc.line(plotX, plotBottom, plotX + plotW, plotBottom)
+        doc.setFontSize(7)
+        doc.text('0', plotX - 3, plotBottom + 4, { align: 'right' })
+        doc.text(String(maxV), plotX - 3, plotTop + 2, { align: 'right' })
+        // Línea
+        const step = n>1 ? plotW/(n-1) : plotW
+        doc.setDrawColor(7,46,64)
+        let prevX = plotX, prevY = plotBottom - (countsAgg[0] / maxV) * chartH
+        for(let i=1;i<n;i++){
+          const x = plotX + step * i
+          const yVal = plotBottom - (countsAgg[i] / maxV) * chartH
+          doc.line(prevX, prevY, x, yVal)
+          prevX = x; prevY = yVal
+        }
+        for(let i=0;i<n;i++){
+          const x = plotX + step * i
+          const yVal = plotBottom - (countsAgg[i] / maxV) * chartH
+          doc.circle(x, yVal, 0.8, 'F')
+        }
+        for(let i=0;i<n;i++){
+          const x = plotX + step * i
+          const label = labelsAgg[i] || String(i+1)
+          doc.text(label, x, plotBottom + 7, { align: 'center' })
+        }
+        // Separador inferior
+        doc.setDrawColor(230); doc.line(14, plotBottom + xLabelSpace - 2, 196, plotBottom + xLabelSpace - 2)
+        y = plotBottom + xLabelSpace + GAP
+      }
+    } catch { /* ignore chart errors */ }
+
+    // Tabla por día (por usuario): Usuario, Lun..Dom, Total
+    try {
+      const headDaily = ['Usuario','Lun','Mar','Mié','Jue','Vie','Sáb','Dom','Total']
+      const rowsDaily: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
+        const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
+        const counts = Array.isArray(act.counts) ? act.counts.slice(0,7) : []
+        while(counts.length<7) counts.push(0)
+        const total = counts.reduce((a,b)=>a+b,0)
+        return [userLabel, ...counts.map(c=>String(c)), String(total)]
+      })
+      // Asegurar espacio mínimo
+      y = ensure(y, 24)
+      // @ts-expect-error autotable
+      doc.autoTable({ startY: y, head: [headDaily], body: rowsDaily, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+      const withAutoDaily = doc as unknown as { lastAutoTable?: { finalY?: number } }
+      y = (withAutoDaily.lastAutoTable?.finalY || y) + GAP
+    } catch { /* ignore daily table errors */ }
+
+    // Segunda sección: Acciones específicas por usuario (tarjetas resumidas en tabla)
+    y = ensure(y, 8)
+    doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas en la semana',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
+    const head2 = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
+    const rows2: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
+      const d: { prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number } = act.details || {}
+      const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
+      return [userLabel, String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
+    })
+    y = ensure(y, 24)
+    // @ts-expect-error autotable
+    doc.autoTable({ startY: y, head: [head2], body: rows2, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+    const withAutoB = doc as unknown as { lastAutoTable?: { finalY?: number } }
+    y = (withAutoB.lastAutoTable?.finalY || y) + GAP
   }
   // Footer with pagination
   const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()

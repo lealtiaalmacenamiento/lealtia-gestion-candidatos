@@ -47,10 +47,14 @@ export default function GestionPage() {
   const [polizas, setPolizas] = useState<Poliza[]>([])
   const [agentes, setAgentes] = useState<Array<{ id:number; id_auth?: string|null; nombre?:string|null; email:string; clientes_count?: number; badges?: { polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null; comisiones_mxn?: number|null } }>>([])
   const [selfBadges, setSelfBadges] = useState<{ polizas_en_conteo?: number|null; conexion?: string|null; meses_para_graduacion?: number|null; polizas_para_graduacion?: number|null; necesita_mensualmente?: number|null; objetivo?: number|null; comisiones_mxn?: number|null } | null>(null)
-  const [editMeta, setEditMeta] = useState<{ usuario_id: number; conexion: string; objetivo: string } | null>(null)
   const [expandedAgentes, setExpandedAgentes] = useState<Record<string, boolean>>({})
   const [clientesPorAgente, setClientesPorAgente] = useState<Record<string, Cliente[]>>({})
   const [qClientes, setQClientes] = useState('')
+  const [qPolizas, setQPolizas] = useState('')
+  // Búsqueda global de clientes (vista super)
+  const [qClientesSuper, setQClientesSuper] = useState('')
+  const [clientesSuper, setClientesSuper] = useState<Cliente[]>([])
+  const [searchingSuper, setSearchingSuper] = useState(false)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [view, setView] = useState<'list' | 'cliente' | 'polizas'>('list')
   const [loading, setLoading] = useState(false)
@@ -124,6 +128,28 @@ export default function GestionPage() {
 
   useEffect(() => { void load() }, [load])
 
+  const searchClientesSuper = useCallback(async () => {
+    if (!isSuper) return
+    const q = qClientesSuper.trim()
+    if (!q) { setClientesSuper([]); return }
+    setSearchingSuper(true)
+    try {
+      const r = await fetch(`/api/clientes?q=${encodeURIComponent(q)}`, { cache: 'no-store' })
+      const j = await r.json().catch(()=>({}))
+      setClientesSuper(j.items || [])
+    } finally { setSearchingSuper(false) }
+  }, [qClientesSuper, isSuper])
+
+  // Auto-buscar clientes (super) con debounce al escribir
+  useEffect(() => {
+    if (!isSuper) return
+    const q = qClientesSuper.trim()
+    // Limpia resultados si vacío
+    if (!q) { setClientesSuper([]); return }
+    const t = setTimeout(() => { void searchClientesSuper() }, 400)
+    return () => clearTimeout(t)
+  }, [qClientesSuper, isSuper, searchClientesSuper])
+
   // Sincronizar texto de prima SOLAMENTE cuando se cambia de póliza (por id),
   // no en cada tecleo del usuario (cuando solo cambia prima_input).
   const prevEditPolizaId = useRef<string|undefined>(undefined)
@@ -137,6 +163,73 @@ export default function GestionPage() {
       else setEditPrimaText('')
     }
   }, [editPoliza])
+
+  // Helper para abrir vista de pólizas y cargar con query actual
+  const openPolizas = useCallback(async (c: Cliente) => {
+    setSelectedCliente(c)
+    setView('polizas')
+    setLoading(true)
+    try {
+      const url = new URL('/api/polizas', window.location.origin)
+      url.searchParams.set('cliente_id', c.id)
+      if (qPolizas.trim()) url.searchParams.set('q', qPolizas.trim())
+      const rp = await fetch(url.toString(), { cache: 'no-store' })
+      const jp = await rp.json().catch(()=>({}))
+      let items = jp.items || []
+      const q = qPolizas.trim().toLowerCase()
+      // Fallback: si el servidor devolvió vacío con q, intentar traer sin q y filtrar en cliente
+      if (q && (!Array.isArray(items) || items.length === 0)) {
+        try {
+          const url2 = new URL('/api/polizas', window.location.origin)
+          url2.searchParams.set('cliente_id', c.id)
+          const rp2 = await fetch(url2.toString(), { cache: 'no-store' })
+          const jp2 = await rp2.json().catch(()=>({}))
+          const all: Poliza[] = Array.isArray(jp2.items) ? (jp2.items as Poliza[]) : []
+          items = all.filter((p: Poliza) => {
+            const num = (p?.numero_poliza || '').toString().toLowerCase()
+            const prod = (p?.producto_nombre || '').toString().toLowerCase()
+            return num.includes(q) || prod.includes(q)
+          })
+        } catch {}
+      }
+      setPolizas(items)
+    } finally { setLoading(false) }
+  }, [qPolizas])
+
+  // Auto-buscar pólizas con debounce cuando hay cliente seleccionado y vista 'polizas'
+  useEffect(() => {
+    if (view !== 'polizas' || !selectedCliente) return
+    const q = qPolizas.trim()
+    const t = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const url = new URL('/api/polizas', window.location.origin)
+        url.searchParams.set('cliente_id', selectedCliente.id)
+        if (q) url.searchParams.set('q', q)
+        const rp = await fetch(url.toString(), { cache: 'no-store' })
+        const jp = await rp.json().catch(()=>({}))
+        let items = jp.items || []
+        // Fallback client-side si vacío con q
+        if (q && (!Array.isArray(items) || items.length === 0)) {
+          try {
+            const url2 = new URL('/api/polizas', window.location.origin)
+            url2.searchParams.set('cliente_id', selectedCliente.id)
+            const rp2 = await fetch(url2.toString(), { cache: 'no-store' })
+            const jp2 = await rp2.json().catch(()=>({}))
+            const all: Poliza[] = Array.isArray(jp2.items) ? (jp2.items as Poliza[]) : []
+            const ql = q.toLowerCase()
+            items = all.filter((p: Poliza) => {
+              const num = (p?.numero_poliza || '').toString().toLowerCase()
+              const prod = (p?.producto_nombre || '').toString().toLowerCase()
+              return num.includes(ql) || prod.includes(ql)
+            })
+          } catch {}
+        }
+        setPolizas(items)
+      } finally { setLoading(false) }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [qPolizas, view, selectedCliente])
 
   // Vista unificada: se elimina redirección a /asesor para que agentes usen esta página directamente
 
@@ -222,7 +315,10 @@ export default function GestionPage() {
       // Refrescar datos para reflejar el recálculo en UI (sólo si se aprobó o si queremos reflejar último estado)
       try {
         if (selectedCliente?.id) {
-          const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`, { cache: 'no-store' })
+          const url = new URL('/api/polizas', window.location.origin)
+          url.searchParams.set('cliente_id', selectedCliente.id)
+          if (qPolizas.trim()) url.searchParams.set('q', qPolizas.trim())
+          const rp = await fetch(url.toString(), { cache: 'no-store' })
           const jp = await rp.json().catch(()=>({}))
           if (Array.isArray(jp.items)) {
             setPolizas(jp.items)
@@ -304,6 +400,17 @@ export default function GestionPage() {
               <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Agentes</h2>
                 <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
+                  {/* Buscador global de clientes (superusuario) */}
+                  <div className="d-flex flex-column" style={{width: 260}}>
+                    <label className="form-label small mb-1">Buscar clientes</label>
+                    <input
+                      className="form-control form-control-sm"
+                      placeholder="Nombre o correo"
+                      value={qClientesSuper}
+                      onChange={e=> setQClientesSuper(e.target.value)}
+                      onKeyDown={e=>{ if (e.key === 'Enter') { void searchClientesSuper() } }}
+                    />
+                  </div>
                   {/* Meta rápida también para super si es agente */}
                   {user && agentes.some(a=>a.id===user.id) && (
                     <>
@@ -323,10 +430,10 @@ export default function GestionPage() {
                             objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
                           }
                           const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
-                          const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar meta'); return }
+                          const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar conexión/objetivo'); return }
                           await load()
                         } finally { setSavingMeta(false) }
-                      }}>Guardar meta</button>
+                      }}>Guardar conexión y objetivo</button>
                     </>
                   )}
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
@@ -346,6 +453,46 @@ export default function GestionPage() {
                   <button className="px-3 py-1 text-sm btn btn-primary" onClick={()=>{ setCreating(true); setNuevo({ id: '', telefono_celular: '' }) }}>Nuevo cliente</button>
                 </div>
               </header>
+              {(qClientesSuper.trim() || searchingSuper || clientesSuper.length>0) && (
+                <div className="border rounded p-2 mb-3">
+                  <div className="d-flex align-items-center mb-2">
+                    <h3 className="h6 mb-0">Resultados de clientes</h3>
+                    {searchingSuper && <span className="small text-muted ms-2">Buscando…</span>}
+                  </div>
+                  <div className="table-responsive small">
+                    <table className="table table-sm table-striped align-middle">
+                      <thead>
+                        <tr>
+                          <th>Número de cliente</th>
+                          <th>Contratante</th>
+                          <th>Teléfono</th>
+                          <th>Correo</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientesSuper.map(c => (
+                          <tr key={c.id}>
+                            <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
+                            <td className="text-xs">{fmtNombre(c)}</td>
+                            <td className="text-xs">{c.telefono_celular ? (<a href={buildWhatsAppLink(c.telefono_celular, agentDisplayName)} target="_blank" rel="noopener noreferrer">{c.telefono_celular}</a>) : '—'}</td>
+                            <td className="text-xs">{c.email ? (<a href={`mailto:${c.email}`}>{c.email}</a>) : '—'}</td>
+                            <td className="text-end">
+                              <div className="d-flex gap-2 justify-content-end">
+                                <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
+                                <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {!clientesSuper.length && !searchingSuper && (
+                          <tr><td colSpan={5} className="text-center text-muted py-3">Sin resultados</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               <div className="accordion" id="agentesAccordion">
                 {agentes.map(ag => {
                   const key = ag.id_auth || String(ag.id)
@@ -397,15 +544,7 @@ export default function GestionPage() {
                                   Comisión: {(()=>{ try { return (ag.badges!.comisiones_mxn || 0).toLocaleString('es-MX', { style:'currency', currency:'MXN' }) } catch { return 'MXN $0.00' } })()}
                                 </span>
                               )}
-                              {(user && user.id===ag.id) && (
-                                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={async(e)=>{ e.stopPropagation();
-                                  try{
-                                    const r=await fetch(`/api/agentes/meta`)
-                                    const j=await r.json()
-                                    if(r.ok){ setEditMeta({ usuario_id: ag.id, conexion: j.fecha_conexion_text||'', objetivo: (j.objetivo??'').toString() }) }
-                                  }catch{}
-                                }}>Editar meta</button>
-                              )}
+                              {/* Botón 'Editar meta' removido intencionalmente */}
                             </div>
                           </div>
                         </button>
@@ -448,7 +587,7 @@ export default function GestionPage() {
                                     <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
                                     <td className="text-end">
                                       <div className="d-flex gap-2 justify-content-end">
-                                        <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+                                        <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
                                         <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
                                       </div>
                                     </td>
@@ -490,10 +629,10 @@ export default function GestionPage() {
                         objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
                       }
                       const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
-                      const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar meta'); return }
+                      const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar conexión/objetivo'); return }
                       await load()
                     } finally { setSavingMeta(false) }
-                  }}>Guardar meta</button>
+                  }}>Guardar conexión y objetivo</button>
                   {/* Badges del asesor */}
                   {selfBadges && (
                     <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -544,7 +683,7 @@ export default function GestionPage() {
                         <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
                         <td className="text-end">
                           <div className="d-flex gap-2 justify-content-end">
-                            <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={async()=>{ setSelectedCliente(c); setView('polizas'); setLoading(true); try { const rp = await fetch(`/api/polizas?cliente_id=${c.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+                            <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
                             <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
                           </div>
                         </td>
@@ -614,35 +753,7 @@ export default function GestionPage() {
               </div>
             </AppModal>
           )}
-          {editMeta && (
-            <AppModal title="Editar meta del asesor" icon="pencil" onClose={()=> setEditMeta(null)}>
-              <div className="d-flex flex-column gap-2">
-                <div>
-                  <label className="form-label small">Conexión (fecha firma contrato)</label>
-                  <input className="form-control form-control-sm" type="date" value={toISODateFromDMY(editMeta.conexion)} onChange={e=> setEditMeta({...editMeta, conexion: toDMYFromISO(e.target.value)})} />
-                </div>
-                <div>
-                  <label className="form-label small">Objetivo</label>
-                  <input className="form-control form-control-sm" type="number" value={editMeta.objetivo} onChange={e=> setEditMeta({...editMeta, objetivo: e.target.value})} />
-                </div>
-              </div>
-              <div className="mt-3 d-flex justify-content-end gap-2">
-                <button className="btn btn-sm btn-secondary" onClick={()=> setEditMeta(null)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
-                  try{
-                    setSavingMeta(true)
-                    const body: { usuario_id?: number; fecha_conexion_text: string | null; objetivo: number | null } = { fecha_conexion_text: editMeta.conexion ? editMeta.conexion.trim() : null, objetivo: editMeta.objetivo? Number(editMeta.objetivo): null }
-                    if(isSuper && editMeta.usuario_id) body.usuario_id = editMeta.usuario_id
-                    const r = await fetch('/api/agentes/meta', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
-                    const j = await r.json()
-                    if(!r.ok){ await dialog.alert(j.error || 'Error al guardar meta'); return }
-                    setEditMeta(null)
-                    await load()
-                  } finally { setSavingMeta(false) }
-                }}>Guardar</button>
-              </div>
-            </AppModal>
-          )}
+          {/* Modal de edición de meta removido intencionalmente */}
         </section>
       )}
 
@@ -684,7 +795,7 @@ export default function GestionPage() {
             </div>
           </div>
           <div className="d-flex gap-2">
-            <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{ setView('polizas'); setLoading(true); try{ const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items || []) } finally { setLoading(false) } }}>Ver pólizas</button>
+            <button className="btn btn-sm btn-outline-secondary" onClick={()=>{ if(selectedCliente) void openPolizas(selectedCliente) }}>Ver pólizas</button>
             <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...selectedCliente})}>Editar</button>
           </div>
           {editCliente && (
@@ -711,7 +822,13 @@ export default function GestionPage() {
           <div className="d-flex align-items-center mb-3 gap-2">
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Pólizas de {fmtNombre(selectedCliente) || selectedCliente.email || selectedCliente.id}</h2>
-            <button className="btn btn-sm btn-success ms-auto" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
+            <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
+              <div className="d-flex flex-column" style={{minWidth: 220}}>
+                <label className="form-label small mb-1">Buscar pólizas</label>
+                <input className="form-control form-control-sm" placeholder="No. póliza o producto" value={qPolizas} onChange={e=>setQPolizas(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter' && selectedCliente) { void openPolizas(selectedCliente) } }} />
+              </div>
+              <button className="btn btn-sm btn-success" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
+            </div>
           </div>
     <div className="table-responsive small">
             <table className="table table-sm table-striped align-middle">
@@ -955,7 +1072,14 @@ export default function GestionPage() {
                     if (!r.ok) { await dialog.alert(j.error || 'Error al crear'); return }
                     setAddingPoliza(false)
                     setLoading(true)
-                    try { const rp = await fetch(`/api/polizas?cliente_id=${selectedCliente.id}`); const jp = await rp.json(); setPolizas(jp.items||[]) } finally { setLoading(false) }
+                    try {
+                      const url = new URL('/api/polizas', window.location.origin)
+                      url.searchParams.set('cliente_id', selectedCliente.id)
+                      if (qPolizas.trim()) url.searchParams.set('q', qPolizas.trim())
+                      const rp = await fetch(url.toString())
+                      const jp = await rp.json()
+                      setPolizas(jp.items||[])
+                    } finally { setLoading(false) }
                   } catch { await dialog.alert('Error al crear') } finally { setSubmittingNuevaPoliza(false) }
                 }}>Crear</button>
                     </>

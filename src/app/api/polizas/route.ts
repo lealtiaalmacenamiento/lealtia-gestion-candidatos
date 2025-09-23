@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { getUsuarioSesion } from '@/lib/auth'
+import { logAccion } from '@/lib/logger'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 
 export const runtime = 'nodejs'
@@ -56,7 +57,7 @@ export async function GET(req: Request) {
   .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot)')
         .order('fecha_alta_sistema', { ascending: false })
         .limit(100)
-      if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
+  if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,producto_parametros.nombre_comercial.ilike.%${q}%`)
       if (clienteId) sel = sel.eq('cliente_id', clienteId)
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
@@ -120,7 +121,7 @@ export async function GET(req: Request) {
     .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
-  if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,estatus.ilike.%${q}%`)
+  if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,producto_parametros.nombre_comercial.ilike.%${q}%`)
   if (clienteId) sel = sel.eq('cliente_id', clienteId)
   // Aplicar filtro por asesor_id obligatorio en no-super
   type MaybeAuth = { id_auth?: string | null }
@@ -207,6 +208,7 @@ export async function POST(req: Request) {
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const role = (usuario.rol || '').toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+  const usuarioEmail: string | null = (usuario as unknown as { email?: string|null })?.email || null
 
   const body = await req.json().catch(() => null) as {
     cliente_id?: string
@@ -312,7 +314,7 @@ export async function POST(req: Request) {
     if (dup && dup.length) {
       return NextResponse.json({ error: 'Ya existe una póliza con ese número para este cliente' }, { status: 409 })
     }
-    const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
+  const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
     if (error) {
       // Atrapamos la restricción única global por numero_poliza
       if (/uq_polizas_numero|unique/i.test(error.message)) {
@@ -320,6 +322,10 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
+    // Auditoría: alta de póliza
+    try {
+      await logAccion('alta_poliza', { usuario: usuarioEmail, tabla_afectada: 'polizas', id_registro: (data as unknown as { id?: number })?.id ?? 0, snapshot: { cliente_id } })
+    } catch { /* no-block */ }
     return NextResponse.json({ item: data }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Error inesperado'
