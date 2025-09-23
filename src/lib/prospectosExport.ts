@@ -889,6 +889,49 @@ export async function exportProspectosPDF(
     const withAutoB = doc as unknown as { lastAutoTable?: { finalY?: number } }
     y = (withAutoB.lastAutoTable?.finalY || y) + GAP
   }
+  // Glosario de abreviaturas (siempre al final)
+  try {
+    // Separador y título del glosario
+    y = ensure(y, 8)
+    doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
+    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Glosario de abreviaturas',14,y); doc.setFont('helvetica','normal'); y += 4
+    // Contenido del glosario (pares Abrev. - Significado)
+    const glossary: Array<[string,string]> = [
+      ['SMNYL','Seguros Monterrey New York Life (bloques de actividad SMNYL)'],
+      ['Conv P->S','Conversión de Pendiente a Seguimiento'],
+      ['Desc %','Porcentaje de prospectos descartados'],
+      ['Proy semana','Proyección de total de la semana (forecast)'],
+      ['Planif.','Planificación'],
+      ['Altas P.','Altas de prospectos'],
+      ['Cambios est.','Cambios de estado en prospectos'],
+      ['Notas P.','Notas registradas en prospectos'],
+      ['Edit. planif.','Ediciones en la planificación semanal'],
+      ['Altas cliente','Altas de clientes'],
+      ['Modif. cliente','Modificaciones de clientes'],
+      ['Altas pól.','Altas de pólizas'],
+      ['Modif. pól.','Modificaciones de pólizas'],
+      ['Forms','Formularios enviados'],
+      ['Vistas','Vistas registradas en la aplicación'],
+      ['Clicks','Clicks registrados en la aplicación']
+    ]
+    const headGloss = ['Abrev.','Significado']
+    // Altura mínima para que no se empalme con el footer
+    y = ensure(y, 24)
+    // @ts-expect-error autotable plugin
+    doc.autoTable({
+      startY: y,
+      head: [headGloss],
+      body: glossary.map(([k,v])=>[k,v]),
+      styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+      headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 },
+      theme: 'grid',
+      margin: { top: headerHeight + 6, left: 14, right: 14 },
+      columnStyles: { 0: { cellWidth: 30, halign: 'left' }, 1: { halign: 'left' } },
+      didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
+    })
+    const withAutoGloss = doc as unknown as { lastAutoTable?: { finalY?: number } }
+    y = (withAutoGloss.lastAutoTable?.finalY || y) + GAP
+  } catch { /* ignore glossary render errors */ }
   // Footer with pagination
   const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()
   for(let i=1;i<=pageCount;i++){
