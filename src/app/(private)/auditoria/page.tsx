@@ -10,6 +10,12 @@ export default function AuditoriaPage() {
   // Se eliminó botón/ver modal
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  // Filtros
+  const [fUsuario, setFUsuario] = useState('');
+  const [fAccion, setFAccion] = useState('');
+  const [fTabla, setFTabla] = useState('');
+  const [fDesde, setFDesde] = useState(''); // yyyy-mm-dd
+  const [fHasta, setFHasta] = useState(''); // yyyy-mm-dd
 
   const load = async () => {
     try {
@@ -24,12 +30,44 @@ export default function AuditoriaPage() {
 
   // Detalle removido
 
-  const total = rows.length;
+  // Filtrado: ocultar eventos de UI y aplicar filtros
+  const filtered = rows.filter(r => {
+    // ocultar ui_click y ui_page_view
+    const accion = (r.accion || '').toLowerCase();
+    if (accion === 'ui_click' || accion === 'ui_page_view') return false;
+    // filtro por usuario
+    if (fUsuario.trim()) {
+      const s = fUsuario.trim().toLowerCase();
+      if (!(r.usuario || '').toLowerCase().includes(s)) return false;
+    }
+    // filtro por acción
+    if (fAccion.trim()) {
+      const s = fAccion.trim().toLowerCase();
+      if (!accion.includes(s)) return false;
+    }
+    // filtro por tabla
+    if (fTabla.trim()) {
+      const s = fTabla.trim().toLowerCase();
+      if (!((r.tabla_afectada || '').toLowerCase().includes(s))) return false;
+    }
+    // filtro por rango de fechas (suponiendo r.fecha es ISO o legible por Date)
+    if (fDesde) {
+      const d = new Date(fDesde + 'T00:00:00');
+      if (new Date(r.fecha) < d) return false;
+    }
+    if (fHasta) {
+      const h = new Date(fHasta + 'T23:59:59');
+      if (new Date(r.fecha) > h) return false;
+    }
+    return true;
+  });
+
+  const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
-  const pageRows = rows.slice(startIndex, endIndex);
+  const pageRows = filtered.slice(startIndex, endIndex);
 
   const goTo = (p: number) => {
     if (p < 1 || p > totalPages) return;
@@ -46,6 +84,32 @@ export default function AuditoriaPage() {
     <BasePage title="Registros" alert={notif ? { type: notif.type === 'error' ? 'danger' : notif.type, message: notif.msg, show: true } : undefined}>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2 className="fw-bold mb-0">Historial de registros</h2>
+      </div>
+      {/* Filtros */}
+      <div className="row g-2 mb-3">
+        <div className="col-sm-6 col-md-3">
+          <label className="form-label mb-1">Usuario</label>
+          <input className="form-control form-control-sm" placeholder="Buscar por usuario" value={fUsuario} onChange={e=>{ setFUsuario(e.target.value); setPage(1); }} />
+        </div>
+        <div className="col-sm-6 col-md-3">
+          <label className="form-label mb-1">Acción</label>
+          <input className="form-control form-control-sm" placeholder="Buscar por acción" value={fAccion} onChange={e=>{ setFAccion(e.target.value); setPage(1); }} />
+        </div>
+        <div className="col-sm-6 col-md-3">
+          <label className="form-label mb-1">Tabla</label>
+          <input className="form-control form-control-sm" placeholder="Buscar por tabla" value={fTabla} onChange={e=>{ setFTabla(e.target.value); setPage(1); }} />
+        </div>
+        <div className="col-6 col-md-1">
+          <label className="form-label mb-1">Desde</label>
+          <input type="date" className="form-control form-control-sm" value={fDesde} onChange={e=>{ setFDesde(e.target.value); setPage(1); }} />
+        </div>
+        <div className="col-6 col-md-1">
+          <label className="form-label mb-1">Hasta</label>
+          <input type="date" className="form-control form-control-sm" value={fHasta} onChange={e=>{ setFHasta(e.target.value); setPage(1); }} />
+        </div>
+        <div className="col-12 col-md-1 d-flex align-items-end">
+          <button className="btn btn-sm btn-outline-secondary w-100" onClick={()=>{ setFUsuario(''); setFAccion(''); setFTabla(''); setFDesde(''); setFHasta(''); setPage(1); }}>Limpiar</button>
+        </div>
       </div>
       <div className="d-flex flex-wrap gap-3 align-items-end mb-2">
         <div className="small text-muted">Mostrando {total === 0 ? 0 : (startIndex + 1)}–{endIndex} de {total}</div>
