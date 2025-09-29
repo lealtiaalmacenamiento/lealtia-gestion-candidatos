@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthProvider';
 import { exportCandidatoPDF, exportCandidatosExcel } from '@/lib/exporters'
 
 // Tipos
-type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct'>;
+type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct' | 'fecha_creacion_pop'>;
 type AnyColKey = keyof Candidato;
 
 export default function ConsultaCandidatosPage() {
@@ -136,7 +136,7 @@ function ConsultaCandidatosInner() {
       const arr: Candidato[] = Array.isArray(j) ? j : [];
       // Adjuntar derivados (proceso, dias) en memoria
       (arr as CandidatoExt[]).forEach(c => {
-        const { proceso } = calcularDerivados({
+        const { proceso, dias_desde_pop } = calcularDerivados({
           periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
           capacitacion_cedula_a1: c.capacitacion_cedula_a1,
           periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
@@ -145,9 +145,11 @@ function ConsultaCandidatosInner() {
           fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
           inicio_escuela_fundamental: c.inicio_escuela_fundamental,
           fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
-          fecha_creacion_ct: c.fecha_creacion_ct
+          fecha_creacion_ct: c.fecha_creacion_ct,
+          fecha_creacion_pop: (c as CandidatoExt).fecha_creacion_pop
         })
         c.proceso = proceso
+        ;(c as CandidatoExt).dias_desde_pop = dias_desde_pop
       })
       arr.sort((a,b)=>{
         const ua = Date.parse(a.ultima_actualizacion || a.fecha_de_creacion || '') || 0;
@@ -195,9 +197,12 @@ function ConsultaCandidatosInner() {
   const columns: ColumnDef[] = useMemo(() => ([
     { key: 'id_candidato', label: 'ID', sortable: true },
     { key: 'ct', label: 'CT', sortable: true },
+    { key: 'pop' as unknown as keyof Candidato, label: 'POP' },
     { key: 'candidato', label: 'Candidato', sortable: true },
     { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
+  { key: 'fecha_creacion_pop' as unknown as keyof Candidato, label: 'Fecha creación POP' },
+  { key: 'dias_desde_pop' as unknown as keyof Candidato, label: 'Días desde POP' },
   { key: 'proceso', label: 'Proceso' },
   { key: 'mes', label: 'Cédula A1', sortable: true },
   { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },

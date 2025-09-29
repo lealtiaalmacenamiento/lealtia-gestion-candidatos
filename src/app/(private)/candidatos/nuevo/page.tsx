@@ -6,10 +6,12 @@ import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 
 interface FormState {
+  pop: string;
   ct: string;
   candidato: string;
   // Nueva fecha manual: fecha de creación CT
   fecha_creacion_ct?: string;
+  fecha_creacion_pop?: string;
   email_agente: string; // correo del candidato (único) y para crear usuario agente
   mes: string;
   efc: string;
@@ -27,7 +29,7 @@ interface FormState {
   inicio_escuela_fundamental?: string;
 }
 
-const initialForm: FormState = { ct: '', candidato: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '' }
+const initialForm: FormState = { pop: '', ct: '', candidato: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '', fecha_creacion_pop: '' }
 
 export default function NuevoCandidato() {
   const [meses, setMeses] = useState<CedulaA1[]>([])
@@ -351,8 +353,12 @@ export default function NuevoCandidato() {
             ) : (
               <form onSubmit={handleSubmit} className="row g-3" noValidate>
                 <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1">POP</label>
+                  <input ref={firstInputRef} name="pop" className="form-control" value={form.pop} onChange={handleChange} placeholder="Ingresa POP (opcional)" />
+                </div>
+                <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">CT</label>
-                  <input ref={firstInputRef} name="ct" className="form-control" value={form.ct} onChange={handleChange} placeholder="Ingresa CT (opcional)" />
+                  <input name="ct" className="form-control" value={form.ct} onChange={handleChange} placeholder="Ingresa CT (opcional)" />
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
@@ -367,6 +373,11 @@ export default function NuevoCandidato() {
                   <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
                   <input type="date" name="fecha_creacion_ct" className="form-control" value={form.fecha_creacion_ct || ''} onChange={handleChange} />
                   <div className="form-text small">Selecciona la fecha en que se creó el CT.</div>
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN POP</label>
+                  <input type="date" name="fecha_creacion_pop" className="form-control" value={form.fecha_creacion_pop || ''} onChange={handleChange} />
+                  <div className="form-text small">Selecciona la fecha en que se creó el POP.</div>
                 </div>
                 {/* Días desde CT y Proceso ocultos en registro */}
                 <div className="col-12">

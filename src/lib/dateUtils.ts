@@ -9,7 +9,9 @@ const DATE_FIELD_NAMES = new Set([
   'fecha_eliminacion',
   'fecha_de_creacion',
   'ultima_actualizacion',
-  'fecha_creacion_ct'
+  'fecha_creacion_ct',
+  // Nueva fecha de creación POP
+  'fecha_creacion_pop'
 ])
 
 // Convierte dd/mm/aaaa -> aaaa-mm-dd si es válido

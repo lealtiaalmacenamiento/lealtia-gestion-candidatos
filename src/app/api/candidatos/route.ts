@@ -138,7 +138,8 @@ export async function POST(req: Request) {
     fecha_limite_para_presentar_curricula_cdp: body.fecha_limite_para_presentar_curricula_cdp,
     inicio_escuela_fundamental: body.inicio_escuela_fundamental,
     fecha_tentativa_de_examen: body.fecha_tentativa_de_examen,
-    fecha_creacion_ct: body.fecha_creacion_ct
+    fecha_creacion_ct: body.fecha_creacion_ct,
+    fecha_creacion_pop: body.fecha_creacion_pop
   })
   body.proceso = deriv.proceso
 

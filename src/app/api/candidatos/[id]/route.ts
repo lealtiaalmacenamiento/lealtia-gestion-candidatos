@@ -145,7 +145,8 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     fecha_limite_para_presentar_curricula_cdp: body.fecha_limite_para_presentar_curricula_cdp ?? existenteData.fecha_limite_para_presentar_curricula_cdp,
     inicio_escuela_fundamental: body.inicio_escuela_fundamental ?? existenteData.inicio_escuela_fundamental,
     fecha_tentativa_de_examen: body.fecha_tentativa_de_examen ?? existenteData.fecha_tentativa_de_examen,
-    fecha_creacion_ct: body.fecha_creacion_ct ?? (existenteData as any).fecha_creacion_ct
+    fecha_creacion_ct: body.fecha_creacion_ct ?? (existenteData as any).fecha_creacion_ct,
+    fecha_creacion_pop: (body as any).fecha_creacion_pop ?? (existenteData as any).fecha_creacion_pop
   }
   body.proceso = calcularDerivados(snap).proceso
   // fecha_creacion_ct y fecha_tentativa_de_examen: si vienen en body se guardan tal cual (yyyy-mm-dd)
