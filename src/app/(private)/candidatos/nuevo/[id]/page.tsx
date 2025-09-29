@@ -249,7 +249,12 @@ export default function EditarCandidato() {
   if (form.fecha_tentativa_de_examen) {
     const fte = parseOneDate(form.fecha_tentativa_de_examen)
     const hoy = new Date(); const h = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()))
-    if (!fte || fte.getTime() < h.getTime()) throw new Error('La fecha tentativa de examen debe ser hoy o una fecha posterior.')
+    if (!fte) throw new Error('Formato inválido de fecha tentativa de examen.')
+    // Permitimos fechas pasadas en modo edición; sólo avisamos (no bloqueamos) si es pasada y no existía antes / o cambia a pasado.
+    if (fte.getTime() < h.getTime()) {
+      // Sólo mostrar un warning no bloqueante; reutilizamos notif local si no existe
+      if (!notif) setNotif({ type: 'danger', msg: 'Aviso: la fecha tentativa de examen está en el pasado (se permitirá por edición histórica).' })
+    }
   }
   // Omitir campos derivados que no existen físicamente en la tabla
   // Extraer y descartar campos derivados sin declararlos (para evitar warnings)
