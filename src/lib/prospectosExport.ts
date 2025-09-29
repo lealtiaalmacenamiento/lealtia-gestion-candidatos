@@ -14,7 +14,8 @@ const ESTADO_COLORS: Record<ProspectoEstado,string> = {
   pendiente: '#6c757d',
   seguimiento: '#ffc107',
   con_cita: '#198754',
-  descartado: '#dc3545'
+  descartado: '#dc3545',
+  ya_es_cliente: '#0dcaf0'
 }
 // Citas dormidas: evitamos mostrar fechas de cita en tablas
 function nowMX(){
@@ -215,6 +216,7 @@ export async function exportProspectosPDF(
       ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
       ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
       ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
+  ['Ya es cliente', `${resumen.por_estado.ya_es_cliente||0} (${pct(resumen.por_estado.ya_es_cliente||0,resumen.total)})`],
       ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
     ]
     // 3 tarjetas por fila dentro de 182mm útiles: 3*56 + 2*6 = 180 <= 182
@@ -239,6 +241,7 @@ export async function exportProspectosPDF(
         ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
         ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
         ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
+  ,['ya_es_cliente', resumen.por_estado.ya_es_cliente||0, ESTADO_COLORS.ya_es_cliente]
       ]
     const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       const baseX = 14
@@ -340,7 +343,7 @@ export async function exportProspectosPDF(
     for(const p of prospectos){
       const ep = p as ExtendedProspecto
       const agName = agentesMap[ep.agente_id ?? -1] || `Ag ${ ep.agente_id}`
-      if(!porAgente[agName]) porAgente[agName] = { agente: agName, total:0, por_estado:{ pendiente:0, seguimiento:0, con_cita:0, descartado:0 } }
+  if(!porAgente[agName]) porAgente[agName] = { agente: agName, total:0, por_estado:{ pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 } }
       const bucket = porAgente[agName]
       bucket.total++
       if(bucket.por_estado[p.estado] !== undefined) bucket.por_estado[p.estado]++
@@ -366,9 +369,10 @@ export async function exportProspectosPDF(
       acc.pendiente += r.por_estado.pendiente
       acc.seguimiento += r.por_estado.seguimiento
       acc.con_cita += r.por_estado.con_cita || 0
-      acc.descartado += r.por_estado.descartado
+  acc.descartado += r.por_estado.descartado
+  acc.ya_es_cliente += (r.por_estado as Record<ProspectoEstado,number>).ya_es_cliente || 0
       return acc
-    }, { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0 })
+  }, { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 as number })
     const footerRows = [ [
       'TOTAL',
       totals.total,
@@ -412,6 +416,7 @@ export async function exportProspectosPDF(
         ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
         ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
         ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
+  ,['ya_es_cliente', resumen.por_estado.ya_es_cliente||0, ESTADO_COLORS.ya_es_cliente]
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       // Legend (horizontal)
@@ -467,6 +472,7 @@ export async function exportProspectosPDF(
         ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
         ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
         ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`]
+  ,['Ya es cliente', `${resumen.por_estado.ya_es_cliente||0} (${pct(resumen.por_estado.ya_es_cliente||0,resumen.total)})`]
       ]
       const cardX = 110
       let cardY = chartTop

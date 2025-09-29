@@ -96,7 +96,7 @@ export async function POST(req: Request) {
   const notas: string | undefined = body.notas?.trim() || undefined
   let estado: ProspectoEstado = 'pendiente'
   const estadoRaw: string | undefined = body.estado
-  if (estadoRaw && ['pendiente','seguimiento','con_cita','descartado'].includes(estadoRaw)) estado = estadoRaw as ProspectoEstado
+  if (estadoRaw && ['pendiente','seguimiento','con_cita','descartado','ya_es_cliente'].includes(estadoRaw)) estado = estadoRaw as ProspectoEstado
 
   let fecha_cita: string | undefined = body.fecha_cita
   // Normalización: el frontend ahora envía siempre ISO UTC cuando hay fecha+hora.

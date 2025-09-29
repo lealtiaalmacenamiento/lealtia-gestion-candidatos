@@ -24,7 +24,7 @@ export async function PATCH(req: Request) {
   if (body.notas !== undefined) fields.notas = String(body.notas).trim() || null
   if (body.estado !== undefined) {
     const e = String(body.estado)
-    if (['pendiente','seguimiento','con_cita','descartado'].includes(e)) fields.estado = e as ProspectoEstado
+  if (['pendiente','seguimiento','con_cita','descartado','ya_es_cliente'].includes(e)) fields.estado = e as ProspectoEstado
   }
   if (body.fecha_cita !== undefined) {
     const fc = String(body.fecha_cita)

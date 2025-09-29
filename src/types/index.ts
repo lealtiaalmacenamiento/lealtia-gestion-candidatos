@@ -104,7 +104,7 @@ export interface Parametro {
 }
 
 /* ===== Fase 2: Prospectos y Planificación ===== */
-export type ProspectoEstado = 'pendiente' | 'seguimiento' | 'con_cita' | 'descartado'
+export type ProspectoEstado = 'pendiente' | 'seguimiento' | 'con_cita' | 'descartado' | 'ya_es_cliente'
 
 export interface Prospecto {
   id: number
