@@ -31,7 +31,7 @@ export default function ProspectosPage(){
   const actuales = useMemo(()=>{
     return prospectos.filter(p=> p.anio===anio && p.semana_iso === semanaHoy)
   },[prospectos, semanaHoy, anio])
-  const [showPrevios,setShowPrevios]=useState(true)
+  const [showPrevios,setShowPrevios]=useState(false)
   const [loading,setLoading]=useState(false)
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
@@ -467,13 +467,13 @@ export default function ProspectosPage(){
         <div className="d-flex flex-wrap gap-2 align-items-center">
           <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title="Todos">Total {agg.total}</button>
           {Object.entries(agg.por_estado).map(([k,v])=> { const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}}>{ESTADO_LABEL[k as ProspectoEstado]} {v}</button>})}
-          {(()=>{ const carry = activosPrevios.length; const progreso = agg.total + carry; const ok = progreso>=metaProspectos; return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Progreso a meta con arrastre (${agg.total} + ${carry})`}>{ok? `Meta ${metaProspectos} ok` : (`${progreso}/${metaProspectos}`)}</span> })()}
+          {(()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = agg.total; const ok = progreso>=objetivo; return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Meta dinámica: base ${metaProspectos} + arrastre ${carry} = ${objetivo}`}>{ok? `Meta ${objetivo} ok` : (`${progreso}/${objetivo}`)}</span> })()}
           {!superuser && (
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; const extended = computeExtendedMetrics(filtered,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 } })(); let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined; try { if (semana !== 'ALL') { const who = user?.email || ''; if (who) { const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who }); const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString()); if (rAct.ok) { const j = await rAct.json(); if (j && j.success && j.daily && Array.isArray(j.daily.counts)) { const b = j.breakdown || {}; activityWeekly = { labels: j.daily.labels || [], counts: j.daily.counts || [], breakdown: { views: Number(b.views||0), clicks: Number(b.clicks||0), forms: Number(b.forms||0), prospectos: Number(b.prospectos||0), planificacion: Number(b.planificacion||0), clientes: Number(b.clientes||0), polizas: Number(b.polizas||0), usuarios: Number(b.usuarios||0), parametros: Number(b.parametros||0), reportes: Number(b.reportes||0), otros: Number(b.otros||0) }, dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined, ...(j.details ? { details: j.details } : {}), ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {}) }; } } } } } catch { /* ignore */ } exportProspectosPDF(filtered, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly }) }}>PDF</button>
           )}
         </div>
-        {(!superuser || (superuser && agenteId)) && (()=>{ const carry = activosPrevios.length; const progreso = agg.total + carry; const pct = Math.min(100,(progreso/metaProspectos)*100); const ok = progreso>=metaProspectos; return <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={progreso} aria-valuemin={0} aria-valuemax={metaProspectos}>
-          <div className={`progress-bar ${ok? 'bg-success':'bg-warning text-dark'}`} style={{width: pct+'%'}}>{progreso}/{metaProspectos}</div>
+        {(!superuser || (superuser && agenteId)) && (()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = agg.total; const pct = Math.min(100,(progreso/objetivo)*100); const ok = progreso>=objetivo; return <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={progreso} aria-valuemin={0} aria-valuemax={objetivo}>
+          <div className={`progress-bar ${ok? 'bg-success':'bg-warning text-dark'}`} style={{width: pct+'%'}}>{progreso}/{objetivo}</div>
         </div>})()}
     </div>}
   <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
@@ -487,7 +487,7 @@ export default function ProspectosPage(){
           {telefonoInvalido && <div className="invalid-feedback">Teléfono inválido. Use 7-15 dígitos, opcional +, espacios o guiones.</div>}
         </div>
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
-  <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+  <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().filter(o=> o.value!=='ya_es_cliente').map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
       </div>
   <div className="mt-2">
         <button className="btn btn-primary btn-sm" disabled={saving || loading || telefonoInvalido} aria-busy={saving} type="submit">
@@ -496,7 +496,7 @@ export default function ProspectosPage(){
       </div>
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
-    <h5 className="mt-4">Semana actual</h5>
+  <h5 className="mt-4">Prospectos semana actual</h5>
     <div className="table-responsive mb-4">
       <table className="table table-sm align-middle">
         <thead>
@@ -526,7 +526,7 @@ export default function ProspectosPage(){
       {loading && <div className="p-3">Cargando...</div>}
     </div>
     <div className="d-flex align-items-center gap-2 mb-2">
-      <h5 className="m-0">Semanas anteriores activas</h5>
+      <h5 className="m-0">Prospectos semanas anteriores</h5>
       <button type="button" className="btn btn-sm btn-outline-secondary" onClick={()=>setShowPrevios(s=>!s)}>{showPrevios? 'Ocultar':'Mostrar'}</button>
       <span className="badge bg-light text-dark">{activosPrevios.length}</span>
     </div>
