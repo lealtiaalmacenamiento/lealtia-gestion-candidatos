@@ -95,7 +95,7 @@ export default function ProspectosPage(){
     weekParams.set('anio', String(anio))
     if(semana !== 'ALL') weekParams.set('semana', String(semana))
     if(superuser && agenteId) weekParams.set('agente_id', String(agenteId))
-    if(estadoFiltro) weekParams.set('estado', String(estadoFiltro))
+  // filtro de estado ahora sólo es local (no se manda al backend)
     // Lanzar fetch semana
     const weekPromise = fetch('/api/prospectos?'+weekParams.toString())
     // Si semana === 'ALL', reutilizaremos lista semanal como year
@@ -150,7 +150,7 @@ export default function ProspectosPage(){
   }
 
   useEffect(()=>{ fetchAll(); if(superuser) fetchAgentes() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[estadoFiltro, agenteId, semana, anio])
+  },[agenteId, semana, anio])
 
   useEffect(()=> { fetchFase2Metas().then(m=> { setMetaProspectos(m.metaProspectos) }) },[])
 
@@ -167,7 +167,7 @@ export default function ProspectosPage(){
       }
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[superuser, agenteId, anio, semana, estadoFiltro])
+  },[superuser, agenteId, anio, semana])
 
   // Timezone helpers (CDMX). Desde 2022 sin DST: offset fijo -06.
   // const MX_UTC_OFFSET = 6
@@ -211,7 +211,7 @@ export default function ProspectosPage(){
       return ()=> { supa.removeChannel(channel) }
     } catch { /* ignore missing config at build */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[superuser, agenteId, anio, semana, estadoFiltro])
+  },[superuser, agenteId, anio, semana])
 
   // Validaciones extra: formato teléfono y posible duplicado por nombre
   const telefonoValido = (v:string)=> !v || /^\+?[0-9\s-]{7,15}$/.test(v)
@@ -559,7 +559,7 @@ export default function ProspectosPage(){
           </tr>
         </thead>
         <tbody>
-          {actuales.filter(p=> !busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase())).map(p=> (
+          {actuales.filter(p=> (!estadoFiltro || p.estado===estadoFiltro) && (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))).map(p=> (
             <tr key={p.id}>
               <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
               <td>{p.telefono? (()=>{ const digits = p.telefono.replace(/[^0-9]/g,''); if(!digits) return p.telefono; const withCode = digits.length===10? '52'+digits : digits; const waUrl = 'https://wa.me/'+withCode; return <a href={waUrl} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp">{p.telefono}</a>; })(): ''}</td>
@@ -595,7 +595,7 @@ export default function ProspectosPage(){
             </tr>
           </thead>
           <tbody>
-            {activosPrevios.filter(p=> !busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase())).map(p=> (
+            {activosPrevios.filter(p=> (!estadoFiltro || p.estado===estadoFiltro) && (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))).map(p=> (
               <tr key={p.id}>
                 <td>{p.semana_iso}</td>
                 <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
