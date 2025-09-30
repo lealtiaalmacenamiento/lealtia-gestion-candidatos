@@ -35,6 +35,7 @@ export default function ProspectosPage(){
   },[sourceAll, semanaHoy, anio])
   const [showPrevios,setShowPrevios]=useState(false)
   const [loading,setLoading]=useState(false)
+  const yearCacheRef = useRef<Record<string,Prospecto[]>>({}) // key: anio|agenteId
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
@@ -74,18 +75,34 @@ export default function ProspectosPage(){
 
   const fetchAll = async()=>{
     setLoading(true)
+    const weekParams = new URLSearchParams()
+    weekParams.set('anio', String(anio))
+    if(semana !== 'ALL') weekParams.set('semana', String(semana))
+    if(superuser && agenteId) weekParams.set('agente_id', String(agenteId))
+    if(estadoFiltro) weekParams.set('estado', String(estadoFiltro))
+    // Lanzar fetch semana
+    const weekPromise = fetch('/api/prospectos?'+weekParams.toString())
+    // Si semana === 'ALL', reutilizaremos lista semanal como year
+    const needYear = semana !== 'ALL'
+    const cacheKey = anio+ '|' + (superuser? (agenteId||'ALL'): 'SELF')
+    let yearPromise: Promise<Response>|null = null
+    if(needYear){
+      if(yearCacheRef.current[cacheKey]){
+        setYearProspectos(yearCacheRef.current[cacheKey])
+      } else {
+  // indicador de carga anual omitido para no bloquear UI
+        const yearParams = new URLSearchParams(); yearParams.set('anio', String(anio)); if(superuser && agenteId) yearParams.set('agente_id', String(agenteId))
+        yearPromise = fetch('/api/prospectos?'+yearParams.toString())
+      }
+    } else {
+      setYearProspectos(null) // no se necesita lista separada
+    }
     try {
-      const params = new URLSearchParams()
-      params.set('anio', String(anio))
-      if(semana !== 'ALL') params.set('semana', String(semana))
-      if(superuser && agenteId) params.set('agente_id', String(agenteId))
-      if(estadoFiltro) params.set('estado', String(estadoFiltro))
-      const r = await fetch('/api/prospectos?'+params.toString())
+      // Resolver semana
+      const r = await weekPromise
       if(r.ok){
-        const data = await r.json()
-        const list: Prospecto[] = Array.isArray(data) ? data : (data?.items || [])
+        const data = await r.json(); const list: Prospecto[] = Array.isArray(data)? data : (data?.items||[])
         setProspectos(list)
-  // Reset page-level filters unaffected by name search (which is client-side)
         const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }
         for(const p of list){ if(counts[p.estado] !== undefined) counts[p.estado]++ }
         setAgg({ total: list.length, por_estado: counts, cumplimiento_30: list.length >= 30 })
@@ -98,24 +115,21 @@ export default function ProspectosPage(){
               const rPrev = await fetch('/api/prospectos/aggregate?'+q.toString())
               if(rPrev.ok){ setPrevAgg(await rPrev.json() as Aggregate) } else { setPrevAgg(null) }
             } catch { setPrevAgg(null) }
-          } else { setPrevAgg(null) }
-        } else { setPrevAgg(null) }
+          } else setPrevAgg(null)
+        } else setPrevAgg(null)
+        // Reutilizar para year si ALL
+        if(semana === 'ALL') yearCacheRef.current[cacheKey] = list
       } else {
-        setProspectos([])
-        setAgg({ total:0, por_estado:{}, cumplimiento_30:false })
-        setPrevAgg(null)
+        setProspectos([]); setAgg({ total:0, por_estado:{}, cumplimiento_30:false }); setPrevAgg(null)
       }
-      // Fetch full-year (sin semana) para arrastre histórico solo si estamos viendo una semana específica
-      try {
-        const paramsYear = new URLSearchParams(); paramsYear.set('anio', String(anio))
-        if(superuser && agenteId) paramsYear.set('agente_id', String(agenteId))
-        // No incluir estadoFiltro intencionalmente: necesitamos todos para clasificar (luego UI filtro estado ya actúa sobre week fetch)
-        const ry = await fetch('/api/prospectos?'+paramsYear.toString())
-        if(ry.ok){
-          const dY = await ry.json(); const listY: Prospecto[] = Array.isArray(dY)? dY : (dY?.items||[])
-          setYearProspectos(listY)
-        } else setYearProspectos(null)
-      } catch { setYearProspectos(null) }
+      // Resolver year si corresponde y no caché
+      if(yearPromise){
+        try {
+          const ry = await yearPromise
+          if(ry.ok){ const dY = await ry.json(); const listY: Prospecto[] = Array.isArray(dY)? dY : (dY?.items||[]); yearCacheRef.current[cacheKey]=listY; setYearProspectos(listY) }
+          else if(!yearCacheRef.current[cacheKey]) setYearProspectos(null)
+  } finally { /* fin carga anual */ }
+      }
     } finally { setLoading(false) }
   }
 
