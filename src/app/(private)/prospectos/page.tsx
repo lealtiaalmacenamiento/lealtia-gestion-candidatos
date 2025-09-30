@@ -26,17 +26,15 @@ export default function ProspectosPage(){
   const [yearProspectos,setYearProspectos]=useState<Prospecto[]|null>(null)
   const [busqueda,setBusqueda]=useState('')
   // Derivados para separación de semanas
-  // Semana seleccionada para cálculo de meta (si se elige "ALL" usamos la semana actual solo para mostrar la tabla, pero ocultamos meta)
-  const selectedWeek = useMemo(()=>{
-    return semana === 'ALL' ? semanaActual.semana : (semana as number)
-  },[semana, semanaActual.semana])
+  // Semana fija para meta: siempre la semana actual del calendario, independientemente del filtro seleccionado
+  const metaWeek = semanaActual.semana
   const sourceAll = yearProspectos || prospectos
   const activosPrevios = useMemo(()=>{
-    return sourceAll.filter(p=> p.anio===anio && p.semana_iso < selectedWeek && ['pendiente','seguimiento','con_cita'].includes(p.estado))
-  },[sourceAll, selectedWeek, anio])
+    return sourceAll.filter(p=> p.anio===anio && p.semana_iso < metaWeek && ['pendiente','seguimiento','con_cita'].includes(p.estado))
+  },[sourceAll, metaWeek, anio])
   const actuales = useMemo(()=>{
-    return sourceAll.filter(p=> p.anio===anio && p.semana_iso === selectedWeek)
-  },[sourceAll, selectedWeek, anio])
+    return sourceAll.filter(p=> p.anio===anio && p.semana_iso === metaWeek)
+  },[sourceAll, metaWeek, anio])
   const [showPrevios,setShowPrevios]=useState(false)
   const [loading,setLoading]=useState(false)
   const yearCacheRef = useRef<Record<string,Prospecto[]>>({}) // key: anio|agenteId
@@ -493,16 +491,16 @@ export default function ProspectosPage(){
   }}>PDF</button>
     </div>}
   {/* Filtro solo con cita eliminado */}
-  {agg && semana !== 'ALL' && (!superuser || (superuser && agenteId)) && <div className="d-flex flex-column gap-2 small">
+  {agg && (!superuser || (superuser && agenteId)) && <div className="d-flex flex-column gap-2 small">
         <div className="d-flex flex-wrap gap-2 align-items-center">
           <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title="Todos">Total {agg.total}</button>
           {Object.entries(agg.por_estado).map(([k,v])=> { const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}}>{ESTADO_LABEL[k as ProspectoEstado]} {v}</button>})}
-          {(()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = actuales.length; const ok = progreso>=objetivo; return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Meta dinámica (semana ${selectedWeek}): base ${metaProspectos} + arrastre ${carry} = ${objetivo}`}>{ok? `Meta ${objetivo} ok` : (`${progreso}/${objetivo}`)}</span> })()}
+          {(()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = actuales.length; const ok = progreso>=objetivo; return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Meta dinámica semana actual (${metaWeek}): base ${metaProspectos} + arrastre ${carry} = ${objetivo}`}>{ok? `Meta ${objetivo} ok` : (`${progreso}/${objetivo}`)}</span> })()}
           {!superuser && (
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; const extended = computeExtendedMetrics(filtered,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 } })(); let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined; try { if (semana !== 'ALL') { const who = user?.email || ''; if (who) { const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who }); const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString()); if (rAct.ok) { const j = await rAct.json(); if (j && j.success && j.daily && Array.isArray(j.daily.counts)) { const b = j.breakdown || {}; activityWeekly = { labels: j.daily.labels || [], counts: j.daily.counts || [], breakdown: { views: Number(b.views||0), clicks: Number(b.clicks||0), forms: Number(b.forms||0), prospectos: Number(b.prospectos||0), planificacion: Number(b.planificacion||0), clientes: Number(b.clientes||0), polizas: Number(b.polizas||0), usuarios: Number(b.usuarios||0), parametros: Number(b.parametros||0), reportes: Number(b.reportes||0), otros: Number(b.otros||0) }, dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined, ...(j.details ? { details: j.details } : {}), ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {}) }; } } } } } catch { /* ignore */ } exportProspectosPDF(filtered, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly }) }}>PDF</button>
           )}
         </div>
-  {(!superuser || (superuser && agenteId)) && semana !== 'ALL' && (()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = actuales.length; const pct = Math.min(100,(progreso/objetivo)*100); const ok = progreso>=objetivo; return <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={progreso} aria-valuemin={0} aria-valuemax={objetivo}>
+  {(!superuser || (superuser && agenteId)) && (()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = actuales.length; const pct = Math.min(100,(progreso/objetivo)*100); const ok = progreso>=objetivo; return <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={progreso} aria-valuemin={0} aria-valuemax={objetivo}>
           <div className={`progress-bar ${ok? 'bg-success':'bg-warning text-dark'}`} style={{width: pct+'%'}}>{progreso}/{objetivo}</div>
         </div>})()}
     </div>}
