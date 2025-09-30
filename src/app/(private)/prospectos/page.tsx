@@ -246,9 +246,6 @@ export default function ProspectosPage(){
           </select>
         </div>
       </div>
-      <div className="mb-3" style={{maxWidth:320}}>
-        <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar por nombre" className="form-control form-control-sm" />
-      </div>
       {superuser && <div className="mb-3 d-flex gap-2 align-items-center">
         <select value={agenteId} onChange={e=>setAgenteId(e.target.value)} className="form-select w-auto" title="También se usa para asignar el agente al crear un prospecto">
           <option value="">(Todos para ver / Sin asignar al crear)</option>
@@ -496,7 +493,10 @@ export default function ProspectosPage(){
       </div>
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
-  <h5 className="mt-4">Prospectos semana actual</h5>
+    <div className="mt-4 mb-2" style={{maxWidth:320}}>
+      <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar por nombre" className="form-control form-control-sm" />
+    </div>
+    <h5 className="mb-2">Prospectos semana actual</h5>
     <div className="table-responsive mb-4">
       <table className="table table-sm align-middle">
         <thead>
