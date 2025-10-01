@@ -13,6 +13,17 @@ import { exportProspectosPDF } from '@/lib/prospectosExport'
 import { computeExtendedMetrics, computePreviousWeekDelta } from '@/lib/prospectosMetrics'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
+// Modal creación rápida de cliente al convertir prospecto a 'ya_es_cliente'
+
+interface NuevoClienteDraft {
+  primer_nombre: string
+  segundo_nombre: string
+  primer_apellido: string
+  segundo_apellido: string
+  telefono_celular: string
+  email: string
+  fecha_nacimiento?: string
+}
 
 interface Aggregate { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean }
  
@@ -226,6 +237,71 @@ export default function ProspectosPage(){
   // Modal de edición de prospecto
   const [editTarget, setEditTarget] = useState<Prospecto|null>(null)
   const [editForm, setEditForm] = useState<{ nombre:string; telefono:string; notas:string; estado:ProspectoEstado }>({ nombre:'', telefono:'', notas:'', estado:'pendiente' })
+  // Estado para modal de nuevo cliente
+  const [showNuevoCliente, setShowNuevoCliente] = useState(false)
+  const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteDraft>({ primer_nombre:'', segundo_nombre:'', primer_apellido:'', segundo_apellido:'', telefono_celular:'', email:'' })
+  const [savingCliente, setSavingCliente] = useState(false)
+  const [clienteError, setClienteError] = useState<string>('')
+  const [clienteSuccess, setClienteSuccess] = useState<string>('')
+
+  // Helper: dividir nombre completo del prospecto en partes básicas.
+  function splitNombre(full: string): { pn:string; sn:string; pa:string; sa:string } {
+    const parts = full.trim().replace(/\s+/g,' ').split(' ')
+    if (!parts.length) return { pn:'', sn:'', pa:'', sa:'' }
+    if (parts.length === 1) return { pn: parts[0], sn:'', pa: parts[0], sa:'X' }
+    if (parts.length === 2) return { pn: parts[0], sn:'', pa: parts[1], sa:'X' }
+    if (parts.length === 3) return { pn: parts[0], sn: parts[1], pa: parts[2], sa:'X' }
+    // 4 o más: asumir 1er y 2do nombre, 1er y 2do apellido (resto se concatena al segundo apellido)
+    const pn = parts[0]
+    const sn = parts[1]
+    const pa = parts[2]
+    const sa = parts.slice(3).join(' ')
+    return { pn, sn, pa, sa }
+  }
+
+  const openNuevoClienteFromProspecto = (p: Prospecto, nombreOverride?: string, telefonoOverride?: string) => {
+    const baseNombre = (nombreOverride || p.nombre || '').trim()
+    const { pn, sn, pa, sa } = splitNombre(baseNombre)
+    const tel = (telefonoOverride || p.telefono || '').replace(/\D/g,'')
+    setNuevoCliente({ primer_nombre: pn.toUpperCase(), segundo_nombre: sn.toUpperCase(), primer_apellido: pa.toUpperCase(), segundo_apellido: (sa||'X').toUpperCase(), telefono_celular: tel, email: '' })
+    setClienteError(''); setClienteSuccess('')
+    setShowNuevoCliente(true)
+  }
+
+  const submitNuevoCliente = async () => {
+    if (savingCliente) return
+    setSavingCliente(true)
+    setClienteError(''); setClienteSuccess('')
+    const { primer_nombre, primer_apellido, segundo_apellido, telefono_celular, email } = nuevoCliente
+    if (!primer_nombre.trim() || !primer_apellido.trim() || !segundo_apellido.trim() || !telefono_celular.trim() || !email.trim()) {
+      setClienteError('Completa los campos requeridos (nombres, apellidos, teléfono, email).')
+      setSavingCliente(false)
+      return
+    }
+    try {
+      const payload: Record<string, unknown> = {
+        primer_nombre: primer_nombre.trim(),
+        segundo_nombre: nuevoCliente.segundo_nombre.trim() || null,
+        primer_apellido: primer_apellido.trim(),
+        segundo_apellido: segundo_apellido.trim(),
+        telefono_celular: telefono_celular.trim(),
+        email: email.trim().toLowerCase(),
+      }
+      if (nuevoCliente.fecha_nacimiento) payload.fecha_nacimiento = nuevoCliente.fecha_nacimiento
+      const r = await fetch('/api/clientes', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+      const j = await r.json().catch(()=> ({}))
+      if (!r.ok) {
+        setClienteError(j.error || 'Error al crear cliente')
+      } else {
+        setClienteSuccess('Cliente creado correctamente.')
+        setToast({ msg: 'Cliente creado', type:'success' })
+        // Cerrar modal tras breve delay
+        setTimeout(()=>{ setShowNuevoCliente(false) }, 900)
+      }
+    } catch {
+      setClienteError('Error inesperado al crear cliente')
+    } finally { setSavingCliente(false) }
+  }
   const openEdit = (p: Prospecto) => {
     setEditTarget(p)
     setEditForm({
@@ -247,15 +323,16 @@ export default function ProspectosPage(){
     try {
       const r = await fetch('/api/prospectos/'+editTarget.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
       if (r.ok) {
-  await r.json() // respuesta ignorada
+        await r.json() // respuesta ignorada
         setToast({ msg:'Prospecto actualizado', type:'success' })
+        // Guardar referencia para saber si disparar modal
+        const estadoCambioACliente = patch.estado === 'ya_es_cliente'
+        // Cerrar modal de edición y refrescar datos
         closeEdit(); fetchAll()
-        try {
-          if (patch.estado === 'ya_es_cliente') {
-            const q = new URLSearchParams({ from_prospecto:String(editTarget.id), nombre: editForm.nombre || '', telefono: editForm.telefono || '' })
-            window.open('/clientes/nuevo?'+q.toString(), '_blank','noopener')
-          }
-        } catch { /* ignore window issues SSR */ }
+        if (estadoCambioACliente) {
+          // Abrir modal inline para registrar cliente reutilizando datos
+          openNuevoClienteFromProspecto(editTarget, editForm.nombre, editForm.telefono)
+        }
       } else {
         let errMsg = 'Error al actualizar'
         try {
@@ -639,6 +716,49 @@ export default function ProspectosPage(){
           <div className="d-flex justify-content-end gap-2 mt-3">
             <button className="btn btn-outline-secondary btn-sm" onClick={closeEdit}>Cancelar</button>
             <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={!editForm.nombre.trim()}>Guardar cambios</button>
+          </div>
+        </div>
+      </AppModal>
+    )}
+    {showNuevoCliente && (
+      <AppModal title="Registrar cliente" icon="person-plus" onClose={()=>{ if(!savingCliente) setShowNuevoCliente(false) }}>
+        <div className="small">
+          <p className="mb-2 text-muted">Completa los datos básicos del nuevo cliente generado desde el prospecto convertido.</p>
+          <div className="row g-2">
+            <div className="col-sm-6">
+              <label className="form-label small">Primer nombre *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.primer_nombre} onChange={e=>setNuevoCliente(c=>({...c, primer_nombre:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Segundo nombre</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.segundo_nombre} onChange={e=>setNuevoCliente(c=>({...c, segundo_nombre:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Primer apellido *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.primer_apellido} onChange={e=>setNuevoCliente(c=>({...c, primer_apellido:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Segundo apellido *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.segundo_apellido} onChange={e=>setNuevoCliente(c=>({...c, segundo_apellido:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Teléfono *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.telefono_celular} onChange={e=>setNuevoCliente(c=>({...c, telefono_celular:e.target.value.replace(/[^0-9+\s-]/g,'')}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Email *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.email} onChange={e=>setNuevoCliente(c=>({...c, email:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Fecha nacimiento</label>
+              <input type="date" className="form-control form-control-sm" value={nuevoCliente.fecha_nacimiento || ''} onChange={e=>setNuevoCliente(c=>({...c, fecha_nacimiento:e.target.value||undefined}))} />
+            </div>
+          </div>
+          {clienteError && <div className="text-danger small mt-2">{clienteError}</div>}
+          {clienteSuccess && <div className="text-success small mt-2">{clienteSuccess}</div>}
+          <div className="d-flex justify-content-end gap-2 mt-3">
+            <button className="btn btn-outline-secondary btn-sm" disabled={savingCliente} onClick={()=>{ if(!savingCliente) setShowNuevoCliente(false) }}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" disabled={savingCliente} onClick={submitNuevoCliente}>{savingCliente? 'Guardando…':'Crear cliente'}</button>
           </div>
         </div>
       </AppModal>
