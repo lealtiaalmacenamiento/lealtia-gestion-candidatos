@@ -40,31 +40,19 @@ export default function ProspectosPage(){
   // Semana fija para meta: siempre la semana actual del calendario, independientemente del filtro seleccionado
   const metaWeek = semanaActual.semana
   const sourceAll = yearProspectos || prospectos
-  const activosPrevios = useMemo(()=>{
-    return sourceAll.filter(p=> p.anio===anio && p.semana_iso < metaWeek && ['pendiente','seguimiento','con_cita'].includes(p.estado))
-  },[sourceAll, metaWeek, anio])
-  const actuales = useMemo(()=>{
-    return sourceAll.filter(p=> p.anio===anio && p.semana_iso === metaWeek)
-  },[sourceAll, metaWeek, anio])
+  // En la nueva lógica de reporte ya NO mezclamos semanas previas; mantenemos referencias pero se usarán solo para tabla secundaria
+  const activosPrevios = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso < metaWeek && ['pendiente','seguimiento','con_cita'].includes(p.estado)), [sourceAll, metaWeek, anio])
+  const actuales = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso === metaWeek), [sourceAll, metaWeek, anio])
   const [showPrevios,setShowPrevios]=useState(false)
   const [loading,setLoading]=useState(false)
   const yearCacheRef = useRef<Record<string,Prospecto[]>>({}) // key: anio|agenteId
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
-  // Conteos mostrados en badges (opción 1: incluir arrastre de semanas previas en la semana seleccionada)
+  // Conteos mostrados en badges: revertido a lógica original (solo semana seleccionada / agg directo)
   const displayData = useMemo(()=>{
     if(!agg) return { total:0, por_estado:{} as Record<string,number> }
-    // Si se está viendo 'ALL' no mezclamos; mostramos tal cual agg
-    if(semana === 'ALL') return { total: agg.total, por_estado: { ...agg.por_estado } }
-    // Mezclar estados activosPrevios + actuales (arrastre solo de estados activos para consistencia visual)
-    const merged: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, ya_es_cliente:0, descartado:0 }
-    const push = (p:Prospecto)=>{ if(merged[p.estado] !== undefined) merged[p.estado]++ }
-    for(const p of activosPrevios) push(p)
-    // Para los de la semana actual usamos 'actuales'
-    for(const p of actuales) push(p)
-    const total = Object.values(merged).reduce((a,b)=>a+b,0)
-    return { total, por_estado: merged }
-  },[agg, semana, activosPrevios, actuales])
+    return { total: agg.total, por_estado: { ...agg.por_estado } }
+  },[agg])
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
   const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
   const [errorMsg,setErrorMsg]=useState<string>('')
@@ -236,18 +224,21 @@ export default function ProspectosPage(){
 
   // Modal de edición de prospecto
   const [editTarget, setEditTarget] = useState<Prospecto|null>(null)
-  const [editForm, setEditForm] = useState<{ nombre:string; telefono:string; notas:string; estado:ProspectoEstado }>({ nombre:'', telefono:'', notas:'', estado:'pendiente' })
+  const [editForm, setEditForm] = useState<{ nombre:string; telefono:string; notas:string; estado:string }>({ nombre:'', telefono:'', notas:'', estado:'pendiente' })
   // Estado para modal de nuevo cliente
   const [showNuevoCliente, setShowNuevoCliente] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteDraft>({ primer_nombre:'', segundo_nombre:'', primer_apellido:'', segundo_apellido:'', telefono_celular:'', email:'' })
   const [savingCliente, setSavingCliente] = useState(false)
   const [clienteError, setClienteError] = useState<string>('')
   const [clienteSuccess, setClienteSuccess] = useState<string>('')
+  // Estado para conversión diferida: guardamos el prospecto al que se le quiso cambiar a 'ya_es_cliente'
+  const [pendingConversionProspect, setPendingConversionProspect] = useState<Prospecto|null>(null)
 
-  const openNuevoClienteFromProspecto = () => {
+  const openNuevoClienteFromProspecto = (p: Prospecto|null) => {
     // Abrir modal SIN prellenar ningún campo (requerimiento)
     setNuevoCliente({ primer_nombre:'', segundo_nombre:'', primer_apellido:'', segundo_apellido:'', telefono_celular:'', email:'' })
     setClienteError(''); setClienteSuccess('')
+    if(p) setPendingConversionProspect(p)
     setShowNuevoCliente(true)
   }
 
@@ -278,6 +269,18 @@ export default function ProspectosPage(){
       } else {
         setClienteSuccess('Cliente creado correctamente.')
         setToast({ msg: 'Cliente creado', type:'success' })
+        // Segunda fase: actualizar prospecto a ya_es_cliente (si aún existe pendiente)
+        if(pendingConversionProspect){
+          try {
+            const resp = await fetch('/api/prospectos/'+pendingConversionProspect.id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado:'ya_es_cliente' }) })
+            if(!resp.ok){
+              try { const j2 = await resp.json(); setToast({ msg: 'Cliente creado pero error al actualizar prospecto: '+(j2.error||'Error'), type:'error' }) } catch { setToast({ msg:'Cliente creado pero error al actualizar prospecto', type:'error' }) }
+            } else {
+              fetchAll()
+            }
+          } catch { setToast({ msg:'Cliente creado pero error al actualizar prospecto', type:'error' }) }
+        }
+        setPendingConversionProspect(null)
         // Cerrar modal tras breve delay
         setTimeout(()=>{ setShowNuevoCliente(false) }, 900)
       }
@@ -297,36 +300,47 @@ export default function ProspectosPage(){
   const closeEdit = () => { setEditTarget(null) }
   const saveEdit = async () => {
     if (!editTarget) return
+    // Si ya está convertido, no permitir edición
+    if (editTarget.estado === 'ya_es_cliente') { setToast({ msg:'Prospecto ya convertido. No editable.', type:'error' }); closeEdit(); return }
+    // ProspectoEstado ya incluye 'ya_es_cliente'; comparar directamente
+  const currentEstado = editTarget.estado as unknown as string
+  const newEstado = editForm.estado as unknown as string
+  const wasCliente = currentEstado === 'ya_es_cliente'
+  const newIsCliente = newEstado === 'ya_es_cliente'
+    const convertingToCliente = newIsCliente && !wasCliente
     const patch: Partial<Prospecto> = {}
     if (editForm.nombre.trim() !== (editTarget.nombre||'').trim()) patch.nombre = editForm.nombre.trim()
     if ((editForm.telefono||'').trim() !== (editTarget.telefono||'').trim()) patch.telefono = (editForm.telefono||'').trim()
     if ((editForm.notas||'').trim() !== (editTarget.notas||'').trim()) patch.notas = (editForm.notas||'').trim()
-    if (editForm.estado !== editTarget.estado) patch.estado = editForm.estado
-    if (Object.keys(patch).length === 0) { setToast({ msg:'Sin cambios', type:'success' }); closeEdit(); return }
+    // NO incluir estado ya_es_cliente en este primer patch; se hará tras crear el cliente
+  if (!convertingToCliente && editForm.estado !== editTarget.estado) patch.estado = editForm.estado as ProspectoEstado
+    // Si lo único que cambia es el estado a ya_es_cliente, no enviamos patch ahora (abriremos modal)
+    const hasOtherChanges = Object.keys(patch).length > 0
+    if(!hasOtherChanges && convertingToCliente){
+      // Abrir modal de cliente y salir
+      openNuevoClienteFromProspecto(editTarget)
+      closeEdit()
+      return
+    }
+  if(!hasOtherChanges && !convertingToCliente){ setToast({ msg:'Sin cambios', type:'success' }); closeEdit(); return }
     try {
       const r = await fetch('/api/prospectos/'+editTarget.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
       if (r.ok) {
-        await r.json() // respuesta ignorada
+        await r.json()
         setToast({ msg:'Prospecto actualizado', type:'success' })
-        // Guardar referencia para saber si disparar modal
-        const estadoCambioACliente = patch.estado === 'ya_es_cliente'
-        // Cerrar modal de edición y refrescar datos
+  const needConversionAfterPatch = convertingToCliente
+        const refProspect = editTarget
         closeEdit(); fetchAll()
-        if (estadoCambioACliente) {
-          // Abrir modal inline sin prellenar
-          openNuevoClienteFromProspecto()
+        if(needConversionAfterPatch){
+          // Abrir modal para crear cliente; estado se actualizará tras éxito
+          openNuevoClienteFromProspecto(refProspect)
         }
       } else {
         let errMsg = 'Error al actualizar'
-        try {
-          const j = await r.json() as { error?: string }
-          if (j?.error) errMsg = j.error
-        } catch {}
+        try { const j = await r.json() as { error?: string }; if(j?.error) errMsg = j.error } catch {}
         setToast({ msg: errMsg, type:'error' })
       }
-    } catch {
-      setToast({ msg:'Error al actualizar', type:'error' })
-    }
+    } catch { setToast({ msg:'Error al actualizar', type:'error' }) }
   }
 
   // Eliminación completa de prospectos y manejo de cita deshabilitados según requerimiento.
@@ -567,15 +581,15 @@ export default function ProspectosPage(){
   {/* Filtro solo con cita eliminado */}
   {agg && (!superuser || (superuser && agenteId)) && <div className="d-flex flex-column gap-2 small mb-3">
         <div className="d-flex flex-wrap gap-2 align-items-center">
-          <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title={semana==='ALL'? 'Total del año filtrado' : 'Total semana + activos previos'}>Total {displayData.total}</button>
-          {(['pendiente','seguimiento','con_cita','ya_es_cliente','descartado'] as ProspectoEstado[] | string[]).map(k=> { const v = Number(displayData.por_estado[k] ?? 0); const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}} title={semana==='ALL'? ESTADO_LABEL[k as ProspectoEstado] : `${ESTADO_LABEL[k as ProspectoEstado]} (semana + previos)`}>{ESTADO_LABEL[k as ProspectoEstado] || k} {v}</button>})}
-          {(()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = actuales.length + carry; const ok = progreso>=objetivo; return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Meta dinámica semana actual (${metaWeek}): base ${metaProspectos} + arrastre ${carry} = ${objetivo}. Progreso incluye arrastre (${progreso}/${objetivo}).`}>{ok? `Meta ${objetivo} ok` : (`${progreso}/${objetivo}`)}</span> })()}
+          <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title={semana==='ALL'? 'Total del año filtrado' : 'Total semana'}>Total {displayData.total}</button>
+          {(['pendiente','seguimiento','con_cita','ya_es_cliente','descartado'] as ProspectoEstado[] | string[]).map(k=> { const v = Number(displayData.por_estado[k] ?? 0); const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}} title={ESTADO_LABEL[k as ProspectoEstado]}>{ESTADO_LABEL[k as ProspectoEstado] || k} {v}</button>})}
+          {(()=>{ const objetivo = metaProspectos; const progreso = actuales.length; const ok = progreso>=objetivo; return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Meta semana actual (${metaWeek}) base ${metaProspectos}. Progreso ${progreso}/${objetivo}.`}>{ok? `Meta ${objetivo} ok` : (`${progreso}/${objetivo}`)}</span> })()}
           {!superuser && (
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; const extended = computeExtendedMetrics(filtered,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 } })(); let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined; try { if (semana !== 'ALL') { const who = user?.email || ''; if (who) { const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who }); const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString()); if (rAct.ok) { const j = await rAct.json(); if (j && j.success && j.daily && Array.isArray(j.daily.counts)) { const b = j.breakdown || {}; activityWeekly = { labels: j.daily.labels || [], counts: j.daily.counts || [], breakdown: { views: Number(b.views||0), clicks: Number(b.clicks||0), forms: Number(b.forms||0), prospectos: Number(b.prospectos||0), planificacion: Number(b.planificacion||0), clientes: Number(b.clientes||0), polizas: Number(b.polizas||0), usuarios: Number(b.usuarios||0), parametros: Number(b.parametros||0), reportes: Number(b.reportes||0), otros: Number(b.otros||0) }, dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined, ...(j.details ? { details: j.details } : {}), ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {}) }; } } } } } catch { /* ignore */ } exportProspectosPDF(filtered, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly }) }}>PDF</button>
           )}
         </div>
-        {(!superuser || (superuser && agenteId)) && (()=>{ const carry = activosPrevios.length; const objetivo = metaProspectos + carry; const progreso = actuales.length + carry; const pct = Math.min(100,(progreso/objetivo)*100); const ok = progreso>=objetivo; return <div style={{minWidth:320}} className="position-relative">
-          <div className="progress" style={{height: '1.4rem'}} role="progressbar" aria-valuenow={progreso} aria-valuemin={0} aria-valuemax={objetivo} title={`Progreso (actual + arrastre) ${progreso}/${objetivo}`}>
+        {(!superuser || (superuser && agenteId)) && (()=>{ const objetivo = metaProspectos; const progreso = actuales.length; const pct = Math.min(100,(progreso/objetivo)*100); const ok = progreso>=objetivo; return <div style={{minWidth:320}} className="position-relative">
+          <div className="progress" style={{height: '1.4rem'}} role="progressbar" aria-valuenow={progreso} aria-valuemin={0} aria-valuemax={objetivo} title={`Progreso semana actual ${progreso}/${objetivo}`}>
             <div className={`progress-bar ${ok? 'bg-success':'bg-warning text-dark'}`} style={{width: pct+'%', transition:'width .4s ease'}} />
             <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center small fw-semibold" style={{pointerEvents:'none', mixBlendMode: ok? 'normal':'multiply'}}>
               {progreso}/{objetivo}
@@ -626,7 +640,7 @@ export default function ProspectosPage(){
               <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
               <td>{ESTADO_LABEL[p.estado]}</td>
               <td className="text-end">
-                <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>
+                {p.estado === 'ya_es_cliente' ? <span className="badge bg-success">Convertido</span> : <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>}
               </td>
             </tr>
           ))}
@@ -663,7 +677,7 @@ export default function ProspectosPage(){
                 <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
                 <td>{ESTADO_LABEL[p.estado]}</td>
                 <td className="text-end">
-                  <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>
+                  {p.estado === 'ya_es_cliente' ? <span className="badge bg-success">Convertido</span> : <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>}
                 </td>
               </tr>
             ))}
