@@ -244,26 +244,9 @@ export default function ProspectosPage(){
   const [clienteError, setClienteError] = useState<string>('')
   const [clienteSuccess, setClienteSuccess] = useState<string>('')
 
-  // Helper: dividir nombre completo del prospecto en partes básicas.
-  function splitNombre(full: string): { pn:string; sn:string; pa:string; sa:string } {
-    const parts = full.trim().replace(/\s+/g,' ').split(' ')
-    if (!parts.length) return { pn:'', sn:'', pa:'', sa:'' }
-    if (parts.length === 1) return { pn: parts[0], sn:'', pa: parts[0], sa:'X' }
-    if (parts.length === 2) return { pn: parts[0], sn:'', pa: parts[1], sa:'X' }
-    if (parts.length === 3) return { pn: parts[0], sn: parts[1], pa: parts[2], sa:'X' }
-    // 4 o más: asumir 1er y 2do nombre, 1er y 2do apellido (resto se concatena al segundo apellido)
-    const pn = parts[0]
-    const sn = parts[1]
-    const pa = parts[2]
-    const sa = parts.slice(3).join(' ')
-    return { pn, sn, pa, sa }
-  }
-
-  const openNuevoClienteFromProspecto = (p: Prospecto, nombreOverride?: string, telefonoOverride?: string) => {
-    const baseNombre = (nombreOverride || p.nombre || '').trim()
-    const { pn, sn, pa, sa } = splitNombre(baseNombre)
-    const tel = (telefonoOverride || p.telefono || '').replace(/\D/g,'')
-    setNuevoCliente({ primer_nombre: pn.toUpperCase(), segundo_nombre: sn.toUpperCase(), primer_apellido: pa.toUpperCase(), segundo_apellido: (sa||'X').toUpperCase(), telefono_celular: tel, email: '' })
+  const openNuevoClienteFromProspecto = () => {
+    // Abrir modal SIN prellenar ningún campo (requerimiento)
+    setNuevoCliente({ primer_nombre:'', segundo_nombre:'', primer_apellido:'', segundo_apellido:'', telefono_celular:'', email:'' })
     setClienteError(''); setClienteSuccess('')
     setShowNuevoCliente(true)
   }
@@ -330,8 +313,8 @@ export default function ProspectosPage(){
         // Cerrar modal de edición y refrescar datos
         closeEdit(); fetchAll()
         if (estadoCambioACliente) {
-          // Abrir modal inline para registrar cliente reutilizando datos
-          openNuevoClienteFromProspecto(editTarget, editForm.nombre, editForm.telefono)
+          // Abrir modal inline sin prellenar
+          openNuevoClienteFromProspecto()
         }
       } else {
         let errMsg = 'Error al actualizar'
