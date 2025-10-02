@@ -167,14 +167,6 @@ function ConsultaCandidatosInner() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Scroll sync refs
-  const topScrollRef = useRef<HTMLDivElement|null>(null)
-  const bodyScrollRef = useRef<HTMLDivElement|null>(null)
-  const phantomRef = useRef<HTMLDivElement|null>(null)
-  const syncTop = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(bodyScrollRef.current.scrollLeft!==topScrollRef.current.scrollLeft) bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft },[])
-  const syncBody = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(topScrollRef.current.scrollLeft!==bodyScrollRef.current.scrollLeft) topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft },[])
-  useEffect(()=>{ const update=()=>{ if(!phantomRef.current || !bodyScrollRef.current) return; const tbl = bodyScrollRef.current.querySelector('table') as HTMLTableElement|null; const w = tbl? tbl.scrollWidth: bodyScrollRef.current.scrollWidth; phantomRef.current.style.width = w+'px' }; update(); const ro = new ResizeObserver(()=>update()); if(bodyScrollRef.current) ro.observe(bodyScrollRef.current); return ()=> ro.disconnect() },[data, filtered])
-
   const filtered = useMemo(() => {
     const norm = (s: string) => s
       .normalize('NFD')
@@ -200,6 +192,14 @@ function ConsultaCandidatosInner() {
       return comp * (sortDir === 'asc' ? 1 : -1);
     });
   }, [data, sortKey, sortDir, nameQuery]);
+
+  // Scroll sync refs (definidos después de conocer filtered, aunque no dependan de él)
+  const topScrollRef = useRef<HTMLDivElement|null>(null)
+  const bodyScrollRef = useRef<HTMLDivElement|null>(null)
+  const phantomRef = useRef<HTMLDivElement|null>(null)
+  const syncTop = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(bodyScrollRef.current.scrollLeft!==topScrollRef.current.scrollLeft) bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft },[])
+  const syncBody = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(topScrollRef.current.scrollLeft!==bodyScrollRef.current.scrollLeft) topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft },[])
+  useEffect(()=>{ const update=()=>{ if(!phantomRef.current || !bodyScrollRef.current) return; const tbl = bodyScrollRef.current.querySelector('table') as HTMLTableElement|null; const w = tbl? tbl.scrollWidth: bodyScrollRef.current.scrollWidth; phantomRef.current.style.width = w+'px' }; update(); const ro = new ResizeObserver(()=>update()); if(bodyScrollRef.current) ro.observe(bodyScrollRef.current); return ()=> ro.disconnect() },[data, filtered])
 
   type ColumnDef = { key: AnyColKey; label: string; sortable?: boolean }
   const columns: ColumnDef[] = useMemo(() => ([
