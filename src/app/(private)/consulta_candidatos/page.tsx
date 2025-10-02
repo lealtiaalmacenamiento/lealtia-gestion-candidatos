@@ -371,7 +371,7 @@ function ConsultaCandidatosInner() {
           <div className="position-relative mb-2" style={{overflow:'hidden'}}>
             <div ref={topScrollRef} onScroll={syncTop} style={{overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}><div ref={phantomRef} style={{height:1}} /></div>
           </div>
-          <div className="table-responsive" ref={bodyScrollRef} onScroll={syncBody}>
+          <div className="table-responsive hide-h-scrollbar" ref={bodyScrollRef} onScroll={syncBody}>
           <table ref={tableRef} className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-dark">
               <tr>
