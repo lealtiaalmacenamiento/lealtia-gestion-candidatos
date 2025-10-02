@@ -4,6 +4,8 @@
 export interface Candidato {
   id_candidato: number
   ct: string
+  // Nuevo identificador POP
+  pop?: string
   candidato: string
   mes: string
   efc: string
@@ -17,6 +19,10 @@ export interface Candidato {
   ultima_actualizacion?: string
   // Nueva fecha manual definida por el usuario (fecha de creación de CT)
   fecha_creacion_ct?: string
+  // Nueva fecha manual definida por el usuario (fecha de creación de POP)
+  fecha_creacion_pop?: string
+  // Contador derivado días desde POP (no necesariamente persistido)
+  dias_desde_pop?: number
   // Campo derivado (no necesariamente persistido). Si se persiste agregar columna BD.
   proceso?: string
   // Campos snapshot
@@ -98,7 +104,7 @@ export interface Parametro {
 }
 
 /* ===== Fase 2: Prospectos y Planificación ===== */
-export type ProspectoEstado = 'pendiente' | 'seguimiento' | 'con_cita' | 'descartado'
+export type ProspectoEstado = 'pendiente' | 'seguimiento' | 'con_cita' | 'descartado' | 'ya_es_cliente'
 
 export interface Prospecto {
   id: number

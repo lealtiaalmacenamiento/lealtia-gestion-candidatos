@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
 import { getCandidatos, deleteCandidato } from '@/lib/api';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
@@ -14,6 +14,39 @@ export default function CandidatosPage() {
   const [notif, setNotif] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // refs para scroll sincronizado
+  const scrollBodyRef = useRef<HTMLDivElement|null>(null)
+  const scrollTopRef = useRef<HTMLDivElement|null>(null)
+  const phantomRef = useRef<HTMLDivElement|null>(null)
+
+  // Sincroniza top -> body
+  const onTopScroll = useCallback(()=> {
+    if(!scrollBodyRef.current || !scrollTopRef.current) return
+    if(scrollBodyRef.current.scrollLeft !== scrollTopRef.current.scrollLeft){
+      scrollBodyRef.current.scrollLeft = scrollTopRef.current.scrollLeft
+    }
+  },[])
+  // Sincroniza body -> top
+  const onBodyScroll = useCallback(()=> {
+    if(!scrollBodyRef.current || !scrollTopRef.current) return
+    if(scrollTopRef.current.scrollLeft !== scrollBodyRef.current.scrollLeft){
+      scrollTopRef.current.scrollLeft = scrollBodyRef.current.scrollLeft
+    }
+  },[])
+
+  // Ajustar ancho del phantom al de la tabla
+  useEffect(()=>{
+    const update = ()=>{
+      if(!phantomRef.current || !scrollBodyRef.current) return
+      const table = scrollBodyRef.current.querySelector('table') as HTMLTableElement | null
+      const w = table? table.scrollWidth : scrollBodyRef.current.scrollWidth
+      phantomRef.current.style.width = w + 'px'
+    }
+    update()
+    const ro = new ResizeObserver(()=> update())
+    if(scrollBodyRef.current) ro.observe(scrollBodyRef.current)
+    return ()=> { ro.disconnect() }
+  },[candidatos])
 
   useEffect(() => {
     getCandidatos().then(setCandidatos).catch(err => setNotif(err.message));
@@ -46,7 +79,21 @@ export default function CandidatosPage() {
                 <Link href="/candidatos/nuevo" className="btn btn-success btn-sm">Nuevo</Link>
               </div>
             </div>
-            <div className="table-responsive small">
+            {/* Scrollbar superior */}
+            <div className="position-relative mb-1" style={{overflow:'hidden'}}>
+              <div
+                ref={scrollTopRef}
+                onScroll={onTopScroll}
+                style={{
+                  overflowX:'auto',
+                  overflowY:'hidden',
+                  WebkitOverflowScrolling:'touch'
+                }}
+              >
+                <div ref={phantomRef} style={{height:1}} />
+              </div>
+            </div>
+            <div className="table-responsive small" ref={scrollBodyRef} onScroll={onBodyScroll} style={{scrollbarWidth:'thin'}}>
               <table className="table table-bordered table-hover align-middle mb-0">
                 <thead className="table-light">
                   <tr>

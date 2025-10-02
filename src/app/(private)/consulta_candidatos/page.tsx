@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import React, { useEffect, useMemo, useRef, useState, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthProvider';
 import { exportCandidatoPDF, exportCandidatosExcel } from '@/lib/exporters'
 
 // Tipos
-type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct'>;
+type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct' | 'fecha_creacion_pop'>;
 type AnyColKey = keyof Candidato;
 
 export default function ConsultaCandidatosPage() {
@@ -42,8 +42,8 @@ function ConsultaCandidatosInner() {
   const [unchecking, setUnchecking] = useState(false)
   // Búsqueda por nombre de candidato
   const [nameQuery, setNameQuery] = useState('')
-  // Deshabilitar sticky de columnas globalmente
-  const disableSticky = true
+  // Sticky eliminado completamente; tabla estándar scrollable horizontal
+  // (Sticky y hint eliminados)
 
   // Si todas las etapas están marcadas como completadas, mostrar "Agente" en Proceso
   const areAllEtapasCompleted = (c: CandidatoExt): boolean => {
@@ -136,7 +136,7 @@ function ConsultaCandidatosInner() {
       const arr: Candidato[] = Array.isArray(j) ? j : [];
       // Adjuntar derivados (proceso, dias) en memoria
       (arr as CandidatoExt[]).forEach(c => {
-        const { proceso } = calcularDerivados({
+        const { proceso, dias_desde_pop } = calcularDerivados({
           periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
           capacitacion_cedula_a1: c.capacitacion_cedula_a1,
           periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
@@ -145,9 +145,11 @@ function ConsultaCandidatosInner() {
           fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
           inicio_escuela_fundamental: c.inicio_escuela_fundamental,
           fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
-          fecha_creacion_ct: c.fecha_creacion_ct
+          fecha_creacion_ct: c.fecha_creacion_ct,
+          fecha_creacion_pop: (c as CandidatoExt).fecha_creacion_pop
         })
         c.proceso = proceso
+        ;(c as CandidatoExt).dias_desde_pop = dias_desde_pop
       })
       arr.sort((a,b)=>{
         const ua = Date.parse(a.ultima_actualizacion || a.fecha_de_creacion || '') || 0;
@@ -191,14 +193,24 @@ function ConsultaCandidatosInner() {
     });
   }, [data, sortKey, sortDir, nameQuery]);
 
-  type ColumnDef = { key: AnyColKey; label: string; sortable?: boolean; width?: string; stickyLeft?: number; thClassName?: string; tdClassName?: string }
+  // Scroll sync refs (definidos después de conocer filtered, aunque no dependan de él)
+  const topScrollRef = useRef<HTMLDivElement|null>(null)
+  const bodyScrollRef = useRef<HTMLDivElement|null>(null)
+  const phantomRef = useRef<HTMLDivElement|null>(null)
+  const syncTop = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(bodyScrollRef.current.scrollLeft!==topScrollRef.current.scrollLeft) bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft },[])
+  const syncBody = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(topScrollRef.current.scrollLeft!==bodyScrollRef.current.scrollLeft) topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft },[])
+  useEffect(()=>{ const update=()=>{ if(!phantomRef.current || !bodyScrollRef.current) return; const tbl = bodyScrollRef.current.querySelector('table') as HTMLTableElement|null; const w = tbl? tbl.scrollWidth: bodyScrollRef.current.scrollWidth; phantomRef.current.style.width = w+'px' }; update(); const ro = new ResizeObserver(()=>update()); if(bodyScrollRef.current) ro.observe(bodyScrollRef.current); return ()=> ro.disconnect() },[data, filtered])
+
+  type ColumnDef = { key: AnyColKey; label: string; sortable?: boolean }
   const columns: ColumnDef[] = useMemo(() => ([
-    // Para evitar solapamientos, fijamos también la primera columna (ID)
-    { key: 'id_candidato', label: 'ID', sortable: true, width: '70px', stickyLeft: 0, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
-    { key: 'ct', label: 'CT', sortable: true, width: '90px', stickyLeft: 72, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
-    { key: 'candidato', label: 'Candidato', sortable: true, width: '240px', stickyLeft: 164, thClassName: 'sticky-col', tdClassName: 'sticky-col' },
-    { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente', width: '240px', stickyLeft: 408, thClassName: 'sticky-col sticky-shadow', tdClassName: 'sticky-col sticky-shadow' },
+    { key: 'id_candidato', label: 'ID', sortable: true },
+    { key: 'ct', label: 'CT', sortable: true },
+    { key: 'pop' as unknown as keyof Candidato, label: 'POP' },
+    { key: 'candidato', label: 'Candidato', sortable: true },
+    { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
+  { key: 'fecha_creacion_pop' as unknown as keyof Candidato, label: 'Fecha creación POP' },
+  { key: 'dias_desde_pop' as unknown as keyof Candidato, label: 'Días desde POP' },
   { key: 'proceso', label: 'Proceso' },
   { key: 'mes', label: 'Cédula A1', sortable: true },
   { key: 'periodo_para_registro_y_envio_de_documentos', label: 'Periodo registro/envío' },
@@ -219,48 +231,7 @@ function ConsultaCandidatosInner() {
     { key: 'usuario_que_actualizo', label: 'Actualizó' }
   ]), []);
 
-  // ---- Sticky: offsets dinámicos (calcula left con base en anchos reales del thead) ----
   const tableRef = useRef<HTMLTableElement | null>(null)
-  // Índices de columnas que son sticky (por tener stickyLeft definido en columnas)
-  const stickyIndices = useMemo(() => columns
-    .map((c, i) => (typeof c.stickyLeft === 'number') ? i : -1)
-    .filter((i): i is number => i >= 0), [columns])
-  // Mapa de índice de columna -> posición relativa dentro de las sticky (0..n-1)
-  const stickyRankByIndex = useMemo(() => {
-    const m = new Map<number, number>()
-    let r = 0
-    columns.forEach((c, i) => { if (typeof c.stickyLeft === 'number') { m.set(i, r); r++ } })
-    return m
-  }, [columns])
-  const [stickyLefts, setStickyLefts] = useState<number[]>([])
-  useEffect(() => {
-    const compute = () => {
-      if (disableSticky) { setStickyLefts([]); return }
-      const tbl = tableRef.current
-      if (!tbl) return
-      const ths = tbl.querySelectorAll<HTMLTableCellElement>('thead tr:first-child th')
-      if (!ths || ths.length === 0) return
-      const lefts: number[] = []
-      let acc = 0
-      for (let s = 0; s < stickyIndices.length; s++) {
-        const colIndex = stickyIndices[s]
-        if (s === 0) {
-          lefts[s] = 0
-          const w = ths[colIndex]?.getBoundingClientRect().width || 0
-          acc = w
-        } else {
-          lefts[s] = Math.round(acc)
-          const w = ths[colIndex]?.getBoundingClientRect().width || 0
-          acc += w
-        }
-      }
-      setStickyLefts(lefts)
-    }
-    const id = requestAnimationFrame(compute)
-    const onResize = () => compute()
-    window.addEventListener('resize', onResize)
-    return () => { cancelAnimationFrame(id); window.removeEventListener('resize', onResize) }
-  }, [filtered, columns, stickyIndices, disableSticky])
 
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -370,6 +341,7 @@ function ConsultaCandidatosInner() {
           <button className="btn btn-outline-success btn-sm" onClick={exportExcelXlsx} disabled={loading || filtered.length===0} title="Exportar listado a Excel">Exportar Excel</button>
         </div>
       </div>
+      {/* Hint de scroll eliminado con sticky */}
       {loading && (
         <div className="table-responsive fade-in-scale">
           <table ref={tableRef} className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
@@ -390,14 +362,20 @@ function ConsultaCandidatosInner() {
       )}
 
   {!loading && filtered.length > 0 && (
-        <div className="table-responsive fade-in-scale">
+        <div className="fade-in-scale">
+          {/* Barra de scroll superior + mensaje */}
+          <div className="d-flex justify-content-between align-items-center mb-1 small">
+            <div className="text-muted">Mostrando {filtered.length} de {data.length} registros cargados.</div>
+            <div style={{flex:1}}></div>
+          </div>
+          <div className="position-relative mb-2" style={{overflow:'hidden'}}>
+            <div ref={topScrollRef} onScroll={syncTop} style={{overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}><div ref={phantomRef} style={{height:1}} /></div>
+          </div>
+          <div className="table-responsive hide-h-scrollbar" ref={bodyScrollRef} onScroll={syncBody}>
           <table ref={tableRef} className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-dark">
               <tr>
-                {columns.map((col, colIdx) => {
-                  const rank = stickyRankByIndex.get(colIdx)
-                  const stickyLeft = (!disableSticky && typeof rank === 'number') ? stickyLefts[rank] : undefined
-                  const isLastSticky = !disableSticky && typeof rank === 'number' && rank === stickyIndices.length - 1
+                {columns.map((col) => {
                   return (
                     <React.Fragment key={String(col.key)}>
                       <Th
@@ -407,9 +385,9 @@ function ConsultaCandidatosInner() {
                         sortDir={sortDir}
                         onSort={col.sortable ? toggleSort : undefined}
                         sortable={col.sortable}
-                        width={col.width}
-                        className={[!disableSticky ? (col.thClassName || '') : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')}
-                        stickyLeft={stickyLeft}
+                        width={undefined}
+                        className={''}
+                        stickyLeft={undefined}
                       />
                       {!readOnly && col.key === ('email_agente' as unknown as keyof Candidato) && (<th>Acciones</th>)}
                     </React.Fragment>
@@ -420,7 +398,7 @@ function ConsultaCandidatosInner() {
             <tbody>
                   {filtered.map((c, idx) => (
                 <tr key={c.id_candidato} className={`dash-anim stagger-${(idx % 6)+1}`}> 
-                  {columns.map((col, colIdx) => {
+                  {columns.map((col) => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
@@ -452,24 +430,10 @@ function ConsultaCandidatosInner() {
                     const checked = !!etapas[etKey]?.completed
                     const meta = etapas[etKey]
                     const rawProceso = (isAgente ? 'Agente' : ((c as unknown as { proceso?: string }).proceso || ''))
-                    const rank = stickyRankByIndex.get(colIdx)
-                    const stickyLeft = (!disableSticky && typeof rank === 'number') ? stickyLefts[rank] : undefined
-                    const isLastSticky = !disableSticky && typeof rank === 'number' && rank === stickyIndices.length - 1
-                    const stickyStyle = (!disableSticky && typeof stickyLeft === 'number')
-                      ? {
-                          position: 'sticky' as const,
-                          left: stickyLeft,
-                          zIndex: 2, // under thead (z-index 5/6 from CSS), above non-sticky tds
-                          background: '#ffffff',
-                          width: col.width,
-                          minWidth: col.width,
-                          maxWidth: col.width,
-                        }
-                      : undefined
-                    const tdClass = [cls, !disableSticky ? col.tdClassName : '', isLastSticky ? 'sticky-shadow' : ''].filter(Boolean).join(' ')
+                    const tdClass = cls
                     return (
                       <React.Fragment key={String(col.key)}>
-                        <td className={tdClass} title={col.key==='proceso' ? rawProceso : undefined} style={stickyStyle}>
+                        <td className={tdClass} title={col.key==='proceso' ? rawProceso : undefined}>
                           <div className="d-flex flex-column gap-1">
                             <Cell v={display} />
                             {isEtapa && (
@@ -512,9 +476,6 @@ function ConsultaCandidatosInner() {
               ))}
             </tbody>
           </table>
-          <div className="d-flex justify-content-between align-items-center mt-2 small">
-            <div className="text-muted">Mostrando {filtered.length} de {data.length} registros cargados.</div>
-            <div></div>
           </div>
         </div>
       )}

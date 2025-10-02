@@ -8,10 +8,22 @@ import Notification from '@/components/ui/Notification'
 import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import { exportProspectosPDF } from '@/lib/prospectosExport'
 import { computeExtendedMetrics, computePreviousWeekDelta } from '@/lib/prospectosMetrics'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
+// Modal creación rápida de cliente al convertir prospecto a 'ya_es_cliente'
+
+interface NuevoClienteDraft {
+  primer_nombre: string
+  segundo_nombre: string
+  primer_apellido: string
+  segundo_apellido: string
+  telefono_celular: string
+  email: string
+  fecha_nacimiento?: string
+}
 
 interface Aggregate { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean }
  
@@ -22,9 +34,25 @@ export default function ProspectosPage(){
   // Semana puede ser número ISO o 'ALL' para todo el año
   const [semana,setSemana]=useState<number|"ALL">(semanaActual.semana)
   const [prospectos,setProspectos]=useState<Prospecto[]>([])
+  const [yearProspectos,setYearProspectos]=useState<Prospecto[]|null>(null)
+  const [busqueda,setBusqueda]=useState('')
+  // Derivados para separación de semanas
+  // Semana fija para meta: siempre la semana actual del calendario, independientemente del filtro seleccionado
+  const metaWeek = semanaActual.semana
+  const sourceAll = yearProspectos || prospectos
+  // En la nueva lógica de reporte ya NO mezclamos semanas previas; mantenemos referencias pero se usarán solo para tabla secundaria
+  const activosPrevios = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso < metaWeek && ['pendiente','seguimiento','con_cita'].includes(p.estado)), [sourceAll, metaWeek, anio])
+  const actuales = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso === metaWeek), [sourceAll, metaWeek, anio])
+  const [showPrevios,setShowPrevios]=useState(false)
   const [loading,setLoading]=useState(false)
+  const yearCacheRef = useRef<Record<string,Prospecto[]>>({}) // key: anio|agenteId
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
+  // Conteos mostrados en badges: revertido a lógica original (solo semana seleccionada / agg directo)
+  const displayData = useMemo(()=>{
+    if(!agg) return { total:0, por_estado:{} as Record<string,number> }
+    return { total: agg.total, por_estado: { ...agg.por_estado } }
+  },[agg])
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
   const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
   const [errorMsg,setErrorMsg]=useState<string>('')
@@ -62,20 +90,37 @@ export default function ProspectosPage(){
 
   const fetchAll = async()=>{
     setLoading(true)
+    const weekParams = new URLSearchParams()
+    weekParams.set('anio', String(anio))
+    if(semana !== 'ALL') weekParams.set('semana', String(semana))
+    if(superuser && agenteId) weekParams.set('agente_id', String(agenteId))
+  // filtro de estado ahora sólo es local (no se manda al backend)
+    // Lanzar fetch semana
+    const weekPromise = fetch('/api/prospectos?'+weekParams.toString())
+    // Si semana === 'ALL', reutilizaremos lista semanal como year
+    const needYear = semana !== 'ALL'
+    const cacheKey = anio+ '|' + (superuser? (agenteId||'ALL'): 'SELF')
+    let yearPromise: Promise<Response>|null = null
+    if(needYear){
+      if(yearCacheRef.current[cacheKey]){
+        setYearProspectos(yearCacheRef.current[cacheKey])
+      } else {
+  // indicador de carga anual omitido para no bloquear UI
+        const yearParams = new URLSearchParams(); yearParams.set('anio', String(anio)); if(superuser && agenteId) yearParams.set('agente_id', String(agenteId))
+        yearPromise = fetch('/api/prospectos?'+yearParams.toString())
+      }
+    } else {
+      setYearProspectos(null) // no se necesita lista separada
+    }
     try {
-      const params = new URLSearchParams()
-      params.set('anio', String(anio))
-      if(semana !== 'ALL') params.set('semana', String(semana))
-      if(superuser && agenteId) params.set('agente_id', String(agenteId))
-      if(estadoFiltro) params.set('estado', String(estadoFiltro))
-      const r = await fetch('/api/prospectos?'+params.toString())
+      // Resolver semana
+      const r = await weekPromise
       if(r.ok){
-        const data = await r.json()
-        const list: Prospecto[] = Array.isArray(data) ? data : (data?.items || [])
+        const data = await r.json(); const list: Prospecto[] = Array.isArray(data)? data : (data?.items||[])
         setProspectos(list)
-        const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }
+  const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 }
         for(const p of list){ if(counts[p.estado] !== undefined) counts[p.estado]++ }
-        setAgg({ total: list.length, por_estado: counts, cumplimiento_30: list.length >= 30 })
+  setAgg({ total: list.length, por_estado: counts, cumplimiento_30: list.length >= 30 })
         if(semana !== 'ALL'){
           const prevWeek = (semana as number) - 1
           if(prevWeek >= 1){
@@ -85,18 +130,26 @@ export default function ProspectosPage(){
               const rPrev = await fetch('/api/prospectos/aggregate?'+q.toString())
               if(rPrev.ok){ setPrevAgg(await rPrev.json() as Aggregate) } else { setPrevAgg(null) }
             } catch { setPrevAgg(null) }
-          } else { setPrevAgg(null) }
-        } else { setPrevAgg(null) }
+          } else setPrevAgg(null)
+        } else setPrevAgg(null)
+        // Reutilizar para year si ALL
+        if(semana === 'ALL') yearCacheRef.current[cacheKey] = list
       } else {
-        setProspectos([])
-        setAgg({ total:0, por_estado:{}, cumplimiento_30:false })
-        setPrevAgg(null)
+        setProspectos([]); setAgg({ total:0, por_estado:{}, cumplimiento_30:false }); setPrevAgg(null)
+      }
+      // Resolver year si corresponde y no caché
+      if(yearPromise){
+        try {
+          const ry = await yearPromise
+          if(ry.ok){ const dY = await ry.json(); const listY: Prospecto[] = Array.isArray(dY)? dY : (dY?.items||[]); yearCacheRef.current[cacheKey]=listY; setYearProspectos(listY) }
+          else if(!yearCacheRef.current[cacheKey]) setYearProspectos(null)
+  } finally { /* fin carga anual */ }
       }
     } finally { setLoading(false) }
   }
 
   useEffect(()=>{ fetchAll(); if(superuser) fetchAgentes() // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[estadoFiltro, agenteId, semana, anio])
+  },[agenteId, semana, anio])
 
   useEffect(()=> { fetchFase2Metas().then(m=> { setMetaProspectos(m.metaProspectos) }) },[])
 
@@ -113,7 +166,7 @@ export default function ProspectosPage(){
       }
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[superuser, agenteId, anio, semana, estadoFiltro])
+  },[superuser, agenteId, anio, semana])
 
   // Timezone helpers (CDMX). Desde 2022 sin DST: offset fijo -06.
   // const MX_UTC_OFFSET = 6
@@ -157,7 +210,7 @@ export default function ProspectosPage(){
       return ()=> { supa.removeChannel(channel) }
     } catch { /* ignore missing config at build */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[superuser, agenteId, anio, semana, estadoFiltro])
+  },[superuser, agenteId, anio, semana])
 
   // Validaciones extra: formato teléfono y posible duplicado por nombre
   const telefonoValido = (v:string)=> !v || /^\+?[0-9\s-]{7,15}$/.test(v)
@@ -171,7 +224,70 @@ export default function ProspectosPage(){
 
   // Modal de edición de prospecto
   const [editTarget, setEditTarget] = useState<Prospecto|null>(null)
-  const [editForm, setEditForm] = useState<{ nombre:string; telefono:string; notas:string; estado:ProspectoEstado }>({ nombre:'', telefono:'', notas:'', estado:'pendiente' })
+  const [editForm, setEditForm] = useState<{ nombre:string; telefono:string; notas:string; estado:string }>({ nombre:'', telefono:'', notas:'', estado:'pendiente' })
+  // Estado para modal de nuevo cliente
+  const [showNuevoCliente, setShowNuevoCliente] = useState(false)
+  const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteDraft>({ primer_nombre:'', segundo_nombre:'', primer_apellido:'', segundo_apellido:'', telefono_celular:'', email:'' })
+  const [savingCliente, setSavingCliente] = useState(false)
+  const [clienteError, setClienteError] = useState<string>('')
+  const [clienteSuccess, setClienteSuccess] = useState<string>('')
+  // Estado para conversión diferida: guardamos el prospecto al que se le quiso cambiar a 'ya_es_cliente'
+  const [pendingConversionProspect, setPendingConversionProspect] = useState<Prospecto|null>(null)
+
+  const openNuevoClienteFromProspecto = (p: Prospecto|null) => {
+    // Abrir modal SIN prellenar ningún campo (requerimiento)
+    setNuevoCliente({ primer_nombre:'', segundo_nombre:'', primer_apellido:'', segundo_apellido:'', telefono_celular:'', email:'' })
+    setClienteError(''); setClienteSuccess('')
+    if(p) setPendingConversionProspect(p)
+    setShowNuevoCliente(true)
+  }
+
+  const submitNuevoCliente = async () => {
+    if (savingCliente) return
+    setSavingCliente(true)
+    setClienteError(''); setClienteSuccess('')
+    const { primer_nombre, primer_apellido, segundo_apellido, telefono_celular, email } = nuevoCliente
+    if (!primer_nombre.trim() || !primer_apellido.trim() || !segundo_apellido.trim() || !telefono_celular.trim() || !email.trim()) {
+      setClienteError('Completa los campos requeridos (nombres, apellidos, teléfono, email).')
+      setSavingCliente(false)
+      return
+    }
+    try {
+      const payload: Record<string, unknown> = {
+        primer_nombre: primer_nombre.trim(),
+        segundo_nombre: nuevoCliente.segundo_nombre.trim() || null,
+        primer_apellido: primer_apellido.trim(),
+        segundo_apellido: segundo_apellido.trim(),
+        telefono_celular: telefono_celular.trim(),
+        email: email.trim().toLowerCase(),
+      }
+      if (nuevoCliente.fecha_nacimiento) payload.fecha_nacimiento = nuevoCliente.fecha_nacimiento
+      const r = await fetch('/api/clientes', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+      const j = await r.json().catch(()=> ({}))
+      if (!r.ok) {
+        setClienteError(j.error || 'Error al crear cliente')
+      } else {
+        setClienteSuccess('Cliente creado correctamente.')
+        setToast({ msg: 'Cliente creado', type:'success' })
+        // Segunda fase: actualizar prospecto a ya_es_cliente (si aún existe pendiente)
+        if(pendingConversionProspect){
+          try {
+            const resp = await fetch('/api/prospectos/'+pendingConversionProspect.id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado:'ya_es_cliente' }) })
+            if(!resp.ok){
+              try { const j2 = await resp.json(); setToast({ msg: 'Cliente creado pero error al actualizar prospecto: '+(j2.error||'Error'), type:'error' }) } catch { setToast({ msg:'Cliente creado pero error al actualizar prospecto', type:'error' }) }
+            } else {
+              fetchAll()
+            }
+          } catch { setToast({ msg:'Cliente creado pero error al actualizar prospecto', type:'error' }) }
+        }
+        setPendingConversionProspect(null)
+        // Cerrar modal tras breve delay
+        setTimeout(()=>{ setShowNuevoCliente(false) }, 900)
+      }
+    } catch {
+      setClienteError('Error inesperado al crear cliente')
+    } finally { setSavingCliente(false) }
+  }
   const openEdit = (p: Prospecto) => {
     setEditTarget(p)
     setEditForm({
@@ -184,34 +300,55 @@ export default function ProspectosPage(){
   const closeEdit = () => { setEditTarget(null) }
   const saveEdit = async () => {
     if (!editTarget) return
+    // Si ya está convertido, no permitir edición
+    if (editTarget.estado === 'ya_es_cliente') { setToast({ msg:'Prospecto ya convertido. No editable.', type:'error' }); closeEdit(); return }
+    // ProspectoEstado ya incluye 'ya_es_cliente'; comparar directamente
+  const currentEstado = editTarget.estado as unknown as string
+  const newEstado = editForm.estado as unknown as string
+  const wasCliente = currentEstado === 'ya_es_cliente'
+  const newIsCliente = newEstado === 'ya_es_cliente'
+    const convertingToCliente = newIsCliente && !wasCliente
     const patch: Partial<Prospecto> = {}
     if (editForm.nombre.trim() !== (editTarget.nombre||'').trim()) patch.nombre = editForm.nombre.trim()
     if ((editForm.telefono||'').trim() !== (editTarget.telefono||'').trim()) patch.telefono = (editForm.telefono||'').trim()
     if ((editForm.notas||'').trim() !== (editTarget.notas||'').trim()) patch.notas = (editForm.notas||'').trim()
-    if (editForm.estado !== editTarget.estado) patch.estado = editForm.estado
-    if (Object.keys(patch).length === 0) { setToast({ msg:'Sin cambios', type:'success' }); closeEdit(); return }
+    // NO incluir estado ya_es_cliente en este primer patch; se hará tras crear el cliente
+  if (!convertingToCliente && editForm.estado !== editTarget.estado) patch.estado = editForm.estado as ProspectoEstado
+    // Si lo único que cambia es el estado a ya_es_cliente, no enviamos patch ahora (abriremos modal)
+    const hasOtherChanges = Object.keys(patch).length > 0
+    if(!hasOtherChanges && convertingToCliente){
+      // Abrir modal de cliente y salir
+      openNuevoClienteFromProspecto(editTarget)
+      closeEdit()
+      return
+    }
+  if(!hasOtherChanges && !convertingToCliente){ setToast({ msg:'Sin cambios', type:'success' }); closeEdit(); return }
     try {
       const r = await fetch('/api/prospectos/'+editTarget.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
       if (r.ok) {
+        await r.json()
         setToast({ msg:'Prospecto actualizado', type:'success' })
+  const needConversionAfterPatch = convertingToCliente
+        const refProspect = editTarget
         closeEdit(); fetchAll()
+        if(needConversionAfterPatch){
+          // Abrir modal para crear cliente; estado se actualizará tras éxito
+          openNuevoClienteFromProspecto(refProspect)
+        }
       } else {
         let errMsg = 'Error al actualizar'
-        try {
-          const j = await r.json() as { error?: string }
-          if (j?.error) errMsg = j.error
-        } catch {}
+        try { const j = await r.json() as { error?: string }; if(j?.error) errMsg = j.error } catch {}
         setToast({ msg: errMsg, type:'error' })
       }
-    } catch {
-      setToast({ msg:'Error al actualizar', type:'error' })
-    }
+    } catch { setToast({ msg:'Error al actualizar', type:'error' }) }
   }
 
   // Eliminación completa de prospectos y manejo de cita deshabilitados según requerimiento.
 
+  const needYear = semana !== 'ALL'
   return (
-    <div className="container py-4">
+    <div className="container py-4 position-relative">
+      <LoadingOverlay show={loading && !prospectos.length} text="Cargando prospectos..." />
       <h2 className="fw-semibold mb-3">Prospectos</h2>
       <div className="d-flex flex-wrap gap-3 align-items-end mb-2">
         <div>
@@ -372,16 +509,22 @@ export default function ProspectosPage(){
           if(Object.keys(perAgentActivity).length === 0) perAgentActivity = undefined
         }
       } catch { /* ignore activity errors */ }
-      exportProspectosPDF(prospectos, agg || {total:0,por_estado:{},cumplimiento_30:false}, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity })
+  // Limitar exportación a semana ISO actual (metaWeek) y excluir 'ya_es_cliente'
+      const exportPros = prospectos.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado !== 'ya_es_cliente')
+      if(exportPros.length===0){
+        window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar. Cambia a la semana visible correspondiente o ajusta la lógica si deseas exportar otra semana.`)
+        return
+      }
+  const resumenExport = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
+  exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity })
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
-    const resumenLocal = (()=>{
-      const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }
-      for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ }
-      return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 }
-    })()
-    const extended = computeExtendedMetrics(filtered,{ diaSemanaActual })
+    // Limitar a semana actual y excluir 'ya_es_cliente'
+  const exportPros = filtered.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado!=='ya_es_cliente')
+  if(exportPros.length===0){ window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar.`); return }
+    const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
+  const extended = computeExtendedMetrics(exportPros,{ diaSemanaActual })
     // Actividad semanal del agente (para línea de actividad)
   let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined
     try {
@@ -437,23 +580,30 @@ export default function ProspectosPage(){
         }
       }
     } catch {/*ignore*/}
-  exportProspectosPDF(filtered, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning, activityWeekly })
+  // Exportar sólo la semana actual filtrada y sin 'ya_es_cliente'
+  exportProspectosPDF(exportPros, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning, activityWeekly })
   }
   }}>PDF</button>
     </div>}
   {/* Filtro solo con cita eliminado */}
-      {agg && (!superuser || (superuser && agenteId)) && <div className="d-flex flex-column gap-2 small">
+  {agg && (!superuser || (superuser && agenteId)) && <div className="d-flex flex-column gap-2 small mb-3">
         <div className="d-flex flex-wrap gap-2 align-items-center">
-          <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title="Todos">Total {agg.total}</button>
-          {Object.entries(agg.por_estado).map(([k,v])=> { const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}}>{ESTADO_LABEL[k as ProspectoEstado]} {v}</button>})}
-          <span className={"badge "+ (agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark')} title="Progreso a meta">{agg.total>=metaProspectos? `Meta ${metaProspectos} ok` : ('<'+metaProspectos+' prospectos')}</span>
+          <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title={semana==='ALL'? 'Total del año filtrado' : 'Total semana'}>Total {displayData.total}</button>
+          {(['pendiente','seguimiento','con_cita','ya_es_cliente','descartado'] as ProspectoEstado[] | string[]).map(k=> { const v = Number(displayData.por_estado[k] ?? 0); const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}} title={ESTADO_LABEL[k as ProspectoEstado]}>{ESTADO_LABEL[k as ProspectoEstado] || k} {v}</button>})}
+          {(()=>{ const objetivo = metaProspectos; const progreso = actuales.length; const ok = progreso>=objetivo; return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Meta semana actual (${metaWeek}) base ${metaProspectos}. Progreso ${progreso}/${objetivo}.`}>{ok? `Meta ${objetivo} ok` : (`${progreso}/${objetivo}`)}</span> })()}
           {!superuser && (
-            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; const extended = computeExtendedMetrics(filtered,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of filtered){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: filtered.length, por_estado: counts, cumplimiento_30: filtered.length>=30 } })(); let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined; try { if (semana !== 'ALL') { const who = user?.email || ''; if (who) { const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who }); const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString()); if (rAct.ok) { const j = await rAct.json(); if (j && j.success && j.daily && Array.isArray(j.daily.counts)) { const b = j.breakdown || {}; activityWeekly = { labels: j.daily.labels || [], counts: j.daily.counts || [], breakdown: { views: Number(b.views||0), clicks: Number(b.clicks||0), forms: Number(b.forms||0), prospectos: Number(b.prospectos||0), planificacion: Number(b.planificacion||0), clientes: Number(b.clientes||0), polizas: Number(b.polizas||0), usuarios: Number(b.usuarios||0), parametros: Number(b.parametros||0), reportes: Number(b.reportes||0), otros: Number(b.otros||0) }, dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined, ...(j.details ? { details: j.details } : {}), ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {}) }; } } } } } catch { /* ignore */ } exportProspectosPDF(filtered, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly }) }}>PDF</button>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const base = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; // aplicar filtro semana actual y excluir ya_es_cliente
+            const exportPros = base.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado!=='ya_es_cliente'); if(exportPros.length===0){ window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar.`); return } const extended = computeExtendedMetrics(exportPros,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })(); let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined; try { if (semana !== 'ALL') { const who = user?.email || ''; if (who) { const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who }); const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString()); if (rAct.ok) { const j = await rAct.json(); if (j && j.success && j.daily && Array.isArray(j.daily.counts)) { const b = j.breakdown || {}; activityWeekly = { labels: j.daily.labels || [], counts: j.daily.counts || [], breakdown: { views: Number(b.views||0), clicks: Number(b.clicks||0), forms: Number(b.forms||0), prospectos: Number(b.prospectos||0), planificacion: Number(b.planificacion||0), clientes: Number(b.clientes||0), polizas: Number(b.polizas||0), usuarios: Number(b.usuarios||0), parametros: Number(b.parametros||0), reportes: Number(b.reportes||0), otros: Number(b.otros||0) }, dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined, ...(j.details ? { details: j.details } : {}), ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {}) }; } } } } } catch { /* ignore */ } exportProspectosPDF(exportPros, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly }) }}>PDF</button>
           )}
         </div>
-        {(!superuser || (superuser && agenteId)) && <div style={{minWidth:260}} className="progress" role="progressbar" aria-valuenow={agg.total} aria-valuemin={0} aria-valuemax={metaProspectos}>
-          <div className={`progress-bar ${agg.total>=metaProspectos? 'bg-success':'bg-warning text-dark'}`} style={{width: `${Math.min(100, (agg.total/metaProspectos)*100)}%`}}>{agg.total}/{metaProspectos}</div>
-        </div>}
+        {(!superuser || (superuser && agenteId)) && (()=>{ const objetivo = metaProspectos; const progreso = actuales.length; const pct = Math.min(100,(progreso/objetivo)*100); const ok = progreso>=objetivo; return <div style={{minWidth:320}} className="position-relative">
+          <div className="progress" style={{height: '1.4rem'}} role="progressbar" aria-valuenow={progreso} aria-valuemin={0} aria-valuemax={objetivo} title={`Progreso semana actual ${progreso}/${objetivo}`}>
+            <div className={`progress-bar ${ok? 'bg-success':'bg-warning text-dark'}`} style={{width: pct+'%', transition:'width .4s ease'}} />
+            <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center small fw-semibold" style={{pointerEvents:'none', mixBlendMode: ok? 'normal':'multiply'}}>
+              {progreso}/{objetivo}
+            </div>
+          </div>
+        </div>})()}
     </div>}
   <form onSubmit={submit} className="card p-3 mb-4 shadow-sm">
       <div className="row g-2">
@@ -466,7 +616,7 @@ export default function ProspectosPage(){
           {telefonoInvalido && <div className="invalid-feedback">Teléfono inválido. Use 7-15 dígitos, opcional +, espacios o guiones.</div>}
         </div>
         <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
-  <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+  <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().filter(o=> o.value!=='ya_es_cliente').map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
       </div>
   <div className="mt-2">
         <button className="btn btn-primary btn-sm" disabled={saving || loading || telefonoInvalido} aria-busy={saving} type="submit">
@@ -475,7 +625,11 @@ export default function ProspectosPage(){
       </div>
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
-    <div className="table-responsive">
+    <div className="mt-4 mb-2" style={{maxWidth:320}}>
+      <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar por nombre" className="form-control form-control-sm" />
+    </div>
+    <h5 className="mb-2">Prospectos semana actual</h5>
+  <div className="table-responsive mb-4 fade-in">
       <table className="table table-sm align-middle">
         <thead>
           <tr>
@@ -487,22 +641,59 @@ export default function ProspectosPage(){
           </tr>
         </thead>
         <tbody>
-          {prospectos.map(p=> (
+          {actuales.filter(p=> (!estadoFiltro || p.estado===estadoFiltro) && (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))).map(p=> (
             <tr key={p.id}>
               <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
-              <td>{p.telefono||''}</td>
+              <td>{p.telefono? (()=>{ const digits = p.telefono.replace(/[^0-9]/g,''); if(!digits) return p.telefono; const withCode = digits.length===10? '52'+digits : digits; const waUrl = 'https://wa.me/'+withCode; return <a href={waUrl} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp">{p.telefono}</a>; })(): ''}</td>
               <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
               <td>{ESTADO_LABEL[p.estado]}</td>
               <td className="text-end">
-                <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>
+                {p.estado === 'ya_es_cliente' ? <span className="badge bg-success">Convertido</span> : <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>}
               </td>
             </tr>
           ))}
-          {(!loading && prospectos.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">No hay prospectos para los filtros actuales.</td></tr>}
+          {(!loading && actuales.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">No hay prospectos de la semana actual (para los filtros).</td></tr>}
         </tbody>
       </table>
       {loading && <div className="p-3">Cargando...</div>}
     </div>
+    <div className="d-flex align-items-center gap-2 mb-2">
+      <h5 className="m-0">Prospectos semanas anteriores</h5>
+      <button type="button" className="btn btn-sm btn-outline-secondary" onClick={()=>setShowPrevios(s=>!s)}>{showPrevios? 'Ocultar':'Mostrar'}</button>
+      <span className="badge bg-light text-dark">{activosPrevios.length}</span>
+      {needYear && !yearProspectos && <span className="inline-spinner small text-muted"><span className="spinner-border spinner-border-sm" role="status" /> cargando historial...</span>}
+    </div>
+    {showPrevios && (
+      <div className="table-responsive mb-4 fade-in">
+        <table className="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Semana</th>
+              <th>Nombre</th>
+              <th>Teléfono</th>
+              <th>Notas</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {activosPrevios.filter(p=> (!estadoFiltro || p.estado===estadoFiltro) && (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))).map(p=> (
+              <tr key={p.id}>
+                <td>{p.semana_iso}</td>
+                <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
+                <td>{p.telefono? (()=>{ const digits = p.telefono.replace(/[^0-9]/g,''); if(!digits) return p.telefono; const withCode = digits.length===10? '52'+digits : digits; const waUrl = 'https://wa.me/'+withCode; return <a href={waUrl} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp">{p.telefono}</a>; })(): ''}</td>
+                <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
+                <td>{ESTADO_LABEL[p.estado]}</td>
+                <td className="text-end">
+                  {p.estado === 'ya_es_cliente' ? <span className="badge bg-success">Convertido</span> : <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>}
+                </td>
+              </tr>
+            ))}
+            {(!loading && activosPrevios.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">Sin prospectos activos de semanas anteriores.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    )}
     {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
     {editTarget && (
       <AppModal title={`Editar prospecto`} icon="pencil" onClose={closeEdit}>
@@ -530,6 +721,49 @@ export default function ProspectosPage(){
           <div className="d-flex justify-content-end gap-2 mt-3">
             <button className="btn btn-outline-secondary btn-sm" onClick={closeEdit}>Cancelar</button>
             <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={!editForm.nombre.trim()}>Guardar cambios</button>
+          </div>
+        </div>
+      </AppModal>
+    )}
+    {showNuevoCliente && (
+      <AppModal title="Registrar cliente" icon="person-plus" onClose={()=>{ if(!savingCliente) setShowNuevoCliente(false) }}>
+        <div className="small">
+          <p className="mb-2 text-muted">Completa los datos básicos del nuevo cliente generado desde el prospecto convertido.</p>
+          <div className="row g-2">
+            <div className="col-sm-6">
+              <label className="form-label small">Primer nombre *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.primer_nombre} onChange={e=>setNuevoCliente(c=>({...c, primer_nombre:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Segundo nombre</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.segundo_nombre} onChange={e=>setNuevoCliente(c=>({...c, segundo_nombre:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Primer apellido *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.primer_apellido} onChange={e=>setNuevoCliente(c=>({...c, primer_apellido:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Segundo apellido *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.segundo_apellido} onChange={e=>setNuevoCliente(c=>({...c, segundo_apellido:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Teléfono *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.telefono_celular} onChange={e=>setNuevoCliente(c=>({...c, telefono_celular:e.target.value.replace(/[^0-9+\s-]/g,'')}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Email *</label>
+              <input className="form-control form-control-sm" value={nuevoCliente.email} onChange={e=>setNuevoCliente(c=>({...c, email:e.target.value}))} />
+            </div>
+            <div className="col-sm-6">
+              <label className="form-label small">Fecha nacimiento</label>
+              <input type="date" className="form-control form-control-sm" value={nuevoCliente.fecha_nacimiento || ''} onChange={e=>setNuevoCliente(c=>({...c, fecha_nacimiento:e.target.value||undefined}))} />
+            </div>
+          </div>
+          {clienteError && <div className="text-danger small mt-2">{clienteError}</div>}
+          {clienteSuccess && <div className="text-success small mt-2">{clienteSuccess}</div>}
+          <div className="d-flex justify-content-end gap-2 mt-3">
+            <button className="btn btn-outline-secondary btn-sm" disabled={savingCliente} onClick={()=>{ if(!savingCliente) setShowNuevoCliente(false) }}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" disabled={savingCliente} onClick={submitNuevoCliente}>{savingCliente? 'Guardando…':'Crear cliente'}</button>
           </div>
         </div>
       </AppModal>

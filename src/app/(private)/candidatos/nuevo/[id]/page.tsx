@@ -29,6 +29,10 @@ interface FormState {
   etapas_completadas?: {
     [etapa: string]: { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
   };
+  // Campos POP
+  pop?: string;
+  fecha_creacion_pop?: string;
+  dias_desde_pop?: number; // derivado
 }
 
 // Obtener params con useParams para evitar conflicto de tipos del entrypoint
@@ -119,7 +123,7 @@ export default function EditarCandidato() {
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
   const nextVal: string = value
-    setForm(prev => recomputeDerived({ ...prev, [name]: nextVal }))
+  setForm(prev => recomputeDerived({ ...prev, [name]: nextVal }))
     // CT duplicate check (evita alertar si es el mismo registro)
     if (name === 'ct' && value.trim()) {
       try {
@@ -245,12 +249,17 @@ export default function EditarCandidato() {
   if (form.fecha_tentativa_de_examen) {
     const fte = parseOneDate(form.fecha_tentativa_de_examen)
     const hoy = new Date(); const h = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()))
-    if (!fte || fte.getTime() < h.getTime()) throw new Error('La fecha tentativa de examen debe ser hoy o una fecha posterior.')
+    if (!fte) throw new Error('Formato inválido de fecha tentativa de examen.')
+    // Permitimos fechas pasadas en modo edición; sólo avisamos (no bloqueamos) si es pasada y no existía antes / o cambia a pasado.
+    if (fte.getTime() < h.getTime()) {
+      // Sólo mostrar un warning no bloqueante; reutilizamos notif local si no existe
+      if (!notif) setNotif({ type: 'danger', msg: 'Aviso: la fecha tentativa de examen está en el pasado (se permitirá por edición histórica).' })
+    }
   }
   // Omitir campos derivados que no existen físicamente en la tabla
   // Extraer y descartar campos derivados sin declararlos (para evitar warnings)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { dias_desde_ct: _d, proceso: _p, ...payload } = form // payload incluye email_agente si fue editado
+  const { dias_desde_ct: _d, dias_desde_pop: _dp, proceso: _p, ...payload } = form // payload incluye email_agente si fue editado
   await updateCandidato(Number(params.id), payload as Partial<Candidato>)
   router.push('/consulta_candidatos')
     } catch (err) {
@@ -316,11 +325,17 @@ export default function EditarCandidato() {
               {procesoActual && <span><strong>Proceso:</strong> {procesoActual}</span>}
               {form.fecha_creacion_ct && <span><strong>Fecha creación CT:</strong> {form.fecha_creacion_ct}</span>}
               {form.fecha_creacion_ct && <span><strong>Días desde CT:</strong> {diasCT ?? '—'}</span>}
+              {form.fecha_creacion_pop && <span><strong>Fecha creación POP:</strong> {form.fecha_creacion_pop}</span>}
+              {form.fecha_creacion_pop && <span><strong>Días desde POP:</strong> {form.dias_desde_pop ?? '—'}</span>}
             </div>
             <form onSubmit={handleSubmit} className="row g-3" noValidate>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">CT</label>
                 <input ref={firstInputRef} name="ct" className="form-control" value={form.ct || ''} onChange={handleChange} placeholder="Ingresa CT (opcional)" />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">POP</label>
+                <input name="pop" className="form-control" value={form.pop || ''} onChange={handleChange} placeholder="Ingresa POP (opcional)" />
               </div>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
@@ -333,6 +348,10 @@ export default function EditarCandidato() {
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>
                 <input type="date" name="fecha_creacion_ct" className="form-control" value={form.fecha_creacion_ct || ''} onChange={handleChange} />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN POP</label>
+                <input type="date" name="fecha_creacion_pop" className="form-control" value={form.fecha_creacion_pop || ''} onChange={handleChange} />
               </div>
               {/* Días desde CT y Proceso ocultos en edición; se muestran arriba como info */}
               <div className="col-12">

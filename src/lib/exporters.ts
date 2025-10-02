@@ -1,4 +1,7 @@
 import type { Candidato, Prospecto, BloquePlanificacion } from '@/types'
+
+// Extensión ligera para acceso a campos POP opcionales sin usar any
+interface CandidatoPOP extends Candidato { pop?: string; fecha_creacion_pop?: string; dias_desde_pop?: number }
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 
@@ -16,7 +19,8 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
   if (!candidatos.length) return
   const XLSX = await loadXLSX()
   const data = candidatos.map(c => {
-    const { proceso, dias_desde_ct } = calcularDerivados({
+    const cand = c as CandidatoPOP
+    const { proceso, dias_desde_ct, dias_desde_pop } = calcularDerivados({
       periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
       capacitacion_cedula_a1: c.capacitacion_cedula_a1,
       periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
@@ -25,7 +29,8 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
       inicio_escuela_fundamental: c.inicio_escuela_fundamental,
       fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
-      fecha_creacion_ct: c.fecha_creacion_ct
+      fecha_creacion_ct: c.fecha_creacion_ct,
+      fecha_creacion_pop: cand.fecha_creacion_pop
     })
     const etapas = (c.etapas_completadas || {}) as Record<string, { completed?: boolean }>
     const allCompleted = [
@@ -41,10 +46,12 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
   const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
     return {
       ID: c.id_candidato,
-      CT: c.ct,
+  CT: c.ct,
+  POP: cand.pop || '',
       Candidato: c.candidato || '',
       'Email agente': c.email_agente || '',
       'Fecha creación CT': c.fecha_creacion_ct || '',
+  'Fecha creación POP': cand.fecha_creacion_pop || '',
       Proceso: proc,
       'Cédula A1': c.mes || '',
       'Periodo registro/envío': c.periodo_para_registro_y_envio_de_documentos || '',
@@ -64,7 +71,8 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       'Actualizó': c.usuario_que_actualizo || '',
       Eliminado: c.eliminado ? 'Sí' : 'No',
       'Fecha eliminación': c.fecha_eliminacion || '',
-      'Días desde creación CT': dias_desde_ct ?? ''
+      'Días desde creación CT': dias_desde_ct ?? '',
+      'Días desde creación POP': dias_desde_pop ?? ''
     }
   })
   const ws = XLSX.utils.json_to_sheet(data)
@@ -198,7 +206,8 @@ export async function exportCandidatoPDF(c: Candidato) {
   }
 
   // Calcular proceso para mostrarlo en el header
-  const { proceso } = calcularDerivados({
+  const cand = c as CandidatoPOP
+  const { proceso, dias_desde_ct, dias_desde_pop } = calcularDerivados({
     periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
     capacitacion_cedula_a1: c.capacitacion_cedula_a1,
     periodo_para_ingresar_folio_oficina_virtual: c.periodo_para_ingresar_folio_oficina_virtual,
@@ -207,7 +216,8 @@ export async function exportCandidatoPDF(c: Candidato) {
     fecha_limite_para_presentar_curricula_cdp: c.fecha_limite_para_presentar_curricula_cdp,
     inicio_escuela_fundamental: c.inicio_escuela_fundamental,
     fecha_tentativa_de_examen: c.fecha_tentativa_de_examen,
-    fecha_creacion_ct: c.fecha_creacion_ct
+    fecha_creacion_ct: c.fecha_creacion_ct,
+    fecha_creacion_pop: cand.fecha_creacion_pop
   })
   const etapasPdf = (c.etapas_completadas || {}) as Record<string, { completed?: boolean }>
   const allCompletedPdf = [
@@ -228,8 +238,12 @@ export async function exportCandidatoPDF(c: Candidato) {
   const push = (k: string, v: unknown) => rows.push([U(k), U(v)])
   push('clave temporal', c.ct)
   push('Nombre de candidato', c.candidato)
+  push('POP', cand.pop || '')
   push('Email de agente', c.email_agente || '')
   push('Fecha de creación clave temporal', c.fecha_creacion_ct || '')
+  push('Fecha de creación POP', cand.fecha_creacion_pop || '')
+  push('Días desde creación CT', dias_desde_ct ?? '')
+  push('Días desde creación POP', dias_desde_pop ?? '')
   push('Cédula A1', c.mes)
   push('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', c.periodo_para_registro_y_envio_de_documentos || '')
   push('Capacitación A1', c.capacitacion_cedula_a1 || '')

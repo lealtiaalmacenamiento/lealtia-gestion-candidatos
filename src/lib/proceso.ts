@@ -12,6 +12,8 @@ export interface SnapshotFechas {
   inicio_escuela_fundamental?: string
   fecha_tentativa_de_examen?: string
   fecha_creacion_ct?: string
+  // Nueva: fecha de creación POP (para cálculo de días)
+  fecha_creacion_pop?: string
 }
 
 export interface Range { start: Date; end: Date }
@@ -265,6 +267,14 @@ export function diasDesdeCT(fecha_creacion_ct?: string): number | undefined {
   return diff >= 0 ? Math.floor(diff / MS_PER_DAY) : 0
 }
 
+export function diasDesdePOP(fecha_creacion_pop?: string): number | undefined {
+  if (!fecha_creacion_pop) return undefined
+  const base = parseOneDate(fecha_creacion_pop)
+  if (!base) return undefined
+  const diff = Date.now() - base.getTime()
+  return diff >= 0 ? Math.floor(diff / MS_PER_DAY) : 0
+}
+
 export function derivarProceso(s: SnapshotFechas, hoyDate: Date = new Date()): string {
   // Normalizamos hoy a UTC (solo fecha)
   const hoy = new Date(Date.UTC(hoyDate.getUTCFullYear(), hoyDate.getUTCMonth(), hoyDate.getUTCDate()))
@@ -307,6 +317,7 @@ export function derivarProceso(s: SnapshotFechas, hoyDate: Date = new Date()): s
 export function calcularDerivados(s: SnapshotFechas) {
   return {
     dias_desde_ct: diasDesdeCT(s.fecha_creacion_ct),
+    dias_desde_pop: diasDesdePOP(s.fecha_creacion_pop),
     proceso: derivarProceso(s)
   }
 }

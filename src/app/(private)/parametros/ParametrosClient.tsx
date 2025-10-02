@@ -257,6 +257,25 @@ export default function ParametrosClient(){
       if(mc) reqs.push(fetch('/api/parametros',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ id: mc.id, valor:String(metaCitas), solicitante })}))
       await Promise.all(reqs)
   setNotif({msg:'Metas actualizadas', type:'success'})
+      // Si faltaba alguno lo creamos (seed dinámico)
+      if(!mp){
+        await fetch('/api/parametros',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ tipo:'fase2', clave:'meta_prospectos_semana', valor:String(metaProspectos), solicitante })})
+      }
+      if(!mc){
+        await fetch('/api/parametros',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ tipo:'fase2', clave:'meta_citas_semana', valor:String(metaCitas), solicitante })})
+      }
+      // Refrescar tras guardar/crear
+      try {
+        const ref = await fetch('/api/parametros?tipo=fase2&ts='+Date.now())
+        if(ref.ok){
+          const jr = await ref.json() as { data?: Array<{clave?:string; valor?:string|number|null}> }
+          const arr2 = jr.data||[]
+          const nmp = arr2.find(p=> p.clave==='meta_prospectos_semana')
+          const nmc = arr2.find(p=> p.clave==='meta_citas_semana')
+          if(nmp) setMetaProspectos(Number(nmp.valor)||null)
+          if(nmc) setMetaCitas(Number(nmc.valor)||null)
+        }
+      } catch {}
     } catch {
       setNotif({msg:'Error guardando metas', type:'danger'})
     } finally { setSavingFase2(false) }
