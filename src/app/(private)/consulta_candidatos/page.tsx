@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import React, { useEffect, useMemo, useRef, useState, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
@@ -166,6 +166,14 @@ function ConsultaCandidatosInner() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Scroll sync refs
+  const topScrollRef = useRef<HTMLDivElement|null>(null)
+  const bodyScrollRef = useRef<HTMLDivElement|null>(null)
+  const phantomRef = useRef<HTMLDivElement|null>(null)
+  const syncTop = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(bodyScrollRef.current.scrollLeft!==topScrollRef.current.scrollLeft) bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft },[])
+  const syncBody = useCallback(()=>{ if(!bodyScrollRef.current || !topScrollRef.current) return; if(topScrollRef.current.scrollLeft!==bodyScrollRef.current.scrollLeft) topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft },[])
+  useEffect(()=>{ const update=()=>{ if(!phantomRef.current || !bodyScrollRef.current) return; const tbl = bodyScrollRef.current.querySelector('table') as HTMLTableElement|null; const w = tbl? tbl.scrollWidth: bodyScrollRef.current.scrollWidth; phantomRef.current.style.width = w+'px' }; update(); const ro = new ResizeObserver(()=>update()); if(bodyScrollRef.current) ro.observe(bodyScrollRef.current); return ()=> ro.disconnect() },[data, filtered])
 
   const filtered = useMemo(() => {
     const norm = (s: string) => s
@@ -354,7 +362,16 @@ function ConsultaCandidatosInner() {
       )}
 
   {!loading && filtered.length > 0 && (
-        <div className="table-responsive fade-in-scale">
+        <div className="fade-in-scale">
+          {/* Barra de scroll superior + mensaje */}
+          <div className="d-flex justify-content-between align-items-center mb-1 small">
+            <div className="text-muted">Mostrando {filtered.length} de {data.length} registros cargados.</div>
+            <div style={{flex:1}}></div>
+          </div>
+          <div className="position-relative mb-2" style={{overflow:'hidden'}}>
+            <div ref={topScrollRef} onScroll={syncTop} style={{overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}}><div ref={phantomRef} style={{height:1}} /></div>
+          </div>
+          <div className="table-responsive" ref={bodyScrollRef} onScroll={syncBody}>
           <table ref={tableRef} className="table table-sm table-bordered align-middle mb-0 table-nowrap table-sticky">
             <thead className="table-dark">
               <tr>
@@ -459,9 +476,6 @@ function ConsultaCandidatosInner() {
               ))}
             </tbody>
           </table>
-          <div className="d-flex justify-content-between align-items-center mt-2 small">
-            <div className="text-muted">Mostrando {filtered.length} de {data.length} registros cargados.</div>
-            <div></div>
           </div>
         </div>
       )}
