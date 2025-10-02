@@ -216,7 +216,6 @@ export async function exportProspectosPDF(
       ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
       ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
       ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
-  ['Ya es cliente', `${resumen.por_estado.ya_es_cliente||0} (${pct(resumen.por_estado.ya_es_cliente||0,resumen.total)})`],
       ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
     ]
     // 3 tarjetas por fila dentro de 182mm útiles: 3*56 + 2*6 = 180 <= 182
@@ -241,7 +240,6 @@ export async function exportProspectosPDF(
         ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
         ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
         ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
-  ,['ya_es_cliente', resumen.por_estado.ya_es_cliente||0, ESTADO_COLORS.ya_es_cliente]
       ]
     const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       const baseX = 14
@@ -313,13 +311,11 @@ export async function exportProspectosPDF(
       y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
   // Secciones relacionadas con citas dormidas (citas por hora, riesgo seguimiento sin cita) no se incluyen
       // Tabla compacta de métricas clave
-      const includeDelta = !!opts?.prevWeekDelta
-      const header = ['Conv P->S','Desc %','Proy semana', ...(includeDelta? ['Prospectos vs semana anterior']: []) ]
+  const header = ['Conv P->S','Desc %','Proy semana']
       const row = [
         (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
         (em.ratioDescartado*100).toFixed(1)+'%',
-        em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-',
-        ...(includeDelta? [ (opts.prevWeekDelta!.totalDelta>=0? '+':'')+String(opts.prevWeekDelta!.totalDelta) ]: [])
+        em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
       ]
       // @ts-expect-error autotable
   doc.autoTable({
@@ -348,19 +344,15 @@ export async function exportProspectosPDF(
       bucket.total++
       if(bucket.por_estado[p.estado] !== undefined) bucket.por_estado[p.estado]++
     }
-    const includeAgentDeltaResumen = !!opts?.perAgentDeltas
-    const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado', ...(includeAgentDeltaResumen? ['Prospectos vs semana anterior']: [])]
-    const body2 = Object.entries(porAgente).map(([agNameKey, r])=> {
-      const agId = Object.entries(agentesMap).find(([,name])=> name===agNameKey)?.[0]
-      const deltas = includeAgentDeltaResumen && agId? opts?.perAgentDeltas?.[Number(agId)] : undefined
+    const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado']
+  const body2 = Object.entries(porAgente).map(([, r])=> {
       return [
         r.agente,
         r.total,
         r.por_estado.pendiente,
         r.por_estado.seguimiento,
         r.por_estado.con_cita,
-        r.por_estado.descartado,
-  ...(includeAgentDeltaResumen? [ deltas? (deltas.totalDelta>=0? '+'+deltas.totalDelta: String(deltas.totalDelta)):'-' ]: [])
+        r.por_estado.descartado
       ]
     })
     // Totales al final
@@ -370,7 +362,7 @@ export async function exportProspectosPDF(
       acc.seguimiento += r.por_estado.seguimiento
       acc.con_cita += r.por_estado.con_cita || 0
   acc.descartado += r.por_estado.descartado
-  acc.ya_es_cliente += (r.por_estado as Record<ProspectoEstado,number>).ya_es_cliente || 0
+  // Excluimos ya_es_cliente del acumulado mostrado (se ignora en impresión)
       return acc
   }, { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 as number })
     const footerRows = [ [
@@ -380,7 +372,7 @@ export async function exportProspectosPDF(
       totals.seguimiento,
   totals.con_cita,
       totals.descartado,
-  ...(includeAgentDeltaResumen? ['']: [])
+  
     ] ]
   // @ts-expect-error autotable plugin
       doc.autoTable({
@@ -416,7 +408,6 @@ export async function exportProspectosPDF(
         ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
         ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
         ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
-  ,['ya_es_cliente', resumen.por_estado.ya_es_cliente||0, ESTADO_COLORS.ya_es_cliente]
       ]
       const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
       // Legend (horizontal)
@@ -472,7 +463,6 @@ export async function exportProspectosPDF(
         ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
         ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
         ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`]
-  ,['Ya es cliente', `${resumen.por_estado.ya_es_cliente||0} (${pct(resumen.por_estado.ya_es_cliente||0,resumen.total)})`]
       ]
       const cardX = 110
       let cardY = chartTop
@@ -489,21 +479,18 @@ export async function exportProspectosPDF(
         y = ensure(y, 10)
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
-  const includeAgentDelta = !!opts?.perAgentDeltas
-  const header = ['Agente','Conv P->S','Desc %','Proy semana', ...(includeAgentDelta? ['Prospectos vs semana anterior']: [])]
+  const header = ['Agente','Conv P->S','Desc %','Proy semana']
         // @ts-expect-error autotable plugin
   doc.autoTable({
           startY: y,
           head:[header],
           body: Object.entries(opts.perAgentExtended).map(([agId, em])=>{
             const agName = agentesMap[Number(agId)] || agId
-            const deltas = includeAgentDelta? opts.perAgentDeltas?.[Number(agId)] : undefined
             return [
               agName,
               (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
               (em.ratioDescartado*100).toFixed(1)+'%',
-              em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-',
-              ...(includeAgentDelta? [ deltas? (deltas.totalDelta>=0? '+':'')+deltas.totalDelta : '-' ]: [])
+              em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
             ]
           }),
           styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
