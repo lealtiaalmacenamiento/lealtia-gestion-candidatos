@@ -7,6 +7,7 @@ import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
 import { crearUsuarioAgenteAuto } from '@/lib/autoAgente'
 import type { Candidato } from '@/types'
+import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
 // Tipo mínimo para acceder a campos dinámicos sin que TS marque "never"
 type CandidatoParcial = Partial<Candidato>
@@ -28,7 +29,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const existente = await supabase.from('candidatos').select('*').eq('id_candidato', id).single()
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
 
-  const body: CandidatoParcial = await req.json()
+  const body: CandidatoParcial = sanitizeCandidatoPayload(await req.json() as CandidatoParcial)
   // Normalizar email_agente (correo candidato) si viene
   if (typeof (body as any).email_agente === 'string') {
     (body as any).email_agente = String((body as any).email_agente).trim().toLowerCase()

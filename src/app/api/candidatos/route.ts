@@ -6,6 +6,7 @@ import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
 import { crearUsuarioAgenteAuto } from '@/lib/autoAgente'
+import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
 // Forzar runtime Node.js (necesario para nodemailer / auth admin)
 export const runtime = 'nodejs'
@@ -58,7 +59,8 @@ export async function POST(req: Request) {
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   if (!usuario.activo) return NextResponse.json({ error: 'Usuario inactivo' }, { status: 403 })
 
-  const body = await req.json()
+  const raw = await req.json()
+  const body = sanitizeCandidatoPayload(raw)
   const emailAgenteRaw: unknown = body.email_agente
   const emailAgente = typeof emailAgenteRaw === 'string' ? emailAgenteRaw.trim().toLowerCase() : ''
   // email_agente se conserva para insertar en columna (asegúrate de haber agregado la columna en BD)
