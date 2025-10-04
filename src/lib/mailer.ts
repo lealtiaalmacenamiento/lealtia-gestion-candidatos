@@ -80,13 +80,15 @@ export interface SendMailOptions {
   subject: string
   html?: string
   text?: string
+  cc?: string | string[]
+  bcc?: string | string[]
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>
 }
 
-export async function sendMail({ to, subject, html, text, attachments }: SendMailOptions) {
+export async function sendMail({ to, subject, html, text, cc, bcc, attachments }: SendMailOptions) {
   const tx = await getTransporter()
   const from = process.env.MAIL_FROM || user
-  await tx.sendMail({ from, to, subject, text, html, attachments })
+  await tx.sendMail({ from, to, cc, bcc, subject, text, html, attachments })
 }
 
 export function buildAltaUsuarioEmail(email: string, password: string) {
