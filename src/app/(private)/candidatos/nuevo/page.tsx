@@ -4,6 +4,7 @@ import { createCandidato, getCedulaA1, getEfc, getCandidatoByCT, getCandidatoByE
 import { calcularDerivados, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
+import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
 interface FormState {
   pop: string;
@@ -284,8 +285,9 @@ export default function NuevoCandidato() {
       }
   // Forzado: seg_gmm y seg_vida deben iniciarse en 0 y no se muestran en el registro
   // Omitir campos derivados que no se guardan directamente
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { dias_desde_ct: _omitDias, proceso: _omitProceso, ...payload } = form
+  // Preparar payload sin campos derivados (ni dias_desde_pop/dias_desde_ct, proceso, etc.)
+  // Omitir campos derivados del submit usando sanitización
+  const payload = sanitizeCandidatoPayload(form as unknown as Record<string, unknown>)
   await createCandidato({ ...(payload as unknown as Partial<Candidato>), seg_gmm: 0, seg_vida: 0 })
       setNotif({ type: 'success', msg: 'Candidato guardado correctamente. (Se intentó crear el usuario agente en backend si no existía).' })
       // Reiniciar formulario limpio
