@@ -4,6 +4,10 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 import type { BloquePlanificacion } from '@/types'
 import { logAccion } from '@/lib/logger'
+import { sendMail, buildFelicitacionCitasEmail } from '@/lib/mailer'
+
+
+
 
 const supabase = getServiceClient()
 
@@ -31,6 +35,65 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+
+
+
+  const usuario = await getUsuarioSesion()
+  if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  const body = await req.json()
+  let agente_id: number = body.agente_id
+  if (usuario.rol === 'agente') agente_id = usuario.id
+  if (!agente_id) return NextResponse.json({ error: 'agente_id requerido' }, { status: 400 })
+  const semana_iso: number = body.semana_iso
+  const anio: number = body.anio
+  const ua = req.headers.get('user-agent') || ''
+  const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || ''
+  // Siempre persistimos todos los bloques (manuales y auto)
+  const isBloque = (b: unknown): b is BloquePlanificacion => {
+    if (!b || typeof b !== 'object') return false
+    const obj = b as Record<string, unknown>
+    return typeof obj.day === 'number' && typeof obj.hour === 'string' && typeof obj.activity === 'string'
+  }
+  // Persistimos todos los bloques tal como fueron enviados
+  const bloquesAll: BloquePlanificacion[] = Array.isArray(body.bloques) ? body.bloques.filter(isBloque) : []
+  const bloques: BloquePlanificacion[] = bloquesAll
+  const prima = Number(body.prima_anual_promedio) || 30000
+  const comision = Number(body.porcentaje_comision) || 35
+  const upsert = { agente_id, semana_iso, anio, bloques, prima_anual_promedio: prima, porcentaje_comision: comision, updated_at: new Date().toISOString() }
+  const { data, error } = await supabase.from('planificaciones').upsert(upsert, { onConflict: 'agente_id,anio,semana_iso' }).select().maybeSingle()
+  if (error) return NextResponse.json({ error: error.message, detalle: 'upsert_planificacion' }, { status: 500 })
+  const result = { ...(data||upsert), debug: { enviados_total: bloquesAll.length, persistidos: bloques.length } }
+  try {
+    const snapshot = { meta: { actor_email: usuario.email, actor_rol: usuario.rol, target_agente_id: agente_id, semana_iso, anio, ip, ua }, data: result }
+    await logAccion('upsert_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', id_registro: Number((data as { id?: number })?.id || 0), snapshot })
+    if (usuario.rol !== 'agente' && usuario.id !== agente_id) {
+      // Log explícito cuando alguien con rol elevado edita la planificación de otro agente
+      await logAccion('superuser_upsert_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', id_registro: Number((data as { id?: number })?.id || 0), snapshot })
+    }
+  } catch {}
+  // --- Trigger correo si hay 2+ citas confirmadas en un día ---
+  const citasConfirmadas: Record<number, number> = {};
+  for (const b of bloques) {
+    if ((b.activity === 'SMNYL' || b.activity === 'CITAS') && b.confirmada) {
+      citasConfirmadas[b.day] = (citasConfirmadas[b.day] || 0) + 1;
+    }
+  }
+  const diasFelicitados = Object.entries(citasConfirmadas).filter(([_day, count]) => count >= 2);
+  if (diasFelicitados.length > 0) {
+    const { data: agenteData } = await supabase.from('usuarios').select('email,nombre').eq('id', agente_id).maybeSingle();
+    const { data: superusuarios } = await supabase.from('usuarios').select('email').eq('rol', 'superusuario').eq('activo', true);
+    const to = agenteData?.email;
+    const nombreAgente = agenteData?.nombre || to || 'Agente';
+    const cc = (superusuarios||[]).map(s=>s.email).filter(e=>e && e!==to);
+    for (const [day, count] of diasFelicitados) {
+      const semanaBase = obtenerSemanaIso(new Date(anio, 0, 1 + (semana_iso-1)*7)).inicio;
+      const fecha = new Date(semanaBase); fecha.setUTCDate(fecha.getUTCDate() + Number(day));
+      const fechaStr = fecha.toLocaleDateString('es-MX', { weekday:'long', year:'numeric', month:'short', day:'numeric' });
+      const { subject, html, text } = buildFelicitacionCitasEmail(nombreAgente, fechaStr, count);
+      await sendMail({ to, subject, html, text, ...(cc.length ? {cc} : {}) });
+    }
+  }
+  return NextResponse.json(result)
   const usuario = await getUsuarioSesion()
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const body = await req.json()

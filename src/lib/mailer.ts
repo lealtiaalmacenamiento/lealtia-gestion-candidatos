@@ -1,3 +1,29 @@
+// Felicitación por 2 citas confirmadas en un día
+export function buildFelicitacionCitasEmail(nombreAgente: string, fecha: string, total: number) {
+  const subject = `¡Felicidades por agendar ${total} citas confirmadas en un solo día!`;
+  const year = new Date().getFullYear();
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia';
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">¡Felicidades!</h2>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <p>Hola <strong>${nombreAgente}</strong>,</p>
+      <p>¡Te felicitamos por haber agendado <b>${total} citas confirmadas</b> el día <b>${fecha}</b>!</p>
+      <p>Este logro refleja tu dedicación y compromiso. ¡Sigue así!</p>
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`;
+  const text = `¡Felicidades ${nombreAgente}!\nHas agendado ${total} citas confirmadas el día ${fecha}.\n¡Sigue así!\n© ${year} Lealtia`;
+  return { subject, html, text };
+}
 // Carga perezosa de nodemailer para evitar que se incluya en el bundle cliente.
 
 // Requiere variables de entorno:
