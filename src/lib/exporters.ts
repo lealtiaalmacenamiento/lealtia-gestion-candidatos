@@ -6,19 +6,14 @@ import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 // Lazy dynamic imports para no inflar el bundle inicial
-type XLSXModule = typeof import('xlsx')
-async function loadXLSX(): Promise<XLSXModule> {
-  const mod = await import('xlsx')
-  const candidate = (mod as { default?: XLSXModule }).default
-  return (candidate ?? (mod as XLSXModule))
-}
+import * as ExcelJS from 'exceljs'
 async function loadJSPDF() { return (await import('jspdf')).jsPDF }
 async function loadAutoTable() { return (await import('jspdf-autotable')).default }
 
-export async function exportCandidatosExcel(candidatos: Candidato[]) {
+
+export async function exportCandidatosExcel(candidatos: Candidato[]): Promise<void> {
   if (!candidatos.length) return
-  const XLSX = await loadXLSX()
-  const data = candidatos.map(c => {
+  const data = candidatos.map((c: Candidato) => {
     const cand = c as CandidatoPOP
     const { proceso, dias_desde_ct, dias_desde_pop } = calcularDerivados({
       periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
@@ -42,16 +37,16 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       'fecha_limite_para_presentar_curricula_cdp',
       'inicio_escuela_fundamental'
     ].every(k => !!etapas[k]?.completed)
-  const isAgente = allCompleted
-  const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
+    const isAgente = allCompleted
+    const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
     return {
       ID: c.id_candidato,
-  CT: c.ct,
-  POP: cand.pop || '',
+      CT: c.ct,
+      POP: cand.pop || '',
       Candidato: c.candidato || '',
       'Email agente': c.email_agente || '',
       'Fecha creación CT': c.fecha_creacion_ct || '',
-  'Fecha creación POP': cand.fecha_creacion_pop || '',
+      'Fecha creación POP': cand.fecha_creacion_pop || '',
       Proceso: proc,
       'Cédula A1': c.mes || '',
       'Periodo registro/envío': c.periodo_para_registro_y_envio_de_documentos || '',
@@ -75,11 +70,14 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       'Días desde creación POP': dias_desde_pop ?? ''
     }
   })
-  const ws = XLSX.utils.json_to_sheet(data)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Candidatos')
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Candidatos')
+  if (data.length > 0) {
+    worksheet.columns = Object.keys(data[0]).map(key => ({ header: key, key }))
+    data.forEach((row: Record<string, unknown>) => worksheet.addRow(row))
+  }
   const fecha = new Date().toISOString().replace(/[:T]/g,'-').slice(0,16)
-  XLSX.writeFile(wb, `candidatos_${fecha}.xlsx`)
+  await workbook.xlsx.writeFile(`candidatos_${fecha}.xlsx`)
 }
 
 export async function exportCandidatoPDF(c: Candidato) {

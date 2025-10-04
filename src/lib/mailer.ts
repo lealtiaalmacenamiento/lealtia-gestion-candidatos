@@ -34,7 +34,9 @@ export function buildFelicitacionCitasEmail(nombreAgente: string, fecha: string,
 const user = process.env.GMAIL_USER
 const pass = process.env.GMAIL_APP_PASS
 
+
 import nodemailer from 'nodemailer'
+import type { Options as NodemailerSendMailOptions } from 'nodemailer/lib/mailer';
 type MailTx = ReturnType<typeof nodemailer.createTransport>
 let transporter: MailTx | null = null
 
@@ -88,7 +90,8 @@ export interface SendMailOptions {
 export async function sendMail({ to, subject, html, text, cc, bcc, attachments }: SendMailOptions) {
   const tx = await getTransporter()
   const from = process.env.MAIL_FROM || user
-  await tx.sendMail({ from, to, cc, bcc, subject, text, html, attachments })
+  const opts: NodemailerSendMailOptions = { from, to, cc, bcc, subject, text, html, attachments }
+  await tx.sendMail(opts as any)
 }
 
 export function buildAltaUsuarioEmail(email: string, password: string) {
