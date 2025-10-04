@@ -131,6 +131,7 @@ export interface BloquePlanificacion {
   prospecto_nombre?: string
   prospecto_estado?: ProspectoEstado
   notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
+  confirmada?: boolean // para bloques tipo SMNYL/Cita
 }
 
 export interface PlanificacionSemana {

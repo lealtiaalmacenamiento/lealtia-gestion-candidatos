@@ -199,7 +199,7 @@ export default function PlanificacionPage(){
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
                   const color = blk? (blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark') : ''
-                  const label = blk? (blk.activity==='PROSPECCION'? 'Prospección':'SMNYL') : ''
+                  const label = blk? (blk.activity==='PROSPECCION'? 'Prospección':'Cita') : ''
                   const base=semanaDesdeNumero(anio, semana as number).inicio
                   // Construir fecha local evitando mezcla UTC/local
                   const cellDate = new Date(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()+day, Number(h), 0, 0, 0)
@@ -215,14 +215,14 @@ export default function PlanificacionPage(){
         </div>
         <div className="small text-muted mt-2 d-flex flex-wrap gap-3">
           <span><span className="badge bg-primary">Prospección</span></span>
-          <span><span className="badge bg-info text-dark">SMNYL</span></span>
+          <span><span className="badge bg-info text-dark">Cita</span></span>
           <span>Click celda = editar / crear bloque</span>
         </div>
       </div>
       <div className="col-lg-3">
         <div className="card p-3 shadow-sm">
           <div className="mb-1 small text-muted">Manual Prospecto: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='PROSPECCION').length}</div>
-          <div className="mb-2 small text-muted">Manual SMNYL: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
+          <div className="mb-2 small text-muted">Manual Cita: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
           <div className="mb-2 small">
             <label className="form-label small mb-1">Prima anual promedio</label>
             <div className="input-group input-group-sm">
@@ -262,15 +262,17 @@ function BloqueEditor({ modal, semanaBase, onSave, onDelete }: { modal:{day:numb
   const dias = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
   const [tipo,setTipo]=useState< 'PROSPECCION'|'SMNYL' | ''>(modal.blk? (modal.blk.activity==='CITAS'? '' : modal.blk.activity) : '')
   const [notas,setNotas]=useState(modal.blk?.notas || '')
+  const [confirmada, setConfirmada] = useState(modal.blk?.confirmada || false)
   const dialog = useDialog()
   const guardar=async()=>{
     if(!tipo){ onSave(null); return }
-  // Bloquear guardar en pasado (recalcular con lógica local consistente)
-  const target = new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour), 0,0,0)
-  if(target.getTime() < Date.now()-60000){ await dialog.alert('No se puede editar un bloque en el pasado'); return }
+    // Bloquear guardar en pasado (recalcular con lógica local consistente)
+    const target = new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour), 0,0,0)
+    if(target.getTime() < Date.now()-60000){ await dialog.alert('No se puede editar un bloque en el pasado'); return }
     // Notas opcionales
     const base: BloquePlanificacion = {day:modal.day, hour:modal.hour, activity:tipo, origin:'manual'}
     base.notas = notas.trim()
+    if (tipo === 'SMNYL') base.confirmada = confirmada
     onSave(base)
   }
   const fechaBloque = new Date(semanaBase); fechaBloque.setUTCDate(fechaBloque.getUTCDate()+modal.day)
@@ -283,15 +285,21 @@ function BloqueEditor({ modal, semanaBase, onSave, onDelete }: { modal:{day:numb
       <select className="form-select form-select-sm" value={tipo} onChange={e=> setTipo(e.target.value as 'PROSPECCION'|'SMNYL'|'') }>
         <option value="">(Vacío)</option>
         <option value="PROSPECCION">Prospección</option>
-        <option value="SMNYL">SMNYL</option>
+        <option value="SMNYL">Cita</option>
       </select>
     </div>
+    {tipo === 'SMNYL' && (
+      <div className="form-check form-switch mb-2">
+        <input className="form-check-input" type="checkbox" id="cita-confirmada-toggle" checked={confirmada} onChange={e=>setConfirmada(e.target.checked)} />
+        <label className="form-check-label" htmlFor="cita-confirmada-toggle">Cita confirmada</label>
+      </div>
+    )}
     {tipo && <div className="mb-2">
       <label className="form-label small mb-1">Notas (opcional)</label>
       <textarea rows={3} className="form-control form-control-sm" value={notas} onChange={e=> setNotas(e.target.value)} />
     </div>}
     <div className="d-flex gap-2 mt-3">
-  <button className="btn btn-primary btn-sm" onClick={guardar} disabled={(()=>{ const t=new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour),0,0,0); return t.getTime()<Date.now()-60000 })()}>Guardar</button>
+      <button className="btn btn-primary btn-sm" onClick={guardar} disabled={(()=>{ const t=new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour),0,0,0); return t.getTime()<Date.now()-60000 })()}>Guardar</button>
       <button className="btn btn-outline-secondary btn-sm" onClick={()=> onSave(null)}>Vaciar</button>
       <button className="btn btn-outline-danger btn-sm ms-auto" onClick={onDelete}>Eliminar</button>
     </div>
