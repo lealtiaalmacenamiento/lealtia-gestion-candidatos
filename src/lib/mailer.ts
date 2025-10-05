@@ -26,7 +26,8 @@ export function buildFelicitacionCitasEmail(nombreAgente: string, fecha: string,
 }
 // Felicitación por 2 citas confirmadas cada día de la semana
 export function buildFelicitacionSemanaCitasEmail(nombreAgente: string, semana: string) {
-  const subject = `¡Felicidades por lograr 2+ citas confirmadas cada día de la semana!`;
+  const subject = `¡Felicidades por lograr 2 o más citas confirmadas cada día de la semana!`;
+
   const year = new Date().getFullYear();
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia';
   const html = `
