@@ -107,6 +107,64 @@ export async function exportProspectosPDF(
     } catch { /* ignorar problemas de canvas */ }
   }
 
+  // Helpers y layout deben estar definidos antes de renderProspectosPorSemana
+  const generadoEn = nowMX();
+  // Ajuste dinámico de título para nombres largos de agente
+  const drawHeader = ()=>{
+    const baseX = logo? 50:12;
+    const marginRight = 8;
+    const maxWidth = 210 - baseX - marginRight;
+    let headerHeight = 22;
+    // Calcular líneas del título ajustando tamaño
+    let fontSize = 13;
+    doc.setFont('helvetica','bold');
+    let width = 0;
+    while(fontSize>=8){ doc.setFontSize(fontSize); width = doc.getTextWidth(titulo); if(width <= maxWidth) break; fontSize--; }
+    let lines: string[] = [];
+    if(width > maxWidth){
+      const words = titulo.split(/\s+/);
+      let current = '';
+      words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w; } });
+      if(current) lines.push(current);
+    } else lines = [titulo];
+    while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); const words = titulo.split(/\s+/); lines=[]; let current=''; words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w; } }); if(current) lines.push(current); }
+    const lineHeight = fontSize + 2;
+    const dateFontSize = 8;
+    // Altura requerida: paddingTop(6) + líneas + gap(2) + dateFontSize + paddingBottom(6)
+    const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6;
+    if(neededHeight > headerHeight) headerHeight = neededHeight;
+    // Dibujar fondo
+    doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F');
+    // Logo centrado verticalmente
+    if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH); } catch {/*ignore*/} } else { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14); }
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold'); doc.setFontSize(fontSize);
+    lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, baseX, baseline); });
+    // Fecha alineada al inicio de la tabla (debajo de título) usando dateFontSize
+    const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize;
+    doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize);
+    doc.text('Generado (CDMX): '+ generadoEn, baseX, dateY);
+    doc.setTextColor(0,0,0);
+    const contentStartY = headerHeight + 6; // margen uniforme
+    return { headerHeight, contentStartY };
+  };
+  const { headerHeight, contentStartY } = drawHeader();
+  doc.setFontSize(9);
+  const GAP = 6;
+  const SECTION_GAP = 8;
+  // Page metrics and helper to avoid drawing content that would be cut at page boundary
+  const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight();
+  const BOTTOM_MARGIN = 14;
+  const ensure = (currentY:number, required:number) => {
+    const limit = PAGE_H - BOTTOM_MARGIN;
+    if (currentY + required > limit) {
+      doc.addPage();
+      const hdr = drawHeader();
+      return hdr.contentStartY;
+    }
+    return currentY;
+  };
+
   // --- Nueva lógica: separar prospectos y tablas después de inicializar doc y helpers ---
   function renderProspectosPorSemana() {
     // Separar prospectos de semana actual y anteriores
@@ -219,62 +277,6 @@ export async function exportProspectosPDF(
   }
   // Llamar a la nueva lógica después de inicializar doc y helpers
   renderProspectosPorSemana();
-  const generadoEn = nowMX()
-  // Ajuste dinámico de título para nombres largos de agente
-  const drawHeader = ()=>{
-    const baseX = logo? 50:12
-    const marginRight = 8
-    const maxWidth = 210 - baseX - marginRight
-    let headerHeight = 22
-    // Calcular líneas del título ajustando tamaño
-    let fontSize = 13
-    doc.setFont('helvetica','bold')
-    let width = 0
-    while(fontSize>=8){ doc.setFontSize(fontSize); width = doc.getTextWidth(titulo); if(width <= maxWidth) break; fontSize-- }
-    let lines: string[] = []
-    if(width > maxWidth){
-      const words = titulo.split(/\s+/)
-      let current = ''
-      words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w } })
-      if(current) lines.push(current)
-    } else lines = [titulo]
-    while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); const words = titulo.split(/\s+/); lines=[]; let current=''; words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w } }); if(current) lines.push(current) }
-    const lineHeight = fontSize + 2
-    const dateFontSize = 8
-    // Altura requerida: paddingTop(6) + líneas + gap(2) + dateFontSize + paddingBottom(6)
-    const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6
-    if(neededHeight > headerHeight) headerHeight = neededHeight
-    // Dibujar fondo
-    doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F')
-    // Logo centrado verticalmente
-    if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH) } catch {/*ignore*/} } else { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14) }
-    doc.setTextColor(255,255,255)
-  doc.setFont('helvetica','bold'); doc.setFontSize(fontSize)
-    lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, baseX, baseline) })
-    // Fecha alineada al inicio de la tabla (debajo de título) usando dateFontSize
-    const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize
-    doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize)
-    doc.text('Generado (CDMX): '+ generadoEn, baseX, dateY)
-    doc.setTextColor(0,0,0)
-    const contentStartY = headerHeight + 6 // margen uniforme
-    return { headerHeight, contentStartY }
-  }
-  const { headerHeight, contentStartY } = drawHeader()
-  doc.setFontSize(9)
-  const GAP = 6
-  const SECTION_GAP = 8
-  // Page metrics and helper to avoid drawing content that would be cut at page boundary
-  const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight()
-  const BOTTOM_MARGIN = 14
-  const ensure = (currentY:number, required:number) => {
-    const limit = PAGE_H - BOTTOM_MARGIN
-    if (currentY + required > limit) {
-      doc.addPage()
-      const hdr = drawHeader()
-      return hdr.contentStartY
-    }
-    return currentY
-  }
   const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
