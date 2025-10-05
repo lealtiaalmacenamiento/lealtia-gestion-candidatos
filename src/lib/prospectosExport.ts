@@ -587,8 +587,7 @@ export async function exportProspectosPDF(
         doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
         doc.setFontSize(7)
   const header = ['Agente','Conv P->S','Desc %','Proy semana']
-        // @ts-expect-error autotable plugin
-  doc.autoTable({
+  autoTable(doc, {
           startY: y,
           head:[header],
           body: Object.entries(opts.perAgentExtended).map(([agId, em])=>{
@@ -630,8 +629,7 @@ export async function exportProspectosPDF(
   y = cy + cardH + GAP
         doc.setFontSize(7)
   const headPlan = ['Agente','Prospección','SMNYL','Total']
-        // @ts-expect-error autotable
-        doc.autoTable({
+  autoTable(doc, {
           startY:y,
           head:[headPlan],
           body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
@@ -676,8 +674,7 @@ export async function exportProspectosPDF(
   // Ensure there is sufficient vertical space for at least a few rows before starting the table
       const minTableBlock = 24
       cy = ensure(cy, minTableBlock)
-  // @ts-expect-error autotable
-      doc.autoTable({
+  autoTable(doc, {
         startY: cy,
         head:[headPlan],
         body: bodyPlan,
@@ -796,8 +793,7 @@ export async function exportProspectosPDF(
         })
         // Reservar altura mínima de tabla compacta
         y = ensure(y, 24)
-        // @ts-expect-error autotable
-        doc.autoTable({
+  autoTable(doc, {
           startY: y,
           head: [head],
           body: rows,
@@ -863,8 +859,7 @@ export async function exportProspectosPDF(
         })
         // Asegurar altura mínima para que la tabla no se empalme con el título o tarjetas
         y = ensure(y, 24)
-        // @ts-expect-error autotable
-        doc.autoTable({
+  autoTable(doc, {
           startY: y,
           head: [head],
           body: rows,
@@ -895,8 +890,7 @@ export async function exportProspectosPDF(
       return [userLabel, String(total), String(b.views||0), String(b.clicks||0), String(b.forms||0), String(b.prospectos||0), String(b.planificacion||0), String(b.clientes||0), String(b.polizas||0)]
     })
     y = ensure(y, 24)
-    // @ts-expect-error autotable
-    doc.autoTable({ startY: y, head: [head1], body: rows1, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+  autoTable(doc, { startY: y, head: [head1], body: rows1, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
     const withAutoA = doc as unknown as { lastAutoTable?: { finalY?: number } }
     y = (withAutoA.lastAutoTable?.finalY || y) + GAP
 
@@ -967,8 +961,7 @@ export async function exportProspectosPDF(
       })
       // Asegurar espacio mínimo
       y = ensure(y, 24)
-      // @ts-expect-error autotable
-      doc.autoTable({ startY: y, head: [headDaily], body: rowsDaily, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+  autoTable(doc, { startY: y, head: [headDaily], body: rowsDaily, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
       const withAutoDaily = doc as unknown as { lastAutoTable?: { finalY?: number } }
       y = (withAutoDaily.lastAutoTable?.finalY || y) + GAP
     } catch { /* ignore daily table errors */ }
@@ -984,8 +977,7 @@ export async function exportProspectosPDF(
       return [userLabel, String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
     })
     y = ensure(y, 24)
-    // @ts-expect-error autotable
-    doc.autoTable({ startY: y, head: [head2], body: rows2, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
+  autoTable(doc, { startY: y, head: [head2], body: rows2, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
     const withAutoB = doc as unknown as { lastAutoTable?: { finalY?: number } }
     y = (withAutoB.lastAutoTable?.finalY || y) + GAP
   }
@@ -1017,8 +1009,7 @@ export async function exportProspectosPDF(
     const headGloss = ['Abrev.','Significado']
     // Altura mínima para que no se empalme con el footer
     y = ensure(y, 24)
-    // @ts-expect-error autotable plugin
-    doc.autoTable({
+  autoTable(doc, {
       startY: y,
       head: [headGloss],
       body: glossary.map(([k,v])=>[k,v]),
