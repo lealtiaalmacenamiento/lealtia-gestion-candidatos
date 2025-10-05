@@ -36,7 +36,7 @@ const pass = process.env.GMAIL_APP_PASS
 
 
 import nodemailer from 'nodemailer'
-import type { Options as NodemailerSendMailOptions } from 'nodemailer/lib/mailer';
+// import type { Options as NodemailerSendMailOptions } from 'nodemailer/lib/mailer';
 type MailTx = ReturnType<typeof nodemailer.createTransport>
 let transporter: MailTx | null = null
 
@@ -90,8 +90,8 @@ export interface SendMailOptions {
 export async function sendMail({ to, subject, html, text, cc, bcc, attachments }: SendMailOptions) {
   const tx = await getTransporter()
   const from = process.env.MAIL_FROM || user
-  const opts: NodemailerSendMailOptions = { from, to, cc, bcc, subject, text, html, attachments }
-  await tx.sendMail(opts as any)
+  const opts = { from, to, cc, bcc, subject, text, html, attachments }
+  await tx.sendMail(opts)
 }
 
 export function buildAltaUsuarioEmail(email: string, password: string) {
