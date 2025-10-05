@@ -791,17 +791,17 @@ export default function ProspectosPage(){
           <div className="d-flex gap-2">
             <button className="btn btn-primary btn-sm" onClick={async ()=>{
               try {
-                const plan = conflicto.prospecto?.planificacion || { bloques: [] }
-                const bloques = (plan.bloques||[]).filter(b=> !(b.day===conflicto.day && b.hour===conflicto.horaLocal))
-                bloques.push({ day:conflicto.day, hour:conflicto.horaLocal, activity:'CITAS', origin:'manual' })
-                const body = { agente_id: conflicto.prospecto?.agente_id, semana_iso: conflicto.semana, anio: conflicto.anio, bloques }
-                await fetch('/api/planificacion',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
-                setConflicto(null)
-                window.dispatchEvent(new CustomEvent('prospectos:cita-updated'))
-                setToast({msg:'Bloque reemplazado por cita', type:'success'})
+                // 'planificacion' no existe en Prospecto, así que usamos un array vacío por defecto
+                const bloques = [];
+                bloques.push({ day:conflicto.day, hour:conflicto.horaLocal, activity:'CITAS', origin:'manual' });
+                const body = { agente_id: conflicto.prospecto?.agente_id, semana_iso: conflicto.semana, anio: conflicto.anio, bloques };
+                await fetch('/api/planificacion',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                setConflicto(null);
+                window.dispatchEvent(new CustomEvent('prospectos:cita-updated'));
+                setToast({msg:'Bloque reemplazado por cita', type:'success'});
               } catch {
-                setToast({msg:'Error al reemplazar bloque', type:'error'})
-                setConflicto(null)
+                setToast({msg:'Error al reemplazar bloque', type:'error'});
+                setConflicto(null);
               }
             }}>Reemplazar bloque</button>
             <button className="btn btn-outline-secondary btn-sm" onClick={()=> setConflicto(null)}>Mantener</button>
