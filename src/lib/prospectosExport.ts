@@ -59,21 +59,134 @@ export async function exportProspectosPDF(
     agrupadoPorAgente?: boolean
     agentesMap?: Record<number,string>
     chartEstados?: boolean
-  metaProspectos?: number
-  forceLogoBlanco?: boolean
-  extendedMetrics?: ExtendedMetrics
-  prevWeekDelta?: PreviousWeekDelta
-  perAgentExtended?: Record<number,ExtendedMetrics>
-  filename?: string
-  perAgentDeltas?: Record<number,{ totalDelta:number }>
-  planningSummaries?: Record<number,{ prospeccion:number; smnyl:number; total:number }>
-  singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
-  // Weekly activity (UI + domain) for line chart in single-agent reports
-  activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }, dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> }
-  // Per-agent weekly activity for grouped (general) reports
-  perAgentActivity?: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }>
+    metaProspectos?: number
+    forceLogoBlanco?: boolean
+    extendedMetrics?: ExtendedMetrics
+    prevWeekDelta?: PreviousWeekDelta
+    perAgentExtended?: Record<number,ExtendedMetrics>
+    filename?: string
+    perAgentDeltas?: Record<number,{ totalDelta:number }>
+    planningSummaries?: Record<number,{ prospeccion:number; smnyl:number; total:number }>
+    singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
+    activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }, dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> }
+    perAgentActivity?: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }>
+    // NUEVO: semana actual y anteriores
+    semanaActual?: { anio: number, semana_iso: number }
   }
 ){
+  // --- Nueva lógica: separar prospectos y tablas después de inicializar doc y helpers ---
+  function renderProspectosPorSemana() {
+    // Separar prospectos de semana actual y anteriores
+  const semanaActual = opts?.semanaActual;
+    let prospectosActual: Prospecto[] = [];
+    let prospectosAnteriores: Prospecto[] = [];
+    if (semanaActual) {
+      prospectosActual = prospectos.filter(p => p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso);
+      prospectosAnteriores = prospectos.filter(p => !(p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso));
+    } else {
+      prospectosActual = prospectos;
+      prospectosAnteriores = [];
+    }
+    // Calcular meta incluyendo arrastre (como en el front)
+    const metaBase = opts?.metaProspectos ?? 30;
+    const arrastre = prospectosAnteriores.length;
+    const metaTotal = metaBase + arrastre;
+
+    // Helper para resumen por estado
+    function resumenPorEstado(ps: Prospecto[]): { total: number; por_estado: Record<string, number> } {
+      const por_estado: Record<string, number> = {};
+      for (const p of ps) por_estado[p.estado] = (por_estado[p.estado] || 0) + 1;
+      return { total: ps.length, por_estado };
+    }
+
+    // --- Tabla y gráfico: Semana actual ---
+    if (prospectosActual.length) {
+      // Título sección
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 12 : contentStartY;
+      y = ensure(y, 10);
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.text('Prospectos de la semana actual', 14, y);
+      y += 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      // Tabla
+      const head = [ ...(opts?.incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas' ];
+      const body = prospectosActual.map(p=> [ ...(opts?.incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (doc as any).autoTable({
+        startY: y,
+        head: [head],
+        body,
+        styles:{ fontSize:7, cellPadding:1.5, overflow:'linebreak' },
+        headStyles:{ fillColor:[7,46,64], fontSize:8, textColor:[255,255,255], halign:'center' },
+        alternateRowStyles:{ fillColor:[245,247,248] },
+        theme:'grid',
+        margin: { left: 14, right: 14 },
+        didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0); }
+      });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 8;
+      // Resumen y gráfico
+      const resumenAct = resumenPorEstado(prospectosActual);
+      doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      doc.text(`Resumen semana actual (meta: ${metaTotal})`, 14, y);
+      y += 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      const cards: Array<[string,string]> = [
+        ['Prospectos totales', String(resumenAct.total)],
+        ...Object.entries(resumenAct.por_estado).map(([k,v])=>[ESTADO_LABEL[k as ProspectoEstado]||k, String(v)] as [string,string])
+      ];
+      let cx=14, cy=y;
+      const cardW=56, cardH=12;
+      cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } });
+      y = cy + cardH + 10;
+      // Aquí puedes agregar el gráfico de barras si lo deseas (igual que antes)
+    }
+
+    // --- Tabla y gráfico: Semanas anteriores ---
+    if (prospectosAnteriores.length) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 18 : contentStartY + 60;
+      y = ensure(y, 10);
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.text('Prospectos de semanas anteriores (arrastre)', 14, y);
+      y += 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      const head = [ ...(opts?.incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas','Año','Semana' ];
+      const body = prospectosAnteriores.map(p=> [ ...(opts?.incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120), p.anio, p.semana_iso ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (doc as any).autoTable({
+        startY: y,
+        head: [head],
+        body,
+        styles:{ fontSize:7, cellPadding:1.5, overflow:'linebreak' },
+        headStyles:{ fillColor:[7,46,64], fontSize:8, textColor:[255,255,255], halign:'center' },
+        alternateRowStyles:{ fillColor:[245,247,248] },
+        theme:'grid',
+        margin: { left: 14, right: 14 },
+        didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0); }
+      });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 8;
+      const resumenAnt = resumenPorEstado(prospectosAnteriores);
+      doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      doc.text('Resumen semanas anteriores', 14, y);
+      y += 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      const cards: Array<[string,string]> = [
+        ['Prospectos arrastre', String(resumenAnt.total)],
+        ...Object.entries(resumenAnt.por_estado).map(([k,v])=>[ESTADO_LABEL[k as ProspectoEstado]||k, String(v)] as [string,string])
+      ];
+      let cx=14, cy=y;
+      const cardW=56, cardH=12;
+      cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } });
+      y = cy + cardH + 10;
+      // Aquí puedes agregar el gráfico de barras si lo deseas (igual que antes)
+    }
+  }
+  // Llamar a la nueva lógica después de inicializar doc y helpers
+  renderProspectosPorSemana();
+  // ...resto del código existente...
   if(!prospectos.length) return
   const jsPDF = await loadJSPDF(); await loadAutoTable()
   const doc = new jsPDF()
