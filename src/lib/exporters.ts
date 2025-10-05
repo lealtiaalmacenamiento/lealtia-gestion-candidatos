@@ -7,8 +7,6 @@ import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 // Lazy dynamic imports para no inflar el bundle inicial
 import * as ExcelJS from 'exceljs'
-async function loadJSPDF() { return (await import('jspdf')).jsPDF }
-async function loadAutoTable() { return (await import('jspdf-autotable')).default }
 
 
 export async function exportCandidatosExcel(candidatos: Candidato[]): Promise<void> {
@@ -326,7 +324,6 @@ export async function exportCandidatoPDF(c: Candidato) {
       [U('Con cita'), U(resumen.por_estado?.con_cita ?? 0)],
       [U('Descartado'), U(resumen.por_estado?.descartado ?? 0)]
         ]
-        // @ts-expect-error autoTable inyectada por plugin
       autoTable(doc, {
           startY: (lastY || contentStartY) + 2,
       head: [[U('Resumen de prospectos (semana actual)'), U('Valor')]],
@@ -355,7 +352,6 @@ export async function exportCandidatoPDF(c: Candidato) {
           } catch { return String(iso) }
         }
         const body = citas.map(p=> [ fmtMX(p.fecha_cita||null), U(p.nombre), U(p.estado) ])
-        // @ts-expect-error autoTable inyectada por plugin
       autoTable(doc, {
           startY: (lastY || contentStartY) + 6,
           head: [[U('Próximas citas (semana actual)'), ' ', ''], head[0]],
@@ -382,7 +378,6 @@ export async function exportCandidatoPDF(c: Candidato) {
           [U('Bloques CITAS'), U(counts.CITAS)],
           [U('Bloques SMNYL'), U(counts.SMNYL)],
         ]
-        // @ts-expect-error autoTable
       autoTable(doc, {
           startY: (lastY || contentStartY) + 6,
           head: [[U('Resumen planificación (semana actual)'), U('Valor')]],
