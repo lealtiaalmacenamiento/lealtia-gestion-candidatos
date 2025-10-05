@@ -82,8 +82,8 @@ export async function exportCandidatosExcel(candidatos: Candidato[]): Promise<vo
 
 export async function exportCandidatoPDF(c: Candidato) {
   try {
-    const jsPDF = await loadJSPDF()
-    await loadAutoTable()
+    const { jsPDF } = await import('jspdf')
+    const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF()
 
   // Helpers para header y branding uniforme
@@ -257,8 +257,7 @@ export async function exportCandidatoPDF(c: Candidato) {
   if (typeof c.seg_vida === 'number') push('Seguro Vida', c.seg_vida)
   push('fecha de creacion de candidato', c.fecha_de_creacion || '')
   push('ultima actualización de candidato', c.ultima_actualizacion || '')
-  // @ts-expect-error autoTable inyectada por plugin
-  doc.autoTable({
+  autoTable(doc, {
     startY: contentStartY,
     head: [[U('Datos de candidato'), ' ']],
     body: rows,
@@ -328,7 +327,7 @@ export async function exportCandidatoPDF(c: Candidato) {
       [U('Descartado'), U(resumen.por_estado?.descartado ?? 0)]
         ]
         // @ts-expect-error autoTable inyectada por plugin
-        doc.autoTable({
+      autoTable(doc, {
           startY: (lastY || contentStartY) + 2,
       head: [[U('Resumen de prospectos (semana actual)'), U('Valor')]],
           body,
@@ -357,7 +356,7 @@ export async function exportCandidatoPDF(c: Candidato) {
         }
         const body = citas.map(p=> [ fmtMX(p.fecha_cita||null), U(p.nombre), U(p.estado) ])
         // @ts-expect-error autoTable inyectada por plugin
-        doc.autoTable({
+      autoTable(doc, {
           startY: (lastY || contentStartY) + 6,
           head: [[U('Próximas citas (semana actual)'), ' ', ''], head[0]],
           body,
@@ -384,7 +383,7 @@ export async function exportCandidatoPDF(c: Candidato) {
           [U('Bloques SMNYL'), U(counts.SMNYL)],
         ]
         // @ts-expect-error autoTable
-        doc.autoTable({
+      autoTable(doc, {
           startY: (lastY || contentStartY) + 6,
           head: [[U('Resumen planificación (semana actual)'), U('Valor')]],
           body: resumenBody,
