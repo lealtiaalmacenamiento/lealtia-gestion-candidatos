@@ -75,7 +75,7 @@ export async function exportProspectosPDF(
   if(!prospectos.length) return;
   // Cargar jsPDF y registrar el plugin autotable correctamente
   const { jsPDF } = await import('jspdf');
-  await import('jspdf-autotable');
+  const autoTable = (await import('jspdf-autotable')).default;
   const doc = new jsPDF();
   let logo = await fetchLogoDataUrl();
   let logoW = 0, logoH = 0;
@@ -193,8 +193,7 @@ export async function exportProspectosPDF(
     // --- Tabla y gráfico: Semana actual ---
     if (prospectosActual.length) {
       // Título sección
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 12 : contentStartY;
+  let y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable ? (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable!.finalY! + 12 : contentStartY;
       y = ensure(y, 10);
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
       doc.text('Prospectos de la semana actual', 14, y);
@@ -203,8 +202,7 @@ export async function exportProspectosPDF(
       // Tabla
       const head = [ ...(opts?.incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas' ];
       const body = prospectosActual.map(p=> [ ...(opts?.incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (doc as any).autoTable({
+  autoTable(doc, {
         startY: y,
         head: [head],
         body,
@@ -215,8 +213,7 @@ export async function exportProspectosPDF(
         margin: { left: 14, right: 14 },
         didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0); }
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      y = (doc as any).lastAutoTable.finalY + 8;
+  y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable!.finalY! + 8;
       // Resumen y gráfico
       const resumenAct = resumenPorEstado(prospectosActual);
       doc.setFont('helvetica','bold'); doc.setFontSize(10);
@@ -236,8 +233,7 @@ export async function exportProspectosPDF(
 
     // --- Tabla y gráfico: Semanas anteriores ---
     if (prospectosAnteriores.length) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 18 : contentStartY + 60;
+  let y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable ? (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable!.finalY! + 18 : contentStartY + 60;
       y = ensure(y, 10);
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
       doc.text('Prospectos de semanas anteriores (arrastre)', 14, y);
@@ -245,8 +241,7 @@ export async function exportProspectosPDF(
       doc.setFont('helvetica','normal'); doc.setFontSize(9);
       const head = [ ...(opts?.incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas','Año','Semana' ];
       const body = prospectosAnteriores.map(p=> [ ...(opts?.incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120), p.anio, p.semana_iso ]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (doc as any).autoTable({
+  autoTable(doc, {
         startY: y,
         head: [head],
         body,
@@ -290,8 +285,7 @@ export async function exportProspectosPDF(
   const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas' ]
   const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ])
     const tableStartY = contentStartY
-    // @ts-expect-error autotable plugin
-    doc.autoTable({
+  autoTable(doc, {
       startY: tableStartY,
       head: [head],
       body,
@@ -432,8 +426,7 @@ export async function exportProspectosPDF(
         (em.ratioDescartado*100).toFixed(1)+'%',
         em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
       ]
-      // @ts-expect-error autotable
-  doc.autoTable({
+  autoTable(doc, {
         startY: y+2,
         head:[header],
         body:[row],
@@ -462,12 +455,12 @@ export async function exportProspectosPDF(
     const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado']
   const body2 = Object.entries(porAgente).map(([, r])=> {
       return [
-        r.agente,
-        r.total,
-        r.por_estado.pendiente,
-        r.por_estado.seguimiento,
-        r.por_estado.con_cita,
-        r.por_estado.descartado
+        r.agente ?? '',
+        r.total ?? '',
+        r.por_estado.pendiente ?? '',
+        r.por_estado.seguimiento ?? '',
+        r.por_estado.con_cita ?? '',
+        r.por_estado.descartado ?? ''
       ]
     })
     // Totales al final
@@ -489,8 +482,7 @@ export async function exportProspectosPDF(
       totals.descartado,
   
     ] ]
-  // @ts-expect-error autotable plugin
-      doc.autoTable({
+    autoTable(doc, {
     startY:y,
     head:[head2],
     body:body2,
