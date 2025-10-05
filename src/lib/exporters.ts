@@ -81,9 +81,10 @@ export async function exportCandidatosExcel(candidatos: Candidato[]): Promise<vo
 }
 
 export async function exportCandidatoPDF(c: Candidato) {
-  const jsPDF = await loadJSPDF()
-  await loadAutoTable()
-  const doc = new jsPDF()
+  try {
+    const jsPDF = await loadJSPDF()
+    await loadAutoTable()
+    const doc = new jsPDF()
 
   // Helpers para header y branding uniforme
   const MX_TZ='America/Mexico_City'
@@ -411,7 +412,11 @@ export async function exportCandidatoPDF(c: Candidato) {
   doc.text(U('Lealtia'),14,292)
     doc.setTextColor(0,0,0)
   }
-  const nombreC = (c.candidato || '').trim() || `ID_${c.id_candidato}`
-  const safe = nombreC.normalize('NFD').replace(/[^\p{L}\p{N}\s._-]+/gu,'').replace(/\s+/g,'_')
-  doc.save(`Ficha_de_candidato_${safe}.pdf`)
+    const nombreC = (c.candidato || '').trim() || `ID_${c.id_candidato}`
+    const safe = nombreC.normalize('NFD').replace(/[^\p{L}\p{N}\s._-]+/gu,'').replace(/\s+/g,'_')
+    doc.save(`Ficha_de_candidato_${safe}.pdf`)
+  } catch (err) {
+  alert('Ocurrió un error al generar o descargar el PDF. Revisa la consola para más detalles.')
+  console.error('Error exportCandidatoPDF:', err)
+  }
 }
