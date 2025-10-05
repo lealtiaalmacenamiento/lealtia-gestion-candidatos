@@ -3,8 +3,6 @@ import type { ExtendedMetrics, PreviousWeekDelta } from './prospectosMetrics'
 import { ESTADO_LABEL } from './prospectosUI'
 // import eliminado: fechas de cita dormidas
 
-async function loadJSPDF() { return (await import('jspdf')).jsPDF }
-async function loadAutoTable() { return (await import('jspdf-autotable')).default }
 
 function pct(part:number,total:number){ if(!total) return '0%'; return ((part/total)*100).toFixed(1)+'%' }
 const MX_TZ='America/Mexico_City'
@@ -75,7 +73,9 @@ export async function exportProspectosPDF(
   }
 ){
   if(!prospectos.length) return;
-  const jsPDF = await loadJSPDF(); await loadAutoTable();
+  // Cargar jsPDF y registrar el plugin autotable correctamente
+  const { jsPDF } = await import('jspdf');
+  await import('jspdf-autotable');
   const doc = new jsPDF();
   let logo = await fetchLogoDataUrl();
   let logoW = 0, logoH = 0;
