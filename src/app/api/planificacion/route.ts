@@ -4,7 +4,7 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 import type { BloquePlanificacion } from '@/types'
 import { logAccion } from '@/lib/logger'
-import { sendMail, buildFelicitacionCitasEmail } from '@/lib/mailer'
+import { sendMail, buildFelicitacionCitasEmail, buildFelicitacionSemanaCitasEmail } from '@/lib/mailer'
 
 
 
@@ -79,12 +79,15 @@ export async function POST(req: Request) {
     }
   }
   const diasFelicitados = Object.entries(citasConfirmadas).filter(([_day, count]) => count >= 2);
+  const diasSemana = [0,1,2,3,4,5,6];
+  const cumpleSemana = diasSemana.every(day => citasConfirmadas[day] && citasConfirmadas[day] >= 2);
+  const { data: agenteData } = await supabase.from('usuarios').select('email,nombre').eq('id', agente_id).maybeSingle();
+  const { data: superusuarios } = await supabase.from('usuarios').select('email').eq('rol', 'superusuario').eq('activo', true);
+  const to = agenteData?.email;
+  const nombreAgente = agenteData?.nombre || to || 'Agente';
+  const cc = (superusuarios||[]).map(s=>s.email).filter(e=>e && e!==to);
+  // Correo diario (ya existente)
   if (diasFelicitados.length > 0) {
-    const { data: agenteData } = await supabase.from('usuarios').select('email,nombre').eq('id', agente_id).maybeSingle();
-    const { data: superusuarios } = await supabase.from('usuarios').select('email').eq('rol', 'superusuario').eq('activo', true);
-    const to = agenteData?.email;
-    const nombreAgente = agenteData?.nombre || to || 'Agente';
-    const cc = (superusuarios||[]).map(s=>s.email).filter(e=>e && e!==to);
     for (const [day, count] of diasFelicitados) {
       const semanaBase = obtenerSemanaIso(new Date(anio, 0, 1 + (semana_iso-1)*7)).inicio;
       const fecha = new Date(semanaBase); fecha.setUTCDate(fecha.getUTCDate() + Number(day));
@@ -92,6 +95,13 @@ export async function POST(req: Request) {
       const { subject, html, text } = buildFelicitacionCitasEmail(nombreAgente, fechaStr, count);
       await sendMail({ to, subject, html, text, ...(cc.length ? {cc} : {}) });
     }
+  }
+  // Correo semanal (nuevo)
+  if (cumpleSemana) {
+    // Para evitar duplicados, podrías guardar un registro en la base de datos, pero aquí solo se envía si cumple
+    const semanaLabel = `#${semana_iso} (${obtenerSemanaIso(new Date(anio, 0, 1 + (semana_iso-1)*7)).inicio.toLocaleDateString('es-MX')} - ${obtenerSemanaIso(new Date(anio, 0, 1 + (semana_iso-1)*7)).fin.toLocaleDateString('es-MX')})`;
+    const { subject, html, text } = buildFelicitacionSemanaCitasEmail(nombreAgente, semanaLabel);
+    await sendMail({ to, subject, html, text, ...(cc.length ? {cc} : {}) });
   }
   return NextResponse.json(result)
 }
