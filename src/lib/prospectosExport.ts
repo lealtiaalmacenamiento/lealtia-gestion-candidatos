@@ -74,10 +74,43 @@ export async function exportProspectosPDF(
     semanaActual?: { anio: number, semana_iso: number }
   }
 ){
+  if(!prospectos.length) return;
+  const jsPDF = await loadJSPDF(); await loadAutoTable();
+  const doc = new jsPDF();
+  let logo = await fetchLogoDataUrl();
+  let logoW = 0, logoH = 0;
+  if(logo){
+    try {
+      const img = new Image(); img.src = logo;
+      await new Promise(res=> { img.onload = res });
+      const naturalW = img.width || 1;
+      const naturalH = img.height || 1;
+      const maxW = 42, maxH = 16; // área disponible en header
+      const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+      logoW = Math.round(naturalW * scale);
+      logoH = Math.round(naturalH * scale);
+      const canvas = document.createElement('canvas'); canvas.width = naturalW; canvas.height = naturalH;
+      const ctx = canvas.getContext('2d');
+      if(ctx){
+        ctx.drawImage(img,0,0);
+        const data = ctx.getImageData(0,0,canvas.width,canvas.height);
+        let sum=0, count=0;
+        for(let i=0;i<data.data.length;i+=40){ const r=data.data[i], g=data.data[i+1], b=data.data[i+2], a=data.data[i+3]; if(a>10){ sum += (0.299*r + 0.587*g + 0.114*b); count++ } }
+        const avg = count? sum/count : 255;
+        const needWhite = opts?.forceLogoBlanco || avg < 120;
+        if(needWhite){
+          for(let i=0;i<data.data.length;i+=4){ if(data.data[i+3] > 10){ data.data[i]=255; data.data[i+1]=255; data.data[i+2]=255 } }
+          ctx.putImageData(data,0,0);
+          logo = canvas.toDataURL('image/png');
+        }
+      }
+    } catch { /* ignorar problemas de canvas */ }
+  }
+
   // --- Nueva lógica: separar prospectos y tablas después de inicializar doc y helpers ---
   function renderProspectosPorSemana() {
     // Separar prospectos de semana actual y anteriores
-  const semanaActual = opts?.semanaActual;
+    const semanaActual = opts?.semanaActual;
     let prospectosActual: Prospecto[] = [];
     let prospectosAnteriores: Prospecto[] = [];
     if (semanaActual) {
@@ -102,8 +135,8 @@ export async function exportProspectosPDF(
     // --- Tabla y gráfico: Semana actual ---
     if (prospectosActual.length) {
       // Título sección
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 12 : contentStartY;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 12 : contentStartY;
       y = ensure(y, 10);
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
       doc.text('Prospectos de la semana actual', 14, y);
@@ -112,8 +145,8 @@ export async function exportProspectosPDF(
       // Tabla
       const head = [ ...(opts?.incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas' ];
       const body = prospectosActual.map(p=> [ ...(opts?.incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (doc as any).autoTable({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (doc as any).autoTable({
         startY: y,
         head: [head],
         body,
@@ -124,8 +157,8 @@ export async function exportProspectosPDF(
         margin: { left: 14, right: 14 },
         didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0); }
       });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 8;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      y = (doc as any).lastAutoTable.finalY + 8;
       // Resumen y gráfico
       const resumenAct = resumenPorEstado(prospectosActual);
       doc.setFont('helvetica','bold'); doc.setFontSize(10);
@@ -145,8 +178,8 @@ export async function exportProspectosPDF(
 
     // --- Tabla y gráfico: Semanas anteriores ---
     if (prospectosAnteriores.length) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 18 : contentStartY + 60;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 18 : contentStartY + 60;
       y = ensure(y, 10);
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
       doc.text('Prospectos de semanas anteriores (arrastre)', 14, y);
@@ -154,8 +187,8 @@ export async function exportProspectosPDF(
       doc.setFont('helvetica','normal'); doc.setFontSize(9);
       const head = [ ...(opts?.incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas','Año','Semana' ];
       const body = prospectosAnteriores.map(p=> [ ...(opts?.incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120), p.anio, p.semana_iso ]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (doc as any).autoTable({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (doc as any).autoTable({
         startY: y,
         head: [head],
         body,
@@ -166,8 +199,8 @@ export async function exportProspectosPDF(
         margin: { left: 14, right: 14 },
         didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0); }
       });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 8;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      y = (doc as any).lastAutoTable.finalY + 8;
       const resumenAnt = resumenPorEstado(prospectosAnteriores);
       doc.setFont('helvetica','bold'); doc.setFontSize(10);
       doc.text('Resumen semanas anteriores', 14, y);
@@ -186,39 +219,6 @@ export async function exportProspectosPDF(
   }
   // Llamar a la nueva lógica después de inicializar doc y helpers
   renderProspectosPorSemana();
-  // ...resto del código existente...
-  if(!prospectos.length) return
-  const jsPDF = await loadJSPDF(); await loadAutoTable()
-  const doc = new jsPDF()
-  let logo = await fetchLogoDataUrl()
-  let logoW = 0, logoH = 0
-  if(logo){
-    try {
-      const img = new Image(); img.src = logo
-      await new Promise(res=> { img.onload = res })
-      const naturalW = img.width || 1
-      const naturalH = img.height || 1
-      const maxW = 42, maxH = 16 // área disponible en header
-      const scale = Math.min(maxW / naturalW, maxH / naturalH, 1)
-      logoW = Math.round(naturalW * scale)
-      logoH = Math.round(naturalH * scale)
-      const canvas = document.createElement('canvas'); canvas.width = naturalW; canvas.height = naturalH
-      const ctx = canvas.getContext('2d')
-      if(ctx){
-        ctx.drawImage(img,0,0)
-        const data = ctx.getImageData(0,0,canvas.width,canvas.height)
-        let sum=0, count=0
-        for(let i=0;i<data.data.length;i+=40){ const r=data.data[i], g=data.data[i+1], b=data.data[i+2], a=data.data[i+3]; if(a>10){ sum += (0.299*r + 0.587*g + 0.114*b); count++ } }
-        const avg = count? sum/count : 255
-        const needWhite = opts?.forceLogoBlanco || avg < 120
-        if(needWhite){
-          for(let i=0;i<data.data.length;i+=4){ if(data.data[i+3] > 10){ data.data[i]=255; data.data[i+1]=255; data.data[i+2]=255 } }
-          ctx.putImageData(data,0,0)
-          logo = canvas.toDataURL('image/png')
-        }
-      }
-    } catch { /* ignorar problemas de canvas */ }
-  }
   const generadoEn = nowMX()
   // Ajuste dinámico de título para nombres largos de agente
   const drawHeader = ()=>{
