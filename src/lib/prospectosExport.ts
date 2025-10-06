@@ -337,35 +337,36 @@ export async function exportProspectosPDF(
       const agentesMap = opts?.agentesMap || {}
       // Métricas extendidas por agente (resumen principal)
       if(opts?.perAgentExtended){
-        let y = contentStartY
-        y = ensure(y, 12)
-        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4
-  // const head = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado','Clientes','Previas'] // (no usada)
-  const body: Array<[string|number, number, number, number, number, number, number, number]> = []
-  const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, clientes:0, previas:0 }
-        // Necesitamos recalcular por estado porque ExtendedMetrics no expone desglose
-        // Encontrar lista de prospectos por agente a partir de 'prospectos' original
-        const grouped = prospectos.reduce<Record<number, Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
+        // y global para toda la sección agrupada
+        let y = contentStartY;
+        y = ensure(y, 12);
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4;
+        // Tabla principal
+        const body: Array<[string|number, number, number, number, number, number, number, number]> = [];
+        const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, clientes:0, previas:0 };
+        const grouped = prospectos.reduce<Record<number, Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{});
         for(const [agIdStr, list] of Object.entries(grouped)){
-          const agId = Number(agIdStr)
-          if(!(agIdStr in opts.perAgentExtended)) continue
-          let pendiente=0, seguimiento=0, con_cita=0, descartado=0, clientes=0
+          const agId = Number(agIdStr);
+          if(!(agIdStr in opts.perAgentExtended)) continue;
+          let pendiente=0, seguimiento=0, con_cita=0, descartado=0, clientes=0;
           for(const p of list){
-            if(p.estado==='pendiente') pendiente++
-            else if(p.estado==='seguimiento') seguimiento++
-            else if(p.estado==='con_cita') con_cita++
-            else if(p.estado==='descartado') descartado++
-            else if(p.estado==='ya_es_cliente') clientes++
+            if(p.estado==='pendiente') pendiente++;
+            else if(p.estado==='seguimiento') seguimiento++;
+            else if(p.estado==='con_cita') con_cita++;
+            else if(p.estado==='descartado') descartado++;
+            else if(p.estado==='ya_es_cliente') clientes++;
           }
-          const total = list.length
-          const previas = opts.perAgentPrevCounts?.[agId] || 0
-          totals.total += total; totals.pendiente+=pendiente; totals.seguimiento+=seguimiento; totals.con_cita+=con_cita; totals.descartado+=descartado; totals.clientes+=clientes; totals.previas+=previas
-          const nombre = agentesMap[agId] || agId
-          body.push([nombre,total,pendiente,seguimiento,con_cita,descartado,clientes, previas])
+          const total = list.length;
+          const previas = opts.perAgentPrevCounts?.[agId] || 0;
+          totals.total += total; totals.pendiente+=pendiente; totals.seguimiento+=seguimiento; totals.con_cita+=con_cita; totals.descartado+=descartado; totals.clientes+=clientes; totals.previas+=previas;
+          const nombre = agentesMap[agId] || agId;
+          body.push([nombre,total,pendiente,seguimiento,con_cita,descartado,clientes, previas]);
         }
-        body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado, totals.clientes, totals.previas])
-  const yChart = (docTyped.lastAutoTable?.finalY||y)+8;
-        let yNext = yChart;
+        body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado, totals.clientes, totals.previas]);
+        // Render tabla y actualiza y
+        autoTable(doc, { startY: y, head: [['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado','Clientes','Previas']], body, styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [7,46,64], textColor: [255,255,255], fontSize: 8 }, theme: 'grid', margin: { left: 14, right: 14 }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } });
+        y = (docTyped.lastAutoTable?.finalY || y) + 8;
+        // Gráfico y tarjetas
         try {
           // Datos y colores
           const dist: Array<{label:string; value:number; color:[number,number,number]}> = [
@@ -373,55 +374,54 @@ export async function exportProspectosPDF(
             { label:'Seguimiento', value: totals.seguimiento, color:[255,193,7] },
             { label:'Con cita', value: totals.con_cita, color:[0,128,96] },
             { label:'Descartado', value: totals.descartado, color:[220,53,69] }
-          ]
-          const sumVals = dist.reduce((a,b)=>a+b.value,0) || 1
+          ];
+          const sumVals = dist.reduce((a,b)=>a+b.value,0) || 1;
           // Layout
-          const chartX = 14, chartY = yChart+2, chartW = 54, chartH = 38, barW = 8, gap = 7
+          const chartX = 14, chartY = y+2, chartW = 54, chartH = 38, barW = 8, gap = 7;
           // Ejes y barras
-          doc.setDrawColor(180); doc.setLineWidth(0.2)
-          doc.line(chartX, chartY, chartX, chartY+chartH)
-          doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH)
+          doc.setDrawColor(180); doc.setLineWidth(0.2);
+          doc.line(chartX, chartY, chartX, chartY+chartH);
+          doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
           dist.forEach((d,i)=>{
-            const x = chartX + 6 + i*(barW+gap)
-            const h = (d.value/sumVals)*chartH
-            doc.setFillColor(...d.color)
-            doc.rect(x, chartY+chartH-h, barW, h, 'F')
-            doc.setTextColor(0,0,0)
-            doc.setFontSize(8)
-            doc.text(String(d.value), x+barW/2-2, chartY+chartH-h-2)
-            doc.setFontSize(7)
-            doc.text(d.label, x-2, chartY+chartH+6)
-          })
+            const x = chartX + 6 + i*(barW+gap);
+            const h = (d.value/sumVals)*chartH;
+            doc.setFillColor(...d.color);
+            doc.rect(x, chartY+chartH-h, barW, h, 'F');
+            doc.setTextColor(0,0,0);
+            doc.setFontSize(8);
+            doc.text(String(d.value), x+barW/2-2, chartY+chartH-h-2);
+            doc.setFontSize(7);
+            doc.text(d.label, x-2, chartY+chartH+6);
+          });
           // Tarjetas a la derecha
-          const cardX = chartX+chartW+12, cardY = chartY, cardW = 44, cardH = 10, cardGap = 4
+          const cardX = chartX+chartW+12, cardY = chartY, cardW = 44, cardH = 10, cardGap = 4;
           const cardData: Array<{label:string; value:number; pct:number}> = [
             { label:'Total', value: totals.total, pct:100 },
             ...dist.map(d=>({ label:d.label, value:d.value, pct: (d.value/sumVals)*100 }))
-          ]
+          ];
           let lastCardY = cardY;
           cardData.forEach((c,idx)=>{
             const thisY = cardY+idx*(cardH+cardGap);
-            doc.setDrawColor(220)
-            doc.setFillColor(248,250,252)
-            doc.roundedRect(cardX, thisY, cardW, cardH, 2, 2, 'FD')
-            doc.setFont('helvetica','bold'); doc.setFontSize(8)
-            doc.text(c.label, cardX+3, thisY+5)
-            doc.setFont('helvetica','normal'); doc.setFontSize(8)
-            doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, thisY+9)
+            doc.setDrawColor(220);
+            doc.setFillColor(248,250,252);
+            doc.roundedRect(cardX, thisY, cardW, cardH, 2, 2, 'FD');
+            doc.setFont('helvetica','bold'); doc.setFontSize(8);
+            doc.text(c.label, cardX+3, thisY+5);
+            doc.setFont('helvetica','normal'); doc.setFontSize(8);
+            doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, thisY+9);
             lastCardY = thisY+cardH;
-          })
+          });
           // Barra de meta prospectos debajo
-          const meta = opts?.metaProspectos || 30
-          const metaY = chartY+chartH+18
-          doc.setFont('helvetica','normal'); doc.setFontSize(8)
-          doc.text(`Meta prospectos: ${totals.total}/${meta}`, chartX, metaY)
-          doc.setFillColor(7,46,64)
-          doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/meta)), 4, 'F')
+          const meta = opts?.metaProspectos || 30;
+          const metaY = chartY+chartH+18;
+          doc.setFont('helvetica','normal'); doc.setFontSize(8);
+          doc.text(`Meta prospectos: ${totals.total}/${meta}`, chartX, metaY);
+          doc.setFillColor(7,46,64);
+          doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/meta)), 4, 'F');
           // El siguiente bloque debe empezar después del mayor Y ocupado
-          yNext = Math.max(metaY+6, lastCardY+8);
+          y = Math.max(metaY+6, lastCardY+8);
         } catch { /* ignore chart errors */ }
-        // Actualiza la posición global para el siguiente bloque
-        y = yNext;
+        // y global actualizado para el siguiente bloque
       }
       // Métricas avanzadas (por agente) - conversiones / descartes / proyección semana
       if(opts?.perAgentExtended){
