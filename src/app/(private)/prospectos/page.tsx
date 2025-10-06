@@ -523,21 +523,23 @@ export default function ProspectosPage(){
           if(Object.keys(perAgentActivity).length === 0) perAgentActivity = undefined
         }
       } catch { /* ignore activity errors */ }
-  // Limitar exportación a semana ISO actual (metaWeek) y excluir 'ya_es_cliente'
-      const exportPros = prospectos.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado !== 'ya_es_cliente')
+  // Exportación (agrupado) usando semana seleccionada
+      const selectedWeekNum = (semana === 'ALL') ? metaWeek : Number(semana)
+      const exportPros = prospectos.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNum)
       if(exportPros.length===0){
-        window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar. Cambia a la semana visible correspondiente o ajusta la lógica si deseas exportar otra semana.`)
+        window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNum}).`)
         return
       }
-  const resumenExport = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
-  await exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity })
+  const resumenExport = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
+  await exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity, semanaActual: { anio, semana_iso: selectedWeekNum } })
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
-    // Limitar a semana actual y excluir 'ya_es_cliente'
-  const exportPros = filtered.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado!=='ya_es_cliente')
-  if(exportPros.length===0){ window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar.`); return }
-    const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
+    // Export individual agente usando semana seleccionada
+  const selectedWeekNumInd = (semana === 'ALL') ? metaWeek : Number(semana)
+  const exportPros = filtered.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd)
+  if(exportPros.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return }
+    const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
   const extended = computeExtendedMetrics(exportPros,{ diaSemanaActual })
     // Actividad semanal del agente (para línea de actividad)
   let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined
