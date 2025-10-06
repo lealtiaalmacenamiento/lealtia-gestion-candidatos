@@ -278,7 +278,9 @@ export async function exportProspectosPDF(
         doc.text(c[1], cx + 3, cy + 10);
   if ((i + 1) % 3 === 0) { cx = 18; cy += cardH + 4 } else { cx += cardW + 6 }
       });
-      cy += cardH + 10
+  cy += cardH + 10
+  // Asegura que la siguiente sección empiece debajo de las tarjetas
+  y = Math.max(y, cy)
     }
     if (anteriores.length) {
   let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY + 60;
