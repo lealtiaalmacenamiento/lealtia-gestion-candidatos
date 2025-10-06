@@ -239,7 +239,7 @@ export async function exportProspectosPDF(
     doc.setFontSize(9);
     const head = [...(opts?.incluirId ? ['ID'] : []), 'Agente', 'Nombre', 'Teléfono', 'Estado', 'Notas'];
     // Para cada agente, si tiene prospectos en la semana actual, los muestra; si no, muestra fila vacía
-    const body: any[] = [];
+  const body: Array<(string|number)[]> = [];
     if (allAgentIds.length > 0) {
       for(const agId of allAgentIds){
         const agPros = actual.filter(p => p.agente_id === agId);
