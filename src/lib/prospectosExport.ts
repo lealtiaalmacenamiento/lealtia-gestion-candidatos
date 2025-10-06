@@ -320,6 +320,112 @@ export async function exportProspectosPDF(
     }
   }
   if (!opts?.agrupadoPorAgente) renderProspectosPorSemana();
+  else {
+    // Reporte General (agrupado) - restaurar secciones similares a diseño anterior
+    try {
+      const agentesMap = opts?.agentesMap || {}
+      // Métricas extendidas por agente (resumen principal)
+      if(opts?.perAgentExtended){
+        let y = contentStartY
+        y = ensure(y, 12)
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4
+        const head = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado']
+        const body: any[] = []
+        const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0 }
+        for(const [agId, m] of Object.entries(opts.perAgentExtended)){
+          const nombre = agentesMap[Number(agId)] || agId
+          const pendiente = m.estados?.pendiente||0
+            , seguimiento = m.estados?.seguimiento||0
+            , con_cita = m.estados?.con_cita||0
+            , descartado = m.estados?.descartado||0
+          const total = pendiente+seguimiento+con_cita+descartado+(m.estados?.ya_es_cliente||0)
+          totals.total += total; totals.pendiente+=pendiente; totals.seguimiento+=seguimiento; totals.con_cita+=con_cita; totals.descartado+=descartado
+          body.push([nombre,total,pendiente,seguimiento,con_cita,descartado])
+        }
+        body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado])
+        autoTable(doc, { startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{fillColor:[7,46,64], textColor:[255,255,255], fontSize:8}, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
+      }
+      // Métricas avanzadas (por agente) - conversiones / descartes / proyección semana
+      if(opts?.perAgentExtended){
+        let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
+        y = ensure(y, 10)
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4
+        const head = ['Agente','Conv P->S','Desc %','Proy semana']
+        const body: any[] = []
+        for(const [agId,m] of Object.entries(opts.perAgentExtended)){
+          const nombre = (opts.agentesMap||{})[Number(agId)] || agId
+          body.push([nombre, (m.conversionPendienteSeguimientoPct||0).toFixed(1)+'%', (m.descartadosPct||0).toFixed(1)+'%', m.proyeccionSemana||0])
+        }
+        autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
+      }
+      // Planificación semanal resumen (por agente)
+      if(opts?.planningSummaries){
+        let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
+        y = ensure(y, 10)
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal (resumen por agente)',14,y); y+=4
+        const headPlan = ['Agente','Prospección','SMNYL','Total']
+        const body: any[] = []
+        for(const [agId, sum] of Object.entries(opts.planningSummaries)){
+          body.push([(opts.agentesMap||{})[Number(agId)]||agId, sum.prospeccion, sum.smnyl, sum.total])
+        }
+        autoTable(doc,{ startY:y, head:[headPlan], body, styles:{fontSize:7,cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[245,247,248] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
+      }
+      // Actividad de la semana (por usuario) gráfica simple línea + tabla
+      if(opts?.perAgentActivity){
+        const activities = opts.perAgentActivity
+        // Construir serie total por día sumando counts
+        let labels: string[] = []
+        const aggregated: number[] = []
+        for(const v of Object.values(activities)){
+          if(!labels.length) labels = v.labels
+          v.counts.forEach((c,i)=>{ aggregated[i] = (aggregated[i]||0)+c })
+        }
+        if(labels.length){
+          let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
+          y = ensure(y, 40)
+          doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4
+          // Dibujar eje simple
+          const chartX = 26, chartY = y+2, chartW = 160, chartH = 42
+          const max = Math.max(...aggregated,1)
+          // Ejes
+          doc.setDrawColor(0); doc.setLineWidth(0.2)
+          doc.line(chartX, chartY, chartX, chartY+chartH)
+          doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH)
+          // Puntos y línea
+          let prevX:number|undefined, prevY:number|undefined
+          aggregated.forEach((val,i)=>{
+            const x = chartX + (chartW/(aggregated.length-1||1))*i
+            const yPt = chartY + chartH - (val/max)*chartH
+            if(prevX!==undefined){ doc.line(prevX, prevY!, x, yPt) }
+            doc.setFillColor(0); doc.circle(x,yPt,1.2,'F')
+            prevX = x; prevY = yPt
+          })
+          // Etiquetas X
+          doc.setFontSize(7)
+          labels.forEach((l,i)=>{ const x = chartX + (chartW/(labels.length-1||1))*i; doc.text(l, x-3, chartY+chartH+6) })
+          // Max label
+          doc.setFontSize(8); doc.text(String(max), chartX-6, chartY+4)
+          y = chartY + chartH + 14
+          // Tabla resumen de actividad agregada por día
+          autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:[['Total', ...aggregated.map(n=>String(n)), String(aggregated.reduce((a,b)=>a+b,0))]], styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
+        }
+      }
+      // Acciones específicas en la semana (detalles por usuario)
+      if(opts?.perAgentActivity){
+        let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
+        y = ensure(y, 12)
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4
+        const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
+        const body: any[] = []
+        for(const [agId, act] of Object.entries(opts.perAgentActivity)){
+          const email = act.email || (opts.agentesMap||{})[Number(agId)] || agId
+          const d = act.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 }
+          body.push([email, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones])
+        }
+        autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
+      }
+    } catch {/* ignore aggregated errors */}
+  }
 
   // Glosario de abreviaturas (siempre al final)
   try {
