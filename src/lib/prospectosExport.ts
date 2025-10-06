@@ -336,9 +336,10 @@ export async function exportProspectosPDF(
     try {
       const agentesMap = opts?.agentesMap || {}
       // Métricas extendidas por agente (resumen principal)
+      // y global para todas las secciones agrupadas
+      let y = contentStartY;
+      // --- Resumen por agente (tabla, tarjetas, gráfico) ---
       if(opts?.perAgentExtended){
-        // y global para toda la sección agrupada
-        let y = contentStartY;
         y = ensure(y, 12);
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4;
         // Tabla principal
@@ -363,12 +364,10 @@ export async function exportProspectosPDF(
           body.push([nombre,total,pendiente,seguimiento,con_cita,descartado,clientes, previas]);
         }
         body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado, totals.clientes, totals.previas]);
-        // Render tabla y actualiza y
         autoTable(doc, { startY: y, head: [['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado','Clientes','Previas']], body, styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [7,46,64], textColor: [255,255,255], fontSize: 8 }, theme: 'grid', margin: { left: 14, right: 14 }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } });
         y = (docTyped.lastAutoTable?.finalY || y) + 8;
         // Gráfico y tarjetas
         try {
-          // Datos y colores
           const dist: Array<{label:string; value:number; color:[number,number,number]}> = [
             { label:'Pendiente', value: totals.pendiente, color:[99,102,106] },
             { label:'Seguimiento', value: totals.seguimiento, color:[255,193,7] },
@@ -376,9 +375,7 @@ export async function exportProspectosPDF(
             { label:'Descartado', value: totals.descartado, color:[220,53,69] }
           ];
           const sumVals = dist.reduce((a,b)=>a+b.value,0) || 1;
-          // Layout
           const chartX = 14, chartY = y+2, chartW = 54, chartH = 38, barW = 8, gap = 7;
-          // Ejes y barras
           doc.setDrawColor(180); doc.setLineWidth(0.2);
           doc.line(chartX, chartY, chartX, chartY+chartH);
           doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
@@ -393,7 +390,6 @@ export async function exportProspectosPDF(
             doc.setFontSize(7);
             doc.text(d.label, x-2, chartY+chartH+6);
           });
-          // Tarjetas a la derecha
           const cardX = chartX+chartW+12, cardY = chartY, cardW = 44, cardH = 10, cardGap = 4;
           const cardData: Array<{label:string; value:number; pct:number}> = [
             { label:'Total', value: totals.total, pct:100 },
@@ -411,17 +407,89 @@ export async function exportProspectosPDF(
             doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, thisY+9);
             lastCardY = thisY+cardH;
           });
-          // Barra de meta prospectos debajo
           const meta = opts?.metaProspectos || 30;
           const metaY = chartY+chartH+18;
           doc.setFont('helvetica','normal'); doc.setFontSize(8);
           doc.text(`Meta prospectos: ${totals.total}/${meta}`, chartX, metaY);
           doc.setFillColor(7,46,64);
           doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/meta)), 4, 'F');
-          // El siguiente bloque debe empezar después del mayor Y ocupado
           y = Math.max(metaY+6, lastCardY+8);
         } catch { /* ignore chart errors */ }
-        // y global actualizado para el siguiente bloque
+      }
+      // --- Métricas avanzadas (por agente) ---
+      if(opts?.perAgentExtended){
+        y = ensure(y, 10);
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
+        const head = ['Agente','Conv P->S','Desc %','Proy semana'];
+        const body: Array<[string|number, string, string, number|null]> = [];
+        for(const [agId,m] of Object.entries(opts.perAgentExtended)){
+          const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
+          const conv = (m.conversionPendienteSeguimiento||0)*100;
+          const desc = (m.ratioDescartado||0)*100;
+          const proy = m.forecastSemanaTotal ?? null;
+          body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', proy]);
+        }
+        autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+        y = (docTyped.lastAutoTable?.finalY || y) + 8;
+      }
+      // --- Planificación semanal resumen (por agente) ---
+      if(opts?.planningSummaries){
+        y = ensure(y, 10);
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal (resumen por agente)',14,y); y+=4;
+        const headPlan = ['Agente','Prospección','SMNYL','Total'];
+        const body: Array<[string|number, number, number, number]> = [];
+        for(const [agId, sum] of Object.entries(opts.planningSummaries)){
+          body.push([(opts.agentesMap||{})[Number(agId)]||agId, sum.prospeccion, sum.smnyl, sum.total]);
+        }
+        autoTable(doc,{ startY:y, head:[headPlan], body, styles:{fontSize:7,cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[245,247,248] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+        y = (docTyped.lastAutoTable?.finalY || y) + 8;
+      }
+      // --- Actividad de la semana (por usuario) gráfica simple línea + tabla ---
+      if(opts?.perAgentActivity){
+        const activities = opts.perAgentActivity;
+        let labels: string[] = [];
+        const aggregated: number[] = [];
+        for(const v of Object.values(activities)){
+          if(!labels.length) labels = v.labels;
+          v.counts.forEach((c,i)=>{ aggregated[i] = (aggregated[i]||0)+c });
+        }
+        if(labels.length){
+          y = ensure(y, 40);
+          doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4;
+          const chartX = 26, chartY = y+2, chartW = 160, chartH = 42;
+          const max = Math.max(...aggregated,1);
+          doc.setDrawColor(0); doc.setLineWidth(0.2);
+          doc.line(chartX, chartY, chartX, chartY+chartH);
+          doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
+          let prevX:number|undefined, prevY:number|undefined;
+          aggregated.forEach((val,i)=>{
+            const x = chartX + (chartW/(aggregated.length-1||1))*i;
+            const yPt = chartY + chartH - (val/max)*chartH;
+            if(prevX!==undefined){ doc.line(prevX, prevY!, x, yPt); }
+            doc.setFillColor(0,0,0); try { if(typeof (docTyped as JsPDFWithAutoTable).circle === 'function'){ (docTyped as JsPDFWithAutoTable).circle!(x,yPt,1.2,'F'); } } catch { /* ignore circle error */ }
+            prevX = x; prevY = yPt;
+          });
+          doc.setFontSize(7);
+          labels.forEach((l,i)=>{ const x = chartX + (chartW/(labels.length-1||1))*i; doc.text(l, x-3, chartY+chartH+6); });
+          doc.setFontSize(8); doc.text(String(max), chartX-6, chartY+4);
+          y = chartY + chartH + 14;
+          autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:[['Total', ...aggregated.map(n=>String(n)), String(aggregated.reduce((a,b)=>a+b,0))]], styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+          y = (docTyped.lastAutoTable?.finalY || y) + 8;
+        }
+      }
+      // --- Acciones específicas en la semana (detalles por usuario) ---
+      if(opts?.perAgentActivity){
+        y = ensure(y, 12);
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4;
+        const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.'];
+        const body: Array<[string|number, number, number, number, number, number, number, number, number]> = [];
+        for(const [agId, act] of Object.entries(opts.perAgentActivity)){
+          const email = act.email || (opts.agentesMap||{})[Number(agId)] || agId;
+          const d = act.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 };
+          body.push([email, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones]);
+        }
+        autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+        y = (docTyped.lastAutoTable?.finalY || y) + 8;
       }
       // Métricas avanzadas (por agente) - conversiones / descartes / proyección semana
       if(opts?.perAgentExtended){
