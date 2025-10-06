@@ -63,6 +63,8 @@ export async function exportProspectosPDF(
     extendedMetrics?: ExtendedMetrics;
     prevWeekDelta?: PreviousWeekDelta;
     perAgentExtended?: Record<number, ExtendedMetrics>;
+  // Conteo de prospectos previos (arrastre) por agente para tabla resumen general
+  perAgentPrevCounts?: Record<number, number>;
     filename?: string;
     perAgentDeltas?: Record<number, { totalDelta: number }>;
     planningSummaries?: Record<number, { prospeccion: number; smnyl: number; total: number }>;
@@ -330,29 +332,55 @@ export async function exportProspectosPDF(
         let y = contentStartY
         y = ensure(y, 12)
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4
-        const head = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado']
-        const body: Array<[string|number, number, number, number, number, number]> = []
-        const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0 }
+  const head = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado','Clientes','Previas']
+  const body: Array<[string|number, number, number, number, number, number, number, number]> = []
+  const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, clientes:0, previas:0 }
         // Necesitamos recalcular por estado porque ExtendedMetrics no expone desglose
         // Encontrar lista de prospectos por agente a partir de 'prospectos' original
         const grouped = prospectos.reduce<Record<number, Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
         for(const [agIdStr, list] of Object.entries(grouped)){
           const agId = Number(agIdStr)
           if(!(agIdStr in opts.perAgentExtended)) continue
-          let pendiente=0, seguimiento=0, con_cita=0, descartado=0
+          let pendiente=0, seguimiento=0, con_cita=0, descartado=0, clientes=0
           for(const p of list){
             if(p.estado==='pendiente') pendiente++
             else if(p.estado==='seguimiento') seguimiento++
             else if(p.estado==='con_cita') con_cita++
             else if(p.estado==='descartado') descartado++
+            else if(p.estado==='ya_es_cliente') clientes++
           }
           const total = list.length
-          totals.total += total; totals.pendiente+=pendiente; totals.seguimiento+=seguimiento; totals.con_cita+=con_cita; totals.descartado+=descartado
+          const previas = opts.perAgentPrevCounts?.[agId] || 0
+          totals.total += total; totals.pendiente+=pendiente; totals.seguimiento+=seguimiento; totals.con_cita+=con_cita; totals.descartado+=descartado; totals.clientes+=clientes; totals.previas+=previas
           const nombre = agentesMap[agId] || agId
-          body.push([nombre,total,pendiente,seguimiento,con_cita,descartado])
+          body.push([nombre,total,pendiente,seguimiento,con_cita,descartado,clientes, previas])
         }
-        body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado])
+        body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado, totals.clientes, totals.previas])
         autoTable(doc, { startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{fillColor:[7,46,64], textColor:[255,255,255], fontSize:8}, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
+        // Gráfico de distribución (totales) con porcentajes
+        try {
+          const docY = (docTyped.lastAutoTable?.finalY||y)+6
+          const dist: Array<{label:string; value:number; color:[number,number,number]}> = [
+            { label:'Pendiente', value: totals.pendiente, color:[99,102,106] },
+            { label:'Seguimiento', value: totals.seguimiento, color:[255,193,7] },
+            { label:'Con cita', value: totals.con_cita, color:[0,128,96] },
+            { label:'Descartado', value: totals.descartado, color:[220,53,69] },
+            { label:'Clientes', value: totals.clientes, color:[25,135,84] }
+          ]
+          const sumVals = dist.reduce((a,b)=>a+b.value,0) || 1
+          let chartY = docY
+          doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('Distribución (totales %)',14,chartY); chartY+=4
+          const barMaxW = 100
+          doc.setFont('helvetica','normal'); doc.setFontSize(7)
+          dist.forEach(d=>{
+            const pct = (d.value/sumVals)*100
+            doc.setFillColor(...d.color)
+            doc.rect(14, chartY-3, (barMaxW*(d.value/sumVals))||0, 4, 'F')
+            doc.setTextColor(0,0,0)
+            doc.text(`${d.label}: ${d.value} (${pct.toFixed(1)}%)`, 14 + barMaxW + 4, chartY)
+            chartY += 6
+          })
+        } catch { /* ignore chart errors */ }
       }
       // Métricas avanzadas (por agente) - conversiones / descartes / proyección semana
       if(opts?.perAgentExtended){

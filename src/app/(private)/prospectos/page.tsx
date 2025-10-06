@@ -531,7 +531,9 @@ export default function ProspectosPage(){
         return
       }
   const resumenExport = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
-  await exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity, semanaActual: { anio, semana_iso: selectedWeekNum } })
+  // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
+  const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{})
+  await exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity, perAgentPrevCounts, semanaActual: { anio, semana_iso: selectedWeekNum } })
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
