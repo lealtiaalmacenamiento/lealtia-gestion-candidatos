@@ -346,9 +346,11 @@ export async function exportProspectosPDF(
         const body: Array<[string|number, number, number, number, number, number, number, number]> = [];
         const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, clientes:0, previas:0 };
         const grouped = prospectos.reduce<Record<number, Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{});
-        for(const [agIdStr, list] of Object.entries(grouped)){
-          const agId = Number(agIdStr);
-          if(!(agIdStr in opts.perAgentExtended)) continue;
+        // Asegura que todos los agentes del agentesMap estén presentes, aunque no tengan prospectos
+        const allAgentIds = Object.keys(agentesMap).map(Number);
+        for(const agId of allAgentIds){
+          const list = grouped[agId] || [];
+          if(!(agId in opts.perAgentExtended)) continue;
           let pendiente=0, seguimiento=0, con_cita=0, descartado=0, clientes=0;
           for(const p of list){
             if(p.estado==='pendiente') pendiente++;
