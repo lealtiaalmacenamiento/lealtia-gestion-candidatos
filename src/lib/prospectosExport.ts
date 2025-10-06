@@ -240,16 +240,21 @@ export async function exportProspectosPDF(
     const head = [...(opts?.incluirId ? ['ID'] : []), 'Agente', 'Nombre', 'Teléfono', 'Estado', 'Notas'];
     // Para cada agente, si tiene prospectos en la semana actual, los muestra; si no, muestra fila vacía
     const body: any[] = [];
-    for(const agId of allAgentIds){
-      const agPros = actual.filter(p => p.agente_id === agId);
-      if(agPros.length){
-        for(const p of agPros){
-          body.push([...(opts?.incluirId ? [p.id] : []), agentesMap[agId] || agId, p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
+    if (allAgentIds.length > 0) {
+      for(const agId of allAgentIds){
+        const agPros = actual.filter(p => p.agente_id === agId);
+        if(agPros.length){
+          for(const p of agPros){
+            body.push([...(opts?.incluirId ? [p.id] : []), agentesMap[agId] || agId, p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
+          }
+        } else {
+          // Fila vacía para agente sin prospectos
+          body.push([...(opts?.incluirId ? [''] : []), agentesMap[agId] || agId, '', '', '', '']);
         }
-      } else {
-        // Fila vacía para agente sin prospectos
-        body.push([...(opts?.incluirId ? [''] : []), agentesMap[agId] || agId, '', '', '', '']);
       }
+    } else {
+      // Si no hay agentes, muestra una fila genérica
+      body.push([...(opts?.incluirId ? [''] : []), 'Sin agentes', '', '', '', '']);
     }
     autoTable(doc, {
       startY: y,
