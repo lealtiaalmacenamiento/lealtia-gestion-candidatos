@@ -3,17 +3,20 @@ import type { ExtendedMetrics, PreviousWeekDelta } from './prospectosMetrics'
 import { ESTADO_LABEL } from './prospectosUI'
 // import eliminado: fechas de cita dormidas
 
-function pct(part:number,total:number){ if(!total) return '0%'; return ((part/total)*100).toFixed(1)+'%' }
-const MX_TZ='America/Mexico_City'
-// Colores de barras alineados a Bootstrap (como en UI):
-// pendiente -> secondary (gris), seguimiento -> warning (amarillo), con_cita -> success (verde), descartado -> danger (rojo)
-const ESTADO_COLORS: Record<ProspectoEstado,string> = {
-  pendiente: '#6c757d',
-  seguimiento: '#ffc107',
-  con_cita: '#198754',
-  descartado: '#dc3545',
-  ya_es_cliente: '#0dcaf0'
+// Tipo auxiliar para doc con soporte de autoTable
+interface JsPDFWithAutoTable {
+  lastAutoTable?: { finalY?: number }
+  internal: {
+    pageSize: { getHeight: () => number }
+    getNumberOfPages: () => number
+  }
+  setPage: (n: number) => void
+  setFontSize: (n: number) => void
+  setTextColor: (...args: number[]) => void
+  text: (...args: unknown[]) => void
 }
+
+const MX_TZ='America/Mexico_City'
 
 // Citas dormidas: evitamos mostrar fechas de cita en tablas
 function nowMX(){
@@ -44,8 +47,6 @@ async function fetchLogoDataUrl(): Promise<string|undefined>{
   }
 }
 
-interface ResumenAgente { agente?: string; total:number; por_estado: Record<ProspectoEstado,number> }
-type ExtendedProspecto = Prospecto & { agente_id?: number }
 
 export async function exportProspectosPDF(
   prospectos: Prospecto[],
@@ -189,7 +190,8 @@ export async function exportProspectosPDF(
   const GAP = 12; // Espaciado vertical general aumentado
   const SECTION_GAP = 14; // Espaciado entre secciones aumentado
   // Page metrics and helper to avoid drawing content that would be cut at page boundary
-  const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight();
+  const docTyped = doc as unknown as JsPDFWithAutoTable;
+  const PAGE_H: number = docTyped.internal.pageSize.getHeight();
   const BOTTOM_MARGIN = 14;
   const ensure = (currentY:number, required:number) => {
     const limit = PAGE_H - BOTTOM_MARGIN;
@@ -222,7 +224,7 @@ export async function exportProspectosPDF(
       return { total: ps.length, por_estado: pe }
     };
     if (actual.length) {
-      let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + GAP + 6 : contentStartY;
+  let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
       y = ensure(y, 10);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
@@ -243,7 +245,7 @@ export async function exportProspectosPDF(
         margin: { left: 14, right: 14 },
         didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
       });
-      y = (doc as any).lastAutoTable.finalY + 8;
+  y = docTyped.lastAutoTable!.finalY! + 8;
       const rAct = resumenPorEstado(actual);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
@@ -270,7 +272,7 @@ export async function exportProspectosPDF(
       cy += cardH + 10
     }
     if (anteriores.length) {
-      let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + GAP + 6 : contentStartY + 60;
+  let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY + 60;
       y = ensure(y, 16);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
@@ -291,7 +293,7 @@ export async function exportProspectosPDF(
         margin: { left: 14, right: 14 },
         didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
       });
-      y = (doc as any).lastAutoTable.finalY + GAP;
+  y = docTyped.lastAutoTable!.finalY! + GAP;
       const rAnt = resumenPorEstado(anteriores);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
@@ -321,7 +323,7 @@ export async function exportProspectosPDF(
 
   // Glosario de abreviaturas (siempre al final)
   try {
-    let y = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + GAP : contentStartY;
+  let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : contentStartY;
     y = ensure(y, 8)
     doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
     doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Glosario de abreviaturas',14,y); doc.setFont('helvetica','normal'); y += 4
@@ -358,15 +360,14 @@ export async function exportProspectosPDF(
       columnStyles: { 0: { cellWidth: 30, halign: 'left' }, 1: { halign: 'left' } },
       didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
     })
-    const withAutoGloss = doc as unknown as { lastAutoTable?: { finalY?: number } }
-    y = (withAutoGloss.lastAutoTable?.finalY || y) + GAP
+  y = (docTyped.lastAutoTable?.finalY || y) + GAP
   } catch { /* ignore glossary render errors */ }
   // Footer with pagination
-  const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()
+  const pageCount: number = docTyped.internal.getNumberOfPages();
   for(let i=1;i<=pageCount;i++){
-    doc.setPage(i)
+    docTyped.setPage(i)
     // Footer únicamente (el header ya se dibuja por página en las tablas y cuando se crean páginas manuales)
-    doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292); doc.setTextColor(0,0,0)
+    docTyped.setFontSize(7); docTyped.setTextColor(120); docTyped.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); docTyped.text('Lealtia',14,292); docTyped.setTextColor(0,0,0)
   }
   // Nombre de archivo dinámico
   const desired = opts?.filename || titulo.replace(/\s+/g,'_').toLowerCase()+'.pdf'
