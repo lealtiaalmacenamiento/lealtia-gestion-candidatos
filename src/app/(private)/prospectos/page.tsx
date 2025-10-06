@@ -526,14 +526,15 @@ export default function ProspectosPage(){
   // Exportación (agrupado) usando semana seleccionada
       const selectedWeekNum = (semana === 'ALL') ? metaWeek : Number(semana)
       const exportPros = prospectos.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNum)
+      // NOTA: Aunque no haya prospectos en la semana, seguiremos mostrando todos los agentes en la tabla (filas vacías)
       if(exportPros.length===0){
-        window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNum}).`)
-        return
+        // Antes retornábamos; ahora continuamos para que el PDF muestre estructura con agentes sin datos
+        console.warn('[export PDF] Semana sin prospectos, se generará PDF con filas vacías por agente.')
       }
   const resumenExport = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
   // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
   const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{})
-  await exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity, perAgentPrevCounts, semanaActual: { anio, semana_iso: selectedWeekNum } })
+  await exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap: agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}), chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity, perAgentPrevCounts, semanaActual: { anio, semana_iso: selectedWeekNum } })
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
