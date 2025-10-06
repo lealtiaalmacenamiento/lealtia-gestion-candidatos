@@ -150,8 +150,8 @@ export async function exportProspectosPDF(
   };
   const { headerHeight, contentStartY } = drawHeader();
   doc.setFontSize(9);
-  const GAP = 6;
-  const SECTION_GAP = 8;
+  const GAP = 12; // Espaciado vertical general aumentado
+  const SECTION_GAP = 14; // Espaciado entre secciones aumentado
   // Page metrics and helper to avoid drawing content that would be cut at page boundary
   const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight();
   const BOTTOM_MARGIN = 14;
@@ -193,7 +193,7 @@ export async function exportProspectosPDF(
     // --- Tabla y gráfico: Semana actual ---
     if (prospectosActual.length) {
       // Título sección
-  let y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable ? (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable!.finalY! + 12 : contentStartY;
+  let y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable ? (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable!.finalY! + GAP + 6 : contentStartY;
       y = ensure(y, 10);
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
       doc.text('Prospectos de la semana actual', 14, y);
@@ -233,8 +233,8 @@ export async function exportProspectosPDF(
 
     // --- Tabla y gráfico: Semanas anteriores ---
     if (prospectosAnteriores.length) {
-  let y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable ? (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable!.finalY! + 18 : contentStartY + 60;
-      y = ensure(y, 10);
+  let y = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable ? (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable!.finalY! + GAP + 6 : contentStartY + 60;
+      y = ensure(y, 16);
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
       doc.text('Prospectos de semanas anteriores (arrastre)', 14, y);
       y += 4;
@@ -253,7 +253,7 @@ export async function exportProspectosPDF(
         didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0); }
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      y = (doc as any).lastAutoTable.finalY + 8;
+      y = (doc as any).lastAutoTable.finalY + GAP;
       const resumenAnt = resumenPorEstado(prospectosAnteriores);
       doc.setFont('helvetica','bold'); doc.setFontSize(10);
       doc.text('Resumen semanas anteriores', 14, y);
@@ -478,7 +478,7 @@ export async function exportProspectosPDF(
       totals.total,
       totals.pendiente,
       totals.seguimiento,
-  totals.con_cita,
+      totals.con_cita,
       totals.descartado,
   
     ] ]
@@ -534,11 +534,11 @@ export async function exportProspectosPDF(
       doc.setFontSize(8)
       dataEntries.forEach((d,i)=>{
         const [key,val,color] = d
-  const h = (val/maxV)*30
-  const x = baseX + i*(barW+barGap)
-  const legendGap = 6
-  const barsTop = chartTop + legendH + legendGap
-  const yBar = barsTop + 30 - h
+        const h = (val/maxV)*30
+        const x = baseX + i*(barW+barGap)
+    const legendGap = 6
+    const barsTop = chartTop + legendH + legendGap
+    const yBar = barsTop + 30 - h
         const hex = color.replace('#','')
         const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
         doc.setFillColor(r,g,b)
@@ -857,7 +857,7 @@ export async function exportProspectosPDF(
           const d = anyAW.detailsDaily![i] as ActionDetails
           return [labels[i] || String(i+1), String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
         })
-        // Asegurar altura mínima para que la tabla no se empalme con el título o tarjetas
+        // Asegurar altura mínima para que la tabla no se empalme con el footer
         y = ensure(y, 24)
   autoTable(doc, {
           startY: y,
