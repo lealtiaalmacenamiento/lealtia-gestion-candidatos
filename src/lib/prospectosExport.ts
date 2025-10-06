@@ -241,11 +241,17 @@ export async function exportProspectosPDF(
         startY: y,
         head: [head],
         body,
-        styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+        styles: {
+          fontSize: head.length > 7 ? 6 : 7,
+          cellPadding: head.length > 7 ? 1 : 1.5,
+          overflow: 'linebreak',
+          cellWidth: 'auto',
+        },
         headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
         alternateRowStyles: { fillColor: [245, 247, 248] },
         theme: 'grid',
-        margin: { left: 14, right: 14 },
+  margin: { left: 18, right: 18 },
+        tableWidth: 'wrap',
         didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
       });
   y = docTyped.lastAutoTable!.finalY! + 8;
@@ -260,7 +266,7 @@ export async function exportProspectosPDF(
       Object.entries(rAct.por_estado).forEach(([k, v]) => {
         cards.push([ESTADO_LABEL[k as ProspectoEstado] || k, String(v)]);
       });
-      let cx = 14, cy = y;
+  let cx = 18, cy = y;
       const cardW = 56, cardH = 12;
       cards.forEach((c, i) => {
         doc.setDrawColor(220);
@@ -270,7 +276,7 @@ export async function exportProspectosPDF(
         doc.text(c[0], cx + 3, cy + 5);
         doc.setFont('helvetica', 'normal');
         doc.text(c[1], cx + 3, cy + 10);
-        if ((i + 1) % 3 === 0) { cx = 14; cy += cardH + 4 } else { cx += cardW + 6 }
+  if ((i + 1) % 3 === 0) { cx = 18; cy += cardH + 4 } else { cx += cardW + 6 }
       });
       cy += cardH + 10
     }
