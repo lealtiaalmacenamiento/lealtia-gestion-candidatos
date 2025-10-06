@@ -368,14 +368,17 @@ export async function exportProspectosPDF(
         y = (docTyped.lastAutoTable?.finalY || y) + 8;
         // Gráfico y tarjetas
         try {
+          // Incluye "ya es cliente" y "previas" (arrastre) en el gráfico y tarjetas
           const dist: Array<{label:string; value:number; color:[number,number,number]}> = [
             { label:'Pendiente', value: totals.pendiente, color:[99,102,106] },
             { label:'Seguimiento', value: totals.seguimiento, color:[255,193,7] },
             { label:'Con cita', value: totals.con_cita, color:[0,128,96] },
-            { label:'Descartado', value: totals.descartado, color:[220,53,69] }
+            { label:'Descartado', value: totals.descartado, color:[220,53,69] },
+            { label:'Clientes', value: totals.clientes, color:[0,102,204] },
+            { label:'Previas', value: totals.previas, color:[128,128,128] }
           ];
           const sumVals = dist.reduce((a,b)=>a+b.value,0) || 1;
-          const chartX = 14, chartY = y+2, chartW = 54, chartH = 38, barW = 8, gap = 7;
+          const chartX = 14, chartY = y+2, chartW = 80, chartH = 38, barW = 8, gap = 7;
           doc.setDrawColor(180); doc.setLineWidth(0.2);
           doc.line(chartX, chartY, chartX, chartY+chartH);
           doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
@@ -390,7 +393,7 @@ export async function exportProspectosPDF(
             doc.setFontSize(7);
             doc.text(d.label, x-2, chartY+chartH+6);
           });
-          const cardX = chartX+chartW+12, cardY = chartY, cardW = 44, cardH = 10, cardGap = 4;
+          const cardX = chartX+chartW+12, cardY = chartY, cardW = 54, cardH = 10, cardGap = 4;
           const cardData: Array<{label:string; value:number; pct:number}> = [
             { label:'Total', value: totals.total, pct:100 },
             ...dist.map(d=>({ label:d.label, value:d.value, pct: (d.value/sumVals)*100 }))
