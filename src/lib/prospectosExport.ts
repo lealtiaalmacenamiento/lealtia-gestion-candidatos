@@ -357,29 +357,56 @@ export async function exportProspectosPDF(
         }
         body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado, totals.clientes, totals.previas])
         autoTable(doc, { startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{fillColor:[7,46,64], textColor:[255,255,255], fontSize:8}, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
-        // Gráfico de distribución (totales) con porcentajes
+        // Gráfico y tarjetas tipo dashboard como en la referencia
         try {
-          const docY = (docTyped.lastAutoTable?.finalY||y)+6
+          const docY = (docTyped.lastAutoTable?.finalY||y)+8
+          // Datos y colores
           const dist: Array<{label:string; value:number; color:[number,number,number]}> = [
             { label:'Pendiente', value: totals.pendiente, color:[99,102,106] },
             { label:'Seguimiento', value: totals.seguimiento, color:[255,193,7] },
             { label:'Con cita', value: totals.con_cita, color:[0,128,96] },
-            { label:'Descartado', value: totals.descartado, color:[220,53,69] },
-            { label:'Clientes', value: totals.clientes, color:[25,135,84] }
+            { label:'Descartado', value: totals.descartado, color:[220,53,69] }
           ]
           const sumVals = dist.reduce((a,b)=>a+b.value,0) || 1
-          let chartY = docY
-          doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('Distribución (totales %)',14,chartY); chartY+=4
-          const barMaxW = 100
-          doc.setFont('helvetica','normal'); doc.setFontSize(7)
-          dist.forEach(d=>{
-            const pct = (d.value/sumVals)*100
+          // Layout
+          const chartX = 14, chartY = docY+2, chartW = 54, chartH = 38, barW = 8, gap = 7
+          // Ejes y barras
+          doc.setDrawColor(180); doc.setLineWidth(0.2)
+          doc.line(chartX, chartY, chartX, chartY+chartH)
+          doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH)
+          dist.forEach((d,i)=>{
+            const x = chartX + 6 + i*(barW+gap)
+            const h = (d.value/sumVals)*chartH
             doc.setFillColor(...d.color)
-            doc.rect(14, chartY-3, (barMaxW*(d.value/sumVals))||0, 4, 'F')
+            doc.rect(x, chartY+chartH-h, barW, h, 'F')
             doc.setTextColor(0,0,0)
-            doc.text(`${d.label}: ${d.value} (${pct.toFixed(1)}%)`, 14 + barMaxW + 4, chartY)
-            chartY += 6
+            doc.setFontSize(8)
+            doc.text(String(d.value), x+barW/2-2, chartY+chartH-h-2)
+            doc.setFontSize(7)
+            doc.text(d.label, x-2, chartY+chartH+6)
           })
+          // Tarjetas a la derecha
+          const cardX = chartX+chartW+12, cardY = chartY, cardW = 44, cardH = 10, cardGap = 4
+          const cardData: Array<{label:string; value:number; pct:number}> = [
+            { label:'Total', value: totals.total, pct:100 },
+            ...dist.map(d=>({ label:d.label, value:d.value, pct: (d.value/sumVals)*100 }))
+          ]
+          cardData.forEach((c,idx)=>{
+            doc.setDrawColor(220)
+            doc.setFillColor(248,250,252)
+            doc.roundedRect(cardX, cardY+idx*(cardH+cardGap), cardW, cardH, 2, 2, 'FD')
+            doc.setFont('helvetica','bold'); doc.setFontSize(8)
+            doc.text(c.label, cardX+3, cardY+idx*(cardH+cardGap)+5)
+            doc.setFont('helvetica','normal'); doc.setFontSize(8)
+            doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, cardY+idx*(cardH+cardGap)+9)
+          })
+          // Barra de meta prospectos debajo
+          const meta = opts?.metaProspectos || 30
+          const metaY = chartY+chartH+18
+          doc.setFont('helvetica','normal'); doc.setFontSize(8)
+          doc.text(`Meta prospectos: ${totals.total}/${meta}`, chartX, metaY)
+          doc.setFillColor(7,46,64)
+          doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/meta)), 4, 'F')
         } catch { /* ignore chart errors */ }
       }
       // Métricas avanzadas (por agente) - conversiones / descartes / proyección semana
