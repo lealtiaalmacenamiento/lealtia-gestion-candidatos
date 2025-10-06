@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       citasConfirmadas[b.day] = (citasConfirmadas[b.day] || 0) + 1;
     }
   }
-  const diasFelicitados = Object.entries(citasConfirmadas).filter(([_day, count]) => count >= 2);
+  const diasFelicitados = Object.entries(citasConfirmadas).filter(([, count]) => count >= 2);
   const diasSemana = [0,1,2,3,4,5,6];
   const cumpleSemana = diasSemana.every(day => citasConfirmadas[day] && citasConfirmadas[day] >= 2);
   const { data: agenteData } = await supabase.from('usuarios').select('email,nombre').eq('id', agente_id).maybeSingle();

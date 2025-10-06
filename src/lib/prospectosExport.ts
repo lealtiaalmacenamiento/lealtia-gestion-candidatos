@@ -14,6 +14,7 @@ interface JsPDFWithAutoTable {
   setFontSize: (n: number) => void
   setTextColor: (...args: number[]) => void
   text: (...args: unknown[]) => void
+  circle?: (x:number, y:number, r:number, style?: string) => void
 }
 
 const MX_TZ='America/Mexico_City'
@@ -330,16 +331,24 @@ export async function exportProspectosPDF(
         y = ensure(y, 12)
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4
         const head = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado']
-        const body: any[] = []
+        const body: Array<[string|number, number, number, number, number, number]> = []
         const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0 }
-        for(const [agId, m] of Object.entries(opts.perAgentExtended)){
-          const nombre = agentesMap[Number(agId)] || agId
-          const pendiente = m.estados?.pendiente||0
-            , seguimiento = m.estados?.seguimiento||0
-            , con_cita = m.estados?.con_cita||0
-            , descartado = m.estados?.descartado||0
-          const total = pendiente+seguimiento+con_cita+descartado+(m.estados?.ya_es_cliente||0)
+        // Necesitamos recalcular por estado porque ExtendedMetrics no expone desglose
+        // Encontrar lista de prospectos por agente a partir de 'prospectos' original
+        const grouped = prospectos.reduce<Record<number, Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
+        for(const [agIdStr, list] of Object.entries(grouped)){
+          const agId = Number(agIdStr)
+          if(!(agIdStr in opts.perAgentExtended)) continue
+          let pendiente=0, seguimiento=0, con_cita=0, descartado=0
+          for(const p of list){
+            if(p.estado==='pendiente') pendiente++
+            else if(p.estado==='seguimiento') seguimiento++
+            else if(p.estado==='con_cita') con_cita++
+            else if(p.estado==='descartado') descartado++
+          }
+          const total = list.length
           totals.total += total; totals.pendiente+=pendiente; totals.seguimiento+=seguimiento; totals.con_cita+=con_cita; totals.descartado+=descartado
+          const nombre = agentesMap[agId] || agId
           body.push([nombre,total,pendiente,seguimiento,con_cita,descartado])
         }
         body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado])
@@ -351,10 +360,13 @@ export async function exportProspectosPDF(
         y = ensure(y, 10)
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4
         const head = ['Agente','Conv P->S','Desc %','Proy semana']
-        const body: any[] = []
+        const body: Array<[string|number, string, string, number|null]> = []
         for(const [agId,m] of Object.entries(opts.perAgentExtended)){
           const nombre = (opts.agentesMap||{})[Number(agId)] || agId
-          body.push([nombre, (m.conversionPendienteSeguimientoPct||0).toFixed(1)+'%', (m.descartadosPct||0).toFixed(1)+'%', m.proyeccionSemana||0])
+          const conv = (m.conversionPendienteSeguimiento||0)*100
+          const desc = (m.ratioDescartado||0)*100
+          const proy = m.forecastSemanaTotal ?? null
+          body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', proy])
         }
         autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
       }
@@ -364,7 +376,8 @@ export async function exportProspectosPDF(
         y = ensure(y, 10)
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal (resumen por agente)',14,y); y+=4
         const headPlan = ['Agente','Prospección','SMNYL','Total']
-        const body: any[] = []
+  // Filas: [Agente, Prospección, SMNYL, Total]
+  const body: Array<[string|number, number, number, number]> = []
         for(const [agId, sum] of Object.entries(opts.planningSummaries)){
           body.push([(opts.agentesMap||{})[Number(agId)]||agId, sum.prospeccion, sum.smnyl, sum.total])
         }
@@ -397,7 +410,7 @@ export async function exportProspectosPDF(
             const x = chartX + (chartW/(aggregated.length-1||1))*i
             const yPt = chartY + chartH - (val/max)*chartH
             if(prevX!==undefined){ doc.line(prevX, prevY!, x, yPt) }
-            doc.setFillColor(0); doc.circle(x,yPt,1.2,'F')
+            doc.setFillColor(0,0,0); try { if(typeof (docTyped as JsPDFWithAutoTable).circle === 'function'){ (docTyped as JsPDFWithAutoTable).circle!(x,yPt,1.2,'F') } } catch { /* ignore circle error */ }
             prevX = x; prevY = yPt
           })
           // Etiquetas X
@@ -416,7 +429,8 @@ export async function exportProspectosPDF(
         y = ensure(y, 12)
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4
         const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
-        const body: any[] = []
+  // Filas: [Usuario, Altas P., Cambios est., Notas P., Edit. planif., Altas cliente, Modif. cliente, Altas pól., Modif. pól.]
+  const body: Array<[string|number, number, number, number, number, number, number, number, number]> = []
         for(const [agId, act] of Object.entries(opts.perAgentActivity)){
           const email = act.email || (opts.agentesMap||{})[Number(agId)] || agId
           const d = act.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 }
