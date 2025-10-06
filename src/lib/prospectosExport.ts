@@ -340,7 +340,7 @@ export async function exportProspectosPDF(
         let y = contentStartY
         y = ensure(y, 12)
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4
-  const head = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado','Clientes','Previas']
+  // const head = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado','Clientes','Previas'] // (no usada)
   const body: Array<[string|number, number, number, number, number, number, number, number]> = []
   const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, clientes:0, previas:0 }
         // Necesitamos recalcular por estado porque ExtendedMetrics no expone desglose
@@ -364,10 +364,9 @@ export async function exportProspectosPDF(
           body.push([nombre,total,pendiente,seguimiento,con_cita,descartado,clientes, previas])
         }
         body.push(['TOTAL', totals.total, totals.pendiente, totals.seguimiento, totals.con_cita, totals.descartado, totals.clientes, totals.previas])
-        autoTable(doc, { startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{fillColor:[7,46,64], textColor:[255,255,255], fontSize:8}, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
-        // Gráfico y tarjetas tipo dashboard como en la referencia
+  const yChart = (docTyped.lastAutoTable?.finalY||y)+8;
+        let yNext = yChart;
         try {
-          const docY = (docTyped.lastAutoTable?.finalY||y)+8
           // Datos y colores
           const dist: Array<{label:string; value:number; color:[number,number,number]}> = [
             { label:'Pendiente', value: totals.pendiente, color:[99,102,106] },
@@ -377,7 +376,7 @@ export async function exportProspectosPDF(
           ]
           const sumVals = dist.reduce((a,b)=>a+b.value,0) || 1
           // Layout
-          const chartX = 14, chartY = docY+2, chartW = 54, chartH = 38, barW = 8, gap = 7
+          const chartX = 14, chartY = yChart+2, chartW = 54, chartH = 38, barW = 8, gap = 7
           // Ejes y barras
           doc.setDrawColor(180); doc.setLineWidth(0.2)
           doc.line(chartX, chartY, chartX, chartY+chartH)
@@ -399,14 +398,17 @@ export async function exportProspectosPDF(
             { label:'Total', value: totals.total, pct:100 },
             ...dist.map(d=>({ label:d.label, value:d.value, pct: (d.value/sumVals)*100 }))
           ]
+          let lastCardY = cardY;
           cardData.forEach((c,idx)=>{
+            const thisY = cardY+idx*(cardH+cardGap);
             doc.setDrawColor(220)
             doc.setFillColor(248,250,252)
-            doc.roundedRect(cardX, cardY+idx*(cardH+cardGap), cardW, cardH, 2, 2, 'FD')
+            doc.roundedRect(cardX, thisY, cardW, cardH, 2, 2, 'FD')
             doc.setFont('helvetica','bold'); doc.setFontSize(8)
-            doc.text(c.label, cardX+3, cardY+idx*(cardH+cardGap)+5)
+            doc.text(c.label, cardX+3, thisY+5)
             doc.setFont('helvetica','normal'); doc.setFontSize(8)
-            doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, cardY+idx*(cardH+cardGap)+9)
+            doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, thisY+9)
+            lastCardY = thisY+cardH;
           })
           // Barra de meta prospectos debajo
           const meta = opts?.metaProspectos || 30
@@ -415,7 +417,11 @@ export async function exportProspectosPDF(
           doc.text(`Meta prospectos: ${totals.total}/${meta}`, chartX, metaY)
           doc.setFillColor(7,46,64)
           doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/meta)), 4, 'F')
+          // El siguiente bloque debe empezar después del mayor Y ocupado
+          yNext = Math.max(metaY+6, lastCardY+8);
         } catch { /* ignore chart errors */ }
+        // Actualiza la posición global para el siguiente bloque
+        y = yNext;
       }
       // Métricas avanzadas (por agente) - conversiones / descartes / proyección semana
       if(opts?.perAgentExtended){
