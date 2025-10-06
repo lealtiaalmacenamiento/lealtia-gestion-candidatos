@@ -299,27 +299,77 @@ export async function exportProspectosPDF(
   y = ensure(y, 8)
   doc.setFont('helvetica','bold'); doc.text(agrupado? 'Resumen por agente':'Resumen',14,y); doc.setFont('helvetica','normal')
   y += 4
+
+  // --- NUEVO: Tabla de resumen por agente SOLO para prospectos de semanas anteriores (arrastre) ---
+  if (agrupado && opts?.semanaActual) {
+    // Filtrar prospectos de arrastre
+    const prospectosAnteriores = prospectos.filter(p => !(p.anio === opts.semanaActual?.anio && p.semana_iso === opts.semanaActual?.semana_iso));
+    if (prospectosAnteriores.length) {
+      // Construir resumen por agente para arrastre
+      const porAgenteArrastre: Record<string, ResumenAgente> = {};
+      for (const p of prospectosAnteriores) {
+        const ep = p as ExtendedProspecto;
+        const agName = agentesMap[ep.agente_id ?? -1] || `Ag ${ep.agente_id}`;
+        if (!porAgenteArrastre[agName]) porAgenteArrastre[agName] = { agente: agName, total: 0, por_estado: { pendiente: 0, seguimiento: 0, con_cita: 0, descartado: 0, ya_es_cliente: 0 } };
+        const bucket = porAgenteArrastre[agName];
+        bucket.total++;
+        if (bucket.por_estado[p.estado] !== undefined) bucket.por_estado[p.estado]++;
+      }
+      // Totales al final
+      const totalsArrastre = Object.values(porAgenteArrastre).reduce((acc, r) => {
+        acc.total += r.total;
+        acc.pendiente += r.por_estado.pendiente;
+        acc.seguimiento += r.por_estado.seguimiento;
+        acc.con_cita += r.por_estado.con_cita || 0;
+        acc.descartado += r.por_estado.descartado;
+        return acc;
+      }, { total: 0, pendiente: 0, seguimiento: 0, con_cita: 0, descartado: 0, ya_es_cliente: 0 as number });
+      const headArrastre = ['Agente', 'Total', 'Pendiente', 'Seguimiento', 'Con cita', 'Descartado'];
+      const bodyArrastre = Object.entries(porAgenteArrastre).map(([, r]) => [
+        r.agente ?? '',
+        r.total ?? '',
+        r.por_estado.pendiente ?? '',
+        r.por_estado.seguimiento ?? '',
+        r.por_estado.con_cita ?? '',
+        r.por_estado.descartado ?? ''
+      ]);
+      const footerRowsArrastre = [[
+        'TOTAL',
+        totalsArrastre.total,
+        totalsArrastre.pendiente,
+        totalsArrastre.seguimiento,
+        totalsArrastre.con_cita,
+        totalsArrastre.descartado
+      ]];
+      y = ensure(y, 8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Resumen por agente (arrastre semanas anteriores)', 14, y);
+      doc.setFont('helvetica', 'normal');
+      y += 4;
+      autoTable(doc, {
+        startY: y,
+        head: [headArrastre],
+        body: bodyArrastre,
+        styles: { fontSize: 7, cellPadding: 1 },
+        headStyles: { fillColor: [7, 46, 64], fontSize: 8 },
+        alternateRowStyles: { fillColor: [245, 247, 248] },
+        theme: 'grid',
+        margin: { top: headerHeight + 6, left: 14, right: 14 },
+        columnStyles: { 0: { halign: 'left' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' } },
+        foot: footerRowsArrastre,
+        footStyles: { fillColor: [235, 239, 241], textColor: [7, 46, 64], fontStyle: 'bold' },
+        didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+      });
+      const afterArrastreTable = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y;
+      y = afterArrastreTable + GAP;
+    }
+  }
   if(!agrupado){
-    // Summary cards (2 columns)
-    const cards: Array<[string,string]> = [
-      ['Prospectos totales', String(resumen.total)],
-      ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
-      ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
-      ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
-      ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
-      ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
-    ]
-    // 3 tarjetas por fila dentro de 182mm útiles: 3*56 + 2*6 = 180 <= 182
-    const cardW = 56; const cardH=12; let cx=14; let cy=y
-    // Ensure space for the rows of cards
-    const rows = Math.max(1, Math.ceil(cards.length/3))
-    const requiredCards = rows*cardH + (rows-1)*4 + GAP
-    y = ensure(y, requiredCards)
-    doc.setFontSize(8)
-    cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10);
-      if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-  y = cy + cardH + GAP
-  if(opts?.chartEstados){
+    // ...existing code...
+  } else {
+    // En agrupado: el resumen por agente debe considerar todos los prospectos (semana actual + anteriores)
+    // (ya lo hace, pero aclaramos aquí para evitar confusión y facilitar futuros cambios)
+    // ...existing code...
     // Simple bar chart for estados con leyenda
     // Ensure space for legend + chart + progress bar block
     const legendH = 10
