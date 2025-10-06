@@ -581,7 +581,7 @@ export default function ProspectosPage(){
       }
     } catch {/*ignore*/}
   // Exportar sólo la semana actual filtrada y sin 'ya_es_cliente'
-  await exportProspectosPDF(exportPros, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning, activityWeekly })
+  await exportProspectosPDF(exportPros, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning, activityWeekly, semanaActual: { anio, semana_iso: metaWeek } })
   }
   }}>PDF</button>
     </div>}
