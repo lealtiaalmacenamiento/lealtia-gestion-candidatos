@@ -270,9 +270,15 @@ export async function exportProspectosPDF(
       // Aquí puedes agregar el gráfico de barras si lo deseas (igual que antes)
     }
   }
-  // Llamar a la nueva lógica después de inicializar doc y helpers
-  renderProspectosPorSemana();
-  const incluirId = opts?.incluirId
+  // Llamar a la nueva lógica (tablas separadas semana actual / arrastre) solo para reportes NO agrupados.
+  // En modo agrupado antes generábamos también estas tablas y luego la tabla resumen por agente en la misma zona (empalme).
+  // Además, en no-agrupado existía duplicación: estas tablas + una tabla global de todos los prospectos.
+  // Decisión: conservar solo las tablas separadas (semana actual / arrastre) para no duplicar y ganar claridad.
+  if(!opts?.agrupadoPorAgente){
+    renderProspectosPorSemana();
+  }
+  // incluirId removido de la tabla global (evitamos duplicación). Las tablas semanales ya manejan incluirId internamente si fuera necesario.
+  // const incluirId = opts?.incluirId
   const agrupado = opts?.agrupadoPorAgente
   const agentesMap = opts?.agentesMap || {}
   let metaProspectos = opts?.metaProspectos ?? 30
@@ -280,38 +286,14 @@ export async function exportProspectosPDF(
   if(agrupado){
     metaProspectos = metaProspectos * distinctAgentsCount
   }
-  let y = contentStartY
-  if(!agrupado){
-  const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas' ]
-  const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ])
-    const tableStartY = contentStartY
-  autoTable(doc, {
-      startY: tableStartY,
-      head: [head],
-      body,
-  styles:{ fontSize:7, cellPadding:1.5, overflow:'linebreak' },
-      headStyles:{ fillColor:[7,46,64], fontSize:8, textColor:[255,255,255], halign:'center' },
-      alternateRowStyles:{ fillColor:[245,247,248] },
-      theme:'grid',
-      // Ajuste de anchos: considerar desplazamiento si se incluye ID
-  columnStyles: (()=>{ const s: Record<number,{ cellWidth?: number; halign?: 'left'|'center'|'right'; overflow?: 'linebreak'|'ellipsize'|'visible' }> = {}; let base=0; if(incluirId) { s[0]={ cellWidth: 12, halign:'center' } ; base=1 }
-  // Total 182mm: 48 + 28 + 24 + 82 = 182 (aprox)
-  s[base+0] = { cellWidth: 48, halign:'left' } // Nombre
-  s[base+1] = { cellWidth: 28, halign:'center' } // Teléfono
-  s[base+2] = { cellWidth: 24, halign:'center' } // Estado
-  s[base+3] = { cellWidth: 82, overflow:'linebreak', halign:'left' } // Notas
-        return s })(),
-      margin: { top: headerHeight + 6, left: 14, right: 14 },
-      didDrawPage: () => {
-        // Redibujar encabezado por página de la tabla
-        drawHeader()
-        doc.setTextColor(0,0,0)
-      }
-    })
-    interface DocMaybeAuto { lastAutoTable?: { finalY?: number } }
-    const docWith = doc as unknown as DocMaybeAuto
-    y = (docWith.lastAutoTable?.finalY || tableStartY) + GAP
-  }
+  // Punto inicial Y: si ya se generaron tablas semanales (no agrupado) usamos su final; si no, contentStartY.
+  let y = (() => {
+    if(!agrupado){
+      const docWith = doc as unknown as { lastAutoTable?: { finalY?: number } }
+      if(docWith.lastAutoTable?.finalY) return docWith.lastAutoTable.finalY + GAP
+    }
+    return contentStartY
+  })();
   doc.setFontSize(10)
   // Ensure space for the section title
   y = ensure(y, 8)
