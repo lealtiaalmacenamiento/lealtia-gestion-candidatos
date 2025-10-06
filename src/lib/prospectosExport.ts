@@ -226,62 +226,75 @@ export async function exportProspectosPDF(
       for (const p of ps) pe[p.estado] = (pe[p.estado] || 0) + 1;
       return { total: ps.length, por_estado: pe }
     };
-    if (actual.length) {
-  let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
-      y = ensure(y, 10);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text('Prospectos de la semana actual', 14, y);
-      y += 4;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      const head = [...(opts?.incluirId ? ['ID'] : []), 'Nombre', 'Teléfono', 'Estado', 'Notas'];
-      const body = actual.map(p => [...(opts?.incluirId ? [p.id] : []), p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
-      autoTable(doc, {
-        startY: y,
-        head: [head],
-        body,
-        styles: {
-          fontSize: head.length > 7 ? 6 : 7,
-          cellPadding: head.length > 7 ? 1 : 1.5,
-          overflow: 'linebreak',
-          cellWidth: 'auto',
-        },
-        headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
-        alternateRowStyles: { fillColor: [245, 247, 248] },
-        theme: 'grid',
-  margin: { left: 18, right: 18 },
-        tableWidth: 'wrap',
-        didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
-      });
-  y = docTyped.lastAutoTable!.finalY! + 8;
-      const rAct = resumenPorEstado(actual);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.text(`Resumen semana actual (meta: ${metaTotal})`, 14, y);
-      y += 4;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      const cards: [string, string][] = [['Prospectos totales', String(rAct.total)]];
-      Object.entries(rAct.por_estado).forEach(([k, v]) => {
-        cards.push([ESTADO_LABEL[k as ProspectoEstado] || k, String(v)]);
-      });
-  let cx = 18, cy = y;
-      const cardW = 56, cardH = 12;
-      cards.forEach((c, i) => {
-        doc.setDrawColor(220);
-        doc.setFillColor(248, 250, 252);
-        doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.text(c[0], cx + 3, cy + 5);
-        doc.setFont('helvetica', 'normal');
-        doc.text(c[1], cx + 3, cy + 10);
-  if ((i + 1) % 3 === 0) { cx = 18; cy += cardH + 4 } else { cx += cardW + 6 }
-      });
-  cy += cardH + 10
-  // Asegura que la siguiente sección empiece debajo de las tarjetas
-  y = Math.max(y, cy)
+    // Mostrar todos los agentes aunque no tengan prospectos en la semana actual
+    const agentesMap = opts?.agentesMap || {};
+    const allAgentIds = Object.keys(agentesMap).map(Number);
+    let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
+    y = ensure(y, 10);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Prospectos de la semana actual', 14, y);
+    y += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const head = [...(opts?.incluirId ? ['ID'] : []), 'Agente', 'Nombre', 'Teléfono', 'Estado', 'Notas'];
+    // Para cada agente, si tiene prospectos en la semana actual, los muestra; si no, muestra fila vacía
+    const body: any[] = [];
+    for(const agId of allAgentIds){
+      const agPros = actual.filter(p => p.agente_id === agId);
+      if(agPros.length){
+        for(const p of agPros){
+          body.push([...(opts?.incluirId ? [p.id] : []), agentesMap[agId] || agId, p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
+        }
+      } else {
+        // Fila vacía para agente sin prospectos
+        body.push([...(opts?.incluirId ? [''] : []), agentesMap[agId] || agId, '', '', '', '']);
+      }
     }
+    autoTable(doc, {
+      startY: y,
+      head: [head],
+      body,
+      styles: {
+        fontSize: head.length > 7 ? 6 : 7,
+        cellPadding: head.length > 7 ? 1 : 1.5,
+        overflow: 'linebreak',
+        cellWidth: 'auto',
+      },
+      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+      alternateRowStyles: { fillColor: [245, 247, 248] },
+      theme: 'grid',
+      margin: { left: 18, right: 18 },
+      tableWidth: 'wrap',
+      didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
+    });
+    y = docTyped.lastAutoTable!.finalY! + 8;
+    // Resumen de la semana actual (solo de prospectos reales)
+    const rAct = resumenPorEstado(actual);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`Resumen semana actual (meta: ${metaTotal})`, 14, y);
+    y += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const cards: [string, string][] = [['Prospectos totales', String(rAct.total)]];
+    Object.entries(rAct.por_estado).forEach(([k, v]) => {
+      cards.push([ESTADO_LABEL[k as ProspectoEstado] || k, String(v)]);
+    });
+    let cx = 18, cy = y;
+    const cardW = 56, cardH = 12;
+    cards.forEach((c, i) => {
+      doc.setDrawColor(220);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.text(c[0], cx + 3, cy + 5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(c[1], cx + 3, cy + 10);
+      if ((i + 1) % 3 === 0) { cx = 18; cy += cardH + 4 } else { cx += cardW + 6 }
+    });
+    cy += cardH + 10;
+    y = Math.max(y, cy);
     if (anteriores.length) {
   let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY + 60;
       y = ensure(y, 16);
