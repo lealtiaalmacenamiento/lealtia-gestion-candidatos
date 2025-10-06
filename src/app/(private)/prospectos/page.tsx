@@ -41,8 +41,22 @@ export default function ProspectosPage(){
   const metaWeek = semanaActual.semana
   const sourceAll = yearProspectos || prospectos
   // En la nueva lógica de reporte ya NO mezclamos semanas previas; mantenemos referencias pero se usarán solo para tabla secundaria
-  const activosPrevios = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso < metaWeek && ['pendiente','seguimiento','con_cita'].includes(p.estado)), [sourceAll, metaWeek, anio])
-  const actuales = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso === metaWeek), [sourceAll, metaWeek, anio])
+  // Semana activa para UI y exportación: la seleccionada
+  const semanaActiva = semana === 'ALL' ? null : Number(semana)
+  // Prospectos de la semana seleccionada
+  const actuales = useMemo(() =>
+    semanaActiva == null
+      ? []
+      : sourceAll.filter(p => p.anio === anio && p.semana_iso === semanaActiva),
+    [sourceAll, semanaActiva, anio]
+  )
+  // Prospectos de semanas anteriores a la seleccionada
+  const activosPrevios = useMemo(() =>
+    semanaActiva == null
+      ? []
+      : sourceAll.filter(p => p.anio === anio && p.semana_iso < semanaActiva && ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)),
+    [sourceAll, semanaActiva, anio]
+  )
   const [showPrevios,setShowPrevios]=useState(false)
   const [loading,setLoading]=useState(false)
   const yearCacheRef = useRef<Record<string,Prospecto[]>>({}) // key: anio|agenteId
