@@ -133,58 +133,52 @@ export async function exportProspectosPDF(
     anteriores = anteriores.filter(p => p.agente_id === agenteId);
   }
   const agentesMap = opts?.agentesMap || {};
-  // --- Renderizar tabla principal de prospectos semana actual ---
+  // --- Resumen por agente (dashboard) ---
   let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
   y = ensure(y, 10);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('Prospectos de la semana actual', 14, y);
-  y += 4;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  const head = [...(opts?.incluirId ? ['ID'] : []), 'Agente', 'Nombre', 'Teléfono', 'Estado', 'Notas'];
-  const body: Array<(string|number)[]> = [];
-  if (agenteId !== undefined) {
-    const agPros = actual;
-    if(agPros.length){
-      for(const p of agPros){
-        body.push([...(opts?.incluirId ? [p.id] : []), agentesMap[agenteId] || agenteId, p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
-      }
-    } else {
-      body.push([...(opts?.incluirId ? [''] : []), agentesMap[agenteId] || agenteId, '', '', '', '']);
-    }
-  } else if (allAgentIds.length > 0) {
-    for(const agId of allAgentIds){
-      const agPros = actual.filter(p => p.agente_id === agId);
-      if(agPros.length){
-        for(const p of agPros){
-          body.push([...(opts?.incluirId ? [p.id] : []), agentesMap[agId] || agId, p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
-        }
-      } else {
-        body.push([...(opts?.incluirId ? [''] : []), agentesMap[agId] || agId, '', '', '', '']);
-      }
-    }
-  } else {
-    body.push([...(opts?.incluirId ? [''] : []), 'Sin agentes', '', '', '', '']);
+  doc.setFontSize(14);
+  doc.text('Resumen por agente', 14, y);
+  y += 8;
+  // Tabla resumen por agente
+  const resumenHead = ['Agente', 'Total', 'Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
+  const resumenBody: Array<any[]> = [];
+  const totalRow: [string, number, number, number, number, number, number, number] = ['TOTAL', 0, 0, 0, 0, 0, 0, 0];
+  for(const agId of allAgentIds){
+    const nombre = agentesMap[agId] || agId;
+    const agPros = prospectos.filter(p => p.agente_id === agId);
+    const total = agPros.length;
+    const pendiente = agPros.filter(p => p.estado === 'pendiente').length;
+    const seguimiento = agPros.filter(p => p.estado === 'seguimiento').length;
+    const conCita = agPros.filter(p => p.estado === 'con_cita').length;
+    const descartado = agPros.filter(p => p.estado === 'descartado').length;
+    const clientes = agPros.filter(p => p.estado === 'ya_es_cliente').length;
+    const previas = opts?.perAgentPrevCounts?.[agId] ?? 0;
+    resumenBody.push([nombre, total, pendiente, seguimiento, conCita, descartado, clientes, previas]);
+  totalRow[1] = (totalRow[1] as number) + total;
+  totalRow[2] = (totalRow[2] as number) + pendiente;
+  totalRow[3] = (totalRow[3] as number) + seguimiento;
+  totalRow[4] = (totalRow[4] as number) + conCita;
+  totalRow[5] = (totalRow[5] as number) + descartado;
+  totalRow[6] = (totalRow[6] as number) + clientes;
+  totalRow[7] = (totalRow[7] as number) + previas;
   }
+  resumenBody.push(totalRow);
   autoTable(doc, {
     startY: y,
-    head: [head],
-    body,
-    styles: {
-      fontSize: head.length > 7 ? 6 : 7,
-      cellPadding: head.length > 7 ? 1 : 1.5,
-      overflow: 'linebreak',
-      cellWidth: 'auto',
-    },
-    headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+    head: [resumenHead],
+    body: resumenBody,
+    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
+    headStyles: { fillColor: [7, 46, 64], fontSize: 10, textColor: [255, 255, 255], halign: 'center' },
     alternateRowStyles: { fillColor: [245, 247, 248] },
     theme: 'grid',
-    margin: { left: 18, right: 18 },
+    margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
   });
   y = docTyped.lastAutoTable!.finalY! + 8;
+  // Gráfica de barras y tarjetas (como en el dashboard)
+  // ... (el resto del código de gráfica y tarjetas ya está implementado más abajo y se ejecutará normalmente)
   // --- Resumen semana actual ---
   const resumenPorEstado = (ps: Prospecto[]) => {
     const pe: Record<string, number> = {};
