@@ -26,15 +26,26 @@ function nowMX(){
 }
 
 // Función principal de exportación
+/**
+ * Exporta el reporte de prospectos a PDF.
+ *
+ * Para el logo institucional, se recomienda usar el archivo:
+ *   public/Logolealtiaruedablanca.png
+ * Puedes cargarlo como base64 y pasar su ancho/alto reales para evitar deformación.
+ * Ejemplo de uso:
+ *   exportProspectosPDF(doc, prospectos, opts, autoTable, titulo, logoBase64, 32, 32)
+ * Donde logoBase64 es la imagen en formato base64 PNG.
+ * Si no se pasa logo, se muestra un placeholder.
+ */
 export async function exportProspectosPDF(
   doc: any,
   prospectos: Prospecto[],
   opts: any,
   autoTable: (...args: any[]) => any,
   titulo: string,
-  logo?: string,
-  logoW?: number,
-  logoH?: number
+  logo?: string, // base64 PNG recomendado: public/Logolealtiaruedablanca.png
+  logoW?: number, // ancho en mm
+  logoH?: number  // alto en mm
 ) {
   // Helpers y layout deben estar definidos antes de renderProspectosPorSemana
   const generadoEn = nowMX();
@@ -121,17 +132,13 @@ export async function exportProspectosPDF(
   }
   // --- Datos filtrados ---
   const semanaActual = opts?.semanaActual;
-  let actual: Prospecto[] = [];
   let anteriores: Prospecto[] = [];
   if (semanaActual) {
-    actual = prospectos.filter(p => p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso);
     anteriores = prospectos.filter(p => !(p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso));
   } else {
-    actual = prospectos;
     anteriores = [];
   }
   if (agenteId !== undefined) {
-    actual = actual.filter(p => p.agente_id === agenteId);
     anteriores = anteriores.filter(p => p.agente_id === agenteId);
   }
   const agentesMap = opts?.agentesMap || {};
@@ -179,8 +186,7 @@ export async function exportProspectosPDF(
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
   });
   y = docTyped.lastAutoTable!.finalY! + 8;
-  // Gráfica de barras y tarjetas (dashboard, usando totales de la tabla)
-  // --- Gráfica de barras ---
+  // Gráfica de barras verticales y tarjetas a la derecha
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
   const chartX = 26, chartY = y+2, chartW = 160, chartH = 42;
@@ -188,19 +194,20 @@ export async function exportProspectosPDF(
   doc.setDrawColor(0); doc.setLineWidth(0.2);
   doc.line(chartX, chartY, chartX, chartY+chartH);
   doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
-  let prevX: number | undefined = undefined, prevY: number | undefined = undefined;
+  // Barras
+  const barW = 14;
   totales.forEach((val: number, i: number) => {
-    const x = chartX + (chartW/(totales.length-1||1))*i;
-    const yPt = chartY + chartH - (val/max)*chartH;
-    if(prevX!==undefined){ doc.line(prevX, prevY!, x, yPt); }
-    doc.setFillColor(0,0,0); try { if(typeof (docTyped as JsPDFWithAutoTable).circle === 'function'){ (docTyped as JsPDFWithAutoTable).circle!(x,yPt,1.2,'F'); } } catch { /* ignore circle error */ }
-    prevX = x; prevY = yPt;
+    const x = chartX + 8 + i * (barW + 8);
+    const barH = (val/max)*chartH;
+    doc.setFillColor(60, 60, 60);
+    doc.rect(x, chartY+chartH-barH, barW, barH, 'F');
+    doc.setFontSize(8);
+    doc.text(String(val), x + barW/2, chartY+chartH-barH-2, {align:'center'});
+    doc.setFontSize(7);
+    doc.text(labelsGraficas[i], x + barW/2, chartY+chartH+6, {align:'center'});
   });
-  doc.setFontSize(7);
-  labelsGraficas.forEach((l: string, i: number) => { const x = chartX + (chartW/(labelsGraficas.length-1||1))*i; doc.text(l, x-3, chartY+chartH+6); });
-  doc.setFontSize(8); doc.text(String(max), chartX-6, chartY+4);
   y = chartY + chartH + 14;
-  // --- Tarjetas de resumen ---
+  // Tarjetas de resumen a la derecha de la gráfica
   const totalProspectos = totalRow[1];
   const tarjetas = [
     ['Total', `${totalProspectos} (100.0%)`],
@@ -224,40 +231,7 @@ export async function exportProspectosPDF(
     cyT += cardHT + 4;
   });
   y = Math.max(y, cyT);
-  // --- Resumen semana actual ---
-  const resumenPorEstado = (ps: Prospecto[]) => {
-    const pe: Record<string, number> = {};
-    for (const p of ps) pe[p.estado] = (pe[p.estado] || 0) + 1;
-    return { total: ps.length, por_estado: pe }
-  };
-  const metaBase = opts?.metaProspectos ?? 30;
-  const arrastre = anteriores.length;
-  const metaTotal = metaBase + arrastre;
-  const rAct = resumenPorEstado(actual);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(`Resumen semana actual (meta: ${metaTotal})`, 14, y);
-  y += 4;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  const cards: [string, string][] = [['Prospectos totales', String(rAct.total)]];
-  Object.entries(rAct.por_estado).forEach(([k, v]) => {
-    cards.push([ESTADO_LABEL[k as ProspectoEstado] || k, String(v)]);
-  });
-  let cx = 18, cy = y;
-  const cardW = 56, cardH = 12;
-  cards.forEach((c, i) => {
-    doc.setDrawColor(220);
-    doc.setFillColor(248, 250, 252);
-    doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.text(c[0], cx + 3, cy + 5);
-    doc.setFont('helvetica', 'normal');
-    doc.text(c[1], cx + 3, cy + 10);
-    if ((i + 1) % 3 === 0) { cx = 18; cy += cardH + 4 } else { cx += cardW + 6 }
-  });
-  cy += cardH + 10;
-  y = Math.max(y, cy);
+  // --- (Eliminada sección Resumen semana actual y sus tarjetas) ---
   // --- Tabla de arrastre y resumen semanas anteriores ---
   if (anteriores.length) {
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY + 60;
@@ -282,6 +256,12 @@ export async function exportProspectosPDF(
       didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
     });
     y = docTyped.lastAutoTable!.finalY! + GAP;
+    // Definir función resumenPorEstado localmente
+    const resumenPorEstado = (ps: Prospecto[]) => {
+      const pe: Record<string, number> = {};
+      for (const p of ps) pe[p.estado] = (pe[p.estado] || 0) + 1;
+      return { total: ps.length, por_estado: pe }
+    };
     const rAnt = resumenPorEstado(anteriores);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
@@ -294,6 +274,7 @@ export async function exportProspectosPDF(
       cardsAnt.push([ESTADO_LABEL[k as ProspectoEstado] || k, String(v)]);
     });
     let cxAnt = 14, cyAnt = y;
+    const cardW = 56, cardH = 12;
     cardsAnt.forEach((c, i) => {
       doc.setDrawColor(220);
       doc.setFillColor(248, 250, 252);
