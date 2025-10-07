@@ -25,11 +25,12 @@ function nowMX(){
 }
 
 // Función principal de exportación
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function exportProspectosPDF(
-  doc: any, // TODO: reemplazar por jsPDF si está importado
+  doc: any,
   prospectos: Prospecto[],
-    opts: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  autoTable: (...args: unknown[]) => unknown,
+  opts: any,
+  autoTable: (...args: any[]) => any,
   titulo: string,
   logo?: string,
   logoW?: number,
@@ -37,6 +38,29 @@ export async function exportProspectosPDF(
 ) {
   // Helpers y layout deben estar definidos antes de renderProspectosPorSemana
   const generadoEn = nowMX();
+  // Si es reporte individual, adaptar el título
+    // Determinar agentes a mostrar
+    let allAgentIds: number[] = [];
+    if (opts?.allAgentIds && Array.isArray(opts.allAgentIds) && opts.allAgentIds.length > 0) {
+      allAgentIds = [...opts.allAgentIds];
+    } else {
+      const baseMap = opts?.agentesMap || {};
+      const unionIds = new Set<number>();
+      Object.keys(baseMap).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id=> unionIds.add(Number(id)));
+      if(unionIds.size===0 && prospectos.length){ prospectos.forEach(p=> unionIds.add(p.agente_id)) }
+      allAgentIds = Array.from(unionIds.values()).sort((a,b)=> a-b);
+    }
+    // Si es reporte individual, adaptar el título
+    let customTitulo = titulo;
+    if (allAgentIds.length === 1) {
+      const agId = allAgentIds[0];
+      const nombreAgente = (opts?.agentesMap && opts.agentesMap[agId]) ? opts.agentesMap[agId] : agId;
+      customTitulo = `Reporte de prospectos del agente: ${nombreAgente}`;
+    }
   const drawHeader = ()=>{
     const baseX = logo? 50:12;
     const marginRight = 8;
@@ -45,15 +69,15 @@ export async function exportProspectosPDF(
     let fontSize = 13;
     doc.setFont('helvetica','bold');
     let width = 0;
-    while(fontSize>=8){ doc.setFontSize(fontSize); width = doc.getTextWidth(titulo); if(width <= maxWidth) break; fontSize--; }
+    while(fontSize>=8){ doc.setFontSize(fontSize); width = doc.getTextWidth(customTitulo); if(width <= maxWidth) break; fontSize--; }
     let lines: string[] = [];
     if(width > maxWidth){
-      const words = titulo.split(/\s+/);
+      const words = customTitulo.split(/\s+/);
       let current = '';
       words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w; } });
       if(current) lines.push(current);
-    } else lines = [titulo];
-    while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); const words = titulo.split(/\s+/); lines=[]; let current=''; words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w; } }); if(current) lines.push(current); }
+    } else lines = [customTitulo];
+    while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); const words = customTitulo.split(/\s+/); lines=[]; let current=''; words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w; } }); if(current) lines.push(current); }
     const lineHeight = fontSize + 2;
     const dateFontSize = 8;
     const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6;
@@ -88,22 +112,6 @@ export async function exportProspectosPDF(
   };
 
 
-  // --- Unificación de lógica: general y por agente ---
-  // Determinar agentes a mostrar
-  let allAgentIds: number[] = [];
-  if (opts?.allAgentIds && Array.isArray(opts.allAgentIds) && opts.allAgentIds.length > 0) {
-    allAgentIds = [...opts.allAgentIds];
-  } else {
-    const baseMap = opts?.agentesMap || {};
-    const unionIds = new Set<number>();
-    Object.keys(baseMap).forEach(id=> unionIds.add(Number(id)));
-    if(opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id=> unionIds.add(Number(id)));
-    if(opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id=> unionIds.add(Number(id)));
-    if(opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id=> unionIds.add(Number(id)));
-    if(opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id=> unionIds.add(Number(id)));
-    if(unionIds.size===0 && prospectos.length){ prospectos.forEach(p=> unionIds.add(p.agente_id)) }
-    allAgentIds = Array.from(unionIds.values()).sort((a,b)=> a-b);
-  }
   // Si es reporte por agente, filtrar todos los datos y secciones para ese agente
   let agenteId: number | undefined = undefined;
   if (allAgentIds.length === 1) {
