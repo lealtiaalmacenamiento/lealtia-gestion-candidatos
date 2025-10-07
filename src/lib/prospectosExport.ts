@@ -190,7 +190,7 @@ export async function exportProspectosPDF(
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
   // Ajustar tamaño de la gráfica
-  const chartX = 26, chartY = y+2, chartW = 110, chartH = 28; // más compacto
+  const chartX = 26, chartY = y+2, chartW = 80, chartH = 18; // aún más compacto
   // Meta prospectos
   const meta = opts?.metaProspectos ?? null;
   const max = Math.max(...totales, meta || 1);
@@ -198,7 +198,7 @@ export async function exportProspectosPDF(
   doc.line(chartX, chartY, chartX, chartY+chartH);
   doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
   // Barras
-  const barW = 10, barGap = 6;
+  const barW = 8, barGap = 4;
   totales.forEach((val: number, i: number) => {
     const x = chartX + 8 + i * (barW + barGap);
     const barH = (val/max)*chartH;
