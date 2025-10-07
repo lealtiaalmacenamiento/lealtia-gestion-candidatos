@@ -377,6 +377,12 @@ export async function exportProspectosPDF(
     doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Glosario de abreviaturas',14,y); doc.setFont('helvetica','normal'); y += 4
     // Contenido del glosario (pares Abrev. - Significado)
     const glossary: Array<[string,string]> = [
+      ['Pendiente', 'Prospecto pendiente de gestión'],
+      ['Seguimiento', 'Prospecto en seguimiento activo'],
+      ['Con cita', 'Prospecto con cita agendada'],
+      ['Descartado', 'Prospecto descartado'],
+      ['Clientes', 'Prospectos que ya son clientes'],
+      ['Previas', 'Prospectos arrastrados de semanas anteriores'],
       ['SMNYL','Seguros Monterrey New York Life (bloques de actividad SMNYL)'],
       ['Conv P->S','Conversión de Pendiente a Seguimiento'],
       ['Desc %','Porcentaje de prospectos descartados'],
