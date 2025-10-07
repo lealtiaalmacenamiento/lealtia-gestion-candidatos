@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_LABEL } from './prospectosUI'
@@ -25,7 +26,6 @@ function nowMX(){
 }
 
 // Función principal de exportación
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function exportProspectosPDF(
   doc: any,
   prospectos: Prospecto[],
