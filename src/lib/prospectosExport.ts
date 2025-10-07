@@ -28,7 +28,7 @@ function nowMX(){
 export async function exportProspectosPDF(
   doc: any, // TODO: reemplazar por jsPDF si está importado
   prospectos: Prospecto[],
-  opts: any,
+    opts: any, // eslint-disable-line @typescript-eslint/no-explicit-any
   autoTable: (...args: unknown[]) => unknown,
   titulo: string,
   logo?: string,
