@@ -189,8 +189,10 @@ export async function exportProspectosPDF(
   // Gráfica de barras verticales y tarjetas a la derecha
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
-  // Ajustar tamaño de la gráfica
-  const chartX = 26, chartY = y+2, chartW = 80, chartH = 18; // aún más compacto
+  // Bajar la gráfica más
+  y += 18;
+  // Ajustar tamaño de la gráfica y separación
+  const chartX = 26, chartY = y+2, chartW = 80, chartH = 18;
   // Meta prospectos
   const meta = opts?.metaProspectos ?? null;
   const max = Math.max(...totales, meta || 1);
@@ -198,7 +200,7 @@ export async function exportProspectosPDF(
   doc.line(chartX, chartY, chartX, chartY+chartH);
   doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
   // Barras
-  const barW = 8, barGap = 4;
+  const barW = 8, barGap = 14; // más separación
   totales.forEach((val: number, i: number) => {
     const x = chartX + 8 + i * (barW + barGap);
     const barH = (val/max)*chartH;
@@ -207,22 +209,25 @@ export async function exportProspectosPDF(
     doc.setFontSize(8);
     doc.text(String(val), x + barW/2, chartY+chartH-barH-2, {align:'center'});
     doc.setFontSize(7);
-    doc.text(labelsGraficas[i], x + barW/2, chartY+chartH+6, {align:'center'});
+    doc.text(labelsGraficas[i], x + barW/2, chartY+chartH+8, {align:'center'});
   });
-  // Barra de meta prospectos
+  // Barra de meta prospectos (horizontal)
   if(meta){
-    const metaX = chartX + 8 + labelsGraficas.length * (barW + barGap) + 8;
-    const metaH = (meta/max)*chartH;
+    const metaY = chartY+chartH+18;
+    const metaW = (meta/max)*chartW;
+    const metaBarH = 7;
     doc.setFillColor(7,46,64); // color institucional
-    doc.rect(metaX, chartY+chartH-metaH, barW, metaH, 'F');
+    doc.rect(chartX, metaY, metaW, metaBarH, 'F');
     doc.setFont('helvetica','bold');
     doc.setFontSize(8);
     doc.setTextColor(7,46,64);
-    doc.text('Meta', metaX+barW/2, chartY+chartH+6, {align:'center'});
+    doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
     doc.setTextColor(0,0,0);
-    doc.text(String(meta), metaX+barW/2, chartY+chartH-metaH-2, {align:'center'});
+    doc.text(String(meta), chartX+metaW+8, metaY+metaBarH/2+2, {align:'left'});
+    y = metaY + metaBarH + 8;
+  } else {
+    y = chartY + chartH + 14;
   }
-  y = chartY + chartH + 14;
   // Tarjetas de resumen a la derecha de la gráfica
   const totalProspectos = totalRow[1];
   const tarjetas = [
