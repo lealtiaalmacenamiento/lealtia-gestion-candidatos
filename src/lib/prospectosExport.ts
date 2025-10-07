@@ -181,7 +181,6 @@ export async function exportProspectosPDF(
   y = docTyped.lastAutoTable!.finalY! + 8;
   // Gráfica de barras y tarjetas (dashboard, usando totales de la tabla)
   // --- Gráfica de barras ---
-  const estados = ['pendiente', 'seguimiento', 'con_cita', 'descartado', 'ya_es_cliente', 'previas'];
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
   const chartX = 26, chartY = y+2, chartW = 160, chartH = 42;
@@ -212,9 +211,9 @@ export async function exportProspectosPDF(
     ['Clientes', `${totalRow[6]} (${((totalRow[6]/totalProspectos)*100||0).toFixed(1)}%)`],
     ['Previas', `${totalRow[7]} (${((totalRow[7]/totalProspectos)*100||0).toFixed(1)}%)`],
   ];
-  let cxT = chartX+chartW+10, cyT = chartY;
+  const cxT = chartX+chartW+10; let cyT = chartY;
   const cardWT = 60, cardHT = 14;
-  tarjetas.forEach((c, i) => {
+  tarjetas.forEach((c) => {
     doc.setDrawColor(220);
     doc.setFillColor(248, 250, 252);
     doc.roundedRect(cxT, cyT, cardWT, cardHT, 2, 2, 'FD');
