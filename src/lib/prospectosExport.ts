@@ -219,6 +219,13 @@ export async function exportProspectosPDF(
       actual = prospectos;
       anteriores = []
     }
+    // Si es reporte por agente, filtrar solo ese agente en todas las secciones
+    let agenteId: number | undefined = undefined;
+    if (opts?.allAgentIds && opts.allAgentIds.length === 1) {
+      agenteId = opts.allAgentIds[0];
+      actual = actual.filter(p => p.agente_id === agenteId);
+      anteriores = anteriores.filter(p => p.agente_id === agenteId);
+    }
     const metaBase = opts?.metaProspectos ?? 30;
     const arrastre = anteriores.length;
     const metaTotal = metaBase + arrastre;
@@ -254,8 +261,18 @@ export async function exportProspectosPDF(
     doc.setFontSize(9);
     const head = [...(opts?.incluirId ? ['ID'] : []), 'Agente', 'Nombre', 'Teléfono', 'Estado', 'Notas'];
     // Para cada agente, si tiene prospectos en la semana actual, los muestra; si no, muestra fila vacía
-  const body: Array<(string|number)[]> = [];
-    if (allAgentIds.length > 0) {
+    const body: Array<(string|number)[]> = [];
+    if (agenteId !== undefined) {
+      // Solo el agente seleccionado
+      const agPros = actual;
+      if(agPros.length){
+        for(const p of agPros){
+          body.push([...(opts?.incluirId ? [p.id] : []), agentesMap[agenteId] || agenteId, p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
+        }
+      } else {
+        body.push([...(opts?.incluirId ? [''] : []), agentesMap[agenteId] || agenteId, '', '', '', '']);
+      }
+    } else if (allAgentIds.length > 0) {
       for(const agId of allAgentIds){
         const agPros = actual.filter(p => p.agente_id === agId);
         if(agPros.length){
@@ -263,12 +280,10 @@ export async function exportProspectosPDF(
             body.push([...(opts?.incluirId ? [p.id] : []), agentesMap[agId] || agId, p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]);
           }
         } else {
-          // Fila vacía para agente sin prospectos
           body.push([...(opts?.incluirId ? [''] : []), agentesMap[agId] || agId, '', '', '', '']);
         }
       }
     } else {
-      // Si no hay agentes, muestra una fila genérica
       body.push([...(opts?.incluirId ? [''] : []), 'Sin agentes', '', '', '', '']);
     }
     autoTable(doc, {
