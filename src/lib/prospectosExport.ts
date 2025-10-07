@@ -100,15 +100,17 @@ export async function exportProspectosPDF(
   const SECTION_GAP = 14;
   const docTyped = doc as unknown as JsPDFWithAutoTable;
   const PAGE_H: number = docTyped.internal.pageSize.getHeight();
-  const BOTTOM_MARGIN = 14;
+  const TOP_MARGIN = headerHeight + 6; // espacio para header
+  const BOTTOM_MARGIN = 22; // margen inferior más amplio para footer
   const ensure = (currentY:number, required:number) => {
     const limit = PAGE_H - BOTTOM_MARGIN;
     if (currentY + required > limit) {
       doc.addPage();
       const hdr = drawHeader();
-      return hdr.contentStartY;
+      return Math.max(hdr.contentStartY, TOP_MARGIN);
     }
-    return currentY;
+    // Asegura que nunca se dibuje encima del header
+    return Math.max(currentY, TOP_MARGIN);
   };
 
 
@@ -177,8 +179,52 @@ export async function exportProspectosPDF(
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
   });
   y = docTyped.lastAutoTable!.finalY! + 8;
-  // Gráfica de barras y tarjetas (como en el dashboard)
-  // ... (el resto del código de gráfica y tarjetas ya está implementado más abajo y se ejecutará normalmente)
+  // Gráfica de barras y tarjetas (dashboard, usando totales de la tabla)
+  // --- Gráfica de barras ---
+  const estados = ['pendiente', 'seguimiento', 'con_cita', 'descartado', 'ya_es_cliente', 'previas'];
+  const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
+  const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
+  const chartX = 26, chartY = y+2, chartW = 160, chartH = 42;
+  const max = Math.max(...totales,1);
+  doc.setDrawColor(0); doc.setLineWidth(0.2);
+  doc.line(chartX, chartY, chartX, chartY+chartH);
+  doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
+  let prevX: number | undefined = undefined, prevY: number | undefined = undefined;
+  totales.forEach((val: number, i: number) => {
+    const x = chartX + (chartW/(totales.length-1||1))*i;
+    const yPt = chartY + chartH - (val/max)*chartH;
+    if(prevX!==undefined){ doc.line(prevX, prevY!, x, yPt); }
+    doc.setFillColor(0,0,0); try { if(typeof (docTyped as JsPDFWithAutoTable).circle === 'function'){ (docTyped as JsPDFWithAutoTable).circle!(x,yPt,1.2,'F'); } } catch { /* ignore circle error */ }
+    prevX = x; prevY = yPt;
+  });
+  doc.setFontSize(7);
+  labelsGraficas.forEach((l: string, i: number) => { const x = chartX + (chartW/(labelsGraficas.length-1||1))*i; doc.text(l, x-3, chartY+chartH+6); });
+  doc.setFontSize(8); doc.text(String(max), chartX-6, chartY+4);
+  y = chartY + chartH + 14;
+  // --- Tarjetas de resumen ---
+  const totalProspectos = totalRow[1];
+  const tarjetas = [
+    ['Total', `${totalProspectos} (100.0%)`],
+    ['Pendiente', `${totalRow[2]} (${((totalRow[2]/totalProspectos)*100||0).toFixed(1)}%)`],
+    ['Seguimiento', `${totalRow[3]} (${((totalRow[3]/totalProspectos)*100||0).toFixed(1)}%)`],
+    ['Con cita', `${totalRow[4]} (${((totalRow[4]/totalProspectos)*100||0).toFixed(1)}%)`],
+    ['Descartado', `${totalRow[5]} (${((totalRow[5]/totalProspectos)*100||0).toFixed(1)}%)`],
+    ['Clientes', `${totalRow[6]} (${((totalRow[6]/totalProspectos)*100||0).toFixed(1)}%)`],
+    ['Previas', `${totalRow[7]} (${((totalRow[7]/totalProspectos)*100||0).toFixed(1)}%)`],
+  ];
+  let cxT = chartX+chartW+10, cyT = chartY;
+  const cardWT = 60, cardHT = 14;
+  tarjetas.forEach((c, i) => {
+    doc.setDrawColor(220);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(cxT, cyT, cardWT, cardHT, 2, 2, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.text(c[0], cxT + 3, cyT + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.text(c[1], cxT + 3, cyT + 12);
+    cyT += cardHT + 4;
+  });
+  y = Math.max(y, cyT);
   // --- Resumen semana actual ---
   const resumenPorEstado = (ps: Prospecto[]) => {
     const pe: Record<string, number> = {};
@@ -267,15 +313,20 @@ export async function exportProspectosPDF(
   if (opts?.perAgentExtended && allAgentIds.length > 0) {
     y = ensure(y, 10);
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
-    const head = ['Agente','Conv P->S','Desc %','Proy semana'];
-    const body: Array<[string|number, string, string, number|null]> = [];
+    const head = ['Agente','Conv P->S','Desc %','% Cliente','Proy semana'];
+    const body: Array<[string|number, string, string, string, number|null]> = [];
     for(const agId of allAgentIds){
       const m = opts.perAgentExtended[agId];
       const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
       const conv = m ? (m.conversionPendienteSeguimiento||0)*100 : 0;
       const desc = m ? (m.ratioDescartado||0)*100 : 0;
       const proy = m ? m.forecastSemanaTotal ?? null : null;
-      body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', proy]);
+      // Calcular % Cliente
+      const agPros = prospectos.filter((p: Prospecto) => p.agente_id === agId);
+      const total = agPros.length;
+      const clientes = agPros.filter((p: Prospecto) => p.estado === 'ya_es_cliente').length;
+      const pctCliente = total > 0 ? ((clientes/total)*100).toFixed(1)+'%' : '0.0%';
+      body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', pctCliente, proy]);
     }
     autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
     y = (docTyped.lastAutoTable?.finalY || y) + 8;
@@ -351,13 +402,18 @@ export async function exportProspectosPDF(
     y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
     y = ensure(y, 12)
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4
-    const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
-    const body: Array<[string|number, number, number, number, number, number, number, number, number]> = []
+    const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.','A. a cliente']
+    const body: Array<[string|number, number, number, number, number, number, number, number, number, number]> = []
     for(const agId of allAgentIds){
       const act = opts.perAgentActivity[agId];
       const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
       const d = act?.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 }
-      body.push([nombre, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones])
+      // Calcular cuántos prospectos están en estado 'ya_es_cliente' en la semana actual
+      let aCliente = 0;
+      if (opts?.perAgentActivity[agId]?.prospectosSemana) {
+        aCliente = opts.perAgentActivity[agId].prospectosSemana.filter((p: Prospecto) => p.estado === 'ya_es_cliente').length;
+      }
+      body.push([nombre, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones, aCliente])
     }
     autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
   }
@@ -413,9 +469,10 @@ export async function exportProspectosPDF(
   // Footer with pagination
   const pageCount: number = docTyped.internal.getNumberOfPages();
   for(let i=1;i<=pageCount;i++){
-    docTyped.setPage(i)
-    // Footer únicamente (el header ya se dibuja por página en las tablas y cuando se crean páginas manuales)
-    docTyped.setFontSize(7); docTyped.setTextColor(120); docTyped.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); docTyped.text('Lealtia',14,292); docTyped.setTextColor(0,0,0)
+  docTyped.setPage(i)
+  // Footer únicamente (el header ya se dibuja por página en las tablas y cuando se crean páginas manuales)
+  const footerY = PAGE_H - 8;
+  docTyped.setFontSize(7); docTyped.setTextColor(120); docTyped.text(`Página ${i}/${pageCount}`, 200, footerY, {align:'right'}); docTyped.text('Lealtia',14,footerY); docTyped.setTextColor(0,0,0)
   }
   // Nombre de archivo dinámico
   const desired = opts?.filename || titulo.replace(/\s+/g,'_').toLowerCase()+'.pdf'
