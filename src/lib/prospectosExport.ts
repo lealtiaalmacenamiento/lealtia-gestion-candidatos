@@ -191,7 +191,7 @@ export async function exportProspectosPDF(
   const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
   // Bajar la gráfica más
   y += 18;
-  // Ajustar tamaño de la gráfica y separación
+  // Área delimitada para gráfica y meta (máx 120mm de ancho)
   const chartX = 26, chartY = y+2, chartW = 80, chartH = 18;
   // Meta prospectos
   const meta = opts?.metaProspectos ?? null;
@@ -200,9 +200,11 @@ export async function exportProspectosPDF(
   doc.line(chartX, chartY, chartX, chartY+chartH);
   doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
   // Barras
-  const barW = 8, barGap = 14; // más separación
+  const barW = 8;
+  // Calcular separación para que todas las barras y etiquetas quepan en chartW
+  const barGap = (chartW - (labelsGraficas.length * barW)) / (labelsGraficas.length - 1);
   totales.forEach((val: number, i: number) => {
-    const x = chartX + 8 + i * (barW + barGap);
+    const x = chartX + i * (barW + barGap);
     const barH = (val/max)*chartH;
     doc.setFillColor(60, 60, 60);
     doc.rect(x, chartY+chartH-barH, barW, barH, 'F');
@@ -211,7 +213,7 @@ export async function exportProspectosPDF(
     doc.setFontSize(7);
     doc.text(labelsGraficas[i], x + barW/2, chartY+chartH+8, {align:'center'});
   });
-  // Barra de meta prospectos (horizontal)
+  // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
   if(meta){
     const metaY = chartY+chartH+18;
     const metaW = (meta/max)*chartW;
