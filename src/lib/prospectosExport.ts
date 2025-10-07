@@ -442,14 +442,10 @@ export async function exportProspectosPDF(
             doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, thisY+9);
             lastCardY = thisY+cardH;
           });
-          const metaBase = opts?.metaProspectos || 30;
-          const arrastre = totals.previas || 0;
-          const metaTotal = metaBase + arrastre;
+          const metaTotal = (opts?.metaProspectos || 30) + (totals.previas || 0);
           const metaY = chartY+chartH+18;
           doc.setFont('helvetica','normal'); doc.setFontSize(8);
-          let metaTxt = `Meta prospectos: ${metaBase}`;
-          if(arrastre>0) metaTxt += ` + ${arrastre} = ${metaTotal}`;
-          metaTxt += `   (${totals.total}/${metaTotal})`;
+          const metaTxt = `Meta prospectos: ${metaTotal}   (${totals.total}/${metaTotal})`;
           doc.text(metaTxt, chartX, metaY);
           doc.setFillColor(7,46,64);
           doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/metaTotal)), 4, 'F');
@@ -519,24 +515,22 @@ export async function exportProspectosPDF(
           labels.forEach((l,i)=>{ const x = chartX + (chartW/(labels.length-1||1))*i; doc.text(l, x-3, chartY+chartH+6); });
           doc.setFontSize(8); doc.text(String(max), chartX-6, chartY+4);
           y = chartY + chartH + 14;
-          autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:[['Total', ...aggregated.map(n=>String(n)), String(aggregated.reduce((a,b)=>a+b,0))]], styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+          // Mostrar tabla por usuario
+          const userBody: Array<(string|number)[]> = [];
+          for(const agId of opts.allAgentIds){
+            const act = opts.perAgentActivity[agId];
+            const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
+            if(act && act.counts){
+              userBody.push([nombre, ...act.counts, act.counts.reduce((a,b)=>a+b,0)]);
+            } else {
+              userBody.push([nombre, ...labels.map(()=>0), 0]);
+            }
+          }
+          autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:userBody, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
           y = (docTyped.lastAutoTable?.finalY || y) + 8;
         }
       }
-      // --- Acciones específicas en la semana (detalles por usuario) ---
-      if(opts?.perAgentActivity){
-        y = ensure(y, 12);
-        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4;
-        const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.'];
-        const body: Array<[string|number, number, number, number, number, number, number, number, number]> = [];
-        for(const [agId, act] of Object.entries(opts.perAgentActivity)){
-          const email = act.email || (opts.agentesMap||{})[Number(agId)] || agId;
-          const d = act.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 };
-          body.push([email, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones]);
-        }
-        autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
-        y = (docTyped.lastAutoTable?.finalY || y) + 8;
-      }
+      // ...eliminado duplicado de acciones específicas en la semana...
       // ...eliminado duplicado de métricas avanzadas por agente...
       // ...eliminado duplicado de planificación semanal (resumen por agente)...
       // ...eliminado duplicado de actividad total...
@@ -549,9 +543,9 @@ export async function exportProspectosPDF(
         const body: Array<[string|number, number, number, number, number, number, number, number, number]> = []
         for(const agId of opts.allAgentIds){
           const act = opts.perAgentActivity[agId];
-          const email = act?.email || (opts.agentesMap||{})[Number(agId)] || agId
+          const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
           const d = act?.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 }
-          body.push([email, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones])
+          body.push([nombre, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones])
         }
         autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
       }
