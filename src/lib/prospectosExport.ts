@@ -372,18 +372,15 @@ export async function exportProspectosPDF(
       // y global para todas las secciones agrupadas
       let y = contentStartY;
       // --- Resumen por agente (tabla, tarjetas, gráfico) ---
-      if(opts?.perAgentExtended){
+      if(opts?.perAgentExtended && opts?.allAgentIds){
         y = ensure(y, 12);
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen por agente',14,y); y+=4;
         // Tabla principal
         const body: Array<[string|number, number, number, number, number, number, number, number]> = [];
         const totals = { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, clientes:0, previas:0 };
         const grouped = prospectos.reduce<Record<number, Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{});
-        // Asegura que todos los agentes del agentesMap estén presentes, aunque no tengan prospectos
-        const allAgentIds = Object.keys(agentesMap).map(Number);
-        for(const agId of allAgentIds){
+        for(const agId of opts.allAgentIds){
           const list = grouped[agId] || [];
-          if(!(agId in opts.perAgentExtended)) continue;
           let pendiente=0, seguimiento=0, con_cita=0, descartado=0, clientes=0;
           for(const p of list){
             if(p.estado==='pendiente') pendiente++;
@@ -455,41 +452,47 @@ export async function exportProspectosPDF(
         } catch { /* ignore chart errors */ }
       }
       // --- Métricas avanzadas (por agente) ---
-      if(opts?.perAgentExtended){
+      if(opts?.perAgentExtended && opts?.allAgentIds){
         y = ensure(y, 10);
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
         const head = ['Agente','Conv P->S','Desc %','Proy semana'];
         const body: Array<[string|number, string, string, number|null]> = [];
-        for(const [agId,m] of Object.entries(opts.perAgentExtended)){
+        for(const agId of opts.allAgentIds){
+          const m = opts.perAgentExtended[agId];
           const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
-          const conv = (m.conversionPendienteSeguimiento||0)*100;
-          const desc = (m.ratioDescartado||0)*100;
-          const proy = m.forecastSemanaTotal ?? null;
+          const conv = m ? (m.conversionPendienteSeguimiento||0)*100 : 0;
+          const desc = m ? (m.ratioDescartado||0)*100 : 0;
+          const proy = m ? m.forecastSemanaTotal ?? null : null;
           body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', proy]);
         }
         autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
         y = (docTyped.lastAutoTable?.finalY || y) + 8;
       }
       // --- Planificación semanal resumen (por agente) ---
-      if(opts?.planningSummaries){
+      if(opts?.planningSummaries && opts?.allAgentIds){
         y = ensure(y, 10);
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal (resumen por agente)',14,y); y+=4;
         const headPlan = ['Agente','Prospección','SMNYL','Total'];
         const body: Array<[string|number, number, number, number]> = [];
-        for(const [agId, sum] of Object.entries(opts.planningSummaries)){
+        for(const agId of opts.allAgentIds){
+          const sum = opts.planningSummaries[agId] || { prospeccion:0, smnyl:0, total:0 };
           body.push([(opts.agentesMap||{})[Number(agId)]||agId, sum.prospeccion, sum.smnyl, sum.total]);
         }
         autoTable(doc,{ startY:y, head:[headPlan], body, styles:{fontSize:7,cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[245,247,248] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
         y = (docTyped.lastAutoTable?.finalY || y) + 8;
       }
       // --- Actividad de la semana (por usuario) gráfica simple línea + tabla ---
-      if(opts?.perAgentActivity){
-        const activities = opts.perAgentActivity;
+      if(opts?.perAgentActivity && opts?.allAgentIds){
+        // Unificar labels
         let labels: string[] = [];
-        const aggregated: number[] = [];
-        for(const v of Object.values(activities)){
-          if(!labels.length) labels = v.labels;
-          v.counts.forEach((c,i)=>{ aggregated[i] = (aggregated[i]||0)+c });
+        for(const agId of opts.allAgentIds){
+          const act = opts.perAgentActivity[agId];
+          if(act && act.labels && act.labels.length > 0){ labels = act.labels; break; }
+        }
+        const aggregated: number[] = Array(labels.length).fill(0);
+        for(const agId of opts.allAgentIds){
+          const act = opts.perAgentActivity[agId];
+          if(act && act.counts){ act.counts.forEach((c,i)=>{ aggregated[i] = (aggregated[i]||0)+c }); }
         }
         if(labels.length){
           y = ensure(y, 40);
@@ -599,16 +602,16 @@ export async function exportProspectosPDF(
         }
       }
       // Acciones específicas en la semana (detalles por usuario)
-      if(opts?.perAgentActivity){
+      if(opts?.perAgentActivity && opts?.allAgentIds){
         let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
         y = ensure(y, 12)
         doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4
         const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
-  // Filas: [Usuario, Altas P., Cambios est., Notas P., Edit. planif., Altas cliente, Modif. cliente, Altas pól., Modif. pól.]
-  const body: Array<[string|number, number, number, number, number, number, number, number, number]> = []
-        for(const [agId, act] of Object.entries(opts.perAgentActivity)){
-          const email = act.email || (opts.agentesMap||{})[Number(agId)] || agId
-          const d = act.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 }
+        const body: Array<[string|number, number, number, number, number, number, number, number, number]> = []
+        for(const agId of opts.allAgentIds){
+          const act = opts.perAgentActivity[agId];
+          const email = act?.email || (opts.agentesMap||{})[Number(agId)] || agId
+          const d = act?.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 }
           body.push([email, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones])
         }
         autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
