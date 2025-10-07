@@ -12,7 +12,6 @@ import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import { exportProspectosPDF } from '@/lib/prospectosExport'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import Logolealtia from 'public/Logolealtia.png'
 import { computeExtendedMetrics, computePreviousWeekDelta } from '@/lib/prospectosMetrics'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
@@ -539,7 +538,7 @@ export default function ProspectosPage(){
   const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{})
   const allAgentIds = agentes.map(a=>a.id);
   const doc = new jsPDF();
-  const logo = (typeof Logolealtia === 'string') ? Logolealtia : (Logolealtia?.src || '');
+  const logo = '/Logolealtia.png';
   const logoW = 32;
   const logoH = 16;
   await exportProspectosPDF(
@@ -618,7 +617,7 @@ export default function ProspectosPage(){
     } catch {/*ignore*/}
   // Exportar sólo la semana actual filtrada y sin 'ya_es_cliente'
   const doc = new jsPDF()
-  const logo = (typeof Logolealtia === 'string') ? Logolealtia : (Logolealtia?.src || '')
+  const logo = '/Logolealtia.png'
   const logoW = 32
   const logoH = 16
   await exportProspectosPDF(
@@ -700,7 +699,7 @@ export default function ProspectosPage(){
                 }
               } catch { /* ignore */ }
               const doc = new jsPDF();
-              const logo = (typeof Logolealtia === 'string') ? Logolealtia : (Logolealtia?.src || '');
+              const logo = '/Logolealtia.png';
               const logoW = 32;
               const logoH = 16;
               await exportProspectosPDF(
