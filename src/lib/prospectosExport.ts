@@ -442,12 +442,17 @@ export async function exportProspectosPDF(
             doc.text(`${c.value} (${c.pct.toFixed(1)}%)`, cardX+3, thisY+9);
             lastCardY = thisY+cardH;
           });
-          const meta = opts?.metaProspectos || 30;
+          const metaBase = opts?.metaProspectos || 30;
+          const arrastre = totals.previas || 0;
+          const metaTotal = metaBase + arrastre;
           const metaY = chartY+chartH+18;
           doc.setFont('helvetica','normal'); doc.setFontSize(8);
-          doc.text(`Meta prospectos: ${totals.total}/${meta}`, chartX, metaY);
+          let metaTxt = `Meta prospectos: ${metaBase}`;
+          if(arrastre>0) metaTxt += ` + ${arrastre} = ${metaTotal}`;
+          metaTxt += `   (${totals.total}/${metaTotal})`;
+          doc.text(metaTxt, chartX, metaY);
           doc.setFillColor(7,46,64);
-          doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/meta)), 4, 'F');
+          doc.rect(chartX, metaY+2, Math.min(60,60*(totals.total/metaTotal)), 4, 'F');
           y = Math.max(metaY+6, lastCardY+8);
         } catch { /* ignore chart errors */ }
       }
