@@ -54,6 +54,7 @@ export async function exportProspectosPDF(
   resumen: { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean },
   titulo: string,
   opts?: {
+  allAgentIds?: number[];
     incluirId?: boolean;
     agrupadoPorAgente?: boolean;
     agentesMap?: Record<number, string>;
@@ -227,18 +228,21 @@ export async function exportProspectosPDF(
       return { total: ps.length, por_estado: pe }
     };
     // Mostrar todos los agentes aunque no tengan prospectos en la semana actual
-  // Construir lista completa de agentes desde múltiples fuentes para garantizar inclusión
+  // Usar allAgentIds explícito si está presente (garantiza todos los agentes del catálogo)
   const baseMap = opts?.agentesMap || {};
-  const unionIds = new Set<number>();
-  Object.keys(baseMap).forEach(id=> unionIds.add(Number(id)));
-  // Fuentes adicionales: perAgentExtended, perAgentActivity, planningSummaries, perAgentPrevCounts
-  if(opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id=> unionIds.add(Number(id)));
-  if(opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id=> unionIds.add(Number(id)));
-  if(opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id=> unionIds.add(Number(id)));
-  if(opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id=> unionIds.add(Number(id)));
-  // Si aún no hay IDs pero sí hay prospectos, tomar de los prospectos
-  if(unionIds.size===0 && prospectos.length){ prospectos.forEach(p=> unionIds.add(p.agente_id)) }
-  const allAgentIds = Array.from(unionIds.values()).sort((a,b)=> a-b);
+  let allAgentIds: number[];
+  if (opts?.allAgentIds && Array.isArray(opts.allAgentIds) && opts.allAgentIds.length > 0) {
+    allAgentIds = [...opts.allAgentIds];
+  } else {
+    const unionIds = new Set<number>();
+    Object.keys(baseMap).forEach(id=> unionIds.add(Number(id)));
+    if(opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id=> unionIds.add(Number(id)));
+    if(opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id=> unionIds.add(Number(id)));
+    if(opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id=> unionIds.add(Number(id)));
+    if(opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id=> unionIds.add(Number(id)));
+    if(unionIds.size===0 && prospectos.length){ prospectos.forEach(p=> unionIds.add(p.agente_id)) }
+    allAgentIds = Array.from(unionIds.values()).sort((a,b)=> a-b);
+  }
   const agentesMap = baseMap;
     let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
     y = ensure(y, 10);
