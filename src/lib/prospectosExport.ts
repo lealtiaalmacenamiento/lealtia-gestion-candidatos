@@ -537,75 +537,9 @@ export async function exportProspectosPDF(
         autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
         y = (docTyped.lastAutoTable?.finalY || y) + 8;
       }
-      // Métricas avanzadas (por agente) - conversiones / descartes / proyección semana
-      if(opts?.perAgentExtended){
-        let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
-        y = ensure(y, 10)
-        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4
-        const head = ['Agente','Conv P->S','Desc %','Proy semana']
-        const body: Array<[string|number, string, string, number|null]> = []
-        for(const [agId,m] of Object.entries(opts.perAgentExtended)){
-          const nombre = (opts.agentesMap||{})[Number(agId)] || agId
-          const conv = (m.conversionPendienteSeguimiento||0)*100
-          const desc = (m.ratioDescartado||0)*100
-          const proy = m.forecastSemanaTotal ?? null
-          body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', proy])
-        }
-        autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
-      }
-      // Planificación semanal resumen (por agente)
-      if(opts?.planningSummaries){
-        let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
-        y = ensure(y, 10)
-        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal (resumen por agente)',14,y); y+=4
-        const headPlan = ['Agente','Prospección','SMNYL','Total']
-  // Filas: [Agente, Prospección, SMNYL, Total]
-  const body: Array<[string|number, number, number, number]> = []
-        for(const [agId, sum] of Object.entries(opts.planningSummaries)){
-          body.push([(opts.agentesMap||{})[Number(agId)]||agId, sum.prospeccion, sum.smnyl, sum.total])
-        }
-        autoTable(doc,{ startY:y, head:[headPlan], body, styles:{fontSize:7,cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[245,247,248] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
-      }
-      // Actividad de la semana (por usuario) gráfica simple línea + tabla
-      if(opts?.perAgentActivity){
-        const activities = opts.perAgentActivity
-        // Construir serie total por día sumando counts
-        let labels: string[] = []
-        const aggregated: number[] = []
-        for(const v of Object.values(activities)){
-          if(!labels.length) labels = v.labels
-          v.counts.forEach((c,i)=>{ aggregated[i] = (aggregated[i]||0)+c })
-        }
-        if(labels.length){
-          let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
-          y = ensure(y, 40)
-          doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4
-          // Dibujar eje simple
-          const chartX = 26, chartY = y+2, chartW = 160, chartH = 42
-          const max = Math.max(...aggregated,1)
-          // Ejes
-          doc.setDrawColor(0); doc.setLineWidth(0.2)
-          doc.line(chartX, chartY, chartX, chartY+chartH)
-          doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH)
-          // Puntos y línea
-          let prevX:number|undefined, prevY:number|undefined
-          aggregated.forEach((val,i)=>{
-            const x = chartX + (chartW/(aggregated.length-1||1))*i
-            const yPt = chartY + chartH - (val/max)*chartH
-            if(prevX!==undefined){ doc.line(prevX, prevY!, x, yPt) }
-            doc.setFillColor(0,0,0); try { if(typeof (docTyped as JsPDFWithAutoTable).circle === 'function'){ (docTyped as JsPDFWithAutoTable).circle!(x,yPt,1.2,'F') } } catch { /* ignore circle error */ }
-            prevX = x; prevY = yPt
-          })
-          // Etiquetas X
-          doc.setFontSize(7)
-          labels.forEach((l,i)=>{ const x = chartX + (chartW/(labels.length-1||1))*i; doc.text(l, x-3, chartY+chartH+6) })
-          // Max label
-          doc.setFontSize(8); doc.text(String(max), chartX-6, chartY+4)
-          y = chartY + chartH + 14
-          // Tabla resumen de actividad agregada por día
-          autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:[['Total', ...aggregated.map(n=>String(n)), String(aggregated.reduce((a,b)=>a+b,0))]], styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
-        }
-      }
+      // ...eliminado duplicado de métricas avanzadas por agente...
+      // ...eliminado duplicado de planificación semanal (resumen por agente)...
+      // ...eliminado duplicado de actividad total...
       // Acciones específicas en la semana (detalles por usuario)
       if(opts?.perAgentActivity && opts?.allAgentIds){
         let y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
