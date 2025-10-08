@@ -164,21 +164,22 @@ export async function exportProspectosPDF(
   for(const agId of allAgentIds){
     const nombre = agentesMap[agId] || agId;
     const agPros = prospectos.filter(p => p.agente_id === agId);
-    const total = agPros.length;
+    const previas = opts?.perAgentPrevCounts?.[agId] ?? 0;
+    // Total debe contar todos los prospectos en cualquier estado + previas
+    const total = agPros.length + previas;
     const pendiente = agPros.filter(p => p.estado === 'pendiente').length;
     const seguimiento = agPros.filter(p => p.estado === 'seguimiento').length;
     const conCita = agPros.filter(p => p.estado === 'con_cita').length;
     const descartado = agPros.filter(p => p.estado === 'descartado').length;
     const clientes = agPros.filter(p => p.estado === 'ya_es_cliente').length;
-    const previas = opts?.perAgentPrevCounts?.[agId] ?? 0;
     resumenBody.push([nombre, total, pendiente, seguimiento, conCita, descartado, clientes, previas]);
-  totalRow[1] = (totalRow[1] as number) + total;
-  totalRow[2] = (totalRow[2] as number) + pendiente;
-  totalRow[3] = (totalRow[3] as number) + seguimiento;
-  totalRow[4] = (totalRow[4] as number) + conCita;
-  totalRow[5] = (totalRow[5] as number) + descartado;
-  totalRow[6] = (totalRow[6] as number) + clientes;
-  totalRow[7] = (totalRow[7] as number) + previas;
+    totalRow[1] = (totalRow[1] as number) + total;
+    totalRow[2] = (totalRow[2] as number) + pendiente;
+    totalRow[3] = (totalRow[3] as number) + seguimiento;
+    totalRow[4] = (totalRow[4] as number) + conCita;
+    totalRow[5] = (totalRow[5] as number) + descartado;
+    totalRow[6] = (totalRow[6] as number) + clientes;
+    totalRow[7] = (totalRow[7] as number) + previas;
   }
   resumenBody.push(totalRow);
   autoTable(doc, {
@@ -191,6 +192,13 @@ export async function exportProspectosPDF(
     theme: 'grid',
     margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
+    didDrawCell: (data: any) => {
+      // Si es la fila TOTAL, aplicar color de fondo especial
+      if (data.row.index === resumenBody.length - 1) {
+        data.cell.styles.fillColor = [220, 237, 200]; // verde claro
+        data.cell.styles.fontStyle = 'bold';
+      }
+    },
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
   });
   y = docTyped.lastAutoTable!.finalY! + 8;
