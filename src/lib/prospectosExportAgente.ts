@@ -6,10 +6,20 @@ import autoTable from 'jspdf-autotable'
  * El layout es compacto y solo incluye la información del agente seleccionado.
  * No afecta el reporte general.
  */
+// Usar tipo extendido para permitir propiedades agregadas por plugins
+type JsPDFWithAutoTable = import('jspdf').jsPDF & { lastAutoTable?: { finalY: number }, internal?: unknown };
+
+interface ExportAgenteOpts {
+  agenteId: number | string
+  agentesMap: Record<number|string, string>
+  perAgentPrevCounts?: Record<number|string, number>
+  filename?: string
+}
+
 export async function exportProspectosPDFAgente(
-  doc: any,
+  doc: JsPDFWithAutoTable,
   prospectos: Prospecto[],
-  opts: any,
+  opts: ExportAgenteOpts,
   autoTableLib: typeof autoTable,
   titulo: string,
   logo?: string,
@@ -54,7 +64,7 @@ export async function exportProspectosPDFAgente(
     margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
   });
-  y = doc.lastAutoTable.finalY + 10;
+  y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : y;
 
   // Tabla de prospectos de la semana
   doc.setFont('helvetica','bold');
@@ -73,12 +83,16 @@ export async function exportProspectosPDFAgente(
     theme: 'grid',
     margin: { left: 14, right: 14 },
   });
-  y = doc.lastAutoTable.finalY + 10;
+  y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : y;
 
   // Puedes agregar más secciones aquí según lo que necesites mostrar para el agente
 
   // Footer
-  const pageCount: number = doc.internal.getNumberOfPages();
+  // Acceso seguro a getNumberOfPages para evitar error de tipado
+  let pageCount = 1;
+  if (doc.internal && typeof doc.internal === 'object' && 'getNumberOfPages' in doc.internal && typeof (doc.internal as { getNumberOfPages?: unknown }).getNumberOfPages === 'function') {
+    pageCount = (doc.internal as { getNumberOfPages: () => number }).getNumberOfPages();
+  }
   for(let i=1;i<=pageCount;i++){
     doc.setPage(i);
     doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 290, {align:'right'}); doc.text('Lealtia',14,290); doc.setTextColor(0,0,0)

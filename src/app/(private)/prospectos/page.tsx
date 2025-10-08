@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { getSupabaseClient } from '@/lib/supabaseClient'
 import AppModal from '@/components/ui/AppModal'
-import type { BloquePlanificacion } from '@/types'
+// import type { BloquePlanificacion } from '@/types'
 import Notification from '@/components/ui/Notification'
 import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
@@ -390,7 +390,7 @@ export default function ProspectosPage(){
         <span className="text-muted small">Este selector también asigna el agente al crear un prospecto.</span>
   <button type="button" disabled={!prospectos.length} className="btn btn-outline-secondary btn-sm" onClick={async ()=>{
     const agrupado = superuser && !agenteId
-    const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
+  // const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
     const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })()
     const agName = agrupado? 'Todos' : (agentes.find(a=> String(a.id)===agenteId)?.nombre || agentes.find(a=> String(a.id)===agenteId)?.email || '')
     const general = agrupado
