@@ -17,6 +17,16 @@ interface ExportAgenteOpts {
   perAgentPrevCounts?: Record<number|string, number>
   filename?: string
   metaProspectos?: number
+  semanaActual?: { anio: number, semana_iso: number }
+  perAgentExtended?: Record<number|string, {
+    conversionPendienteSeguimiento: number
+    ratioDescartado: number
+    forecastSemanaTotal?: number | null
+  }>
+  planningSummaries?: Record<number|string, { prospeccion: number, smnyl: number, total: number }>
+  perAgentActivity?: Record<number|string, {
+    labels?: string[], counts?: number[], breakdown?: Record<string, number>, details?: Record<string, number>
+  }>
 }
 
 // (definición duplicada eliminada)
@@ -185,8 +195,198 @@ export async function exportProspectosPDFAgente(
   });
   y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
 
-  // --- Tabla de arrastre/semanas anteriores ---
-  // ...existing code for arrastre table and summary cards...
+
+  // --- Prospectos de semanas previas ---
+  // Lógica igual al front: semanas previas = mismo año, semana_iso < semana seleccionada, y estado activo
+  const semanaActiva = opts?.semanaActual?.semana_iso;
+  const anioActivo = opts?.semanaActual?.anio;
+  const prevPros = agPros.filter(p =>
+    typeof p.semana_iso === 'number' &&
+    typeof p.anio === 'number' &&
+    anioActivo && semanaActiva &&
+    p.anio === anioActivo &&
+    p.semana_iso < semanaActiva &&
+    ['pendiente','seguimiento','con_cita'].includes(p.estado)
+  );
+  if (prevPros.length > 0) {
+    y += GAP;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.text('Prospectos de semanas previas', 14, y);
+    y += 4;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    autoTableLib(doc, {
+      startY: y,
+      head: [['Nombre','Teléfono','Estado','Notas','Semana']],
+      body: prevPros.map(p => [
+        p.nombre,
+        p.telefono || '',
+        p.estado,
+        (p.notas || '').slice(0, 120),
+        `Semana ${p.semana_iso} (${p.anio})`
+      ]),
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+      alternateRowStyles: { fillColor: [245, 247, 248] },
+      theme: 'grid',
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
+  }
+
+  // --- Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área) ---
+  // (Ya implementada en la sección de gráfica/meta arriba)
+
+
+  // --- Métricas avanzadas ---
+  if (opts?.perAgentExtended && opts.perAgentExtended[agenteId]) {
+    y += GAP;
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas',14,y); y+=4;
+    const m = opts.perAgentExtended[agenteId];
+    const conv = m ? (m.conversionPendienteSeguimiento||0)*100 : 0;
+    const desc = m ? (m.ratioDescartado||0)*100 : 0;
+    const pctCliente = m && total ? (clientes/total)*100 : 0;
+    const proy = m ? m.forecastSemanaTotal ?? null : null;
+    autoTableLib(doc, {
+      startY: y,
+      head: [['Conv P->S','Desc %','% Cliente','Proy semana']],
+      body: [[
+        conv.toFixed(1)+'%',
+        desc.toFixed(1)+'%',
+        pctCliente.toFixed(1)+'%',
+        proy !== null ? proy : '-'
+      ]],
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+      alternateRowStyles: { fillColor: [245, 247, 248] },
+      theme: 'grid',
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
+  }
+
+
+  // --- Planificación semanal ---
+  if (opts?.planningSummaries && opts.planningSummaries[agenteId]) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal',14,y); y+=4;
+    const sum = opts.planningSummaries[agenteId];
+    autoTableLib(doc, {
+      startY: y,
+      head: [['Prospección','Cita','Total']],
+      body: [[sum.prospeccion, sum.smnyl, sum.total]],
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+      alternateRowStyles: { fillColor: [245, 247, 248] },
+      theme: 'grid',
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
+  }
+
+
+  // --- Actividad semanal (gráfica y tabla) ---
+  if (opts?.perAgentActivity && opts.perAgentActivity[agenteId]) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad semanal',14,y); y+=4;
+    const act = opts.perAgentActivity[agenteId];
+    if (act.labels && act.counts) {
+      // Gráfica de barras horizontal simple
+      const chartX = 26, chartY = y+2, chartW = 120, chartH = 18;
+      const max = Math.max(...act.counts, 1);
+      const barW = 10;
+      const barGap = (chartW - (act.labels.length * barW)) / (act.labels.length - 1);
+      act.counts.forEach((val: number, i: number) => {
+        const x = chartX + i * (barW + barGap);
+        const barH = (val/max)*chartH;
+        doc.setFillColor(33, 150, 243);
+        doc.rect(x, chartY+chartH-barH, barW, barH, 'F');
+        doc.setFontSize(8);
+        doc.text(String(val), x + barW/2, chartY+chartH-barH-2, {align:'center'});
+        doc.setFontSize(7);
+        if (act.labels && act.labels[i]) {
+          doc.text(act.labels[i], x + barW/2, chartY+chartH+8, {align:'center'});
+        }
+      });
+      y = chartY + chartH + GAP;
+    }
+    // Tabla de actividad
+    if (act.breakdown) {
+      autoTableLib(doc, {
+        startY: y,
+        head: [['Vistas','Clicks','Formularios','Prospectos','Planificación','Clientes','Pólizas','Usuarios','Parámetros','Reportes','Otros']],
+        body: [[
+          act.breakdown.views||0, act.breakdown.clicks||0, act.breakdown.forms||0, act.breakdown.prospectos||0, act.breakdown.planificacion||0, act.breakdown.clientes||0, act.breakdown.polizas||0, act.breakdown.usuarios||0, act.breakdown.parametros||0, act.breakdown.reportes||0, act.breakdown.otros||0
+        ]],
+        styles: { fontSize: 8, cellPadding: 1.5 },
+        headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+        alternateRowStyles: { fillColor: [245, 247, 248] },
+        theme: 'grid',
+        margin: { left: 14, right: 14 },
+      });
+      y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
+    }
+  }
+
+
+  // --- Acciones específicas en la semana ---
+  if (opts?.perAgentActivity && opts.perAgentActivity[agenteId] && opts.perAgentActivity[agenteId].details) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4;
+    const d = opts.perAgentActivity[agenteId].details;
+    autoTableLib(doc, {
+      startY: y,
+      head: [['Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.','P. a cliente']],
+      body: [[
+        d.prospectos_altas||0, d.prospectos_cambios_estado||0, d.prospectos_notas||0, d.planificacion_ediciones||0, d.clientes_altas||0, d.clientes_modificaciones||0, d.polizas_altas||0, d.polizas_modificaciones||0, d.prospectos_a_cliente||0
+      ]],
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+      alternateRowStyles: { fillColor: [245, 247, 248] },
+      theme: 'grid',
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
+  }
+
+
+  // --- Glosario de abreviaturas ---
+  y += GAP;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('Glosario de abreviaturas',14,y); doc.setFont('helvetica','normal'); y += 4;
+  const glossary: Array<[string,string]> = [
+    ['Pendiente', 'Prospecto pendiente de gestión'],
+    ['Seguimiento', 'Prospecto en seguimiento activo'],
+    ['Con cita', 'Prospecto con cita agendada'],
+    ['Descartado', 'Prospecto descartado'],
+    ['Clientes', 'Prospectos que ya son clientes'],
+    ['Previas', 'Prospectos arrastrados de semanas anteriores'],
+    ['Cita','bloques de actividad Cita'],
+    ['Conv P->S','Conversión de Pendiente a Seguimiento'],
+    ['Desc %','Porcentaje de prospectos descartados'],
+    ['Proy semana','Proyección de total de la semana (forecast)'],
+    ['Planif.','Planificación'],
+    ['Altas P.','Altas de prospectos'],
+    ['Cambios est.','Cambios de estado en prospectos'],
+    ['Notas P.','Notas registradas en prospectos'],
+    ['Edit. planif.','Ediciones en la planificación semanal'],
+    ['Altas cliente','Altas de clientes'],
+    ['Modif. cliente','Modificaciones de clientes'],
+    ['Altas pól.','Altas de pólizas'],
+    ['Modif. pól.','Modificaciones de pólizas'],
+    ['Forms','Formularios enviados'],
+    ['Vistas','Vistas registradas en la aplicación'],
+    ['Clicks','Clicks registrados en la aplicación'],
+    ['P. a cliente','Prospectos convertidos a cliente en la semana actual'],
+  ];
+  autoTableLib(doc, {
+    startY: y,
+    head: [['Abrev.','Significado']],
+    body: glossary,
+    styles: { fontSize: 8, cellPadding: 1.5 },
+    headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+    alternateRowStyles: { fillColor: [245, 247, 248] },
+    theme: 'grid',
+    margin: { left: 14, right: 14 },
+  });
+  y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
 
   // --- Métricas avanzadas ---
   // ...existing code for advanced metrics section...
