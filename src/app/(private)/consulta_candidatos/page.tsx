@@ -459,7 +459,21 @@ function ConsultaCandidatosInner() {
                             >Editar</button>
                             <button
                               className="btn btn-sm btn-outline-secondary me-1"
-                              onClick={() => exportCandidatoPDF(c)}
+                              onClick={() => {
+                                // Buscar mensajes ficha_candidato en localStorage (o dejar vacío si no existe)
+                                let mensajes = {};
+                                try {
+                                  const raw = localStorage.getItem('fichaMensajes');
+                                  if (raw) mensajes = JSON.parse(raw);
+                                } catch {}
+                                console.debug('[DEBUG][CONSULTA] fichaMensajes justo antes de exportar:', mensajes);
+                                if (!mensajes || Object.keys(mensajes).length === 0) {
+                                  console.error('[ERROR][CONSULTA] fichaMensajes está vacío o undefined. No se puede exportar PDF.');
+                                  alert('No se puede exportar el PDF porque los mensajes parametrizados no están cargados.');
+                                  return;
+                                }
+                                exportCandidatoPDF(c, mensajes);
+                              }}
                             >PDF</button>
                             {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
                             <button
