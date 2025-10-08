@@ -468,7 +468,9 @@ export default function ProspectosPage(){
         breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number };
         details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number };
         detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }>;
+
         planning: import('@/types').BloquePlanificacion[];
+        prospectosSemana: Prospecto[];
       }> | undefined
       try {
         if (semana !== 'ALL'){
@@ -533,7 +535,9 @@ export default function ProspectosPage(){
                   polizas_altas: Number(d0.polizas_altas||0),
                   polizas_modificaciones: Number(d0.polizas_modificaciones||0)
                 })) } : {}),
-                planning: planningBlocks
+                planning: planningBlocks,
+                // Agregar prospectosSemana: todos los prospectos del agente en la semana seleccionada
+                prospectosSemana: (yearProspectos || prospectos).filter(p => p.agente_id === id && p.anio === anio && p.semana_iso === weekNum)
               }
             } else {
               // Si no hay datos de actividad, igual incluir planning vacío o real
@@ -544,7 +548,8 @@ export default function ProspectosPage(){
                 breakdown: {
                   views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0
                 },
-                planning: planningBlocks
+                planning: [],
+                prospectosSemana: []
               }
             }
           }
@@ -639,6 +644,7 @@ export default function ProspectosPage(){
       details?: DetailsType;
       detailsDaily?: DetailsType[];
       planning?: unknown[];
+      prospectosSemana: Prospecto[];
     };
     let perAgentActivity: Record<number, PerAgentActivityType> | undefined;
     try {
@@ -698,7 +704,9 @@ export default function ProspectosPage(){
               counts: [],
               breakdown: {
                 views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0
-              }
+              },
+              planning: [],
+              prospectosSemana: []
             };
           }
         }
