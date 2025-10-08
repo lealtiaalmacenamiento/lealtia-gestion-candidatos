@@ -370,6 +370,19 @@ export async function exportProspectosPDF(
     doc.setFontSize(9);
     const headAnt = [...(opts?.incluirId ? ['ID'] : []), 'Nombre', 'Teléfono', 'Estado', 'Notas', 'Año', 'Semana'];
     const bodyAnt = anterioresActivos.map(p => [...(opts?.incluirId ? [p.id] : []), p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120), p.anio, p.semana_iso]);
+    // Forzar salto de página si el espacio disponible es insuficiente para el header de la tabla y una fila
+    const PAGE_HEIGHT = docTyped.internal.pageSize.getHeight();
+    const FOOTER_MARGIN = 22;
+    const SAFE_TOP = headerHeight + 6;
+    const ROW_HEIGHT = 8; // Aproximado para fuente 7-8
+    const TABLE_HEADER_HEIGHT = 10; // Aproximado para fuente 8
+    const spaceNeeded = TABLE_HEADER_HEIGHT + ROW_HEIGHT * 2 + 8; // header + 2 filas + gap
+    const currentY = y;
+    if (PAGE_HEIGHT - FOOTER_MARGIN - currentY < spaceNeeded) {
+      doc.addPage();
+      drawHeader();
+      y = SAFE_TOP;
+    }
     autoTable(doc, {
       startY: y,
       head: [headAnt],
@@ -379,16 +392,9 @@ export async function exportProspectosPDF(
       alternateRowStyles: { fillColor: [245, 247, 248] },
       theme: 'grid',
       margin: { left: 14, right: 14, top: headerHeight + 6 },
-      didDrawPage: (data: any) => {
+      didDrawPage: () => {
         drawHeader();
         doc.setTextColor(0, 0, 0);
-        // Si la tabla inicia en una nueva página y el cursor está muy cerca del header, forzar salto
-        if (data.pageNumber > 1 && data.cursor && data.table && data.row && data.row.index === 0) {
-          // Si la primera fila de la tabla en la página está muy cerca del header, saltar a margen seguro
-          if (data.cursor.y < headerHeight + 14) {
-            data.cursor.y = headerHeight + 18;
-          }
-        }
       }
     });
     y = docTyped.lastAutoTable!.finalY! + GAP;
