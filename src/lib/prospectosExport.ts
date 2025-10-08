@@ -383,15 +383,25 @@ export async function exportProspectosPDF(
       drawHeader();
       y = SAFE_TOP;
     }
+    // Si la tabla inicia en una nueva página, agregar una fila espaciadora
+    let bodyAntFinal = bodyAnt;
+    let pageBreakOpt: any = {};
+    if (y < headerHeight + 20) {
+      // Si la posición Y es muy cercana al header, agregar fila vacía
+      const emptyRow = new Array(headAnt.length).fill('');
+      bodyAntFinal = [emptyRow, ...bodyAnt];
+      pageBreakOpt = { pageBreak: 'avoid' };
+    }
     autoTable(doc, {
       startY: y,
       head: [headAnt],
-      body: bodyAnt,
+      body: bodyAntFinal,
       styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
       headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
       alternateRowStyles: { fillColor: [245, 247, 248] },
       theme: 'grid',
       margin: { left: 14, right: 14, top: headerHeight + 6 },
+      ...pageBreakOpt,
       didDrawPage: () => {
         drawHeader();
         doc.setTextColor(0, 0, 0);
