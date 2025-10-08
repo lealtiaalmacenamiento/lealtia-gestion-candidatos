@@ -134,7 +134,7 @@ export async function exportProspectosPDFAgente(
     ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)
   );
   const previas = opts?.perAgentPrevCounts?.[agenteId] ?? 0;
-  const total = agPros.length + previas;
+  const total = agPros.length;
   const pendiente = agPros.filter(p => p.estado === 'pendiente').length;
   const seguimiento = agPros.filter(p => p.estado === 'seguimiento').length;
   const conCita = agPros.filter(p => p.estado === 'con_cita').length;
