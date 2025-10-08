@@ -180,13 +180,20 @@ export default function CandidatosPage() {
                             <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
                             <button
                               onClick={() => {
-                                // Siempre usar el valor más reciente del estado
+                                // Validar que fichaMensajes esté cargado y no sea undefined
+                                if (!mensajesCargados) {
+                                  alert('Los mensajes aún no están cargados. Intenta de nuevo en unos segundos.');
+                                  return;
+                                }
                                 const mensajes = fichaMensajes && typeof fichaMensajes === 'object' ? fichaMensajes : {};
+                                if (Object.keys(mensajes).length === 0) {
+                                  console.warn('[PDF] fichaMensajes está vacío. Verifica que los parámetros estén cargados.');
+                                }
                                 console.log('[DEBUG][BOTON PDF] fichaMensajes actual:', mensajes);
-                                exportCandidatoPDF({ ...c, proceso }, { ...mensajes });
+                                exportCandidatoPDF({ ...c, proceso }, mensajes);
                               }}
                               className="btn btn-outline-secondary btn-sm flex-fill"
-                              disabled={!mensajesCargados}
+                              disabled={!mensajesCargados || !fichaMensajes || Object.keys(fichaMensajes).length === 0}
                             >
                               PDF
                             </button>
