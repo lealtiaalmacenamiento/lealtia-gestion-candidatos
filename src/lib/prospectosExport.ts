@@ -240,12 +240,11 @@ export async function exportProspectosPDF(
   });
   // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
   if(meta){
-    // Sumar meta parametrizada + arrastre
-    const arrastre = totalRow[7] || 0;
-    const metaTotal = meta + arrastre;
-  // Avance: prospectos actuales + previas
-  const avance = (totalRow[1] || 0) + (totalRow[7] || 0);
-  const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
+    // La meta es solo la parametrizada
+    const metaTotal = meta;
+    // El avance es el total de prospectos (incluyendo previas)
+    const avance = (totalRow[1] || 0);
+    const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
     const metaY = chartY+chartH+18;
     const metaW = Math.round(chartW * 0.65); // Barra de meta al 65% del área
     const metaBarH = 7;
@@ -262,8 +261,8 @@ export async function exportProspectosPDF(
     doc.setTextColor(7,46,64);
     doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
     doc.setTextColor(0,0,0);
-    // Mostrar: Meta: [meta total] (actual/meta, %), justo al lado derecho de la barra
-    const metaLabel = `Meta: ${metaTotal} (${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
+  // Mostrar: Meta: [meta] (avance/meta, %), justo al lado derecho de la barra
+  const metaLabel = `Meta: ${metaTotal} (avance: ${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
     // Calcular el ancho máximo para el texto (lo que queda del área de la gráfica)
     const maxLabelWidth = chartW - metaW - 12;
     let fontSize = 10;
