@@ -128,12 +128,14 @@ export async function exportProspectosPDFAgente(
   const semanaActiva = Number(opts?.semanaActual?.semana_iso);
   const anioActivo = Number(opts?.semanaActual?.anio);
   const agProsSemana = agPros.filter(p => Number(p.anio) === anioActivo && Number(p.semana_iso) === semanaActiva);
+  // Solo previos activos (pendiente, seguimiento, con_cita)
   const prevPros = agPros.filter(p =>
     Number(p.anio) === anioActivo &&
     Number(p.semana_iso) < semanaActiva &&
     ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)
   );
-  const previas = opts?.perAgentPrevCounts?.[agenteId] ?? 0;
+  // El total de previas debe ser igual al número de prevPros
+  const previas = prevPros.length;
   const total = agPros.length;
   const pendiente = agPros.filter(p => p.estado === 'pendiente').length;
   const seguimiento = agPros.filter(p => p.estado === 'seguimiento').length;
