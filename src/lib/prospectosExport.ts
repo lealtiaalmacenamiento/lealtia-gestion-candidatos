@@ -370,19 +370,10 @@ export async function exportProspectosPDF(
     doc.setFontSize(9);
     const headAnt = [...(opts?.incluirId ? ['ID'] : []), 'Nombre', 'Teléfono', 'Estado', 'Notas', 'Año', 'Semana'];
     const bodyAnt = anterioresActivos.map(p => [...(opts?.incluirId ? [p.id] : []), p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120), p.anio, p.semana_iso]);
-    // Forzar salto de página si el espacio disponible es insuficiente para el header de la tabla y una fila
-    const PAGE_HEIGHT = docTyped.internal.pageSize.getHeight();
-    const FOOTER_MARGIN = 22;
-    const SAFE_TOP = headerHeight + 6;
-    const ROW_HEIGHT = 8; // Aproximado para fuente 7-8
-    const TABLE_HEADER_HEIGHT = 10; // Aproximado para fuente 8
-    const spaceNeeded = TABLE_HEADER_HEIGHT + ROW_HEIGHT * 2 + 8; // header + 2 filas + gap
-    const currentY = y;
-    if (PAGE_HEIGHT - FOOTER_MARGIN - currentY < spaceNeeded) {
-      doc.addPage();
-      drawHeader();
-      y = SAFE_TOP;
-    }
+    // Forzar siempre un salto de página antes de la tabla de prospectos previos
+    doc.addPage();
+    drawHeader();
+    y = headerHeight + 6;
     // Si la tabla inicia en una nueva página, agregar una fila espaciadora
     let bodyAntFinal = bodyAnt;
     let pageBreakOpt: any = {};
