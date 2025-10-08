@@ -288,7 +288,7 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
     didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
   });
 
-  // Sección: Resumen prospectos y planificación (si es posible obtener agente y datos)
+  // Sección: Resumen prospectos y planificación (si es posible obtener agente y datos )comentario para push
   type AutoTableDoc = typeof doc & { lastAutoTable?: { finalY?: number } }
   const atDoc = doc as AutoTableDoc
   let lastY: number | undefined = atDoc.lastAutoTable?.finalY || contentStartY
