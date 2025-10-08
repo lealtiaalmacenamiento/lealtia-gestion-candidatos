@@ -382,9 +382,12 @@ export async function exportProspectosPDF(
       didDrawPage: (data: any) => {
         drawHeader();
         doc.setTextColor(0, 0, 0);
-        // Si es una nueva página y la tabla está en la parte superior, ajustar el cursor
-        if (data.pageNumber > 1 && data.cursor && data.cursor.y < headerHeight + 10) {
-          data.cursor.y = headerHeight + 10;
+        // Si la tabla inicia en una nueva página y el cursor está muy cerca del header, forzar salto
+        if (data.pageNumber > 1 && data.cursor && data.table && data.row && data.row.index === 0) {
+          // Si la primera fila de la tabla en la página está muy cerca del header, saltar a margen seguro
+          if (data.cursor.y < headerHeight + 14) {
+            data.cursor.y = headerHeight + 18;
+          }
         }
       }
     });
