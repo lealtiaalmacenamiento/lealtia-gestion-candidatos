@@ -37,16 +37,26 @@ function nowMX(){
  * Donde logoBase64 es la imagen en formato base64 PNG.
  * Si no se pasa logo, se muestra un placeholder.
  */
+import fs from 'fs';
+import path from 'path';
+
 export async function exportProspectosPDF(
   doc: any,
   prospectos: Prospecto[],
   opts: any,
   autoTable: (...args: any[]) => any,
   titulo: string,
-  logo?: string, // base64 PNG recomendado: public/Logolealtiaruedablanca.png
-  logoW?: number, // ancho en mm
-  logoH?: number  // alto en mm
 ) {
+  // Forzar siempre el logo institucional
+  const logoPath = path.resolve(process.cwd(), 'public/Logolealtiaruedablanca.png');
+  let logo: string | undefined = undefined;
+  const logoW = 32, logoH = 32;
+  try {
+    const imgBuffer = fs.readFileSync(logoPath);
+    logo = 'data:image/png;base64,' + imgBuffer.toString('base64');
+  } catch {
+    logo = undefined;
+  }
   // Helpers y layout deben estar definidos antes de renderProspectosPorSemana
   const generadoEn = nowMX();
   // Si es reporte individual, adaptar el título
@@ -227,9 +237,9 @@ export async function exportProspectosPDF(
     // Sumar meta parametrizada + arrastre
     const arrastre = totalRow[7] || 0;
     const metaTotal = meta + arrastre;
-    // Avance: prospectos actuales (sin previas)
-    const avance = totalRow[1] || 0;
-    const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
+  // Avance: prospectos actuales + previas
+  const avance = (totalRow[1] || 0) + (totalRow[7] || 0);
+  const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
     const metaY = chartY+chartH+18;
     const metaW = Math.round(chartW * 0.65); // Barra de meta al 65% del área
     const metaBarH = 7;
@@ -264,15 +274,15 @@ export async function exportProspectosPDF(
     y = chartY + chartH + 14;
   }
   // Tarjetas de resumen a la derecha de la gráfica
-  const totalProspectos = totalRow[1];
+  const totalConPrevias = (totalRow[1] as number) + (totalRow[7] as number);
   const tarjetas = [
-    ['Total', `${totalProspectos} (100.0%)`],
-    ['Pendiente', `${totalRow[2]} (${((totalRow[2]/totalProspectos)*100||0).toFixed(1)}%)`],
-    ['Seguimiento', `${totalRow[3]} (${((totalRow[3]/totalProspectos)*100||0).toFixed(1)}%)`],
-    ['Con cita', `${totalRow[4]} (${((totalRow[4]/totalProspectos)*100||0).toFixed(1)}%)`],
-    ['Descartado', `${totalRow[5]} (${((totalRow[5]/totalProspectos)*100||0).toFixed(1)}%)`],
-    ['Clientes', `${totalRow[6]} (${((totalRow[6]/totalProspectos)*100||0).toFixed(1)}%)`],
-    ['Previas', `${totalRow[7]} (${((totalRow[7]/totalProspectos)*100||0).toFixed(1)}%)`],
+    ['Total', `${totalConPrevias} (100.0%)`],
+    ['Pendiente', `${totalRow[2]} (${((totalRow[2]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Seguimiento', `${totalRow[3]} (${((totalRow[3]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Con cita', `${totalRow[4]} (${((totalRow[4]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Descartado', `${totalRow[5]} (${((totalRow[5]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Clientes', `${totalRow[6]} (${((totalRow[6]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Previas', `${totalRow[7]} (${((totalRow[7]/totalConPrevias)*100||0).toFixed(1)}%)`],
   ];
   const cxT = chartX+chartW+10; let cyT = chartY;
   const cardWT = 60, cardHT = 14;
