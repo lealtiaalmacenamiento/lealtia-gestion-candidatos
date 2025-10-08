@@ -262,7 +262,7 @@ export async function exportProspectosPDF(
     doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
     doc.setTextColor(0,0,0);
   // Mostrar: Meta: [meta] (avance/meta, %), justo al lado derecho de la barra
-  const metaLabel = `Meta: ${metaTotal} (avance: ${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
+  const metaLabel = `${avance}/ Meta: ${metaTotal}, ${porcentaje.toFixed(1)}%)`;
     // Calcular el ancho máximo para el texto (lo que queda del área de la gráfica)
     const maxLabelWidth = chartW - metaW - 12;
     let fontSize = 10;
