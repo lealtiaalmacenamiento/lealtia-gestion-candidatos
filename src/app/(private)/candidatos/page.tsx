@@ -186,10 +186,12 @@ export default function CandidatosPage() {
                                   return;
                                 }
                                 const mensajes = fichaMensajes && typeof fichaMensajes === 'object' ? fichaMensajes : {};
-                                if (Object.keys(mensajes).length === 0) {
-                                  console.warn('[PDF] fichaMensajes está vacío. Verifica que los parámetros estén cargados.');
+                                console.debug('[DEBUG][PAGE] fichaMensajes justo antes de exportar:', mensajes);
+                                if (!mensajes || Object.keys(mensajes).length === 0) {
+                                  console.error('[ERROR][PAGE] fichaMensajes está vacío o undefined. No se puede exportar PDF.');
+                                  alert('No se puede exportar el PDF porque los mensajes parametrizados no están cargados.');
+                                  return;
                                 }
-                                console.log('[DEBUG][BOTON PDF] fichaMensajes actual:', mensajes);
                                 exportCandidatoPDF({ ...c, proceso }, mensajes);
                               }}
                               className="btn btn-outline-secondary btn-sm flex-fill"
