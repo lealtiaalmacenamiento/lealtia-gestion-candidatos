@@ -424,13 +424,14 @@ export default function ProspectosPage(){
         }))
         planningSummaries = {}
         for(const {id,data} of responses){ if(data){
-          const counts = { prospeccion:0, smnyl:0 }
+          const counts = { prospeccion:0, smnyl:0, citas_confirmadas:0 }
           for(const b of (data.bloques||[])){
             if(b.activity==='PROSPECCION') counts.prospeccion++
             else if(b.activity==='SMNYL') counts.smnyl++
-            // CITAS dormidas: ignorar
+            else if(b.activity==='CITAS' && b.confirmada) counts.citas_confirmadas++
           }
-          planningSummaries[id] = { ...counts, total: counts.prospeccion + counts.smnyl }
+          // Ahora el total incluye también las citas confirmadas
+          planningSummaries[id] = { ...counts, total: counts.prospeccion + counts.smnyl + counts.citas_confirmadas }
           perAgentPlanning[id] = data.bloques || [];
         }}
       }
