@@ -5,7 +5,7 @@ import { getCandidatos, deleteCandidato } from '@/lib/api';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 import { exportCandidatosExcel, exportCandidatoPDF } from '@/lib/exporters';
 import AppModal from '@/components/ui/AppModal';
-import type { Candidato } from '@/types';
+import type { Candidato, Parametro } from '@/types';
 import BasePage from '@/components/BasePage';
 import Link from 'next/link';
 
@@ -14,6 +14,8 @@ export default function CandidatosPage() {
   const [notif, setNotif] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Parametrización de mensajes para ficha de candidato
+  const [fichaMensajes, setFichaMensajes] = useState<Record<string, string>>({});
   // refs para scroll sincronizado
   const scrollBodyRef = useRef<HTMLDivElement|null>(null)
   const scrollTopRef = useRef<HTMLDivElement|null>(null)
@@ -50,6 +52,21 @@ export default function CandidatosPage() {
 
   useEffect(() => {
     getCandidatos().then(setCandidatos).catch(err => setNotif(err.message));
+    // Fetch mensajes ficha_candidato
+    fetch('/api/parametros?tipo=ficha_candidato')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('Error al obtener parámetros')))
+      .then(j => {
+        // Espera { success: true, data: Parametro[] }
+        if (j && Array.isArray(j.data)) {
+          // Mapear clave->valor
+          const mensajes: Record<string, string> = {};
+          j.data.forEach((p: Parametro) => {
+            if (p.clave && typeof p.valor === 'string') mensajes[p.clave.toUpperCase()] = p.valor;
+          });
+          setFichaMensajes(mensajes);
+        }
+      })
+      .catch(() => setFichaMensajes({}));
   }, []);
 
   const performDelete = async () => {
@@ -147,7 +164,7 @@ export default function CandidatosPage() {
                         <td className="p-1">
                           <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
                             <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
-                            <button onClick={() => exportCandidatoPDF({ ...c, proceso })} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
+                            <button onClick={() => exportCandidatoPDF({ ...c, proceso }, fichaMensajes)} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
                             <button onClick={() => setPendingDelete(c)} className="btn btn-danger btn-sm flex-fill">Eliminar</button>
                           </div>
                         </td>

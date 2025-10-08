@@ -78,7 +78,12 @@ export async function exportCandidatosExcel(candidatos: Candidato[]): Promise<vo
   await workbook.xlsx.writeFile(`candidatos_${fecha}.xlsx`)
 }
 
-export async function exportCandidatoPDF(c: Candidato) {
+/**
+ * Exporta la ficha de candidato a PDF.
+ * @param c Candidato
+ * @param mensajesPorCampo? Objeto opcional { [clave: string]: string } para mostrar mensajes personalizados por fila en la tabla de datos
+ */
+export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record<string, string>) {
   try {
     const { jsPDF } = await import('jspdf')
     const autoTable = (await import('jspdf-autotable')).default
@@ -231,42 +236,46 @@ export async function exportCandidatoPDF(c: Candidato) {
   const { headerHeight, contentStartY } = drawHeader({ procesoLabel })
   doc.setFontSize(10)
   // Tabla Datos de candidato (orden y etiquetas solicitadas)
-  const rows: Array<[string,string]> = []
-  const push = (k: string, v: unknown) => rows.push([U(k), U(v)])
-  push('clave temporal', c.ct)
-  push('Nombre de candidato', c.candidato)
-  push('POP', cand.pop || '')
-  push('Email de agente', c.email_agente || '')
-  push('Fecha de creación clave temporal', c.fecha_creacion_ct || '')
-  push('Fecha de creación POP', cand.fecha_creacion_pop || '')
-  push('Días desde creación CT', dias_desde_ct ?? '')
-  push('Días desde creación POP', dias_desde_pop ?? '')
-  push('Cédula A1', c.mes)
-  push('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', c.periodo_para_registro_y_envio_de_documentos || '')
-  push('Capacitación A1', c.capacitacion_cedula_a1 || '')
-  push('Fecha tent. examen', c.fecha_tentativa_de_examen || '')
-  push('EFC', c.efc)
-  push('Período folio oficina virtual', c.periodo_para_ingresar_folio_oficina_virtual || '')
-  push('Período playbook', c.periodo_para_playbook || '')
-  push('Pre-escuela sesión arranque', c.pre_escuela_sesion_unica_de_arranque || '')
-  push('Fecha límite curricula CDP', c.fecha_limite_para_presentar_curricula_cdp || '')
-  push('Inicio escuela fundamental', c.inicio_escuela_fundamental || '')
-  if (typeof c.seg_gmm === 'number') push('Seguro GMM', c.seg_gmm)
-  if (typeof c.seg_vida === 'number') push('Seguro Vida', c.seg_vida)
-  push('fecha de creacion de candidato', c.fecha_de_creacion || '')
-  push('ultima actualización de candidato', c.ultima_actualizacion || '')
+  const rows: Array<[string, string, string]> = [];
+  const push = (k: string, v: unknown) => {
+    const key = U(k);
+    const mensaje = mensajesPorCampo?.[key] || '';
+    rows.push([key, U(v), mensaje]);
+  };
+  push('clave temporal', c.ct);
+  push('Nombre de candidato', c.candidato);
+  push('POP', cand.pop || '');
+  push('Email de agente', c.email_agente || '');
+  push('Fecha de creación clave temporal', c.fecha_creacion_ct || '');
+  push('Fecha de creación POP', cand.fecha_creacion_pop || '');
+  push('Días desde creación CT', dias_desde_ct ?? '');
+  push('Días desde creación POP', dias_desde_pop ?? '');
+  push('Cédula A1', c.mes);
+  push('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', c.periodo_para_registro_y_envio_de_documentos || '');
+  push('Capacitación A1', c.capacitacion_cedula_a1 || '');
+  push('Fecha tent. examen', c.fecha_tentativa_de_examen || '');
+  push('EFC', c.efc);
+  push('Período folio oficina virtual', c.periodo_para_ingresar_folio_oficina_virtual || '');
+  push('Período playbook', c.periodo_para_playbook || '');
+  push('Pre-escuela sesión arranque', c.pre_escuela_sesion_unica_de_arranque || '');
+  push('Fecha límite curricula CDP', c.fecha_limite_para_presentar_curricula_cdp || '');
+  push('Inicio escuela fundamental', c.inicio_escuela_fundamental || '');
+  if (typeof c.seg_gmm === 'number') push('Seguro GMM', c.seg_gmm);
+  if (typeof c.seg_vida === 'number') push('Seguro Vida', c.seg_vida);
+  push('fecha de creacion de candidato', c.fecha_de_creacion || '');
+  push('ultima actualización de candidato', c.ultima_actualizacion || '');
   autoTable(doc, {
     startY: contentStartY,
-    head: [[U('Datos de candidato'), ' ']],
+    head: [[U('Datos de candidato'), 'Valor', 'Mensaje']],
     body: rows,
     styles:{ fontSize:8, overflow:'linebreak', cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
     theme:'grid',
     headStyles:{ fillColor:[7,46,64], fontSize:8, textColor: [255,255,255] },
     alternateRowStyles: { fillColor: [245,249,252] },
-    columnStyles: { 0: { cellWidth: 80, fontStyle: 'bold' }, 1: { cellWidth: 100, overflow:'linebreak' } },
+    columnStyles: { 0: { cellWidth: 60, fontStyle: 'bold' }, 1: { cellWidth: 60, overflow:'linebreak' }, 2: { cellWidth: 60, overflow:'linebreak' } },
     margin: { top: headerHeight + 6, left: 14, right: 14 },
     didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
-  })
+  });
 
   // Sección: Resumen prospectos y planificación (si es posible obtener agente y datos)
   type AutoTableDoc = typeof doc & { lastAutoTable?: { finalY?: number } }
