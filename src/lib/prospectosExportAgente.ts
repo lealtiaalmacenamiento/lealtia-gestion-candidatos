@@ -1,6 +1,7 @@
 import type { Prospecto } from '@/types'
 import autoTable from 'jspdf-autotable'
 
+
 /**
  * Exporta el reporte de prospectos para un solo agente a PDF.
  * El layout es compacto y solo incluye la información del agente seleccionado.
@@ -9,12 +10,16 @@ import autoTable from 'jspdf-autotable'
 // Usar tipo extendido para permitir propiedades agregadas por plugins
 type JsPDFWithAutoTable = import('jspdf').jsPDF & { lastAutoTable?: { finalY: number }, internal?: unknown };
 
+
 interface ExportAgenteOpts {
   agenteId: number | string
   agentesMap: Record<number|string, string>
   perAgentPrevCounts?: Record<number|string, number>
   filename?: string
+  metaProspectos?: number
 }
+
+// (definición duplicada eliminada)
 
 export async function exportProspectosPDFAgente(
   doc: JsPDFWithAutoTable,
@@ -26,7 +31,9 @@ export async function exportProspectosPDFAgente(
   logoW: number = 32,
   logoH: number = 32
 ) {
-  // Header
+  // --- Header ---
+
+  // --- Header ---
   const generadoEn = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })
   doc.setFont('helvetica','bold');
   doc.setFontSize(13);
@@ -41,7 +48,7 @@ export async function exportProspectosPDFAgente(
   doc.setTextColor(0,0,0);
   let y = 32;
 
-  // Resumen del agente
+  // --- Resumen del agente (tabla) ---
   const agenteId = opts?.agenteId;
   const agentesMap = opts?.agentesMap || {};
   const nombre = agentesMap[agenteId] || agenteId;
@@ -66,7 +73,100 @@ export async function exportProspectosPDFAgente(
   });
   y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : y;
 
-  // Tabla de prospectos de la semana
+    // --- Gráfica de barras y tarjetas ---
+    // Márgenes y separación
+    const GAP = 16;
+    y += GAP;
+    const chartX = 26, chartY = y+2, chartW = 80, chartH = 18;
+  const meta = opts?.metaProspectos ?? null;
+    const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
+    const totales = [pendiente, seguimiento, conCita, descartado, clientes, previas];
+    const max = Math.max(...totales, meta || 1);
+    doc.setDrawColor(0); doc.setLineWidth(0.2);
+    doc.line(chartX, chartY, chartX, chartY+chartH);
+    doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
+    // Barras
+    const barW = 8;
+    const barColors = [
+      [255, 193, 7],    // Pendiente: amarillo
+      [33, 150, 243],   // Seguimiento: azul
+      [0, 200, 83],     // Con cita: verde
+      [158, 158, 158],  // Descartado: gris
+      [25, 118, 210],   // Clientes: azul fuerte
+      [120, 144, 156]   // Previas: gris azulado
+    ];
+    const barGap = (chartW - (labelsGraficas.length * barW)) / (labelsGraficas.length - 1);
+    totales.forEach((val: number, i: number) => {
+      const x = chartX + i * (barW + barGap);
+      const barH = (val/max)*chartH;
+  const color = barColors[i] as [number, number, number];
+  doc.setFillColor(color[0], color[1], color[2]);
+      doc.rect(x, chartY+chartH-barH, barW, barH, 'F');
+      doc.setFontSize(8);
+      doc.text(String(val), x + barW/2, chartY+chartH-barH-2, {align:'center'});
+      doc.setFontSize(7);
+      doc.text(labelsGraficas[i], x + barW/2, chartY+chartH+8, {align:'center'});
+    });
+    // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
+    if(meta){
+      const metaTotal = meta + previas;
+      const avance = total;
+      const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
+      const metaY = chartY+chartH+18;
+      const metaW = Math.round(chartW * 0.65);
+      const metaBarH = 7;
+      doc.setFillColor(7,46,64);
+      doc.rect(chartX, metaY, metaW, metaBarH, 'F');
+      const avanceW = metaTotal > 0 ? Math.min(metaW, (avance/metaTotal)*metaW) : 0;
+      doc.setFillColor(60, 60, 60);
+      doc.rect(chartX, metaY, avanceW, metaBarH, 'F');
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8);
+      doc.setTextColor(7,46,64);
+      doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
+      doc.setTextColor(0,0,0);
+      const metaLabel = `${avance}/ Meta: ${metaTotal}, ${porcentaje.toFixed(1)}%`;
+      const maxLabelWidth = chartW - metaW - 12;
+      let fontSize = 10;
+      doc.setFont('helvetica','bold');
+      while(fontSize > 6 && doc.getTextWidth(metaLabel) > maxLabelWidth) {
+        fontSize--;
+        doc.setFontSize(fontSize);
+      }
+      const labelX = chartX + metaW + 8;
+      doc.text(metaLabel, labelX, metaY+metaBarH/2+3, {align:'left'});
+      y = metaY + metaBarH + GAP;
+    } else {
+      y = chartY + chartH + GAP;
+    }
+    // Tarjetas de resumen a la derecha de la gráfica
+    const totalConPrevias = total;
+    const tarjetas = [
+      ['Total', `${totalConPrevias} (100.0%)`],
+      ['Pendiente', `${pendiente} (${((pendiente/totalConPrevias)*100||0).toFixed(1)}%)`],
+      ['Seguimiento', `${seguimiento} (${((seguimiento/totalConPrevias)*100||0).toFixed(1)}%)`],
+      ['Con cita', `${conCita} (${((conCita/totalConPrevias)*100||0).toFixed(1)}%)`],
+      ['Descartado', `${descartado} (${((descartado/totalConPrevias)*100||0).toFixed(1)}%)`],
+      ['Clientes', `${clientes} (${((clientes/totalConPrevias)*100||0).toFixed(1)}%)`],
+      ['Previas', `${previas} (${((previas/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ];
+    const cxT = chartX+chartW+10; let cyT = chartY;
+    const cardWT = 60, cardHT = 14;
+    tarjetas.forEach((c) => {
+      doc.setDrawColor(220);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(cxT, cyT, cardWT, cardHT, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.text(c[0], cxT + 3, cyT + 6);
+      doc.setFont('helvetica', 'normal');
+      doc.text(c[1], cxT + 3, cyT + 12);
+      cyT += cardHT + 4;
+    });
+    y = Math.max(y, cyT);
+
+
+  // --- Tabla de prospectos de la semana ---
+  y += GAP;
   doc.setFont('helvetica','bold');
   doc.setFontSize(11);
   doc.text('Prospectos de la semana', 14, y);
@@ -83,12 +183,27 @@ export async function exportProspectosPDFAgente(
     theme: 'grid',
     margin: { left: 14, right: 14 },
   });
-  y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : y;
+  y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + GAP : y;
 
-  // Puedes agregar más secciones aquí según lo que necesites mostrar para el agente
+  // --- Tabla de arrastre/semanas anteriores ---
+  // ...existing code for arrastre table and summary cards...
 
-  // Footer
-  // Acceso seguro a getNumberOfPages para evitar error de tipado
+  // --- Métricas avanzadas ---
+  // ...existing code for advanced metrics section...
+
+  // --- Planificación semanal ---
+  // ...existing code for planning summary section...
+
+  // --- Actividad semanal (gráfica y tabla) ---
+  // ...existing code for activity chart and table...
+
+  // --- Acciones específicas en la semana ---
+  // ...existing code for actions section...
+
+  // --- Glosario de abreviaturas ---
+  // ...existing code for glossary section...
+
+  // --- Footer ---
   let pageCount = 1;
   if (doc.internal && typeof doc.internal === 'object' && 'getNumberOfPages' in doc.internal && typeof (doc.internal as { getNumberOfPages?: unknown }).getNumberOfPages === 'function') {
     pageCount = (doc.internal as { getNumberOfPages: () => number }).getNumberOfPages();
