@@ -16,6 +16,7 @@ export default function CandidatosPage() {
   const [deleting, setDeleting] = useState(false);
   // Parametrización de mensajes para ficha de candidato
   const [fichaMensajes, setFichaMensajes] = useState<Record<string, string>>({});
+  const [mensajesCargados, setMensajesCargados] = useState(false);
   // refs para scroll sincronizado
   const scrollBodyRef = useRef<HTMLDivElement|null>(null)
   const scrollTopRef = useRef<HTMLDivElement|null>(null)
@@ -65,9 +66,15 @@ export default function CandidatosPage() {
           });
           console.log('[DEBUG] fichaMensajes:', mensajes);
           setFichaMensajes(mensajes);
+        } else {
+          setFichaMensajes({});
         }
+        setMensajesCargados(true);
       })
-      .catch(() => setFichaMensajes({}));
+      .catch(() => {
+        setFichaMensajes({});
+        setMensajesCargados(true);
+      });
   }, []);
 
   const performDelete = async () => {
@@ -165,10 +172,16 @@ export default function CandidatosPage() {
                         <td className="p-1">
                           <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
                             <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
-                            <button onClick={() => {
-                              console.log('[DEBUG] Exportando PDF para', c.candidato, 'con mensajes:', fichaMensajes);
-                              exportCandidatoPDF({ ...c, proceso }, fichaMensajes);
-                            }} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
+                            <button
+                              onClick={() => {
+                                console.log('[DEBUG] Exportando PDF para', c.candidato, 'con mensajes:', fichaMensajes);
+                                exportCandidatoPDF({ ...c, proceso }, fichaMensajes || {});
+                              }}
+                              className="btn btn-outline-secondary btn-sm flex-fill"
+                              disabled={!mensajesCargados}
+                            >
+                              PDF
+                            </button>
                             <button onClick={() => setPendingDelete(c)} className="btn btn-danger btn-sm flex-fill">Eliminar</button>
                           </div>
                         </td>
