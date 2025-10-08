@@ -55,8 +55,10 @@ export async function exportProspectosPDFAgente(
   const agenteId = opts?.agenteId;
   const agentesMap = opts?.agentesMap || {};
   let customTitulo = titulo;
+  // Mostrar semana en el header igual que el general
   if (agenteId && agentesMap[agenteId]) {
-    customTitulo = `Reporte de prospectos del agente: ${agentesMap[agenteId]}`;
+    const semanaTxt = opts?.semanaActual ? ` | Semana ${opts.semanaActual.semana_iso} (${opts.semanaActual.anio})` : '';
+    customTitulo = `Reporte de prospectos del agente: ${agentesMap[agenteId]}${semanaTxt}`;
   }
   // Header
   const drawHeader = () => {
@@ -157,7 +159,7 @@ export async function exportProspectosPDFAgente(
   });
   y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + 8 : y + 8;
 
-  // --- Gráfica de barras y meta ---
+  // --- Gráfica de barras y meta (idéntica al general) ---
   y += 18;
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [pendiente, seguimiento, conCita, descartado, clientes, previas];
@@ -180,8 +182,8 @@ export async function exportProspectosPDFAgente(
   totales.forEach((val: number, i: number) => {
     const x = chartX + i * (barW + barGap);
     const barH = (val / max) * chartH;
-    const color = barColors[i] as [number, number, number];
-    doc.setFillColor(color[0], color[1], color[2]);
+  const color = barColors[i] as [number, number, number];
+  doc.setFillColor(color[0], color[1], color[2]);
     doc.rect(x, chartY + chartH - barH, barW, barH, 'F');
     doc.setFontSize(8);
     doc.text(String(val), x + barW / 2, chartY + chartH - barH - 2, { align: 'center' });
