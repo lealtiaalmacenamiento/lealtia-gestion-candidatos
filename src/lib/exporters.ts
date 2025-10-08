@@ -87,6 +87,9 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
   // DEBUG: Mostrar claves y mensajes recibidos
   if (typeof window !== 'undefined') {
     console.log('[DEBUG][PDF] mensajesPorCampo:', mensajesPorCampo);
+    if (mensajesPorCampo && typeof mensajesPorCampo === 'object') {
+      console.log('[DEBUG][PDF] claves de mensajesPorCampo:', Object.keys(mensajesPorCampo));
+    }
   }
   try {
     const { jsPDF } = await import('jspdf')
@@ -245,9 +248,14 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
   const push = (k: string, v: unknown) => {
     const mensaje = mensajesPorCampo?.[k] || '';
     if (typeof window !== 'undefined') {
+      console.log(`[DEBUG][PDF] Buscando mensaje para clave: "${k}"`);
       if (mensaje) {
         console.log(`[DEBUG][PDF] Mensaje para "${k}":`, mensaje);
       } else {
+        // Mostrar claves disponibles para comparar
+        if (mensajesPorCampo && typeof mensajesPorCampo === 'object') {
+          console.log('[DEBUG][PDF] Claves disponibles:', Object.keys(mensajesPorCampo));
+        }
         console.log(`[DEBUG][PDF] Sin mensaje para "${k}"`);
       }
     }
