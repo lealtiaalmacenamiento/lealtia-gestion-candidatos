@@ -347,7 +347,7 @@ export async function exportProspectosPDF(
   });
   y = Math.max(y, cyT);
   // --- (Eliminada sección Resumen semana actual y sus tarjetas) ---
-  // --- Tabla de arrastre y resumen semanas anteriores ---
+  // --- Tabla de arrastre y resumen semanas anteriores --- forzado
   if (anteriores.length) {
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY + 60;
     y = ensure(y, 16);
