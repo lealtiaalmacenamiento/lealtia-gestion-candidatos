@@ -10,6 +10,11 @@ import BasePage from '@/components/BasePage';
 import Link from 'next/link';
 
 export default function CandidatosPage() {
+  // ...existing code...
+  const [fichaMensajes, setFichaMensajes] = useState<Record<string, string>>({});
+  const [mensajesCargados, setMensajesCargados] = useState(false);
+  // DEBUG: Mostrar el valor de fichaMensajes en pantalla
+  const debugFichaMensajes = JSON.stringify(fichaMensajes);
   const [candidatos, setCandidatos] = useState<Candidato[]>([]);
   const [notif, setNotif] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
@@ -95,6 +100,10 @@ export default function CandidatosPage() {
   return (
     <BasePage title="Candidatos" alert={notif ? { type: 'info', message: notif, show: true } : undefined}>
       <div className="d-flex justify-content-center align-items-center d-center-mobile min-vh-100 bg-light px-2 px-sm-3">
+        {/* DEBUG: Mostrar fichaMensajes */}
+        <div style={{background:'#ffe', color:'#333', fontSize:12, padding:4, marginBottom:8, border:'1px solid #ccc'}}>
+          <b>DEBUG fichaMensajes:</b> {debugFichaMensajes}
+        </div>
         <div className="card shadow w-100 app-shell-narrow border-0">
           <div className="card-body">
             <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
@@ -176,7 +185,7 @@ export default function CandidatosPage() {
                               onClick={() => {
                                 // Siempre usar el valor más reciente del estado
                                 const mensajes = fichaMensajes && typeof fichaMensajes === 'object' ? fichaMensajes : {};
-                                console.log('[DEBUG] Exportando PDF para', c.candidato, 'con mensajes:', mensajes);
+                                console.log('[DEBUG][BOTON PDF] fichaMensajes actual:', mensajes);
                                 exportCandidatoPDF({ ...c, proceso }, { ...mensajes });
                               }}
                               className="btn btn-outline-secondary btn-sm flex-fill"
