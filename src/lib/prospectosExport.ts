@@ -181,12 +181,17 @@ export async function exportProspectosPDF(
   }
   // --- Datos filtrados ---
   const semanaActual = opts?.semanaActual;
+  // Prospectos de semanas anteriores: todos los agentes, solo activos
   let anteriores: Prospecto[] = [];
   if (semanaActual) {
-    anteriores = prospectos.filter(p => !(p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso));
+    anteriores = prospectos.filter(p =>
+      !(p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso)
+      && ['pendiente','seguimiento','con_cita'].includes(p.estado)
+    );
   } else {
     anteriores = [];
   }
+  // Si es reporte individual, filtrar por agente
   if (agenteId !== undefined) {
     anteriores = anteriores.filter(p => p.agente_id === agenteId);
   }
