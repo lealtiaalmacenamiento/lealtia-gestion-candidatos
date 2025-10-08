@@ -1,3 +1,26 @@
+// Utilidad para convertir un PNG a base64 (cliente/browser)
+/**
+ * Convierte una ruta de imagen PNG (por ejemplo, '/Logolealtiaruedablanca.png') a base64.
+ * Uso típico:
+ *   const logoBase64 = await pngToBase64('/Logolealtiaruedablanca.png');
+ *   exportProspectosPDF(..., logoBase64, ...)
+ */
+export async function pngToBase64(url: string): Promise<string> {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('No se pudo convertir la imagen a base64.'));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { Prospecto, ProspectoEstado } from '@/types'

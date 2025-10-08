@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import { exportProspectosPDF } from '@/lib/prospectosExport'
+import { exportProspectosPDF, pngToBase64 } from '@/lib/prospectosExport'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { computeExtendedMetrics, computePreviousWeekDelta } from '@/lib/prospectosMetrics'
@@ -538,9 +538,10 @@ export default function ProspectosPage(){
   const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{})
   const allAgentIds = agentes.map(a=>a.id);
   const doc = new jsPDF();
-  const logo = '/Logolealtia.png';
   const logoW = 32;
   const logoH = 16;
+  // Always use the institutional logo as base64
+  const logo = await pngToBase64('/Logolealtiaruedablanca.png');
   await exportProspectosPDF(
     doc,
     exportPros,
@@ -616,10 +617,11 @@ export default function ProspectosPage(){
       }
     } catch {/*ignore*/}
   // Exportar sólo la semana actual filtrada y sin 'ya_es_cliente'
-  const doc = new jsPDF()
-  const logo = '/Logolealtia.png'
-  const logoW = 32
-  const logoH = 16
+  const doc = new jsPDF();
+  const logoW = 32;
+  const logoH = 16;
+  // Always use the institutional logo as base64
+  const logo = await pngToBase64('/Logolealtiaruedablanca.png');
   await exportProspectosPDF(
     doc,
     exportPros,
@@ -629,7 +631,7 @@ export default function ProspectosPage(){
     logo,
     logoW,
     logoH
-  )
+  );
   }
   }}>PDF</button>
     </div>}
