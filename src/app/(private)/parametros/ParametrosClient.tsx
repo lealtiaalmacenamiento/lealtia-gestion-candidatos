@@ -348,7 +348,12 @@ export default function ParametrosClient(){
         body: JSON.stringify({ id: editFichaId, clave: editFichaRow.clave, valor: editFichaRow.valor, descripcion: editFichaRow.descripcion, solicitante: 'admin' })
       });
       if (res.ok) {
-        setFichaRows(rows => rows.map(r => r.id === editFichaId ? { ...r, ...editFichaRow } : r));
+        // Refrescar desde backend para asegurar persistencia real
+        const ref = await fetch('/api/parametros?tipo=ficha_candidato&ts=' + Date.now());
+        if (ref.ok) {
+          const j = await ref.json();
+          setFichaRows(j.data || []);
+        }
         setNotif({ msg: 'Mensaje actualizado', type: 'success' });
       } else {
         setNotif({ msg: 'Error al guardar', type: 'danger' });
