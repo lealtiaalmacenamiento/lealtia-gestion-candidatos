@@ -393,9 +393,16 @@ export async function exportProspectosPDF(
       theme: 'grid',
       margin: { left: 14, right: 14, top: headerHeight + 6 },
       ...pageBreakOpt,
-      didDrawPage: () => {
+      didDrawPage: (data: any) => {
         drawHeader();
         doc.setTextColor(0, 0, 0);
+        // Si la tabla inicia en una nueva página, forzar el cursor debajo del header
+        if (data.pageNumber > 1 && doc.previousAutoTableFinalY !== undefined) {
+          // Si la posición Y está por debajo del header, moverla
+          if (data.cursor && data.cursor.y < headerHeight + 6) {
+            data.cursor.y = headerHeight + 6;
+          }
+        }
       }
     });
     y = docTyped.lastAutoTable!.finalY! + GAP;
