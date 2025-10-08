@@ -61,7 +61,7 @@ export default function CandidatosPage() {
           // Mapear clave->valor
           const mensajes: Record<string, string> = {};
           j.data.forEach((p: Parametro) => {
-            if (p.clave && typeof p.valor === 'string') mensajes[p.clave.toUpperCase()] = p.valor;
+            if (p.clave && typeof p.valor === 'string') mensajes[p.clave] = p.valor;
           });
           setFichaMensajes(mensajes);
         }
