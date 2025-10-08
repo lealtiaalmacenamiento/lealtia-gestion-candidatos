@@ -301,10 +301,10 @@ export async function exportProspectosPDFAgente(
       alternateRowStyles: { fillColor: [245, 247, 248] },
       theme: 'grid',
       margin: { left: 14, right: 14, top: headerHeight + 6 },
-      didDrawPage: (data: any) => {
+      didDrawPage: (data: { cursor: { y: number } | null }) => {
         drawHeader();
         doc.setTextColor(0, 0, 0);
-        if (data.cursor && data.cursor.y < headerHeight + 6) {
+        if (data.cursor && typeof data.cursor.y === 'number' && data.cursor.y < headerHeight + 6) {
           data.cursor.y = headerHeight + 6;
         }
       }
