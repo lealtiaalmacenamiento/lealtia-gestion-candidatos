@@ -108,26 +108,20 @@ export default function ParametrosClient(){
         }
       } catch {}
   // Edición en línea ficha_candidato
-  function startEditFicha(r:Parametro) { setEditFichaId(r.id); setEditFichaRow({...r}); }
-  function onChangeEditFicha(e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) { setEditFichaRow(r=> r? {...r,[e.target.name]:e.target.value}:r); }
-  async function saveEditFicha() {
-    if(!editFichaRow||editFichaId==null) return;
-    try{
-      const res = await fetch('/api/parametros',{
-        method:'PUT',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ id: editFichaId, clave: editFichaRow.clave, valor: editFichaRow.valor, descripcion: editFichaRow.descripcion, solicitante: 'admin' })
-      });
-      if(res.ok){
-        setFichaRows(rows=> rows.map(r=> r.id===editFichaId? { ...r, ...editFichaRow }: r));
-        setNotif({msg:'Mensaje actualizado', type:'success'});
-      }else{
-        setNotif({msg:'Error al guardar', type:'danger'});
-      }
-    }catch { setNotif({msg:'Error', type:'danger'}); }
-    finally{ setEditFichaId(null); setEditFichaRow(null); }
-  }
-  function cancelEditFicha() { setEditFichaId(null); setEditFichaRow(null); }
+
+  // ...otras funciones y hooks...
+
+  // Declarar funciones justo antes del JSX de la tabla para asegurar visibilidad
+  // Sección FICHA CANDIDATO
+  // ---
+
+  // ...otras funciones y hooks...
+
+
+  // Declarar handlers edición ficha_candidato justo antes del return para asegurar visibilidad en JSX
+  // ---
+  // (Eliminado: duplicado, handlers ficha_candidato solo deben estar antes del return)
+  // (Eliminado: duplicado, handlers ficha_candidato solo deben estar antes del return)
     } catch (e){
       setNotif({msg: e instanceof Error? e.message : 'Error cargando parámetros', type:'danger'});
     } finally { setLoading(false); }
@@ -340,6 +334,30 @@ export default function ParametrosClient(){
     } finally { setSavingFase2(false) }
   }
 
+  // Handlers edición en línea ficha_candidato (deben estar justo antes del return para estar en scope del JSX)
+  const startEditFicha = (r: Parametro) => { setEditFichaId(r.id); setEditFichaRow({ ...r }); };
+  const onChangeEditFicha = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setEditFichaRow(r => r ? { ...r, [e.target.name]: e.target.value } : r);
+  };
+  const saveEditFicha = async () => {
+    if (!editFichaRow || editFichaId == null) return;
+    try {
+      const res = await fetch('/api/parametros', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editFichaId, clave: editFichaRow.clave, valor: editFichaRow.valor, descripcion: editFichaRow.descripcion, solicitante: 'admin' })
+      });
+      if (res.ok) {
+        setFichaRows(rows => rows.map(r => r.id === editFichaId ? { ...r, ...editFichaRow } : r));
+        setNotif({ msg: 'Mensaje actualizado', type: 'success' });
+      } else {
+        setNotif({ msg: 'Error al guardar', type: 'danger' });
+      }
+    } catch { setNotif({ msg: 'Error', type: 'danger' }); }
+    finally { setEditFichaId(null); setEditFichaRow(null); }
+  };
+  const cancelEditFicha = () => { setEditFichaId(null); setEditFichaRow(null); };
+
   return (
     <BasePage title="Parámetros" alert={notif? {type: notif.type, message: notif.msg, show:true}: undefined}>
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
@@ -375,7 +393,7 @@ export default function ParametrosClient(){
                         ) : r.clave}
                         </td>
                         <td>{editFichaId===r.id ? (
-                          <input className="form-control form-control-sm" name="valor" value={editFichaRow?.valor||''} onChange={onChangeEditFicha} />
+                          <input className="form-control form-control-sm" name="valor" value={typeof editFichaRow?.valor === 'string' || typeof editFichaRow?.valor === 'number' ? editFichaRow.valor : ''} onChange={onChangeEditFicha} />
                         ) : r.valor}</td>
                         <td>{editFichaId===r.id ? (
                           <input className="form-control form-control-sm" name="descripcion" value={editFichaRow?.descripcion||''} onChange={onChangeEditFicha} />
