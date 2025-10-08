@@ -237,33 +237,34 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
   doc.setFontSize(10)
   // Tabla Datos de candidato (orden y etiquetas solicitadas)
   const rows: Array<[string, string, string]> = [];
+  // Mapeo exacto de claves para ficha de candidato (debe coincidir con el select y la BD)
   const push = (k: string, v: unknown) => {
-    const key = U(k);
+    const key = k.toUpperCase();
     const mensaje = mensajesPorCampo?.[key] || '';
     rows.push([key, U(v), mensaje]);
   };
-  push('clave temporal', c.ct);
-  push('Nombre de candidato', c.candidato);
+  push('CLAVE TEMPORAL', c.ct);
+  push('NOMBRE DE CANDIDATO', c.candidato);
   push('POP', cand.pop || '');
-  push('Email de agente', c.email_agente || '');
-  push('Fecha de creación clave temporal', c.fecha_creacion_ct || '');
-  push('Fecha de creación POP', cand.fecha_creacion_pop || '');
-  push('Días desde creación CT', dias_desde_ct ?? '');
-  push('Días desde creación POP', dias_desde_pop ?? '');
-  push('Cédula A1', c.mes);
+  push('EMAIL DE AGENTE', c.email_agente || '');
+  push('FECHA DE CREACIÓN CLAVE TEMPORAL', c.fecha_creacion_ct || '');
+  push('FECHA DE CREACIÓN POP', cand.fecha_creacion_pop || '');
+  push('DÍAS DESDE CREACIÓN CT', dias_desde_ct ?? '');
+  push('DÍAS DESDE CREACIÓN POP', dias_desde_pop ?? '');
+  push('CÉDULA A1', c.mes);
   push('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', c.periodo_para_registro_y_envio_de_documentos || '');
-  push('Capacitación A1', c.capacitacion_cedula_a1 || '');
-  push('Fecha tent. examen', c.fecha_tentativa_de_examen || '');
+  push('CAPACITACIÓN A1', c.capacitacion_cedula_a1 || '');
+  push('FECHA TENT. EXAMEN', c.fecha_tentativa_de_examen || '');
   push('EFC', c.efc);
-  push('Período folio oficina virtual', c.periodo_para_ingresar_folio_oficina_virtual || '');
-  push('Período playbook', c.periodo_para_playbook || '');
-  push('Pre-escuela sesión arranque', c.pre_escuela_sesion_unica_de_arranque || '');
-  push('Fecha límite curricula CDP', c.fecha_limite_para_presentar_curricula_cdp || '');
-  push('Inicio escuela fundamental', c.inicio_escuela_fundamental || '');
-  if (typeof c.seg_gmm === 'number') push('Seguro GMM', c.seg_gmm);
-  if (typeof c.seg_vida === 'number') push('Seguro Vida', c.seg_vida);
-  push('fecha de creacion de candidato', c.fecha_de_creacion || '');
-  push('ultima actualización de candidato', c.ultima_actualizacion || '');
+  push('PERÍODO FOLIO OFICINA VIRTUAL', c.periodo_para_ingresar_folio_oficina_virtual || '');
+  push('PERÍODO PLAYBOOK', c.periodo_para_playbook || '');
+  push('PRE-ESCUELA SESIÓN ARRANQUE', c.pre_escuela_sesion_unica_de_arranque || '');
+  push('FECHA LÍMITE CURRICULA CDP', c.fecha_limite_para_presentar_curricula_cdp || '');
+  push('INICIO ESCUELA FUNDAMENTAL', c.inicio_escuela_fundamental || '');
+  if (typeof c.seg_gmm === 'number') push('SEGURO GMM', c.seg_gmm);
+  if (typeof c.seg_vida === 'number') push('SEGURO VIDA', c.seg_vida);
+  push('FECHA DE CREACION DE CANDIDATO', c.fecha_de_creacion || '');
+  push('ULTIMA ACTUALIZACIÓN DE CANDIDATO', c.ultima_actualizacion || '');
   autoTable(doc, {
     startY: contentStartY,
     head: [[U('Datos de candidato'), 'Valor', 'Mensaje']],

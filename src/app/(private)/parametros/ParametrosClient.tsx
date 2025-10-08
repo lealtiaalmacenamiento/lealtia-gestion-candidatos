@@ -14,12 +14,42 @@ const buildDiffs = (orig: unknown, edited: unknown): Diff[] => {
     .map(k => ({ campo: k, antes: String(o[k] ?? ''), despues: String(e[k] ?? '') }))
 }
 import BasePage from '@/components/BasePage';
-import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza } from '@/types';
+import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza, Parametro } from '@/types';
+// Campos posibles para ficha de candidato (deben coincidir con los usados en el PDF)
+const FICHA_CAMPOS = [
+  'CLAVE TEMPORAL',
+  'NOMBRE DE CANDIDATO',
+  'POP',
+  'EMAIL DE AGENTE',
+  'FECHA DE CREACIÓN CLAVE TEMPORAL',
+  'FECHA DE CREACIÓN POP',
+  'DÍAS DESDE CREACIÓN CT',
+  'DÍAS DESDE CREACIÓN POP',
+  'CÉDULA A1',
+  'PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS',
+  'CAPACITACIÓN A1',
+  'FECHA TENT. EXAMEN',
+  'EFC',
+  'PERÍODO FOLIO OFICINA VIRTUAL',
+  'PERÍODO PLAYBOOK',
+  'PRE-ESCUELA SESIÓN ARRANQUE',
+  'FECHA LÍMITE CURRICULA CDP',
+  'INICIO ESCUELA FUNDAMENTAL',
+  'SEGURO GMM',
+  'SEGURO VIDA',
+  'FECHA DE CREACION DE CANDIDATO',
+  'ULTIMA ACTUALIZACIÓN DE CANDIDATO',
+];
 import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro } from '@/lib/api';
 import AppModal from '@/components/ui/AppModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 export default function ParametrosClient(){
+  // FICHA CANDIDATO
+  const [fichaRows, setFichaRows] = useState<Parametro[]>([]);
+  const [editFichaId, setEditFichaId] = useState<number|null>(null);
+  const [editFichaRow, setEditFichaRow] = useState<Partial<Parametro>|null>(null);
+  const [openFicha, setOpenFicha] = useState(false);
   const dialog = useDialog();
   const [mesRows, setMesRows] = useState<CedulaA1[]>([]);
   const [editMesId, setEditMesId] = useState<number|null>(null);
@@ -57,6 +87,14 @@ export default function ParametrosClient(){
       setMesRows([...mes].sort((a,b)=>a.id - b.id));
       setEfcRows([...efc].sort((a,b)=>a.id - b.id));
   setProductos([...prods]);
+      // Cargar mensajes ficha_candidato
+      try {
+        const r = await fetch('/api/parametros?tipo=ficha_candidato');
+        if(r.ok){
+          const j = await r.json() as { success?:boolean; data?: Parametro[] };
+          setFichaRows(j.data||[]);
+        }
+      } catch {}
       // Cargar fase2 metas
       try {
         const r = await fetch('/api/parametros?tipo=fase2')
@@ -69,6 +107,27 @@ export default function ParametrosClient(){
           if(mc) setMetaCitas(Number(mc.valor)||null)
         }
       } catch {}
+  // Edición en línea ficha_candidato
+  const startEditFicha = (r:Parametro)=>{ setEditFichaId(r.id); setEditFichaRow({...r}); };
+  const onChangeEditFicha = (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=> setEditFichaRow(r=> r? {...r,[e.target.name]:e.target.value}:r);
+  const saveEditFicha = async ()=>{
+    if(!editFichaRow||editFichaId==null) return;
+    try{
+      const res = await fetch('/api/parametros',{
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ id: editFichaId, clave: editFichaRow.clave, valor: editFichaRow.valor, descripcion: editFichaRow.descripcion, solicitante: 'admin' })
+      });
+      if(res.ok){
+        setFichaRows(rows=> rows.map(r=> r.id===editFichaId? { ...r, ...editFichaRow }: r));
+        setNotif({msg:'Mensaje actualizado', type:'success'});
+      }else{
+        setNotif({msg:'Error al guardar', type:'danger'});
+      }
+    }catch(err){ setNotif({msg:'Error', type:'danger'}); }
+    finally{ setEditFichaId(null); setEditFichaRow(null); }
+  };
+  const cancelEditFicha = ()=>{ setEditFichaId(null); setEditFichaRow(null); };
     } catch (e){
       setNotif({msg: e instanceof Error? e.message : 'Error cargando parámetros', type:'danger'});
     } finally { setLoading(false); }
@@ -286,6 +345,58 @@ export default function ParametrosClient(){
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
       {!loading && (
         <div className="d-flex flex-column gap-5">
+          {/* Sección FICHA CANDIDATO */}
+          <section className="border rounded p-3 bg-white shadow-sm">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <button type="button" onClick={()=>setOpenFicha(o=>!o)} aria-expanded={openFicha} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
+                <i className={`bi bi-caret-${openFicha? 'down':'right'}-fill`}></i>
+                <span className="fw-bold small text-uppercase">Mensajes ficha de candidato</span>
+              </button>
+              {openFicha && <span className="small text-muted">Edición en línea</span>}
+            </div>
+            {openFicha && (
+              <div className="table-responsive mt-3">
+                <table className="table table-sm table-bordered align-middle mb-0 table-nowrap">
+                  <thead className="table-light"><tr>
+                    <th style={{width:220}}>Campo/Fila</th>
+                    <th>Mensaje</th>
+                    <th>Descripción</th>
+                    <th style={{width:120}}>Acciones</th>
+                  </tr></thead>
+                  <tbody>
+                    {fichaRows.length===0 && (<tr><td colSpan={4} className="text-center small">Sin mensajes</td></tr>)}
+                    {fichaRows.map(r => (
+                      <tr key={r.id}>
+                        <td>{editFichaId===r.id ? (
+                          <select className="form-select form-select-sm" name="clave" value={editFichaRow?.clave||''} onChange={onChangeEditFicha}>
+                            <option value="">(Selecciona campo)</option>
+                            {FICHA_CAMPOS.map(campo => <option key={campo} value={campo}>{campo}</option>)}
+                          </select>
+                        ) : r.clave}
+                        </td>
+                        <td>{editFichaId===r.id ? (
+                          <input className="form-control form-control-sm" name="valor" value={editFichaRow?.valor||''} onChange={onChangeEditFicha} />
+                        ) : r.valor}</td>
+                        <td>{editFichaId===r.id ? (
+                          <input className="form-control form-control-sm" name="descripcion" value={editFichaRow?.descripcion||''} onChange={onChangeEditFicha} />
+                        ) : r.descripcion}</td>
+                        <td style={{whiteSpace:'nowrap'}}>
+                          {editFichaId===r.id ? (
+                            <>
+                              <button type="button" className="btn btn-success btn-sm me-1" onClick={saveEditFicha}>Guardar</button>
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditFicha}>Cancelar</button>
+                            </>
+                          ) : (
+                            <button type="button" className="btn btn-primary btn-sm" onClick={()=>startEditFicha(r)}>Editar</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
           <section className="border rounded p-3 bg-white shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenProductos(o=>!o)} aria-expanded={openProductos} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
