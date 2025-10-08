@@ -54,12 +54,8 @@ export async function exportProspectosPDFAgente(
   // Solo un agente
   const agenteId = opts?.agenteId;
   const agentesMap = opts?.agentesMap || {};
-  let customTitulo = titulo;
-  // Mostrar semana en el header igual que el general
-  if (agenteId && agentesMap[agenteId]) {
-    const semanaTxt = opts?.semanaActual ? ` | Semana ${opts.semanaActual.semana_iso} (${opts.semanaActual.anio})` : '';
-    customTitulo = `Reporte de prospectos del agente: ${agentesMap[agenteId]}${semanaTxt}`;
-  }
+  // Usar el título recibido directamente desde el front, que ya incluye semana y rango
+  const customTitulo = titulo;
   // Header
   const drawHeader = () => {
     const baseX = logo ? 50 : 12;
@@ -129,15 +125,12 @@ export async function exportProspectosPDFAgente(
   // --- Filtrar datos solo del agente seleccionado ---
   const agPros = prospectos.filter(p => p.agente_id === agenteId);
   // Separar prospectos de la semana actual y anteriores
-  const semanaActiva = opts?.semanaActual?.semana_iso;
-  const anioActivo = opts?.semanaActual?.anio;
-  const agProsSemana = agPros.filter(p => p.anio === anioActivo && p.semana_iso === semanaActiva);
+  const semanaActiva = Number(opts?.semanaActual?.semana_iso);
+  const anioActivo = Number(opts?.semanaActual?.anio);
+  const agProsSemana = agPros.filter(p => Number(p.anio) === anioActivo && Number(p.semana_iso) === semanaActiva);
   const prevPros = agPros.filter(p =>
-    typeof p.semana_iso === 'number' &&
-    typeof p.anio === 'number' &&
-    anioActivo && semanaActiva &&
-    p.anio === anioActivo &&
-    p.semana_iso < semanaActiva &&
+    Number(p.anio) === anioActivo &&
+    Number(p.semana_iso) < semanaActiva &&
     ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)
   );
   const previas = opts?.perAgentPrevCounts?.[agenteId] ?? 0;
