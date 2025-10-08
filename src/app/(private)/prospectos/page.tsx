@@ -460,7 +460,15 @@ export default function ProspectosPage(){
       }
     }
       // Actividad semanal por usuario (solo si semana específica)
-      let perAgentActivity: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }> | undefined
+      let perAgentActivity: Record<number,{
+        email?:string;
+        labels:string[];
+        counts:number[];
+        breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number };
+        details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number };
+        detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }>;
+        planning: import('@/types').BloquePlanificacion[];
+      }> | undefined
       try {
         if (semana !== 'ALL'){
           const weekNum = semana as number
@@ -480,6 +488,8 @@ export default function ProspectosPage(){
           perAgentActivity = {}
           for(const resp of responses){
             const { id, data, email } = resp as { id:number; data: ActivityResponse | null; email?:string }
+            // Siempre incluir planning aunque esté vacío
+            const planningBlocks = perAgentPlanning[id] || [];
             if(data && data.success && data.daily && Array.isArray(data.daily.counts)){
               const b = data.breakdown || {}
               const d = data.details || undefined
@@ -522,7 +532,18 @@ export default function ProspectosPage(){
                   polizas_altas: Number(d0.polizas_altas||0),
                   polizas_modificaciones: Number(d0.polizas_modificaciones||0)
                 })) } : {}),
-                ...(perAgentPlanning[id] ? { planning: perAgentPlanning[id] } : {})
+                planning: planningBlocks
+              }
+            } else {
+              // Si no hay datos de actividad, igual incluir planning vacío o real
+              perAgentActivity[id] = {
+                email,
+                labels: [],
+                counts: [],
+                breakdown: {
+                  views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0
+                },
+                planning: planningBlocks
               }
             }
           }
