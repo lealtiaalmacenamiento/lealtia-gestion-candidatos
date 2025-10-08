@@ -174,8 +174,10 @@ export default function CandidatosPage() {
                             <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
                             <button
                               onClick={() => {
-                                console.log('[DEBUG] Exportando PDF para', c.candidato, 'con mensajes:', fichaMensajes);
-                                exportCandidatoPDF({ ...c, proceso }, fichaMensajes || {});
+                                // Siempre usar el valor más reciente del estado
+                                const mensajes = fichaMensajes && typeof fichaMensajes === 'object' ? fichaMensajes : {};
+                                console.log('[DEBUG] Exportando PDF para', c.candidato, 'con mensajes:', mensajes);
+                                exportCandidatoPDF({ ...c, proceso }, { ...mensajes });
                               }}
                               className="btn btn-outline-secondary btn-sm flex-fill"
                               disabled={!mensajesCargados}
