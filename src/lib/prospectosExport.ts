@@ -205,14 +205,23 @@ export async function exportProspectosPDF(
   for(const agId of allAgentIds){
     const nombre = agentesMap[agId] || agId;
     const agPros = prospectos.filter(p => p.agente_id === agId);
-    const previas = opts?.perAgentPrevCounts?.[agId] ?? 0;
-    // Total debe contar todos los prospectos en cualquier estado + previas
-    const total = agPros.length + previas;
-    const pendiente = agPros.filter(p => p.estado === 'pendiente').length;
-    const seguimiento = agPros.filter(p => p.estado === 'seguimiento').length;
-    const conCita = agPros.filter(p => p.estado === 'con_cita').length;
-    const descartado = agPros.filter(p => p.estado === 'descartado').length;
-    const clientes = agPros.filter(p => p.estado === 'ya_es_cliente').length;
+    // Semana actual: todos los estados
+    const semanaActual = opts?.semanaActual;
+    const agProsSemana = semanaActual
+      ? agPros.filter(p => p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso)
+      : [];
+    // Semanas anteriores: solo activos
+    const prevPros = semanaActual
+      ? agPros.filter(p => p.anio === semanaActual.anio && p.semana_iso < semanaActual.semana_iso && ['pendiente','seguimiento','con_cita'].includes(p.estado))
+      : [];
+    const previas = prevPros.length;
+    // Total = semana actual (todos los estados) + previas (solo activos)
+    const total = agProsSemana.length + previas;
+    const pendiente = agProsSemana.filter(p => p.estado === 'pendiente').length;
+    const seguimiento = agProsSemana.filter(p => p.estado === 'seguimiento').length;
+    const conCita = agProsSemana.filter(p => p.estado === 'con_cita').length;
+    const descartado = agProsSemana.filter(p => p.estado === 'descartado').length;
+    const clientes = agProsSemana.filter(p => p.estado === 'ya_es_cliente').length;
     resumenBody.push([nombre, total, pendiente, seguimiento, conCita, descartado, clientes, previas]);
     totalRow[1] = (totalRow[1] as number) + total;
     totalRow[2] = (totalRow[2] as number) + pendiente;
@@ -348,7 +357,9 @@ export async function exportProspectosPDF(
   y = Math.max(y, cyT);
   // --- (Eliminada sección Resumen semana actual y sus tarjetas) ---
   // --- Tabla de arrastre y resumen semanas anteriores --- forzado
-  if (anteriores.length) {
+  // Solo mostrar prospectos previos activos en la tabla de arrastre
+  const anterioresActivos = anteriores.filter(p => ['pendiente','seguimiento','con_cita'].includes(p.estado));
+  if (anterioresActivos.length) {
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY + 60;
     y = ensure(y, 16);
     doc.setFont('helvetica', 'bold');
@@ -358,7 +369,7 @@ export async function exportProspectosPDF(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     const headAnt = [...(opts?.incluirId ? ['ID'] : []), 'Nombre', 'Teléfono', 'Estado', 'Notas', 'Año', 'Semana'];
-    const bodyAnt = anteriores.map(p => [...(opts?.incluirId ? [p.id] : []), p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120), p.anio, p.semana_iso]);
+    const bodyAnt = anterioresActivos.map(p => [...(opts?.incluirId ? [p.id] : []), p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120), p.anio, p.semana_iso]);
     autoTable(doc, {
       startY: y,
       head: [headAnt],
@@ -367,8 +378,15 @@ export async function exportProspectosPDF(
       headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
       alternateRowStyles: { fillColor: [245, 247, 248] },
       theme: 'grid',
-      margin: { left: 14, right: 14 },
-      didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
+      margin: { left: 14, right: 14, top: headerHeight + 6 },
+      didDrawPage: (data: any) => {
+        drawHeader();
+        doc.setTextColor(0, 0, 0);
+        // Si es una nueva página y la tabla está en la parte superior, ajustar el cursor
+        if (data.pageNumber > 1 && data.cursor && data.cursor.y < headerHeight + 10) {
+          data.cursor.y = headerHeight + 10;
+        }
+      }
     });
     y = docTyped.lastAutoTable!.finalY! + GAP;
     // Definir función resumenPorEstado localmente
@@ -377,7 +395,7 @@ export async function exportProspectosPDF(
       for (const p of ps) pe[p.estado] = (pe[p.estado] || 0) + 1;
       return { total: ps.length, por_estado: pe }
     };
-    const rAnt = resumenPorEstado(anteriores);
+    const rAnt = resumenPorEstado(anterioresActivos);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.text('Resumen semanas anteriores', 14, y);
