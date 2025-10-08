@@ -695,7 +695,8 @@ export default function ProspectosPage(){
                 clientes_modificaciones: Number(d0.clientes_modificaciones||0),
                 polizas_altas: Number(d0.polizas_altas||0),
                 polizas_modificaciones: Number(d0.polizas_modificaciones||0)
-              })) } : {})
+              })) } : {}),
+              prospectosSemana: []
             };
           } else {
             perAgentActivity[id] = {
