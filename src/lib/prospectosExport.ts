@@ -246,20 +246,10 @@ export async function exportProspectosPDF(
     doc.setTextColor(7,46,64);
     doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
     doc.setTextColor(0,0,0);
-    // Mostrar: Meta: [meta total] (actual/meta, %), pero nunca fuera del área de la gráfica
-    let metaLabel = `Meta: ${metaTotal} (${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
-  const labelX = chartX+metaW-2;
-    // Si el texto se sale del área, recórtalo
-    const maxLabelWidth = metaW-8;
-    const labelWidth = doc.getTextWidth(metaLabel);
-    if(labelWidth > maxLabelWidth){
-      // Recortar el texto hasta que quepa
-      while(metaLabel.length > 8 && doc.getTextWidth(metaLabel + '…') > maxLabelWidth){
-        metaLabel = metaLabel.slice(0, -1);
-      }
-      metaLabel = metaLabel.trim() + '…';
-    }
-    doc.text(metaLabel, labelX, metaY+metaBarH/2+2, {align:'right'});
+    // Mostrar: Meta: [meta total] (actual/meta, %), siempre fuera de la barra
+    const metaLabel = `Meta: ${metaTotal} (${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
+    const labelX = chartX+metaW+8;
+    doc.text(metaLabel, labelX, metaY+metaBarH/2+2, {align:'left'});
     y = metaY + metaBarH + 8;
   } else {
     y = chartY + chartH + 14;
