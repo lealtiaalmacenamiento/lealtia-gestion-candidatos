@@ -359,26 +359,31 @@ export async function exportProspectosPDFAgente(
     y = ensure(y, 40);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('Actividad semanal', 14, y); y += 4;
     const act = opts.perAgentActivity[agenteId];
-    if (act.labels && act.counts) {
-      const chartX = 26, chartY = y + 2, chartW = 120, chartH = 18;
+    if (act.labels && act.counts && Array.isArray(act.labels) && Array.isArray(act.counts)) {
+      // --- Line chart (idéntico al general) ---
+      const chartX = 26, chartY = y + 2, chartW = 160, chartH = 42;
       const max = Math.max(...act.counts, 1);
-      const barW = 10;
-      const barGap = (chartW - (act.labels.length * barW)) / (act.labels.length - 1);
+      doc.setDrawColor(0); doc.setLineWidth(0.2);
+      doc.line(chartX, chartY, chartX, chartY + chartH);
+      doc.line(chartX, chartY + chartH, chartX + chartW, chartY + chartH);
+      let prevX: number | undefined = undefined, prevY: number | undefined = undefined;
       act.counts.forEach((val: number, i: number) => {
-        const x = chartX + i * (barW + barGap);
-        const barH = (val / max) * chartH;
-        doc.setFillColor(33, 150, 243);
-        doc.rect(x, chartY + chartH - barH, barW, barH, 'F');
-        doc.setFontSize(8);
-        doc.text(String(val), x + barW / 2, chartY + chartH - barH - 2, { align: 'center' });
-        doc.setFontSize(7);
-        if (act.labels && act.labels[i]) {
-          doc.text(act.labels[i], x + barW / 2, chartY + chartH + 8, { align: 'center' });
-        }
+        const x = chartX + (chartW / ((act.counts && act.counts.length > 1 ? act.counts.length - 1 : 1)) ) * i;
+        const yPt = chartY + chartH - (val / max) * chartH;
+        if (prevX !== undefined) { doc.line(prevX, prevY!, x, yPt); }
+        doc.setFillColor(0, 0, 0);
+        try { if (typeof (docTyped as JsPDFWithAutoTable).circle === 'function') { (docTyped as JsPDFWithAutoTable).circle!(x, yPt, 1.2, 'F'); } } catch { /* ignore circle error */ }
+        prevX = x; prevY = yPt;
       });
-      y = chartY + chartH + GAP;
+      doc.setFontSize(7);
+      act.labels.forEach((l: string, i: number) => {
+        const x = chartX + (chartW / ((act.labels && act.labels.length > 1 ? act.labels.length - 1 : 1)) ) * i;
+        doc.text(l, x - 3, chartY + chartH + 6);
+      });
+      doc.setFontSize(8); doc.text(String(max), chartX - 6, chartY + 4);
+      y = chartY + chartH + 14;
     }
-    // Tabla de actividad
+    // Tabla de actividad (idéntica al general)
     if (act.breakdown) {
       autoTableLib(doc, {
         startY: y,
