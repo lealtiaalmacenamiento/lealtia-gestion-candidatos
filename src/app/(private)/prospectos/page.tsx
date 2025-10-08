@@ -716,7 +716,8 @@ export default function ProspectosPage(){
         perAgentExtended: perAgent,
         planningSummaries,
         perAgentActivity,
-        metaProspectos
+        metaProspectos,
+  semanaActual: { anio, semana_iso: selectedWeekNumInd }
       },
       autoTable,
       titulo,
