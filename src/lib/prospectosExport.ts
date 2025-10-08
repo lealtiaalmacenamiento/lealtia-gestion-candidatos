@@ -231,13 +231,13 @@ export async function exportProspectosPDF(
     const avance = totalRow[1] || 0;
     const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
     const metaY = chartY+chartH+18;
-    const metaW = chartW; // SIEMPRE igual al ancho de la gráfica
+    const metaW = Math.round(chartW * 0.65); // Barra de meta al 65% del área
     const metaBarH = 7;
     // Barra de meta total
     doc.setFillColor(7,46,64); // color institucional
     doc.rect(chartX, metaY, metaW, metaBarH, 'F');
     // Barra de avance (encima)
-    const avanceW = metaTotal > 0 ? (avance/metaTotal)*metaW : 0;
+    const avanceW = metaTotal > 0 ? Math.min(metaW, (avance/metaTotal)*metaW) : 0;
     doc.setFillColor(60, 60, 60);
     doc.rect(chartX, metaY, avanceW, metaBarH, 'F');
     // Etiquetas
@@ -246,10 +246,17 @@ export async function exportProspectosPDF(
     doc.setTextColor(7,46,64);
     doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
     doc.setTextColor(0,0,0);
-    // Mostrar: Meta: [meta total] (actual/meta, %), siempre fuera de la barra
+    // Mostrar: Meta: [meta total] (actual/meta, %), justo al lado derecho de la barra
     const metaLabel = `Meta: ${metaTotal} (${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
-    const labelX = chartX+metaW+8;
-    doc.text(metaLabel, labelX, metaY+metaBarH/2+2, {align:'left'});
+    // Calcular el ancho máximo para el texto (lo que queda del área de la gráfica)
+    const maxLabelWidth = chartW - metaW - 12;
+    let labelToShow = metaLabel;
+    while(doc.getTextWidth(labelToShow) > maxLabelWidth && labelToShow.length > 8){
+      labelToShow = labelToShow.slice(0, -1);
+    }
+    if(labelToShow !== metaLabel) labelToShow = labelToShow.trim() + '…';
+    const labelX = chartX + metaW + 8;
+    doc.text(labelToShow, labelX, metaY+metaBarH/2+2, {align:'left'});
     y = metaY + metaBarH + 8;
   } else {
     y = chartY + chartH + 14;
