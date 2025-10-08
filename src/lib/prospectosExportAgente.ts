@@ -124,24 +124,26 @@ export async function exportProspectosPDFAgente(
 
   // --- Filtrar datos solo del agente seleccionado ---
   const agPros = prospectos.filter(p => p.agente_id === agenteId);
-  // Separar prospectos de la semana actual y anteriores
   const semanaActiva = Number(opts?.semanaActual?.semana_iso);
   const anioActivo = Number(opts?.semanaActual?.anio);
+  // Prospectos de la semana actual: todos los estados
   const agProsSemana = agPros.filter(p => Number(p.anio) === anioActivo && Number(p.semana_iso) === semanaActiva);
-  // Solo previos activos (pendiente, seguimiento, con_cita)
+  // Prospectos de semanas anteriores: solo activos
   const prevPros = agPros.filter(p =>
     Number(p.anio) === anioActivo &&
     Number(p.semana_iso) < semanaActiva &&
     ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)
   );
-  // El total de previas debe ser igual al número de prevPros
+  // El total de previas es igual al número de prevPros
   const previas = prevPros.length;
-  const total = agPros.length;
-  const pendiente = agPros.filter(p => p.estado === 'pendiente').length;
-  const seguimiento = agPros.filter(p => p.estado === 'seguimiento').length;
-  const conCita = agPros.filter(p => p.estado === 'con_cita').length;
-  const descartado = agPros.filter(p => p.estado === 'descartado').length;
-  const clientes = agPros.filter(p => p.estado === 'ya_es_cliente').length;
+  // El total del agente es la suma de los prospectos de la semana actual (todos los estados) y prevPros (solo activos)
+  const total = agProsSemana.length + previas;
+  // Cálculo de métricas solo sobre la semana actual (todos los estados)
+  const pendiente = agProsSemana.filter(p => p.estado === 'pendiente').length;
+  const seguimiento = agProsSemana.filter(p => p.estado === 'seguimiento').length;
+  const conCita = agProsSemana.filter(p => p.estado === 'con_cita').length;
+  const descartado = agProsSemana.filter(p => p.estado === 'descartado').length;
+  const clientes = agProsSemana.filter(p => p.estado === 'ya_es_cliente').length;
   let y = contentStartY;
 
   // --- Resumen del agente (dashboard) ---
