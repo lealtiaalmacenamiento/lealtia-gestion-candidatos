@@ -108,9 +108,9 @@ export default function ParametrosClient(){
         }
       } catch {}
   // Edición en línea ficha_candidato
-  const startEditFicha = (r:Parametro)=>{ setEditFichaId(r.id); setEditFichaRow({...r}); };
-  const onChangeEditFicha = (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=> setEditFichaRow(r=> r? {...r,[e.target.name]:e.target.value}:r);
-  const saveEditFicha = async ()=>{
+  function startEditFicha(r:Parametro) { setEditFichaId(r.id); setEditFichaRow({...r}); }
+  function onChangeEditFicha(e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) { setEditFichaRow(r=> r? {...r,[e.target.name]:e.target.value}:r); }
+  async function saveEditFicha() {
     if(!editFichaRow||editFichaId==null) return;
     try{
       const res = await fetch('/api/parametros',{
@@ -124,10 +124,10 @@ export default function ParametrosClient(){
       }else{
         setNotif({msg:'Error al guardar', type:'danger'});
       }
-    }catch(err){ setNotif({msg:'Error', type:'danger'}); }
+    }catch { setNotif({msg:'Error', type:'danger'}); }
     finally{ setEditFichaId(null); setEditFichaRow(null); }
-  };
-  const cancelEditFicha = ()=>{ setEditFichaId(null); setEditFichaRow(null); };
+  }
+  function cancelEditFicha() { setEditFichaId(null); setEditFichaRow(null); }
     } catch (e){
       setNotif({msg: e instanceof Error? e.message : 'Error cargando parámetros', type:'danger'});
     } finally { setLoading(false); }
