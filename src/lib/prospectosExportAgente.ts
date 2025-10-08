@@ -128,6 +128,18 @@ export async function exportProspectosPDFAgente(
 
   // --- Filtrar datos solo del agente seleccionado ---
   const agPros = prospectos.filter(p => p.agente_id === agenteId);
+  // Separar prospectos de la semana actual y anteriores
+  const semanaActiva = opts?.semanaActual?.semana_iso;
+  const anioActivo = opts?.semanaActual?.anio;
+  const agProsSemana = agPros.filter(p => p.anio === anioActivo && p.semana_iso === semanaActiva);
+  const prevPros = agPros.filter(p =>
+    typeof p.semana_iso === 'number' &&
+    typeof p.anio === 'number' &&
+    anioActivo && semanaActiva &&
+    p.anio === anioActivo &&
+    p.semana_iso < semanaActiva &&
+    ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)
+  );
   const previas = opts?.perAgentPrevCounts?.[agenteId] ?? 0;
   const total = agPros.length + previas;
   const pendiente = agPros.filter(p => p.estado === 'pendiente').length;
@@ -258,7 +270,7 @@ export async function exportProspectosPDFAgente(
   autoTableLib(doc, {
     startY: y,
     head: [['Nombre', 'Teléfono', 'Estado', 'Notas']],
-    body: agPros.map(p => [p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]),
+    body: agProsSemana.map(p => [p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]),
     styles: { fontSize: 8, cellPadding: 1.5 },
     headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
     alternateRowStyles: { fillColor: [245, 247, 248] },
@@ -269,17 +281,6 @@ export async function exportProspectosPDFAgente(
   y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
 
   // --- Prospectos de semanas anteriores ---
-  // Filtrar prospectos del agente que sean de semanas previas a la actual
-  const semanaActiva = opts?.semanaActual?.semana_iso;
-  const anioActivo = opts?.semanaActual?.anio;
-  const prevPros = agPros.filter(p =>
-    typeof p.semana_iso === 'number' &&
-    typeof p.anio === 'number' &&
-    anioActivo && semanaActiva &&
-    p.anio === anioActivo &&
-    p.semana_iso < semanaActiva &&
-    ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)
-  );
   if (prevPros.length > 0) {
     y = ensure(y, 16);
     doc.setFont('helvetica', 'bold');

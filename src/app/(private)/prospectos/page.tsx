@@ -583,8 +583,9 @@ export default function ProspectosPage(){
     const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos;
     // Export individual agente usando semana seleccionada
     const selectedWeekNumInd = (semana === 'ALL') ? metaWeek : Number(semana);
-    const exportPros = filtered.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd);
-    if(exportPros.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return; }
+  const exportPros = filtered; // pasar todos los prospectos del agente
+  const exportProsSemana = filtered.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd);
+  if(exportProsSemana.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return; }
 
     // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
     const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{});
