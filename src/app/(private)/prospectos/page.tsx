@@ -590,12 +590,18 @@ export default function ProspectosPage(){
   const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{})
   const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
   const doc = new jsPDF();
+  const logoW = 32;
+  const logoH = 16;
+  const logo = await pngToBase64('/Logolealtiaruedablanca.png');
   await exportProspectosPDFAgente(
     doc,
     exportPros,
     { agenteId: (superuser && agenteId) ? Number(agenteId) : user?.id, agentesMap, perAgentPrevCounts, filename },
     autoTable,
-    titulo
+    titulo,
+    logo,
+    logoW,
+    logoH
   );
   }
   }}>PDF</button>

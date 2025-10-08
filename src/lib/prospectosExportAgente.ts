@@ -37,7 +37,9 @@ export async function exportProspectosPDFAgente(
   opts: ExportAgenteOpts,
   autoTableLib: typeof autoTable,
   titulo: string,
-  // logo parameter removed (was unused)
+  logo?: string, // base64 PNG de public/Logolealtiaruedablanca.png
+  logoW: number = 32,
+  logoH: number = 32
 ) {
   // --- INICIO: Lógica copiada/adaptada del export general ---
   // Helpers y layout
@@ -58,7 +60,7 @@ export async function exportProspectosPDFAgente(
   }
   // Header
   const drawHeader = () => {
-    const baseX = 12;
+    const baseX = logo ? 50 : 12;
     const marginRight = 8;
     const maxWidth = 210 - baseX - marginRight;
     let headerHeight = 22;
@@ -70,18 +72,37 @@ export async function exportProspectosPDFAgente(
     if (width > maxWidth) {
       const words = customTitulo.split(/\s+/);
       let current = '';
-      words.forEach(w => { const test = current ? current + ' ' + w : w; const testW = doc.getTextWidth(test); if (testW <= maxWidth) current = test; else { lines.push(current); current = w; } });
+      words.forEach(w => { const test = current ? current + ' ' + w : w; const testW = doc.getTextWidth(test); if (testW <= maxWidth) current = test; else { if(current) lines.push(current); current = w; } });
       if (current) lines.push(current);
     } else lines = [customTitulo];
-    while (lines.length > 3 && fontSize > 7) { fontSize--; doc.setFontSize(fontSize); const words = customTitulo.split(/\s+/); lines = []; let current = ''; words.forEach(w => { const test = current ? current + ' ' + w : w; const testW = doc.getTextWidth(test); if (testW <= maxWidth) current = test; else { lines.push(current); current = w; } }); if (current) lines.push(current); }
+    while (lines.length > 3 && fontSize > 7) { fontSize--; doc.setFontSize(fontSize); const words = customTitulo.split(/\s+/); lines = []; let current = ''; words.forEach(w => { const test = current ? current + ' ' + w : w; const testW = doc.getTextWidth(test); if (testW <= maxWidth) current = test; else { if(current) lines.push(current); current = w; } }); if (current) lines.push(current); }
     const lineHeight = fontSize + 2;
     const dateFontSize = 8;
     const neededHeight = 6 + lines.length * lineHeight + 2 + dateFontSize + 6;
     if (neededHeight > headerHeight) headerHeight = neededHeight;
     doc.setFillColor(7, 46, 64); doc.rect(0, 0, 210, headerHeight, 'F');
+    if (logo && logoW && logoH) {
+      try {
+        // Get real image size using jsPDF's getImageProperties
+        const props = doc.getImageProperties(logo);
+        const aspect = props.width / props.height;
+        let drawW = logoW;
+        let drawH = logoH;
+        if (logoW / logoH > aspect) {
+          drawW = logoH * aspect;
+          drawH = logoH;
+        } else {
+          drawW = logoW;
+          drawH = logoW / aspect;
+        }
+        doc.addImage(logo, 'PNG', 10, (headerHeight - drawH) / 2, drawW, drawH);
+      } catch {/*ignore*/}
+    } else {
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14);
+    }
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(fontSize);
-    lines.forEach((l, i) => { doc.text(l, baseX, 10 + i * lineHeight); });
+    lines.forEach((l, i) => { const baseline = 6 + (i + 1) * lineHeight - (lineHeight - fontSize) / 2; doc.text(l, baseX, baseline); });
     const dateY = 6 + lines.length * lineHeight + 2 + dateFontSize;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(dateFontSize);
     doc.text('Generado (CDMX): ' + generadoEn, baseX, dateY);
