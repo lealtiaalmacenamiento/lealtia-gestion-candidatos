@@ -411,8 +411,9 @@ export default function ProspectosPage(){
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
-    // Obtener planificación por agente (en paralelo)
-  let planningSummaries: Record<number,{ prospeccion:number; smnyl:number; total:number }> | undefined
+    // Obtener planificación por agente (en paralelo) y guardar bloques completos
+    let planningSummaries: Record<number,{ prospeccion:number; smnyl:number; total:number }> | undefined
+    let perAgentPlanning: Record<number, any[]> = {};
     try {
       const weekNum = semana==='ALL'? undefined : (semana as number)
       if(weekNum){
@@ -421,7 +422,7 @@ export default function ProspectosPage(){
           try { const r = await fetch('/api/planificacion?'+params.toString()); if(r.ok) return { id:Number(id), data: await r.json() }; } catch {/*ignore*/}
           return { id:Number(id), data:null }
         }))
-  planningSummaries = {}
+        planningSummaries = {}
         for(const {id,data} of responses){ if(data){
           const counts = { prospeccion:0, smnyl:0 }
           for(const b of (data.bloques||[])){
@@ -430,6 +431,7 @@ export default function ProspectosPage(){
             // CITAS dormidas: ignorar
           }
           planningSummaries[id] = { ...counts, total: counts.prospeccion + counts.smnyl }
+          perAgentPlanning[id] = data.bloques || [];
         }}
       }
     } catch {/* ignore planning errors */}
@@ -518,7 +520,8 @@ export default function ProspectosPage(){
                   clientes_modificaciones: Number(d0.clientes_modificaciones||0),
                   polizas_altas: Number(d0.polizas_altas||0),
                   polizas_modificaciones: Number(d0.polizas_modificaciones||0)
-                })) } : {})
+                })) } : {}),
+                ...(perAgentPlanning[id] ? { planning: perAgentPlanning[id] } : {})
               }
             }
           }
