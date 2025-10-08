@@ -201,12 +201,21 @@ export async function exportProspectosPDF(
   doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
   // Barras
   const barW = 8;
+  // Colores de estado del front
+  const barColors = [
+    [255, 193, 7],    // Pendiente: amarillo
+    [33, 150, 243],   // Seguimiento: azul
+    [0, 200, 83],     // Con cita: verde
+    [158, 158, 158],  // Descartado: gris
+    [25, 118, 210],   // Clientes: azul fuerte
+    [120, 144, 156]   // Previas: gris azulado
+  ];
   // Calcular separación para que todas las barras y etiquetas quepan en chartW
   const barGap = (chartW - (labelsGraficas.length * barW)) / (labelsGraficas.length - 1);
   totales.forEach((val: number, i: number) => {
     const x = chartX + i * (barW + barGap);
     const barH = (val/max)*chartH;
-    doc.setFillColor(60, 60, 60);
+    doc.setFillColor(...barColors[i]);
     doc.rect(x, chartY+chartH-barH, barW, barH, 'F');
     doc.setFontSize(8);
     doc.text(String(val), x + barW/2, chartY+chartH-barH-2, {align:'center'});
@@ -215,32 +224,32 @@ export async function exportProspectosPDF(
   });
   // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
   if(meta){
-    // Sumar meta parametrizada + arrastre
-    const arrastre = totalRow[7] || 0;
-    const metaTotal = meta + arrastre;
-    // Avance: prospectos actuales (sin previas)
-    const avance = totalRow[1] || 0;
-    const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
-    const metaY = chartY+chartH+18;
-    const metaW = (metaTotal/max)*chartW;
-    const metaBarH = 7;
-    // Barra de meta total
-    doc.setFillColor(7,46,64); // color institucional
-    doc.rect(chartX, metaY, metaW, metaBarH, 'F');
-    // Barra de avance (encima)
-    const avanceW = (avance/max)*chartW;
-    doc.setFillColor(60, 60, 60);
-    doc.rect(chartX, metaY, avanceW, metaBarH, 'F');
-    // Etiquetas
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8);
-    doc.setTextColor(7,46,64);
-    doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
-    doc.setTextColor(0,0,0);
-    // Mostrar: Meta: [meta total] (actual/meta, %)
-    const metaLabel = `Meta: ${metaTotal} (${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
-    doc.text(metaLabel, chartX+metaW+8, metaY+metaBarH/2+2, {align:'left'});
-    y = metaY + metaBarH + 8;
+  // Sumar meta parametrizada + arrastre
+  const arrastre = totalRow[7] || 0;
+  const metaTotal = meta + arrastre;
+  // Avance: prospectos actuales (sin previas)
+  const avance = totalRow[1] || 0;
+  const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
+  const metaY = chartY+chartH+18;
+  const metaW = chartW; // SIEMPRE igual al ancho de la gráfica
+  const metaBarH = 7;
+  // Barra de meta total
+  doc.setFillColor(7,46,64); // color institucional
+  doc.rect(chartX, metaY, metaW, metaBarH, 'F');
+  // Barra de avance (encima)
+  const avanceW = metaTotal > 0 ? (avance/metaTotal)*metaW : 0;
+  doc.setFillColor(60, 60, 60);
+  doc.rect(chartX, metaY, avanceW, metaBarH, 'F');
+  // Etiquetas
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.setTextColor(7,46,64);
+  doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
+  doc.setTextColor(0,0,0);
+  // Mostrar: Meta: [meta total] (actual/meta, %)
+  const metaLabel = `Meta: ${metaTotal} (${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
+  doc.text(metaLabel, chartX+metaW+8, metaY+metaBarH/2+2, {align:'left'});
+  y = metaY + metaBarH + 8;
   } else {
     y = chartY + chartH + 14;
   }
