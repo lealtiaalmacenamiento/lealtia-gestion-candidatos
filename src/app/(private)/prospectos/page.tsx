@@ -65,11 +65,17 @@ export default function ProspectosPage(){
   const yearCacheRef = useRef<Record<string,Prospecto[]>>({}) // key: anio|agenteId
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
-  // Conteos mostrados en badges: revertido a lógica original (solo semana seleccionada / agg directo)
-  const displayData = useMemo(()=>{
-    if(!agg) return { total:0, por_estado:{} as Record<string,number> }
-    return { total: agg.total, por_estado: { ...agg.por_estado } }
-  },[agg])
+  // Conteos mostrados en badges: suma de todos los prospectos del año (actual + anteriores)
+  const displayData = useMemo(() => {
+    const counts: Record<string, number> = { pendiente: 0, seguimiento: 0, con_cita: 0, descartado: 0, ya_es_cliente: 0 };
+    for (const p of sourceAll) {
+      if (counts[p.estado] !== undefined) counts[p.estado]++;
+    }
+    return {
+      total: sourceAll.length,
+      por_estado: counts
+    };
+  }, [sourceAll]);
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
   const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
   const [errorMsg,setErrorMsg]=useState<string>('')
