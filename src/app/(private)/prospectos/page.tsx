@@ -580,29 +580,149 @@ export default function ProspectosPage(){
   );
   } else {
     // Filtrar por agente seleccionado explícitamente para evitar incluir otros
-    const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
+    const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos;
     // Export individual agente usando semana seleccionada
-  const selectedWeekNumInd = (semana === 'ALL') ? metaWeek : Number(semana)
-  const exportPros = filtered.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd)
-  if(exportPros.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return }
+    const selectedWeekNumInd = (semana === 'ALL') ? metaWeek : Number(semana);
+    const exportPros = filtered.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd);
+    if(exportPros.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return; }
 
-  // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
-  const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{})
-  const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
-  const doc = new jsPDF();
-  const logoW = 32;
-  const logoH = 16;
-  const logo = await pngToBase64('/Logolealtiaruedablanca.png');
-  await exportProspectosPDFAgente(
-    doc,
-    exportPros,
-    { agenteId: (superuser && agenteId) ? Number(agenteId) : user?.id, agentesMap, perAgentPrevCounts, filename },
-    autoTable,
-    titulo,
-    logo,
-    logoW,
-    logoH
-  );
+    // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
+    const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{});
+    const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{});
+    // Calcular métricas avanzadas, planificación y actividad usando TODOS los prospectos del agente, no solo los de la semana seleccionada
+    const allProsAgente = filtered;
+    const grouped = allProsAgente.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{});
+    const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {};
+    for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual });
+    // Obtener planificación por agente (en paralelo) y guardar bloques completos
+    let planningSummaries: Record<number,{ prospeccion:number; smnyl:number; total:number }> | undefined;
+    try {
+      const weekNum = (semana === 'ALL') ? undefined : (semana as number);
+      if(weekNum){
+        const responses = await Promise.all(Object.keys(grouped).map(async id=>{
+          const params = new URLSearchParams({ agente_id:String(id), semana:String(weekNum), anio:String(anio) });
+          try { const r = await fetch('/api/planificacion?'+params.toString()); if(r.ok) return { id:Number(id), data: await r.json() }; } catch {/*ignore*/}
+          return { id:Number(id), data:null };
+        }));
+        planningSummaries = {};
+        for(const {id,data} of responses){ if(data){
+          const counts = { prospeccion:0, smnyl:0, citas_confirmadas:0 };
+          for(const b of (data.bloques||[])){
+            if(b.activity==='PROSPECCION') counts.prospeccion++;
+            else if(b.activity==='SMNYL') counts.smnyl++;
+            else if(b.activity==='CITAS' && b.confirmada) counts.citas_confirmadas++;
+          }
+          planningSummaries[id] = { ...counts, total: counts.prospeccion + counts.smnyl + counts.citas_confirmadas };
+        }}
+      }
+    } catch {/* ignore planning errors */}
+    // Actividad semanal por usuario (solo si semana específica)
+    type DetailsType = { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number };
+    type BreakdownType = { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number };
+    type DailyType = { labels: string[]; counts: number[] };
+    type ApiActivityResponse = {
+      success: boolean;
+      daily: DailyType;
+      breakdown?: BreakdownType;
+      details?: DetailsType;
+      detailsDaily?: DetailsType[];
+    };
+    type PerAgentActivityType = {
+      email?:string;
+      labels:string[];
+      counts:number[];
+      breakdown?: BreakdownType;
+      details?: DetailsType;
+      detailsDaily?: DetailsType[];
+      planning?: unknown[];
+    };
+    let perAgentActivity: Record<number, PerAgentActivityType> | undefined;
+    try {
+      if (semana !== 'ALL'){
+        const weekNum = semana as number;
+        const agentIds = Object.keys(grouped);
+        const responses = await Promise.all(agentIds.map(async id=>{
+          const ag = agentes.find(a=> String(a.id)===String(id));
+          const email = ag?.email;
+          if(!email) return { id:Number(id), data:null };
+          const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(weekNum), usuario: email });
+          try {
+            const r = await fetch('/api/auditoria/activity?' + paramsAct.toString());
+            if(!r.ok) return { id:Number(id), data:null };
+            const j: ApiActivityResponse = await r.json();
+            return { id:Number(id), data:j, email };
+          } catch { return { id:Number(id), data:null } }
+        }));
+        perAgentActivity = {};
+        for(const resp of responses){
+          const { id, data, email } = resp as { id:number; data:ApiActivityResponse|null; email?:string };
+          if(data && data.success && data.daily && Array.isArray(data.daily.counts)){
+            const b = data.breakdown || { views:0, clicks:0, forms:0, prospectos:0, planificacion:0, clientes:0, polizas:0, usuarios:0, parametros:0, reportes:0, otros:0 };
+            const d = data.details || undefined;
+            const dd = Array.isArray(data.detailsDaily) ? data.detailsDaily : undefined;
+            const normalizedDetails = d ? {
+              prospectos_altas: Number(d.prospectos_altas||0),
+              prospectos_cambios_estado: Number(d.prospectos_cambios_estado||0),
+              prospectos_notas: Number(d.prospectos_notas||0),
+              planificacion_ediciones: Number(d.planificacion_ediciones||0),
+              clientes_altas: Number(d.clientes_altas||0),
+              clientes_modificaciones: Number(d.clientes_modificaciones||0),
+              polizas_altas: Number(d.polizas_altas||0),
+              polizas_modificaciones: Number(d.polizas_modificaciones||0)
+            } : undefined;
+            perAgentActivity[id] = {
+              email,
+              labels: data.daily.labels || [],
+              counts: data.daily.counts || [],
+              breakdown: b,
+              ...(normalizedDetails ? { details: normalizedDetails } : {}),
+              ...(dd ? { detailsDaily: dd.map((d0: DetailsType)=>({
+                prospectos_altas: Number(d0.prospectos_altas||0),
+                prospectos_cambios_estado: Number(d0.prospectos_cambios_estado||0),
+                prospectos_notas: Number(d0.prospectos_notas||0),
+                planificacion_ediciones: Number(d0.planificacion_ediciones||0),
+                clientes_altas: Number(d0.clientes_altas||0),
+                clientes_modificaciones: Number(d0.clientes_modificaciones||0),
+                polizas_altas: Number(d0.polizas_altas||0),
+                polizas_modificaciones: Number(d0.polizas_modificaciones||0)
+              })) } : {})
+            };
+          } else {
+            perAgentActivity[id] = {
+              email,
+              labels: [],
+              counts: [],
+              breakdown: {
+                views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0
+              }
+            };
+          }
+        }
+        if(Object.keys(perAgentActivity).length === 0) perAgentActivity = undefined;
+      }
+    } catch { /* ignore activity errors */ }
+    const doc = new jsPDF();
+    const logoW = 32;
+    const logoH = 16;
+    const logo = await pngToBase64('/Logolealtiaruedablanca.png');
+    await exportProspectosPDFAgente(
+      doc,
+      exportPros,
+      {
+        agenteId: (superuser && agenteId) ? Number(agenteId) : user?.id,
+        agentesMap,
+        perAgentPrevCounts,
+        filename,
+        perAgentExtended: perAgent,
+        planningSummaries,
+        perAgentActivity
+      },
+      autoTable,
+      titulo,
+      logo,
+      logoW,
+      logoH
+    );
   }
   }}>PDF</button>
     </div>}
@@ -612,7 +732,7 @@ export default function ProspectosPage(){
           <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title={semana==='ALL'? 'Total del año filtrado' : 'Total semana'}>Total {displayData.total}</button>
           {(['pendiente','seguimiento','con_cita','ya_es_cliente','descartado'] as ProspectoEstado[] | string[]).map(k=> { const v = Number(displayData.por_estado[k] ?? 0); const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}} title={ESTADO_LABEL[k as ProspectoEstado]}>{ESTADO_LABEL[k as ProspectoEstado] || k} {v}</button>})}
           {(()=>{ 
-            // Objetivo dinámico: meta parametrizada + pendientes (activosPrevios) de semanas anteriores
+            // Objetivo dinámico: meta parametrizada + pendientes (activosPrevios) de semanas anterioresa
             const carry = activosPrevios.length
             const objetivoBase = metaProspectos
             const objetivo = objetivoBase + carry
