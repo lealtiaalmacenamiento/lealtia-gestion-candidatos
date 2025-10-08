@@ -239,9 +239,8 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
   const rows: Array<[string, string, string]> = [];
   // Mapeo exacto de claves para ficha de candidato (debe coincidir con el select y la BD)
   const push = (k: string, v: unknown) => {
-    const key = k.toUpperCase();
-    const mensaje = mensajesPorCampo?.[key] || '';
-    rows.push([key, U(v), mensaje]);
+    const mensaje = mensajesPorCampo?.[k] || '';
+    rows.push([k, U(v), mensaje]);
   };
   push('CLAVE TEMPORAL', c.ct);
   push('NOMBRE DE CANDIDATO', c.candidato);
