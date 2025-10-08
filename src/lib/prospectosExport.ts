@@ -127,16 +127,15 @@ export async function exportProspectosPDF(
     doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F');
     if(logo && logoW && logoH){
       try {
-        // Load image to get natural dimensions
-        const img = new window.Image();
+        // Create an offscreen image to get natural size synchronously
+        const img = document.createElement('img');
         img.src = logo;
-        img.onload = function() {
-          const naturalW = img.naturalWidth;
-          const naturalH = img.naturalHeight;
-          let drawW = logoW;
-          let drawH = logoH;
-          // Calculate aspect ratio
-          const aspect = naturalW / naturalH;
+        // Default to provided size
+        let drawW = logoW;
+        let drawH = logoH;
+        // If image is loaded (should be for base64), get real size
+        if (img.complete && img.naturalWidth && img.naturalHeight) {
+          const aspect = img.naturalWidth / img.naturalHeight;
           if (logoW / logoH > aspect) {
             drawW = logoH * aspect;
             drawH = logoH;
@@ -144,14 +143,8 @@ export async function exportProspectosPDF(
             drawW = logoW;
             drawH = logoW / aspect;
           }
-          doc.addImage(logo, 'PNG', 10, (headerHeight - drawH) / 2, drawW, drawH);
-        };
-        // Fallback: draw with provided dimensions if onload doesn't fire
-        setTimeout(() => {
-          if (!img.complete) {
-            doc.addImage(logo, 'PNG', 10, (headerHeight - logoH) / 2, logoW, logoH);
-          }
-        }, 200);
+        }
+        doc.addImage(logo, 'PNG', 10, (headerHeight - drawH) / 2, drawW, drawH);
       } catch {/*ignore*/}
     } else {
       doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14);
