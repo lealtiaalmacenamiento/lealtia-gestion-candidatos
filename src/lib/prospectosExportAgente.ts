@@ -118,6 +118,7 @@ export async function exportProspectosPDFAgente(
       doc.text(labelsGraficas[i], x + barW/2, chartY+chartH+8, {align:'center'});
     });
     // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
+    let metaBarEndY = chartY + chartH;
     if(meta){
       const metaTotal = meta + previas;
       const avance = total;
@@ -145,9 +146,7 @@ export async function exportProspectosPDFAgente(
       }
       const labelX = chartX + metaW + 8;
       doc.text(metaLabel, labelX, metaY+metaBarH/2+3, {align:'left'});
-      y = metaY + metaBarH + GAP;
-    } else {
-      y = chartY + chartH + GAP;
+      metaBarEndY = metaY + metaBarH;
     }
     // Tarjetas de resumen a la derecha de la gráfica
     const totalConPrevias = total;
@@ -172,7 +171,9 @@ export async function exportProspectosPDFAgente(
       doc.text(c[1], cxT + 3, cyT + 12);
       cyT += cardHT + 4;
     });
-    y = Math.max(y, cyT);
+    // Ajustar y para que todo el contenido posterior quede debajo de la barra de meta y tarjetas
+    y = Math.max(metaBarEndY, cyT) + GAP;
+    // (Las tarjetas y el ajuste de y ya están dentro del bloque anterior)
 
 
   // --- Tabla de prospectos de la semana ---
