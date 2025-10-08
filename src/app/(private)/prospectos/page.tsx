@@ -568,9 +568,11 @@ export default function ProspectosPage(){
   const logoH = 16;
   // Always use the institutional logo as base64
   const logo = await pngToBase64('/Logolealtiaruedablanca.png');
+  // Usar yearProspectos si está disponible para incluir prospectos previos
+  const allProspectos = yearProspectos ? yearProspectos : prospectos;
   await exportProspectosPDF(
     doc,
-    exportPros,
+    allProspectos,
     { incluirId:false, agrupadoPorAgente: agrupado, agentesMap: agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}), allAgentIds, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity, perAgentPrevCounts, semanaActual: { anio, semana_iso: selectedWeekNum } },
     autoTable,
     titulo,
