@@ -715,7 +715,8 @@ export default function ProspectosPage(){
         filename,
         perAgentExtended: perAgent,
         planningSummaries,
-        perAgentActivity
+        perAgentActivity,
+        metaProspectos
       },
       autoTable,
       titulo,
