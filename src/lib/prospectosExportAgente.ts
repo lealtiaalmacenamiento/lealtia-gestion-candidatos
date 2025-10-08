@@ -268,7 +268,8 @@ export async function exportProspectosPDFAgente(
   });
   y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
 
-  // --- Prospectos de semanas previas ---
+  // --- Prospectos de semanas anteriores ---
+  // Filtrar prospectos del agente que sean de semanas previas a la actual
   const semanaActiva = opts?.semanaActual?.semana_iso;
   const anioActivo = opts?.semanaActual?.anio;
   const prevPros = agPros.filter(p =>
@@ -283,7 +284,7 @@ export async function exportProspectosPDFAgente(
     y = ensure(y, 16);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text('Prospectos de semanas previas', 14, y);
+    doc.text('Prospectos de semanas anteriores', 14, y);
     y += 4;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -306,6 +307,10 @@ export async function exportProspectosPDFAgente(
     });
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
   }
+
+  // --- Prospectos de semanas previas ---
+  // --- Prospectos de semanas anteriores ---
+  // Ya implementado abajo, no duplicar declaración
 
   // --- Métricas avanzadas ---
   if (opts?.perAgentExtended && opts.perAgentExtended[agenteId]) {
