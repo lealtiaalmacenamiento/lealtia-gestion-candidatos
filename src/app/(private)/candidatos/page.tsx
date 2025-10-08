@@ -63,6 +63,7 @@ export default function CandidatosPage() {
           j.data.forEach((p: Parametro) => {
             if (p.clave && typeof p.valor === 'string') mensajes[p.clave] = p.valor;
           });
+          console.log('[DEBUG] fichaMensajes:', mensajes);
           setFichaMensajes(mensajes);
         }
       })
@@ -164,7 +165,10 @@ export default function CandidatosPage() {
                         <td className="p-1">
                           <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
                             <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
-                            <button onClick={() => exportCandidatoPDF({ ...c, proceso }, fichaMensajes)} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
+                            <button onClick={() => {
+                              console.log('[DEBUG] Exportando PDF para', c.candidato, 'con mensajes:', fichaMensajes);
+                              exportCandidatoPDF({ ...c, proceso }, fichaMensajes);
+                            }} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
                             <button onClick={() => setPendingDelete(c)} className="btn btn-danger btn-sm flex-fill">Eliminar</button>
                           </div>
                         </td>

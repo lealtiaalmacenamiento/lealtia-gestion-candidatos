@@ -84,6 +84,10 @@ export async function exportCandidatosExcel(candidatos: Candidato[]): Promise<vo
  * @param mensajesPorCampo? Objeto opcional { [clave: string]: string } para mostrar mensajes personalizados por fila en la tabla de datos
  */
 export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record<string, string>) {
+  // DEBUG: Mostrar claves y mensajes recibidos
+  if (typeof window !== 'undefined') {
+    console.log('[DEBUG][PDF] mensajesPorCampo:', mensajesPorCampo);
+  }
   try {
     const { jsPDF } = await import('jspdf')
     const autoTable = (await import('jspdf-autotable')).default
@@ -240,6 +244,13 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
   // Mapeo exacto de claves para ficha de candidato (debe coincidir con el select y la BD)
   const push = (k: string, v: unknown) => {
     const mensaje = mensajesPorCampo?.[k] || '';
+    if (typeof window !== 'undefined') {
+      if (mensaje) {
+        console.log(`[DEBUG][PDF] Mensaje para "${k}":`, mensaje);
+      } else {
+        console.log(`[DEBUG][PDF] Sin mensaje para "${k}"`);
+      }
+    }
     rows.push([k, U(v), mensaje]);
   };
   push('CLAVE TEMPORAL', c.ct);
