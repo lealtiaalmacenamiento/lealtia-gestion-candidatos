@@ -579,20 +579,21 @@ export default function ProspectosPage(){
     logoH
   );
   } else {
-    // Filtrar por agente seleccionado explícitamente para evitar incluir otros
-    const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos;
-    // Export individual agente usando semana seleccionada
+    // Usar yearProspectos si está disponible para el histórico completo del agente
+    const allAgentProspects = (superuser && agenteId)
+      ? (yearProspectos ? yearProspectos.filter(p => p.agente_id === Number(agenteId)) : prospectos.filter(p => p.agente_id === Number(agenteId)))
+      : (yearProspectos ? yearProspectos : prospectos);
     const selectedWeekNumInd = (semana === 'ALL') ? metaWeek : Number(semana);
-  const exportPros = filtered; // pasar todos los prospectos del agente
-  const exportProsSemana = filtered.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd);
-  if(exportProsSemana.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return; }
+    const exportProsSemana = allAgentProspects.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd);
+    if(exportProsSemana.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return; }
 
     // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
-    const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{});
+    const perAgentPrevCounts = allAgentProspects
+      .filter(p => Number(p.anio) === anio && Number(p.semana_iso) < selectedWeekNumInd && ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado))
+      .reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{});
     const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{});
-    // Calcular métricas avanzadas, planificación y actividad usando TODOS los prospectos del agente, no solo los de la semana seleccionada
-    const allProsAgente = filtered;
-    const grouped = allProsAgente.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{});
+    // Calcular métricas avanzadas, planificación y actividad usando TODOS los prospectos del agente
+    const grouped = allAgentProspects.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{});
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {};
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual });
     // Obtener planificación por agente (en paralelo) y guardar bloques completos
@@ -708,7 +709,7 @@ export default function ProspectosPage(){
     const logo = await pngToBase64('/Logolealtiaruedablanca.png');
     await exportProspectosPDFAgente(
       doc,
-      exportPros,
+      allAgentProspects,
       {
         agenteId: (superuser && agenteId) ? Number(agenteId) : user?.id,
         agentesMap,
@@ -718,7 +719,7 @@ export default function ProspectosPage(){
         planningSummaries,
         perAgentActivity,
         metaProspectos,
-  semanaActual: { anio, semana_iso: selectedWeekNumInd }
+        semanaActual: { anio, semana_iso: selectedWeekNumInd }
       },
       autoTable,
       titulo,
