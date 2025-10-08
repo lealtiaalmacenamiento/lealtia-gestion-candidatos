@@ -300,8 +300,14 @@ export async function exportProspectosPDFAgente(
       headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
       alternateRowStyles: { fillColor: [245, 247, 248] },
       theme: 'grid',
-      margin: { left: 14, right: 14 },
-      didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+      margin: { left: 14, right: 14, top: headerHeight + 6 },
+      didDrawPage: (data: any) => {
+        drawHeader();
+        doc.setTextColor(0, 0, 0);
+        if (data.cursor && data.cursor.y < headerHeight + 6) {
+          data.cursor.y = headerHeight + 6;
+        }
+      }
     });
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
   }
