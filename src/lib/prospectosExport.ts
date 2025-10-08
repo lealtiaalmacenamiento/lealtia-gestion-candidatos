@@ -37,26 +37,24 @@ function nowMX(){
  * Donde logoBase64 es la imagen en formato base64 PNG.
  * Si no se pasa logo, se muestra un placeholder.
  */
-import fs from 'fs';
-import path from 'path';
-
+/**
+ * Exporta el reporte de prospectos a PDF.
+ *
+ * El logo institucional debe ser SIEMPRE el archivo public/Logolealtiaruedablanca.png convertido a base64.
+ * Pásalo como parámetro 'logo' (data:image/png;base64,...). Si no se pasa, se muestra un placeholder.
+ * Ejemplo para obtener el base64 en el cliente:
+ *   fetch('/Logolealtiaruedablanca.png').then(r => r.blob()).then(b => ...)
+ */
 export async function exportProspectosPDF(
   doc: any,
   prospectos: Prospecto[],
   opts: any,
   autoTable: (...args: any[]) => any,
   titulo: string,
+  logo?: string, // base64 PNG de public/Logolealtiaruedablanca.png
+  logoW: number = 32,
+  logoH: number = 32
 ) {
-  // Forzar siempre el logo institucional
-  const logoPath = path.resolve(process.cwd(), 'public/Logolealtiaruedablanca.png');
-  let logo: string | undefined = undefined;
-  const logoW = 32, logoH = 32;
-  try {
-    const imgBuffer = fs.readFileSync(logoPath);
-    logo = 'data:image/png;base64,' + imgBuffer.toString('base64');
-  } catch {
-    logo = undefined;
-  }
   // Helpers y layout deben estar definidos antes de renderProspectosPorSemana
   const generadoEn = nowMX();
   // Si es reporte individual, adaptar el título
