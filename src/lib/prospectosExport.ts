@@ -23,8 +23,7 @@ export async function pngToBase64(url: string): Promise<string> {
 }
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { Prospecto, ProspectoEstado } from '@/types'
-import { ESTADO_LABEL } from './prospectosUI'
+import type { Prospecto } from '@/types'
 
 // Tipo auxiliar para doc con soporte de autoTable
 interface JsPDFWithAutoTable {
@@ -174,27 +173,9 @@ export async function exportProspectosPDF(
   };
 
 
-  // Si es reporte por agente, filtrar todos los datos y secciones para ese agente
-  let agenteId: number | undefined = undefined;
-  if (allAgentIds.length === 1) {
-    agenteId = allAgentIds[0];
-  }
-  // --- Datos filtrados ---
-  const semanaActual = opts?.semanaActual;
+  // (Eliminado cálculo de agenteId y semanaActual)
   // Prospectos de semanas anteriores: todos los agentes, solo activos
-  let anteriores: Prospecto[] = [];
-  if (semanaActual) {
-    anteriores = prospectos.filter(p =>
-      !(p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso)
-      && ['pendiente','seguimiento','con_cita'].includes(p.estado)
-    );
-  } else {
-    anteriores = [];
-  }
-  // Si es reporte individual, filtrar por agente
-  if (agenteId !== undefined) {
-    anteriores = anteriores.filter(p => p.agente_id === agenteId);
-  }
+  // (Eliminado cálculo de prospectos previos/anteriores)
   const agentesMap = opts?.agentesMap || {};
   // --- Resumen por agente (dashboard) ---
   let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
@@ -361,83 +342,6 @@ export async function exportProspectosPDF(
   });
   y = Math.max(y, cyT);
   // --- (Eliminada sección Resumen semana actual y sus tarjetas) ---
-  // --- Tabla de arrastre y resumen semanas anteriores --- forzado
-  // Solo mostrar prospectos previos activos en la tabla de arrastre
-  const anterioresActivos = anteriores.filter(p => ['pendiente','seguimiento','con_cita'].includes(p.estado));
-  if (anterioresActivos.length) {
-    y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY + 60;
-    y = ensure(y, 16);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Prospectos de semanas anteriores (arrastre)', 14, y);
-    y += 4;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const headAnt = [...(opts?.incluirId ? ['ID'] : []), 'Nombre', 'Teléfono', 'Estado', 'Notas', 'Año', 'Semana'];
-    const bodyAnt = anterioresActivos.map(p => [...(opts?.incluirId ? [p.id] : []), p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120), p.anio, p.semana_iso]);
-    // Forzar siempre un salto de página antes de la tabla de prospectos previos
-    doc.addPage();
-    drawHeader();
-    y = headerHeight + 6;
-    // Si la tabla inicia en una nueva página, agregar una fila espaciadora
-    let bodyAntFinal = bodyAnt;
-    let pageBreakOpt: any = {};
-    if (y < headerHeight + 20) {
-      // Si la posición Y es muy cercana al header, agregar fila vacía
-      const emptyRow = new Array(headAnt.length).fill('');
-      bodyAntFinal = [emptyRow, ...bodyAnt];
-      pageBreakOpt = { pageBreak: 'avoid' };
-    }
-    autoTable(doc, {
-      startY: y,
-      head: [headAnt],
-      body: bodyAntFinal,
-      styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
-      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
-      alternateRowStyles: { fillColor: [245, 247, 248] },
-      theme: 'grid',
-      margin: { left: 14, right: 14, top: headerHeight + 6 },
-      ...pageBreakOpt,
-      didDrawPage: (data: any) => {
-        drawHeader();
-        doc.setTextColor(0, 0, 0);
-        // En todas las páginas, forzar el cursor de la tabla debajo del header
-        if (data.cursor && data.cursor.y < headerHeight + 6) {
-          data.cursor.y = headerHeight + 6;
-        }
-      }
-    });
-    y = docTyped.lastAutoTable!.finalY! + GAP;
-    // Definir función resumenPorEstado localmente
-    const resumenPorEstado = (ps: Prospecto[]) => {
-      const pe: Record<string, number> = {};
-      for (const p of ps) pe[p.estado] = (pe[p.estado] || 0) + 1;
-      return { total: ps.length, por_estado: pe }
-    };
-    const rAnt = resumenPorEstado(anterioresActivos);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('Resumen semanas anteriores', 14, y);
-    y += 4;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const cardsAnt: [string, string][] = [['Prospectos arrastre', String(rAnt.total)]];
-    Object.entries(rAnt.por_estado).forEach(([k, v]) => {
-      cardsAnt.push([ESTADO_LABEL[k as ProspectoEstado] || k, String(v)]);
-    });
-    let cxAnt = 14, cyAnt = y;
-    const cardW = 56, cardH = 12;
-    cardsAnt.forEach((c, i) => {
-      doc.setDrawColor(220);
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(cxAnt, cyAnt, cardW, cardH, 2, 2, 'FD');
-      doc.setFont('helvetica', 'bold');
-      doc.text(c[0], cxAnt + 3, cyAnt + 5);
-      doc.setFont('helvetica', 'normal');
-      doc.text(c[1], cxAnt + 3, cyAnt + 10);
-      if ((i + 1) % 3 === 0) { cxAnt = 14; cyAnt += cardH + 4 } else { cxAnt += cardW + 6 }
-    });
-  }
 
   // --- Secciones avanzadas: métricas, planificación, actividad, acciones ---
   // Usar allAgentIds (siempre contiene solo el agente seleccionado o todos)
