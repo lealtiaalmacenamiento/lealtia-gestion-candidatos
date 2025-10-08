@@ -125,7 +125,37 @@ export async function exportProspectosPDF(
     const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6;
     if(neededHeight > headerHeight) headerHeight = neededHeight;
     doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F');
-    if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH); } catch {/*ignore*/} } else { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14); }
+    if(logo && logoW && logoH){
+      try {
+        // Load image to get natural dimensions
+        const img = new window.Image();
+        img.src = logo;
+        img.onload = function() {
+          const naturalW = img.naturalWidth;
+          const naturalH = img.naturalHeight;
+          let drawW = logoW;
+          let drawH = logoH;
+          // Calculate aspect ratio
+          const aspect = naturalW / naturalH;
+          if (logoW / logoH > aspect) {
+            drawW = logoH * aspect;
+            drawH = logoH;
+          } else {
+            drawW = logoW;
+            drawH = logoW / aspect;
+          }
+          doc.addImage(logo, 'PNG', 10, (headerHeight - drawH) / 2, drawW, drawH);
+        };
+        // Fallback: draw with provided dimensions if onload doesn't fire
+        setTimeout(() => {
+          if (!img.complete) {
+            doc.addImage(logo, 'PNG', 10, (headerHeight - logoH) / 2, logoW, logoH);
+          }
+        }, 200);
+      } catch {/*ignore*/}
+    } else {
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14);
+    }
     doc.setTextColor(255,255,255);
     doc.setFont('helvetica','bold'); doc.setFontSize(fontSize);
     lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, baseX, baseline); });
@@ -263,8 +293,8 @@ export async function exportProspectosPDF(
   });
   // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
   if(meta){
-    // La meta es solo la parametrizada
-    const metaTotal = meta;
+    // La meta es solo la parametrizada + previas
+    const metaTotal = meta + totalRow[7];
     // El avance es el total de prospectos (incluyendo previas)
     const avance = (totalRow[1] || 0);
     const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
@@ -285,7 +315,7 @@ export async function exportProspectosPDF(
     doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
     doc.setTextColor(0,0,0);
   // Mostrar: Meta: [meta] (avance/meta, %), justo al lado derecho de la barra
-  const metaLabel = `${avance}/ Meta: ${metaTotal}, ${porcentaje.toFixed(1)}%)`;
+  const metaLabel = `${avance}/ Meta: ${metaTotal}, ${porcentaje.toFixed(1)}%`;
     // Calcular el ancho máximo para el texto (lo que queda del área de la gráfica)
     const maxLabelWidth = chartW - metaW - 12;
     let fontSize = 10;
@@ -302,7 +332,7 @@ export async function exportProspectosPDF(
     y = chartY + chartH + 14;
   }
   // Tarjetas de resumen a la derecha de la gráfica
-  const totalConPrevias = (totalRow[1] as number) + (totalRow[7] as number);
+  const totalConPrevias = (totalRow[1] as number);
   const tarjetas = [
     ['Total', `${totalConPrevias} (100.0%)`],
     ['Pendiente', `${totalRow[2]} (${((totalRow[2]/totalConPrevias)*100||0).toFixed(1)}%)`],
