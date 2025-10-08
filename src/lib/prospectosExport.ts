@@ -250,13 +250,15 @@ export async function exportProspectosPDF(
     const metaLabel = `Meta: ${metaTotal} (${avance}/${metaTotal}, ${porcentaje.toFixed(1)}%)`;
     // Calcular el ancho máximo para el texto (lo que queda del área de la gráfica)
     const maxLabelWidth = chartW - metaW - 12;
-    let labelToShow = metaLabel;
-    while(doc.getTextWidth(labelToShow) > maxLabelWidth && labelToShow.length > 8){
-      labelToShow = labelToShow.slice(0, -1);
+    let fontSize = 10;
+    doc.setFont('helvetica','bold');
+    // Reducir tamaño de fuente hasta que quepa
+    while(fontSize > 6 && doc.getTextWidth(metaLabel) > maxLabelWidth) {
+      fontSize--;
+      doc.setFontSize(fontSize);
     }
-    if(labelToShow !== metaLabel) labelToShow = labelToShow.trim() + '…';
     const labelX = chartX + metaW + 8;
-    doc.text(labelToShow, labelX, metaY+metaBarH/2+2, {align:'left'});
+    doc.text(metaLabel, labelX, metaY+metaBarH/2+3, {align:'left'});
     y = metaY + metaBarH + 8;
   } else {
     y = chartY + chartH + 14;
