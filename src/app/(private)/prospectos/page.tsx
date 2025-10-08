@@ -399,7 +399,7 @@ export default function ProspectosPage(){
       : `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`
   const hoy = new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay()
   if(agrupado){
-    // Tipo para la respuesta de actividad semanal (por usuario)
+    // Tipo para la respuesta de actividad semanal (por usuario) para push
     type ActivityResponse = {
       success?: boolean
       daily?: { labels?: string[]; counts?: number[] }
@@ -413,7 +413,7 @@ export default function ProspectosPage(){
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
     // Obtener planificación por agente (en paralelo) y guardar bloques completos
     let planningSummaries: Record<number,{ prospeccion:number; smnyl:number; total:number }> | undefined
-    let perAgentPlanning: Record<number, any[]> = {};
+  const perAgentPlanning: Record<number, import('@/types').BloquePlanificacion[]> = {};
     try {
       const weekNum = semana==='ALL'? undefined : (semana as number)
       if(weekNum){
