@@ -19,9 +19,6 @@ export default function CandidatosPage() {
   const [notif, setNotif] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // Parametrización de mensajes para ficha de candidato
-  const [fichaMensajes, setFichaMensajes] = useState<Record<string, string>>({});
-  const [mensajesCargados, setMensajesCargados] = useState(false);
   // refs para scroll sincronizado
   const scrollBodyRef = useRef<HTMLDivElement|null>(null)
   const scrollTopRef = useRef<HTMLDivElement|null>(null)
