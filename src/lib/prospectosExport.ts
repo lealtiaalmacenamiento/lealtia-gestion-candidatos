@@ -234,11 +234,13 @@ export async function exportProspectosPDF(
     margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
     didDrawCell: (data: any) => {
-      // Si la fila es TOTAL, aplicar color institucional y texto blanco a todas las celdas
+      // Si la fila es TOTAL, aplicar color institucional, texto blanco y borde claro a todas las celdas
       if (data.row && data.row.raw && String(data.row.raw[0]).trim().toUpperCase() === 'TOTAL') {
         data.cell.styles.fillColor = [7, 46, 64]; // color institucional
         data.cell.styles.textColor = [255, 255, 255]; // texto blanco
         data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.lineColor = [220, 237, 200]; // borde claro
+        data.cell.styles.lineWidth = 0.5;
       }
     },
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
