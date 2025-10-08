@@ -127,22 +127,17 @@ export async function exportProspectosPDF(
     doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F');
     if(logo && logoW && logoH){
       try {
-        // Create an offscreen image to get natural size synchronously
-        const img = document.createElement('img');
-        img.src = logo;
-        // Default to provided size
+        // Get real image size using jsPDF's getImageProperties
+        const props = doc.getImageProperties(logo);
+        const aspect = props.width / props.height;
         let drawW = logoW;
         let drawH = logoH;
-        // If image is loaded (should be for base64), get real size
-        if (img.complete && img.naturalWidth && img.naturalHeight) {
-          const aspect = img.naturalWidth / img.naturalHeight;
-          if (logoW / logoH > aspect) {
-            drawW = logoH * aspect;
-            drawH = logoH;
-          } else {
-            drawW = logoW;
-            drawH = logoW / aspect;
-          }
+        if (logoW / logoH > aspect) {
+          drawW = logoH * aspect;
+          drawH = logoH;
+        } else {
+          drawW = logoW;
+          drawH = logoW / aspect;
         }
         doc.addImage(logo, 'PNG', 10, (headerHeight - drawH) / 2, drawW, drawH);
       } catch {/*ignore*/}
@@ -239,8 +234,8 @@ export async function exportProspectosPDF(
     margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
     didDrawCell: (data: any) => {
-      // Si es la fila TOTAL, aplicar color de fondo especial
-      if (data.row.index === resumenBody.length - 1) {
+      // Si la primera celda de la fila es 'TOTAL', aplicar color de fondo especial
+      if (data.row && data.row.raw && data.row.raw[0] === 'TOTAL') {
         data.cell.styles.fillColor = [220, 237, 200]; // verde claro
         data.cell.styles.fontStyle = 'bold';
       }
@@ -433,7 +428,7 @@ export async function exportProspectosPDF(
   if (opts?.planningSummaries && allAgentIds.length > 0) {
     y = ensure(y, 10);
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal (resumen por agente)',14,y); y+=4;
-    const headPlan = ['Agente','Prospección','SMNYL','Total'];
+    const headPlan = ['Agente','Prospección','Cita','Total'];
     const body: Array<[string|number, number, number, number]> = [];
     for(const agId of allAgentIds){
       const sum = opts.planningSummaries[agId] || { prospeccion:0, smnyl:0, total:0 };
@@ -499,8 +494,8 @@ export async function exportProspectosPDF(
     y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
     y = ensure(y, 12)
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4
-    const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.','A. a cliente']
-    const body: Array<[string|number, number, number, number, number, number, number, number, number, number]> = []
+    const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.','P. a cliente','Bloques c/ cita']
+    const body: Array<[string|number, number, number, number, number, number, number, number, number, number, number]> = []
     for(const agId of allAgentIds){
       const act = opts.perAgentActivity[agId];
       const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
@@ -510,7 +505,12 @@ export async function exportProspectosPDF(
       if (opts?.perAgentActivity[agId]?.prospectosSemana) {
         aCliente = opts.perAgentActivity[agId].prospectosSemana.filter((p: Prospecto) => p.estado === 'ya_es_cliente').length;
       }
-      body.push([nombre, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones, aCliente])
+      // Calcular bloques de planificación con citas confirmadas
+      let bloquesCita = 0;
+      if (act?.planning && Array.isArray(act.planning)) {
+        bloquesCita = act.planning.filter((b: any) => b.activity === 'CITAS' && b.confirmada === true).length;
+      }
+      body.push([nombre, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones, aCliente, bloquesCita])
     }
     autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
   }
@@ -530,7 +530,7 @@ export async function exportProspectosPDF(
       ['Descartado', 'Prospecto descartado'],
       ['Clientes', 'Prospectos que ya son clientes'],
       ['Previas', 'Prospectos arrastrados de semanas anteriores'],
-      ['SMNYL','Seguros Monterrey New York Life (bloques de actividad SMNYL)'],
+      ['Cita','bloques de actividad Cita'],
       ['Conv P->S','Conversión de Pendiente a Seguimiento'],
       ['Desc %','Porcentaje de prospectos descartados'],
       ['Proy semana','Proyección de total de la semana (forecast)'],
@@ -545,7 +545,8 @@ export async function exportProspectosPDF(
       ['Modif. pól.','Modificaciones de pólizas'],
       ['Forms','Formularios enviados'],
       ['Vistas','Vistas registradas en la aplicación'],
-      ['Clicks','Clicks registrados en la aplicación']
+      ['Clicks','Clicks registrados en la aplicación'],
+      ['P. a cliente','Prospectos convertidos a cliente en la semana actual']
     ]
     const headGloss = ['Abrev.','Significado']
     // Altura mínima para que no se empalme con el footer
