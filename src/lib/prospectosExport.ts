@@ -234,9 +234,10 @@ export async function exportProspectosPDF(
     margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
     didDrawCell: (data: any) => {
-      // Si la primera celda de la fila es 'TOTAL', aplicar color de fondo especial
-      if (data.row && data.row.raw && data.row.raw[0] === 'TOTAL') {
-        data.cell.styles.fillColor = [220, 237, 200]; // verde claro
+      // Si la fila es TOTAL, aplicar color institucional y texto blanco a todas las celdas
+      if (data.row && data.row.raw && String(data.row.raw[0]).trim().toUpperCase() === 'TOTAL') {
+        data.cell.styles.fillColor = [7, 46, 64]; // color institucional
+        data.cell.styles.textColor = [255, 255, 255]; // texto blanco
         data.cell.styles.fontStyle = 'bold';
       }
     },
@@ -546,7 +547,8 @@ export async function exportProspectosPDF(
       ['Forms','Formularios enviados'],
       ['Vistas','Vistas registradas en la aplicación'],
       ['Clicks','Clicks registrados en la aplicación'],
-      ['P. a cliente','Prospectos convertidos a cliente en la semana actual']
+      ['P. a cliente','Prospectos convertidos a cliente en la semana actual'],
+      ['Bloques c/ cita','Bloques de planificación con citas confirmadas']
     ]
     const headGloss = ['Abrev.','Significado']
     // Altura mínima para que no se empalme con el footer
