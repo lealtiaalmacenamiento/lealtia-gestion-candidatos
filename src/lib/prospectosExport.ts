@@ -388,7 +388,16 @@ export async function exportProspectosPDF(
       const pctCliente = total > 0 ? ((clientes/total)*100).toFixed(1)+'%' : '0.0%';
       body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', pctCliente, proy]);
     }
-    autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+    autoTable(doc,{
+      startY:y,
+      head:[head],
+      body,
+      styles:{fontSize:7, cellPadding:1.5},
+      headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 },
+      theme:'grid',
+      margin:{ top: headerHeight + 16, left:14, right:14 },
+      didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) }
+    });
     y = (docTyped.lastAutoTable?.finalY || y) + 8;
   }
 
@@ -452,7 +461,16 @@ export async function exportProspectosPDF(
           userBody.push([nombre, ...labels.map(()=>0), 0]);
         }
       }
-      autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:userBody, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+      autoTable(doc,{
+        startY:y,
+        head:[['Usuario',...labels,'Total']],
+        body:userBody,
+        styles:{fontSize:7,cellPadding:1},
+        headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 },
+        theme:'grid',
+        margin:{ top: headerHeight + 16, left:14, right:14 },
+        didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) }
+      });
       y = (docTyped.lastAutoTable?.finalY || y) + 8;
     }
   }
