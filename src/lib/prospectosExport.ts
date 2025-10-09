@@ -87,13 +87,17 @@ export async function exportProspectosPDF(
     } else {
       const baseMap = opts?.agentesMap || {};
       const unionIds = new Set<number>();
-      Object.keys(baseMap).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id=> unionIds.add(Number(id)));
-      if(unionIds.size===0 && prospectos.length){ prospectos.forEach(p=> unionIds.add(p.agente_id)) }
-      allAgentIds = Array.from(unionIds.values()).sort((a,b)=> a-b);
+      // Agregar explícitamente todas las fuentes conocidas
+      Object.keys(baseMap).forEach(id => unionIds.add(Number(id)));
+      if (opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id => unionIds.add(Number(id)));
+      if (opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id => unionIds.add(Number(id)));
+      if (opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id => unionIds.add(Number(id)));
+      if (opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id => unionIds.add(Number(id)));
+      // Siempre incluir todos los agente_id presentes en los prospectos (antes solo si set estaba vacío)
+      if (prospectos && prospectos.length) {
+        prospectos.forEach(p => unionIds.add(Number(p.agente_id)));
+      }
+      allAgentIds = Array.from(unionIds.values()).sort((a, b) => a - b);
     }
     // Si es reporte individual, adaptar el título
     let customTitulo = titulo;
