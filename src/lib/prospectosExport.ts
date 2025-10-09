@@ -179,7 +179,7 @@ export async function exportProspectosPDF(
   const agentesMap = opts?.agentesMap || {};
   // --- Resumen por agente (dashboard) ---
   let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
-  y = ensure(y, 10);
+  y = ensure(y, 18); // espacio para título y tabla
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.text('Resumen por agente', 14, y);
@@ -241,13 +241,13 @@ export async function exportProspectosPDF(
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
   });
   y = docTyped.lastAutoTable!.finalY! + 8;
+  y = ensure(y, 60); // espacio para gráfica y tarjetas
   // Gráfica de barras verticales y tarjetas a la derecha
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
-  // Bajar la gráfica más
-  y += 18;
   // Área delimitada para gráfica y meta (máx 120mm de ancho)
-  const chartX = 26, chartY = y+2, chartW = 80, chartH = 18;
+  const chartW = 80, chartH = 18;
+  const chartX = 26, chartY = y+2;
   // Meta prospectos
   const meta = opts?.metaProspectos ?? null;
   const max = Math.max(...totales, meta || 1);
@@ -331,13 +331,16 @@ export async function exportProspectosPDF(
   const cxT = chartX+chartW+10; let cyT = chartY;
   const cardWT = 60, cardHT = 14;
   tarjetas.forEach((c) => {
+    // No permitir que la tarjeta se salga del margen derecho
+    let realCxT = cxT;
+    if (realCxT + cardWT > 210 - 14) realCxT = 210 - 14 - cardWT;
     doc.setDrawColor(220);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(cxT, cyT, cardWT, cardHT, 2, 2, 'FD');
+    doc.roundedRect(realCxT, cyT, cardWT, cardHT, 2, 2, 'FD');
     doc.setFont('helvetica', 'bold');
-    doc.text(c[0], cxT + 3, cyT + 6);
+    doc.text(c[0], realCxT + 3, cyT + 6);
     doc.setFont('helvetica', 'normal');
-    doc.text(c[1], cxT + 3, cyT + 12);
+    doc.text(c[1], realCxT + 3, cyT + 12);
     cyT += cardHT + 4;
   });
   y = Math.max(y, cyT);
