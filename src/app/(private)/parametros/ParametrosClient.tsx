@@ -45,6 +45,34 @@ import AppModal from '@/components/ui/AppModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 export default function ParametrosClient(){
+  // Modal añadir mensaje ficha_candidato
+  const [showAddFicha, setShowAddFicha] = useState(false);
+  const [newFicha, setNewFicha] = useState<{clave: string; valor: string; descripcion?: string}>({ clave:'', valor:'', descripcion:'' });
+  const handleAddFichaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setNewFicha(f => ({ ...f, [e.target.name]: e.target.value }));
+  };
+  const handleAddFicha = async () => {
+    if (!newFicha.clave || !newFicha.valor) return;
+    try {
+      const res = await fetch('/api/parametros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'ficha_candidato', clave: newFicha.clave, valor: newFicha.valor, descripcion: newFicha.descripcion, solicitante: 'admin' })
+      });
+      if (res.ok) {
+        setShowAddFicha(false);
+        setNewFicha({ clave:'', valor:'', descripcion:'' });
+        const ref = await fetch('/api/parametros?tipo=ficha_candidato&ts=' + Date.now());
+        if (ref.ok) {
+          const j = await ref.json();
+          setFichaRows(j.data || []);
+        }
+        setNotif({ msg: 'Mensaje añadido', type: 'success' });
+      } else {
+        setNotif({ msg: 'Error al añadir', type: 'danger' });
+      }
+    } catch { setNotif({ msg: 'Error', type: 'danger' }); }
+  };
   // FICHA CANDIDATO
   const [fichaRows, setFichaRows] = useState<Parametro[]>([]);
   const [editFichaId, setEditFichaId] = useState<number|null>(null);
@@ -371,14 +399,48 @@ export default function ParametrosClient(){
           {/* Sección FICHA CANDIDATO */}
           <section className="border rounded p-3 bg-white shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <button type="button" onClick={()=>setOpenFicha(o=>!o)} aria-expanded={openFicha} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
-                <i className={`bi bi-caret-${openFicha? 'down':'right'}-fill`}></i>
-                <span className="fw-bold small text-uppercase">Mensajes ficha de candidato</span>
-              </button>
-              {openFicha && <span className="small text-muted">Edición en línea</span>}
+              <div className="d-flex align-items-center gap-2">
+                <button type="button" onClick={()=>setOpenFicha(o=>!o)} aria-expanded={openFicha} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
+                  <i className={`bi bi-caret-${openFicha? 'down':'right'}-fill`}></i>
+                  <span className="fw-bold small text-uppercase">Mensajes ficha de candidato</span>
+                </button>
+                {openFicha && <span className="small text-muted">Edición en línea</span>}
+              </div>
+              {openFicha && (
+                <button type="button" className="btn btn-success btn-sm" onClick={()=>setShowAddFicha(true)}>
+                  <i className="bi bi-plus-lg"></i> Añadir mensaje
+                </button>
+              )}
             </div>
             {openFicha && (
-              <div className="table-responsive mt-3">
+              <>
+                {showAddFicha && (
+                  <AppModal title="Añadir mensaje ficha de candidato" icon="plus-lg" width={500} onClose={()=>setShowAddFicha(false)}
+                    footer={<>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={()=>setShowAddFicha(false)}>Cancelar</button>
+                      <button type="button" className="btn btn-primary btn-sm ms-2" disabled={!newFicha.clave || !newFicha.valor} onClick={handleAddFicha}>
+                        <i className="bi bi-check-lg"></i> Guardar
+                      </button>
+                    </>}
+                  >
+                    <div className="mb-3">
+                      <label className="form-label small mb-1">Campo/Fila</label>
+                      <select className="form-select form-select-sm" name="clave" value={newFicha.clave} onChange={handleAddFichaChange}>
+                        <option value="">(Selecciona campo)</option>
+                        {FICHA_CAMPOS.map(campo => <option key={campo} value={campo}>{campo}</option>)}
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label small mb-1">Mensaje</label>
+                      <input className="form-control form-control-sm" name="valor" value={newFicha.valor} onChange={handleAddFichaChange} />
+                    </div>
+                    <div className="mb-2">
+                      <label className="form-label small mb-1">Descripción (opcional)</label>
+                      <input className="form-control form-control-sm" name="descripcion" value={newFicha.descripcion||''} onChange={handleAddFichaChange} />
+                    </div>
+                  </AppModal>
+                )}
+                <div className="table-responsive mt-3">
                 <table className="table table-sm table-bordered align-middle mb-0 table-nowrap">
                   <thead className="table-light"><tr>
                     <th style={{width:220}}>Campo/Fila</th>
@@ -417,7 +479,8 @@ export default function ParametrosClient(){
                     ))}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </>
             )}
           </section>
           <section className="border rounded p-3 bg-white shadow-sm">

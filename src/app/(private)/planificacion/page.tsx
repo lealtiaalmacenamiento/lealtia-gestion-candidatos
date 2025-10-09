@@ -237,7 +237,7 @@ export default function PlanificacionPage(){
               <input type="number" className="form-control" value={data.porcentaje_comision} onChange={e=>setData({...data,porcentaje_comision:Number(e.target.value)})}/>
             </div>
           </div>
-          <div className="mb-2 small">Meta SMNYL semanal: {metaSmnyl}</div>
+          <div className="mb-2 small">Meta de citas semanal: {metaSmnyl}</div>
           <div className="progress mb-2" role="progressbar" aria-valuenow={horasSmnyl} aria-valuemin={0} aria-valuemax={metaSmnyl}>
             <div className={`progress-bar ${horasSmnyl>=metaSmnyl? 'bg-success':'bg-info'}`} style={{width: `${Math.min(100,(horasSmnyl/metaSmnyl)*100)}%`}}>{horasSmnyl}/{metaSmnyl}</div>
           </div>
