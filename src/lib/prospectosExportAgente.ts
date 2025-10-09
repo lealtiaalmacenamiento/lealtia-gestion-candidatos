@@ -147,7 +147,7 @@ export async function exportProspectosPDFAgente(
   let y = contentStartY;
 
   // --- Resumen del agente (dashboard) ---
-  y = ensure(y, 10);
+  y = ensure(y, 18);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.text('Resumen por agente', 14, y);
@@ -158,21 +158,42 @@ export async function exportProspectosPDFAgente(
     startY: y,
     head: [resumenHead],
     body: resumenBody,
-    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
+    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak', minCellHeight: 8 },
+    columnStyles: {
+      0: { cellWidth: 48, fontStyle: 'normal', overflow: 'linebreak' },
+      1: { cellWidth: 13 },
+      2: { cellWidth: 14 },
+      3: { cellWidth: 16 },
+      4: { cellWidth: 16 },
+      5: { cellWidth: 16 },
+      6: { cellWidth: 16 },
+      7: { cellWidth: 16 },
+    },
     headStyles: { fillColor: [7, 46, 64], fontSize: 10, textColor: [255, 255, 255], halign: 'center' },
     alternateRowStyles: { fillColor: [245, 247, 248] },
     theme: 'grid',
-    margin: { left: 14, right: 14 },
+    margin: { left: 14, right: 14, top: headerHeight + 16 },
     tableWidth: 'wrap',
+    pageBreak: 'auto',
+    didDrawCell: (data: {
+      column: { index: number }
+      cell: { raw: unknown, styles: { fontSize: number } }
+      row?: unknown
+    }) => {
+      // Si la columna es 'Agente' y el texto es muy largo, reducir fuente
+      if (data.column.index === 0 && data.cell.raw && String(data.cell.raw).length > 28) {
+        data.cell.styles.fontSize = 7;
+      }
+    },
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
   });
   y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + 8 : y + 8;
-
+  y = ensure(y, 60);
   // --- Gráfica de barras y meta (idéntica al general) ---
-  y += 18;
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [pendiente, seguimiento, conCita, descartado, clientes, previas];
-  const chartX = 26, chartY = y + 2, chartW = 80, chartH = 18;
+  const chartW = 80, chartH = 18;
+  const chartX = 26, chartY = y + 2;
   const meta = opts?.metaProspectos ?? null;
   const max = Math.max(...totales, meta || 1);
   doc.setDrawColor(0); doc.setLineWidth(0.2);
@@ -245,13 +266,16 @@ export async function exportProspectosPDFAgente(
   const cxT = chartX + chartW + 10; let cyT = chartY;
   const cardWT = 60, cardHT = 14;
   tarjetas.forEach((c) => {
+    // No permitir que la tarjeta se salga del margen derecho
+    let realCxT = cxT;
+    if (realCxT + cardWT > 210 - 14) realCxT = 210 - 14 - cardWT;
     doc.setDrawColor(220);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(cxT, cyT, cardWT, cardHT, 2, 2, 'FD');
+    doc.roundedRect(realCxT, cyT, cardWT, cardHT, 2, 2, 'FD');
     doc.setFont('helvetica', 'bold');
-    doc.text(c[0], cxT + 3, cyT + 6);
+    doc.text(c[0], realCxT + 3, cyT + 6);
     doc.setFont('helvetica', 'normal');
-    doc.text(c[1], cxT + 3, cyT + 12);
+    doc.text(c[1], realCxT + 3, cyT + 12);
     cyT += cardHT + 4;
   });
   y = Math.max(y, cyT);
@@ -268,12 +292,19 @@ export async function exportProspectosPDFAgente(
     startY: y,
     head: [['Nombre', 'Teléfono', 'Estado', 'Notas']],
     body: agProsSemana.map(p => [p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]),
-    styles: { fontSize: 8, cellPadding: 1.5 },
+    styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
     headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
     alternateRowStyles: { fillColor: [245, 247, 248] },
     theme: 'grid',
-    margin: { left: 14, right: 14 },
-    didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+    margin: { left: 14, right: 14, top: headerHeight + 16 },
+    didDrawPage: (data: { cursor?: { y: number } | null }) => {
+      // Redibujar header y asegurar que la tabla nunca arranque debajo de éste
+      drawHeader();
+      doc.setTextColor(0, 0, 0);
+      if (data.cursor && typeof data.cursor.y === 'number' && data.cursor.y < headerHeight + 16) {
+        data.cursor.y = headerHeight + 16;
+      }
+    }
   });
   y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
 
@@ -300,12 +331,12 @@ export async function exportProspectosPDFAgente(
       headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
       alternateRowStyles: { fillColor: [245, 247, 248] },
       theme: 'grid',
-      margin: { left: 14, right: 14, top: headerHeight + 6 },
-      didDrawPage: (data: { cursor: { y: number } | null }) => {
+      margin: { left: 14, right: 14, top: headerHeight + 16 },
+      didDrawPage: (data: { cursor?: { y: number } | null }) => {
         drawHeader();
         doc.setTextColor(0, 0, 0);
-        if (data.cursor && typeof data.cursor.y === 'number' && data.cursor.y < headerHeight + 6) {
-          data.cursor.y = headerHeight + 6;
+        if (data.cursor && typeof data.cursor.y === 'number' && data.cursor.y < headerHeight + 16) {
+          data.cursor.y = headerHeight + 16;
         }
       }
     });
@@ -334,12 +365,12 @@ export async function exportProspectosPDFAgente(
         pctCliente.toFixed(1) + '%',
         proy !== null ? proy : '-'
       ]],
-      styles: { fontSize: 8, cellPadding: 1.5 },
-      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
-      alternateRowStyles: { fillColor: [245, 247, 248] },
-      theme: 'grid',
-      margin: { left: 14, right: 14 },
-      didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+    styles: { fontSize: 8, cellPadding: 1.5 },
+    headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+    alternateRowStyles: { fillColor: [245, 247, 248] },
+    theme: 'grid',
+    margin: { left: 14, right: 14, top: headerHeight + 16 },
+    didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
     });
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
   }
@@ -353,12 +384,12 @@ export async function exportProspectosPDFAgente(
       startY: y,
       head: [['Prospección', 'Cita', 'Total']],
       body: [[sum.prospeccion, sum.smnyl, sum.total]],
-      styles: { fontSize: 8, cellPadding: 1.5 },
-      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
-      alternateRowStyles: { fillColor: [245, 247, 248] },
-      theme: 'grid',
-      margin: { left: 14, right: 14 },
-      didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+    styles: { fontSize: 8, cellPadding: 1.5 },
+    headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+    alternateRowStyles: { fillColor: [245, 247, 248] },
+    theme: 'grid',
+    margin: { left: 14, right: 14, top: headerHeight + 16 },
+    didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
     });
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
   }
@@ -400,12 +431,12 @@ export async function exportProspectosPDFAgente(
         body: [[
           act.breakdown.views || 0, act.breakdown.clicks || 0, act.breakdown.forms || 0, act.breakdown.prospectos || 0, act.breakdown.planificacion || 0, act.breakdown.clientes || 0, act.breakdown.polizas || 0, act.breakdown.usuarios || 0, act.breakdown.parametros || 0, act.breakdown.reportes || 0, act.breakdown.otros || 0
         ]],
-        styles: { fontSize: 8, cellPadding: 1.5 },
-        headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
-        alternateRowStyles: { fillColor: [245, 247, 248] },
-        theme: 'grid',
-        margin: { left: 14, right: 14 },
-        didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+      alternateRowStyles: { fillColor: [245, 247, 248] },
+      theme: 'grid',
+      margin: { left: 14, right: 14, top: headerHeight + 16 },
+      didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
       });
       y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
     }
@@ -468,12 +499,12 @@ export async function exportProspectosPDFAgente(
       startY: y,
       head: [headGloss],
       body: glossary.map(([k, v]) => [k, v]),
-      styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
-      headStyles: { fillColor: [235, 239, 241], textColor: [7, 46, 64], fontSize: 8 },
-      theme: 'grid',
-      margin: { top: headerHeight + 6, left: 14, right: 14 },
-      columnStyles: { 0: { cellWidth: 30, halign: 'left' }, 1: { halign: 'left' } },
-      didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+  styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+  headStyles: { fillColor: [235, 239, 241], textColor: [7, 46, 64], fontSize: 8 },
+  theme: 'grid',
+  margin: { top: headerHeight + 16, left: 14, right: 14 },
+  columnStyles: { 0: { cellWidth: 30, halign: 'left' }, 1: { halign: 'left' } },
+  didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
     });
     y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
   } catch { /* ignore glossary render errors */ }

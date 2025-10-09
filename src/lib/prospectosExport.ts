@@ -87,13 +87,17 @@ export async function exportProspectosPDF(
     } else {
       const baseMap = opts?.agentesMap || {};
       const unionIds = new Set<number>();
-      Object.keys(baseMap).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id=> unionIds.add(Number(id)));
-      if(opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id=> unionIds.add(Number(id)));
-      if(unionIds.size===0 && prospectos.length){ prospectos.forEach(p=> unionIds.add(p.agente_id)) }
-      allAgentIds = Array.from(unionIds.values()).sort((a,b)=> a-b);
+      // Agregar explícitamente todas las fuentes conocidas
+      Object.keys(baseMap).forEach(id => unionIds.add(Number(id)));
+      if (opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id => unionIds.add(Number(id)));
+      if (opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id => unionIds.add(Number(id)));
+      if (opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id => unionIds.add(Number(id)));
+      if (opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id => unionIds.add(Number(id)));
+      // Siempre incluir todos los agente_id presentes en los prospectos (antes solo si set estaba vacío)
+      if (prospectos && prospectos.length) {
+        prospectos.forEach(p => unionIds.add(Number(p.agente_id)));
+      }
+      allAgentIds = Array.from(unionIds.values()).sort((a, b) => a - b);
     }
     // Si es reporte individual, adaptar el título
     let customTitulo = titulo;
@@ -179,7 +183,8 @@ export async function exportProspectosPDF(
   const agentesMap = opts?.agentesMap || {};
   // --- Resumen por agente (dashboard) ---
   let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
-  y = ensure(y, 10);
+  // Asegura que el título y la tabla no se corten entre páginas
+  y = ensure(y, 30); // deja más espacio para título y encabezado de tabla
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.text('Resumen por agente', 14, y);
@@ -222,12 +227,28 @@ export async function exportProspectosPDF(
     startY: y,
     head: [resumenHead],
     body: resumenBody,
-    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
+    styles: {
+      fontSize: 9,
+      cellPadding: 2,
+      overflow: 'linebreak',
+      minCellHeight: 8,
+    },
+    columnStyles: {
+      0: { cellWidth: 48, fontStyle: 'normal', overflow: 'linebreak' }, // Agente
+      1: { cellWidth: 13 },
+      2: { cellWidth: 14 },
+      3: { cellWidth: 16 },
+      4: { cellWidth: 16 },
+      5: { cellWidth: 16 },
+      6: { cellWidth: 16 },
+      7: { cellWidth: 16 },
+    },
     headStyles: { fillColor: [7, 46, 64], fontSize: 10, textColor: [255, 255, 255], halign: 'center' },
     alternateRowStyles: { fillColor: [245, 247, 248] },
     theme: 'grid',
-    margin: { left: 14, right: 14 },
+  margin: { left: 18, right: 22 },
     tableWidth: 'wrap',
+    pageBreak: 'auto',
     didDrawCell: (data: any) => {
       // Si la fila es TOTAL, aplicar color institucional, texto blanco y borde claro a todas las celdas
       if (data.row && data.row.raw && String(data.row.raw[0]).trim().toUpperCase() === 'TOTAL') {
@@ -237,17 +258,21 @@ export async function exportProspectosPDF(
         data.cell.styles.lineColor = [220, 237, 200]; // borde claro
         data.cell.styles.lineWidth = 0.5;
       }
+      // Si la columna es 'Agente' y el texto es muy largo, reducir fuente
+      if (data.column.index === 0 && data.cell.raw && String(data.cell.raw).length > 28) {
+        data.cell.styles.fontSize = 7;
+      }
     },
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
   });
   y = docTyped.lastAutoTable!.finalY! + 8;
+  y = ensure(y, 60); // espacio para gráfica y tarjetas
   // Gráfica de barras verticales y tarjetas a la derecha
   const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
   const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
-  // Bajar la gráfica más
-  y += 18;
   // Área delimitada para gráfica y meta (máx 120mm de ancho)
-  const chartX = 26, chartY = y+2, chartW = 80, chartH = 18;
+  const chartW = 80, chartH = 18;
+  const chartX = 26, chartY = y+2;
   // Meta prospectos
   const meta = opts?.metaProspectos ?? null;
   const max = Math.max(...totales, meta || 1);
@@ -279,8 +304,8 @@ export async function exportProspectosPDF(
   });
   // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
   if(meta){
-    // La meta es solo la parametrizada + previas
-    const metaTotal = meta + totalRow[7];
+  // La meta es (meta parametrizada * cantidad de agentes) + previas
+  const metaTotal = (meta * allAgentIds.length) + totalRow[7];
     // El avance es el total de prospectos (incluyendo previas)
     const avance = (totalRow[1] || 0);
     const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
@@ -331,13 +356,16 @@ export async function exportProspectosPDF(
   const cxT = chartX+chartW+10; let cyT = chartY;
   const cardWT = 60, cardHT = 14;
   tarjetas.forEach((c) => {
+    // No permitir que la tarjeta se salga del margen derecho
+    let realCxT = cxT;
+    if (realCxT + cardWT > 210 - 14) realCxT = 210 - 14 - cardWT;
     doc.setDrawColor(220);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(cxT, cyT, cardWT, cardHT, 2, 2, 'FD');
+    doc.roundedRect(realCxT, cyT, cardWT, cardHT, 2, 2, 'FD');
     doc.setFont('helvetica', 'bold');
-    doc.text(c[0], cxT + 3, cyT + 6);
+    doc.text(c[0], realCxT + 3, cyT + 6);
     doc.setFont('helvetica', 'normal');
-    doc.text(c[1], cxT + 3, cyT + 12);
+    doc.text(c[1], realCxT + 3, cyT + 12);
     cyT += cardHT + 4;
   });
   y = Math.max(y, cyT);
@@ -347,8 +375,8 @@ export async function exportProspectosPDF(
   // Usar allAgentIds (siempre contiene solo el agente seleccionado o todos)
   // --- Métricas avanzadas ---
   if (opts?.perAgentExtended && allAgentIds.length > 0) {
-    y = ensure(y, 10);
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
+  y = ensure(y, 40); // deja espacio suficiente tras salto de página
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
     const head = ['Agente','Conv P->S','Desc %','% Cliente','Proy semana'];
     const body: Array<[string|number, string, string, string, number|null]> = [];
     for(const agId of allAgentIds){
@@ -364,7 +392,16 @@ export async function exportProspectosPDF(
       const pctCliente = total > 0 ? ((clientes/total)*100).toFixed(1)+'%' : '0.0%';
       body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', pctCliente, proy]);
     }
-    autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+    autoTable(doc,{
+      startY:y,
+      head:[head],
+      body,
+      styles:{fontSize:7, cellPadding:1.5},
+      headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 },
+      theme:'grid',
+      margin:{ top: headerHeight + 16, left:14, right:14 },
+      didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) }
+    });
     y = (docTyped.lastAutoTable?.finalY || y) + 8;
   }
 
@@ -398,8 +435,8 @@ export async function exportProspectosPDF(
       }
     }
     if(labels.length){
-      y = ensure(y, 40);
-      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4;
+  y = ensure(y, 40); // deja espacio suficiente tras salto de página
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4;
       const chartX = 26, chartY = y+2, chartW = 160, chartH = 42;
       const max = Math.max(...aggregated,1);
       doc.setDrawColor(0); doc.setLineWidth(0.2);
@@ -428,7 +465,16 @@ export async function exportProspectosPDF(
           userBody.push([nombre, ...labels.map(()=>0), 0]);
         }
       }
-      autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:userBody, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+      autoTable(doc,{
+        startY:y,
+        head:[['Usuario',...labels,'Total']],
+        body:userBody,
+        styles:{fontSize:7,cellPadding:1},
+        headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 },
+        theme:'grid',
+        margin:{ top: headerHeight + 16, left:14, right:14 },
+        didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) }
+      });
       y = (docTyped.lastAutoTable?.finalY || y) + 8;
     }
   }
