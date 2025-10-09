@@ -230,19 +230,19 @@ export async function exportProspectosPDF(
       minCellHeight: 8,
     },
     columnStyles: {
-      0: { cellWidth: 54, fontStyle: 'normal', overflow: 'linebreak' }, // Agente
-      1: { cellWidth: 16 },
-      2: { cellWidth: 18 },
-      3: { cellWidth: 22 },
-      4: { cellWidth: 22 },
-      5: { cellWidth: 22 },
-      6: { cellWidth: 22 },
-      7: { cellWidth: 22 },
+      0: { cellWidth: 48, fontStyle: 'normal', overflow: 'linebreak' }, // Agente
+      1: { cellWidth: 13 },
+      2: { cellWidth: 14 },
+      3: { cellWidth: 16 },
+      4: { cellWidth: 16 },
+      5: { cellWidth: 16 },
+      6: { cellWidth: 16 },
+      7: { cellWidth: 16 },
     },
     headStyles: { fillColor: [7, 46, 64], fontSize: 10, textColor: [255, 255, 255], halign: 'center' },
     alternateRowStyles: { fillColor: [245, 247, 248] },
     theme: 'grid',
-    margin: { left: 14, right: 14 },
+  margin: { left: 18, right: 22 },
     tableWidth: 'wrap',
     pageBreak: 'auto',
     didDrawCell: (data: any) => {
@@ -371,8 +371,8 @@ export async function exportProspectosPDF(
   // Usar allAgentIds (siempre contiene solo el agente seleccionado o todos)
   // --- Métricas avanzadas ---
   if (opts?.perAgentExtended && allAgentIds.length > 0) {
-    y = ensure(y, 10);
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
+  y = ensure(y, 40); // deja espacio suficiente tras salto de página
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
     const head = ['Agente','Conv P->S','Desc %','% Cliente','Proy semana'];
     const body: Array<[string|number, string, string, string, number|null]> = [];
     for(const agId of allAgentIds){
@@ -422,8 +422,8 @@ export async function exportProspectosPDF(
       }
     }
     if(labels.length){
-      y = ensure(y, 40);
-      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4;
+  y = ensure(y, 40); // deja espacio suficiente tras salto de página
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4;
       const chartX = 26, chartY = y+2, chartW = 160, chartH = 42;
       const max = Math.max(...aggregated,1);
       doc.setDrawColor(0); doc.setLineWidth(0.2);
