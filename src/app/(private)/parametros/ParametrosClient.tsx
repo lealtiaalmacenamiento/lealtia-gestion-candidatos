@@ -14,12 +14,70 @@ const buildDiffs = (orig: unknown, edited: unknown): Diff[] => {
     .map(k => ({ campo: k, antes: String(o[k] ?? ''), despues: String(e[k] ?? '') }))
 }
 import BasePage from '@/components/BasePage';
-import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza } from '@/types';
+import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza, Parametro } from '@/types';
+// Campos posibles para ficha de candidato (deben coincidir con los usados en el PDF)
+const FICHA_CAMPOS = [
+  'CLAVE TEMPORAL',
+  'NOMBRE DE CANDIDATO',
+  'POP',
+  'EMAIL DE AGENTE',
+  'FECHA DE CREACIÓN CLAVE TEMPORAL',
+  'FECHA DE CREACIÓN POP',
+  'DÍAS DESDE CREACIÓN CT',
+  'DÍAS DESDE CREACIÓN POP',
+  'CÉDULA A1',
+  'PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS',
+  'CAPACITACIÓN A1',
+  'FECHA TENT. EXAMEN',
+  'EFC',
+  'PERÍODO FOLIO OFICINA VIRTUAL',
+  'PERÍODO PLAYBOOK',
+  'PRE-ESCUELA SESIÓN ARRANQUE',
+  'FECHA LÍMITE CURRICULA CDP',
+  'INICIO ESCUELA FUNDAMENTAL',
+  'SEGURO GMM',
+  'SEGURO VIDA',
+  'FECHA DE CREACION DE CANDIDATO',
+  'ULTIMA ACTUALIZACIÓN DE CANDIDATO',
+];
 import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro } from '@/lib/api';
 import AppModal from '@/components/ui/AppModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 export default function ParametrosClient(){
+  // Modal añadir mensaje ficha_candidato
+  const [showAddFicha, setShowAddFicha] = useState(false);
+  const [newFicha, setNewFicha] = useState<{clave: string; valor: string; descripcion?: string}>({ clave:'', valor:'', descripcion:'' });
+  const handleAddFichaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setNewFicha(f => ({ ...f, [e.target.name]: e.target.value }));
+  };
+  const handleAddFicha = async () => {
+    if (!newFicha.clave || !newFicha.valor) return;
+    try {
+      const res = await fetch('/api/parametros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'ficha_candidato', clave: newFicha.clave, valor: newFicha.valor, descripcion: newFicha.descripcion, solicitante: 'admin' })
+      });
+      if (res.ok) {
+        setShowAddFicha(false);
+        setNewFicha({ clave:'', valor:'', descripcion:'' });
+        const ref = await fetch('/api/parametros?tipo=ficha_candidato&ts=' + Date.now());
+        if (ref.ok) {
+          const j = await ref.json();
+          setFichaRows(j.data || []);
+        }
+        setNotif({ msg: 'Mensaje añadido', type: 'success' });
+      } else {
+        setNotif({ msg: 'Error al añadir', type: 'danger' });
+      }
+    } catch { setNotif({ msg: 'Error', type: 'danger' }); }
+  };
+  // FICHA CANDIDATO
+  const [fichaRows, setFichaRows] = useState<Parametro[]>([]);
+  const [editFichaId, setEditFichaId] = useState<number|null>(null);
+  const [editFichaRow, setEditFichaRow] = useState<Partial<Parametro>|null>(null);
+  const [openFicha, setOpenFicha] = useState(false);
   const dialog = useDialog();
   const [mesRows, setMesRows] = useState<CedulaA1[]>([]);
   const [editMesId, setEditMesId] = useState<number|null>(null);
@@ -57,6 +115,14 @@ export default function ParametrosClient(){
       setMesRows([...mes].sort((a,b)=>a.id - b.id));
       setEfcRows([...efc].sort((a,b)=>a.id - b.id));
   setProductos([...prods]);
+      // Cargar mensajes ficha_candidato
+      try {
+        const r = await fetch('/api/parametros?tipo=ficha_candidato');
+        if(r.ok){
+          const j = await r.json() as { success?:boolean; data?: Parametro[] };
+          setFichaRows(j.data||[]);
+        }
+      } catch {}
       // Cargar fase2 metas
       try {
         const r = await fetch('/api/parametros?tipo=fase2')
@@ -69,6 +135,21 @@ export default function ParametrosClient(){
           if(mc) setMetaCitas(Number(mc.valor)||null)
         }
       } catch {}
+  // Edición en línea ficha_candidato
+
+  // ...otras funciones y hooks...
+
+  // Declarar funciones justo antes del JSX de la tabla para asegurar visibilidad
+  // Sección FICHA CANDIDATO
+  // ---
+
+  // ...otras funciones y hooks...
+
+
+  // Declarar handlers edición ficha_candidato justo antes del return para asegurar visibilidad en JSX
+  // ---
+  // (Eliminado: duplicado, handlers ficha_candidato solo deben estar antes del return)
+  // (Eliminado: duplicado, handlers ficha_candidato solo deben estar antes del return)
     } catch (e){
       setNotif({msg: e instanceof Error? e.message : 'Error cargando parámetros', type:'danger'});
     } finally { setLoading(false); }
@@ -281,11 +362,148 @@ export default function ParametrosClient(){
     } finally { setSavingFase2(false) }
   }
 
+  // Handlers edición en línea ficha_candidato (deben estar justo antes del return para estar en scope del JSX)
+  const startEditFicha = (r: Parametro) => { setEditFichaId(r.id); setEditFichaRow({ ...r }); };
+  const onChangeEditFicha = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setEditFichaRow(r => r ? { ...r, [e.target.name]: e.target.value } : r);
+  };
+  const saveEditFicha = async () => {
+    if (!editFichaRow || editFichaId == null) return;
+    try {
+      const res = await fetch('/api/parametros', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editFichaId, clave: editFichaRow.clave, valor: editFichaRow.valor, descripcion: editFichaRow.descripcion, solicitante: 'admin' })
+      });
+      if (res.ok) {
+        // Refrescar desde backend para asegurar persistencia real
+        const ref = await fetch('/api/parametros?tipo=ficha_candidato&ts=' + Date.now());
+        if (ref.ok) {
+          const j = await ref.json();
+          setFichaRows(j.data || []);
+        }
+        setNotif({ msg: 'Mensaje actualizado', type: 'success' });
+      } else {
+        setNotif({ msg: 'Error al guardar', type: 'danger' });
+      }
+    } catch { setNotif({ msg: 'Error', type: 'danger' }); }
+    finally { setEditFichaId(null); setEditFichaRow(null); }
+  };
+  const cancelEditFicha = () => { setEditFichaId(null); setEditFichaRow(null); };
+
   return (
     <BasePage title="Parámetros" alert={notif? {type: notif.type, message: notif.msg, show:true}: undefined}>
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
       {!loading && (
         <div className="d-flex flex-column gap-5">
+          {/* Sección FICHA CANDIDATO */}
+          <section className="border rounded p-3 bg-white shadow-sm">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div className="d-flex align-items-center gap-2">
+                <button type="button" onClick={()=>setOpenFicha(o=>!o)} aria-expanded={openFicha} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
+                  <i className={`bi bi-caret-${openFicha? 'down':'right'}-fill`}></i>
+                  <span className="fw-bold small text-uppercase">Mensajes ficha de candidato</span>
+                </button>
+                {openFicha && <span className="small text-muted">Edición en línea</span>}
+              </div>
+              {openFicha && (
+                <button type="button" className="btn btn-success btn-sm" onClick={()=>setShowAddFicha(true)}>
+                  <i className="bi bi-plus-lg"></i> Añadir mensaje
+                </button>
+              )}
+            </div>
+            {openFicha && (
+              <>
+                {showAddFicha && (
+                  <AppModal title="Añadir mensaje ficha de candidato" icon="plus-lg" width={500} onClose={()=>setShowAddFicha(false)}
+                    footer={<>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={()=>setShowAddFicha(false)}>Cancelar</button>
+                      <button type="button" className="btn btn-primary btn-sm ms-2" disabled={!newFicha.clave || !newFicha.valor} onClick={handleAddFicha}>
+                        <i className="bi bi-check-lg"></i> Guardar
+                      </button>
+                    </>}
+                  >
+                    <div className="mb-3">
+                      <label className="form-label small mb-1">Campo/Fila</label>
+                      <select className="form-select form-select-sm" name="clave" value={newFicha.clave} onChange={handleAddFichaChange}>
+                        <option value="">(Selecciona campo)</option>
+                        {FICHA_CAMPOS.map(campo => <option key={campo} value={campo}>{campo}</option>)}
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label small mb-1">Mensaje</label>
+                      <input className="form-control form-control-sm" name="valor" value={newFicha.valor} onChange={handleAddFichaChange} />
+                    </div>
+                    <div className="mb-2">
+                      <label className="form-label small mb-1">Descripción (opcional)</label>
+                      <input className="form-control form-control-sm" name="descripcion" value={newFicha.descripcion||''} onChange={handleAddFichaChange} />
+                    </div>
+                  </AppModal>
+                )}
+                <div className="table-responsive mt-3">
+                <table className="table table-sm table-bordered align-middle mb-0 table-nowrap">
+                  <thead className="table-light"><tr>
+                    <th style={{width:220}}>Campo/Fila</th>
+                    <th>Mensaje</th>
+                    <th>Descripción</th>
+                    <th style={{width:120}}>Acciones</th>
+                  </tr></thead>
+                  <tbody>
+                    {fichaRows.length===0 && (<tr><td colSpan={4} className="text-center small">Sin mensajes</td></tr>)}
+                    {fichaRows.map(r => (
+                      <tr key={r.id}>
+                        <td>{editFichaId===r.id ? (
+                          <select className="form-select form-select-sm" name="clave" value={editFichaRow?.clave||''} onChange={onChangeEditFicha}>
+                            <option value="">(Selecciona campo)</option>
+                            {FICHA_CAMPOS.map(campo => <option key={campo} value={campo}>{campo}</option>)}
+                          </select>
+                        ) : r.clave}
+                        </td>
+                        <td>{editFichaId===r.id ? (
+                          <input className="form-control form-control-sm" name="valor" value={typeof editFichaRow?.valor === 'string' || typeof editFichaRow?.valor === 'number' ? editFichaRow.valor : ''} onChange={onChangeEditFicha} />
+                        ) : r.valor}</td>
+                        <td>{editFichaId===r.id ? (
+                          <input className="form-control form-control-sm" name="descripcion" value={editFichaRow?.descripcion||''} onChange={onChangeEditFicha} />
+                        ) : r.descripcion}</td>
+                        <td style={{whiteSpace:'nowrap'}}>
+                          {editFichaId===r.id ? (
+                            <>
+                              <button type="button" className="btn btn-success btn-sm me-1" onClick={saveEditFicha}>Guardar</button>
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditFicha}>Cancelar</button>
+                            </>
+                          ) : (
+                            <>
+                              <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditFicha(r)}>Editar</button>
+                              <button type="button" className="btn btn-danger btn-sm" onClick={async()=>{
+                                if(await dialog.confirm('¿Seguro que deseas eliminar este mensaje?')){
+                                  try {
+                                    const res = await fetch('/api/parametros', {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ id: r.id, solicitante: 'admin' })
+                                    });
+                                    if(res.ok){
+                                      setFichaRows(f=>f.filter(x=>x.id!==r.id));
+                                      setNotif({ msg: 'Mensaje eliminado', type: 'success' });
+                                    } else {
+                                      setNotif({ msg: 'Error al eliminar', type: 'danger' });
+                                    }
+                                  } catch { setNotif({ msg: 'Error', type: 'danger' }); }
+                                }
+                              }}>
+                                Eliminar
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+              </>
+            )}
+          </section>
           <section className="border rounded p-3 bg-white shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenProductos(o=>!o)} aria-expanded={openProductos} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">

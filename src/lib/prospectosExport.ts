@@ -1,896 +1,475 @@
-import type { Prospecto, ProspectoEstado } from '@/types'
-import type { ExtendedMetrics, PreviousWeekDelta } from './prospectosMetrics'
-import { ESTADO_LABEL } from './prospectosUI'
-// import eliminado: fechas de cita dormidas
-
-async function loadJSPDF() { return (await import('jspdf')).jsPDF }
-async function loadAutoTable() { return (await import('jspdf-autotable')).default }
-
-function pct(part:number,total:number){ if(!total) return '0%'; return ((part/total)*100).toFixed(1)+'%' }
-const MX_TZ='America/Mexico_City'
-// Colores de barras alineados a Bootstrap (como en UI):
-// pendiente -> secondary (gris), seguimiento -> warning (amarillo), con_cita -> success (verde), descartado -> danger (rojo)
-const ESTADO_COLORS: Record<ProspectoEstado,string> = {
-  pendiente: '#6c757d',
-  seguimiento: '#ffc107',
-  con_cita: '#198754',
-  descartado: '#dc3545',
-  ya_es_cliente: '#0dcaf0'
+// Utilidad para convertir un PNG a base64 (cliente/browser)
+/**
+ * Convierte una ruta de imagen PNG (por ejemplo, '/Logolealtiaruedablanca.png') a base64.
+ * Uso típico:
+ *   const logoBase64 = await pngToBase64('/Logolealtiaruedablanca.png');
+ *   exportProspectosPDF(..., logoBase64, ...)
+ */
+export async function pngToBase64(url: string): Promise<string> {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('No se pudo convertir la imagen a base64.'));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
-// Citas dormidas: evitamos mostrar fechas de cita en tablas
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import type { Prospecto } from '@/types'
+
+// Tipo auxiliar para doc con soporte de autoTable
+interface JsPDFWithAutoTable {
+  lastAutoTable?: { finalY?: number }
+  internal: {
+    pageSize: { getHeight: () => number }
+    getNumberOfPages: () => number
+  }
+  setPage: (n: number) => void
+  setFontSize: (n: number) => void
+  setTextColor: (...args: number[]) => void
+  text: (...args: unknown[]) => void
+  circle?: (x:number, y:number, r:number, style?: string) => void
+}
+
+const MX_TZ='America/Mexico_City'
 function nowMX(){
   const d=new Date()
   const fecha = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, day:'2-digit', month:'2-digit', year:'numeric'}).format(d)
   const hora = new Intl.DateTimeFormat('es-MX',{timeZone:MX_TZ, hour:'2-digit', minute:'2-digit', hour12:false}).format(d)
   return `${fecha} ${hora}`
 }
-async function fetchLogoDataUrl(): Promise<string|undefined>{
-  // Intenta URL de entorno; fallback a varias rutas en /public
-  const candidates: (string|undefined)[] = []
-  if(typeof process !== 'undefined') candidates.push(process.env?.NEXT_PUBLIC_MAIL_LOGO_URL, process.env?.MAIL_LOGO_URL)
-  // Variantes codificadas y sin codificar (espacios) para mayor tolerancia.
-  candidates.push(
-    '/Logolealtiaruedablanca.png','/Logolealtiaruedablanca.svg','/Logolealtiaruedablanca.webp',
-    '/Logolealtia.png','/Logolealtia.svg','/Logolealtia.webp',
-    '/favicon.png','/logo-blanco.png','/logo_white.png',
-    '/file.svg','/logo.png','/logo.svg'
-  )
-  for(const url of candidates.filter(Boolean) as string[]){
-    try {
-      const resp = await fetch(url)
-      if(!resp.ok) continue
-      const blob = await resp.blob()
-      const b64 = await new Promise<string>((resolve,reject)=>{ const fr=new FileReader(); fr.onload=()=>resolve(String(fr.result)); fr.onerror=reject; fr.readAsDataURL(blob) })
-      return b64
-    } catch {/* intentar siguiente */}
-  }
-  return
-}
 
-interface ResumenAgente { agente?: string; total:number; por_estado: Record<ProspectoEstado,number> }
-type ExtendedProspecto = Prospecto & { agente_id?: number }
-
+// Función principal de exportación
+/**
+ * Exporta el reporte de prospectos a PDF.
+ *
+ * Para el logo institucional, se recomienda usar el archivo:
+ *   public/Logolealtiaruedablanca.png
+ * Puedes cargarlo como base64 y pasar su ancho/alto reales para evitar deformación.
+ * Ejemplo de uso:
+ *   exportProspectosPDF(doc, prospectos, opts, autoTable, titulo, logoBase64, 32, 32)
+ * Donde logoBase64 es la imagen en formato base64 PNG.
+ * Si no se pasa logo, se muestra un placeholder.
+ */
+/**
+ * Exporta el reporte de prospectos a PDF.
+ *
+ * El logo institucional debe ser SIEMPRE el archivo public/Logolealtiaruedablanca.png convertido a base64.
+ * Pásalo como parámetro 'logo' (data:image/png;base64,...). Si no se pasa, se muestra un placeholder.
+ * Ejemplo para obtener el base64 en el cliente:
+ *   fetch('/Logolealtiaruedablanca.png').then(r => r.blob()).then(b => ...)
+ */
 export async function exportProspectosPDF(
+  doc: any,
   prospectos: Prospecto[],
-  resumen: { total:number; por_estado: Record<string,number>; cumplimiento_30:boolean },
+  opts: any,
+  autoTable: (...args: any[]) => any,
   titulo: string,
-  opts?: {
-    incluirId?: boolean
-    agrupadoPorAgente?: boolean
-    agentesMap?: Record<number,string>
-    chartEstados?: boolean
-  metaProspectos?: number
-  forceLogoBlanco?: boolean
-  extendedMetrics?: ExtendedMetrics
-  prevWeekDelta?: PreviousWeekDelta
-  perAgentExtended?: Record<number,ExtendedMetrics>
-  filename?: string
-  perAgentDeltas?: Record<number,{ totalDelta:number }>
-  planningSummaries?: Record<number,{ prospeccion:number; smnyl:number; total:number }>
-  singleAgentPlanning?: { bloques: Array<{day:number; hour:string; activity:string; origin?:string; prospecto_nombre?:string; notas?:string}>; summary:{ prospeccion:number; smnyl:number; total:number } }
-  // Weekly activity (UI + domain) for line chart in single-agent reports
-  activityWeekly?: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }, dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> }
-  // Per-agent weekly activity for grouped (general) reports
-  perAgentActivity?: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }>
-  }
-){
-  if(!prospectos.length) return
-  const jsPDF = await loadJSPDF(); await loadAutoTable()
-  const doc = new jsPDF()
-  let logo = await fetchLogoDataUrl()
-  let logoW = 0, logoH = 0
-  if(logo){
-    try {
-      const img = new Image(); img.src = logo
-      await new Promise(res=> { img.onload = res })
-      const naturalW = img.width || 1
-      const naturalH = img.height || 1
-      const maxW = 42, maxH = 16 // área disponible en header
-      const scale = Math.min(maxW / naturalW, maxH / naturalH, 1)
-      logoW = Math.round(naturalW * scale)
-      logoH = Math.round(naturalH * scale)
-      const canvas = document.createElement('canvas'); canvas.width = naturalW; canvas.height = naturalH
-      const ctx = canvas.getContext('2d')
-      if(ctx){
-        ctx.drawImage(img,0,0)
-        const data = ctx.getImageData(0,0,canvas.width,canvas.height)
-        let sum=0, count=0
-        for(let i=0;i<data.data.length;i+=40){ const r=data.data[i], g=data.data[i+1], b=data.data[i+2], a=data.data[i+3]; if(a>10){ sum += (0.299*r + 0.587*g + 0.114*b); count++ } }
-        const avg = count? sum/count : 255
-        const needWhite = opts?.forceLogoBlanco || avg < 120
-        if(needWhite){
-          for(let i=0;i<data.data.length;i+=4){ if(data.data[i+3] > 10){ data.data[i]=255; data.data[i+1]=255; data.data[i+2]=255 } }
-          ctx.putImageData(data,0,0)
-          logo = canvas.toDataURL('image/png')
-        }
-      }
-    } catch { /* ignorar problemas de canvas */ }
-  }
-  const generadoEn = nowMX()
-  // Ajuste dinámico de título para nombres largos de agente
+  logo?: string, // base64 PNG de public/Logolealtiaruedablanca.png
+  logoW: number = 32,
+  logoH: number = 32
+) {
+  // Helpers y layout deben estar definidos antes de renderProspectosPorSemana
+  const generadoEn = nowMX();
+  // Si es reporte individual, adaptar el título
+    // Determinar agentes a mostrar
+    let allAgentIds: number[] = [];
+    if (opts?.allAgentIds && Array.isArray(opts.allAgentIds) && opts.allAgentIds.length > 0) {
+      allAgentIds = [...opts.allAgentIds];
+    } else {
+      const baseMap = opts?.agentesMap || {};
+      const unionIds = new Set<number>();
+      Object.keys(baseMap).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.perAgentExtended) Object.keys(opts.perAgentExtended).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.perAgentActivity) Object.keys(opts.perAgentActivity).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.planningSummaries) Object.keys(opts.planningSummaries).forEach(id=> unionIds.add(Number(id)));
+      if(opts?.perAgentPrevCounts) Object.keys(opts.perAgentPrevCounts).forEach(id=> unionIds.add(Number(id)));
+      if(unionIds.size===0 && prospectos.length){ prospectos.forEach(p=> unionIds.add(p.agente_id)) }
+      allAgentIds = Array.from(unionIds.values()).sort((a,b)=> a-b);
+    }
+    // Si es reporte individual, adaptar el título
+    let customTitulo = titulo;
+    if (allAgentIds.length === 1) {
+      const agId = allAgentIds[0];
+      const nombreAgente = (opts?.agentesMap && opts.agentesMap[agId]) ? opts.agentesMap[agId] : agId;
+      customTitulo = `Reporte de prospectos del agente: ${nombreAgente}`;
+    }
   const drawHeader = ()=>{
-    const baseX = logo? 50:12
-    const marginRight = 8
-    const maxWidth = 210 - baseX - marginRight
-    let headerHeight = 22
-    // Calcular líneas del título ajustando tamaño
-    let fontSize = 13
-    doc.setFont('helvetica','bold')
-    let width = 0
-    while(fontSize>=8){ doc.setFontSize(fontSize); width = doc.getTextWidth(titulo); if(width <= maxWidth) break; fontSize-- }
-    let lines: string[] = []
+    const baseX = logo? 50:12;
+    const marginRight = 8;
+    const maxWidth = 210 - baseX - marginRight;
+    let headerHeight = 22;
+    let fontSize = 13;
+    doc.setFont('helvetica','bold');
+    let width = 0;
+    while(fontSize>=8){ doc.setFontSize(fontSize); width = doc.getTextWidth(customTitulo); if(width <= maxWidth) break; fontSize--; }
+    let lines: string[] = [];
     if(width > maxWidth){
-      const words = titulo.split(/\s+/)
-      let current = ''
-      words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w } })
-      if(current) lines.push(current)
-    } else lines = [titulo]
-    while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); const words = titulo.split(/\s+/); lines=[]; let current=''; words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w } }); if(current) lines.push(current) }
-    const lineHeight = fontSize + 2
-    const dateFontSize = 8
-    // Altura requerida: paddingTop(6) + líneas + gap(2) + dateFontSize + paddingBottom(6)
-    const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6
-    if(neededHeight > headerHeight) headerHeight = neededHeight
-    // Dibujar fondo
-    doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F')
-    // Logo centrado verticalmente
-    if(logo && logoW && logoH){ try { doc.addImage(logo,'PNG',10,(headerHeight-logoH)/2,logoW,logoH) } catch {/*ignore*/} } else { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14) }
-    doc.setTextColor(255,255,255)
-  doc.setFont('helvetica','bold'); doc.setFontSize(fontSize)
-    lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, baseX, baseline) })
-    // Fecha alineada al inicio de la tabla (debajo de título) usando dateFontSize
-    const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize
-    doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize)
-    doc.text('Generado (CDMX): '+ generadoEn, baseX, dateY)
-    doc.setTextColor(0,0,0)
-    const contentStartY = headerHeight + 6 // margen uniforme
-    return { headerHeight, contentStartY }
-  }
-  const { headerHeight, contentStartY } = drawHeader()
-  doc.setFontSize(9)
-  const GAP = 6
-  const SECTION_GAP = 8
-  // Page metrics and helper to avoid drawing content that would be cut at page boundary
-  const PAGE_H: number = (doc as unknown as { internal:{ pageSize:{ getHeight:()=>number } } }).internal.pageSize.getHeight()
-  const BOTTOM_MARGIN = 14
+      const words = customTitulo.split(/\s+/);
+      let current = '';
+      words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w; } });
+      if(current) lines.push(current);
+    } else lines = [customTitulo];
+    while(lines.length > 3 && fontSize > 7){ fontSize--; doc.setFontSize(fontSize); const words = customTitulo.split(/\s+/); lines=[]; let current=''; words.forEach(w=>{ const test = current? current+' '+w: w; const testW = doc.getTextWidth(test); if(testW <= maxWidth) current=test; else { if(current) lines.push(current); current=w; } }); if(current) lines.push(current); }
+    const lineHeight = fontSize + 2;
+    const dateFontSize = 8;
+    const neededHeight = 6 + lines.length*lineHeight + 2 + dateFontSize + 6;
+    if(neededHeight > headerHeight) headerHeight = neededHeight;
+    doc.setFillColor(7,46,64); doc.rect(0,0,210,headerHeight,'F');
+    if(logo && logoW && logoH){
+      try {
+        // Get real image size using jsPDF's getImageProperties
+        const props = doc.getImageProperties(logo);
+        const aspect = props.width / props.height;
+        let drawW = logoW;
+        let drawH = logoH;
+        if (logoW / logoH > aspect) {
+          drawW = logoH * aspect;
+          drawH = logoH;
+        } else {
+          drawW = logoW;
+          drawH = logoW / aspect;
+        }
+        doc.addImage(logo, 'PNG', 10, (headerHeight - drawH) / 2, drawW, drawH);
+      } catch {/*ignore*/}
+    } else {
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(255,255,255); doc.text('LOGO', 12, 14);
+    }
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold'); doc.setFontSize(fontSize);
+    lines.forEach((l,i)=>{ const baseline = 6 + (i+1)*lineHeight - (lineHeight - fontSize)/2; doc.text(l, baseX, baseline); });
+    const dateY = 6 + lines.length*lineHeight + 2 + dateFontSize;
+    doc.setFont('helvetica','normal'); doc.setFontSize(dateFontSize);
+    doc.text('Generado (CDMX): '+ generadoEn, baseX, dateY);
+    doc.setTextColor(0,0,0);
+    const contentStartY = headerHeight + 6;
+    return { headerHeight, contentStartY };
+  };
+  const { headerHeight, contentStartY } = drawHeader();
+  doc.setFontSize(9);
+  const GAP = 12;
+  const SECTION_GAP = 14;
+  const docTyped = doc as unknown as JsPDFWithAutoTable;
+  const PAGE_H: number = docTyped.internal.pageSize.getHeight();
+  const TOP_MARGIN = headerHeight + 6; // espacio para header
+  const BOTTOM_MARGIN = 22; // margen inferior más amplio para footer
   const ensure = (currentY:number, required:number) => {
-    const limit = PAGE_H - BOTTOM_MARGIN
+    const limit = PAGE_H - BOTTOM_MARGIN;
     if (currentY + required > limit) {
-      doc.addPage()
-      const hdr = drawHeader()
-      return hdr.contentStartY
+      doc.addPage();
+      const hdr = drawHeader();
+      return Math.max(hdr.contentStartY, TOP_MARGIN);
     }
-    return currentY
+    // Asegura que nunca se dibuje encima del header
+    return Math.max(currentY, TOP_MARGIN);
+  };
+
+
+  // (Eliminado cálculo de agenteId y semanaActual)
+  // Prospectos de semanas anteriores: todos los agentes, solo activos
+  // (Eliminado cálculo de prospectos previos/anteriores)
+  const agentesMap = opts?.agentesMap || {};
+  // --- Resumen por agente (dashboard) ---
+  let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
+  y = ensure(y, 10);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('Resumen por agente', 14, y);
+  y += 8;
+  // Tabla resumen por agente
+  const resumenHead = ['Agente', 'Total', 'Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
+  const resumenBody: Array<any[]> = [];
+  const totalRow: [string, number, number, number, number, number, number, number] = ['TOTAL', 0, 0, 0, 0, 0, 0, 0];
+  for(const agId of allAgentIds){
+    const nombre = agentesMap[agId] || agId;
+    const agPros = prospectos.filter(p => p.agente_id === agId);
+    // Semana actual: todos los estados
+    const semanaActual = opts?.semanaActual;
+    const agProsSemana = semanaActual
+      ? agPros.filter(p => p.anio === semanaActual.anio && p.semana_iso === semanaActual.semana_iso)
+      : [];
+    // Semanas anteriores: solo activos
+    const prevPros = semanaActual
+      ? agPros.filter(p => p.anio === semanaActual.anio && p.semana_iso < semanaActual.semana_iso && ['pendiente','seguimiento','con_cita'].includes(p.estado))
+      : [];
+    const previas = prevPros.length;
+    // Total = semana actual (todos los estados) + previas (solo activos)
+    const total = agProsSemana.length + previas;
+    const pendiente = agProsSemana.filter(p => p.estado === 'pendiente').length;
+    const seguimiento = agProsSemana.filter(p => p.estado === 'seguimiento').length;
+    const conCita = agProsSemana.filter(p => p.estado === 'con_cita').length;
+    const descartado = agProsSemana.filter(p => p.estado === 'descartado').length;
+    const clientes = agProsSemana.filter(p => p.estado === 'ya_es_cliente').length;
+    resumenBody.push([nombre, total, pendiente, seguimiento, conCita, descartado, clientes, previas]);
+    totalRow[1] = (totalRow[1] as number) + total;
+    totalRow[2] = (totalRow[2] as number) + pendiente;
+    totalRow[3] = (totalRow[3] as number) + seguimiento;
+    totalRow[4] = (totalRow[4] as number) + conCita;
+    totalRow[5] = (totalRow[5] as number) + descartado;
+    totalRow[6] = (totalRow[6] as number) + clientes;
+    totalRow[7] = (totalRow[7] as number) + previas;
   }
-  const incluirId = opts?.incluirId
-  const agrupado = opts?.agrupadoPorAgente
-  const agentesMap = opts?.agentesMap || {}
-  let metaProspectos = opts?.metaProspectos ?? 30
-  const distinctAgentsCount = agrupado ? new Set(prospectos.map(p=> (p as ExtendedProspecto).agente_id)).size || 1 : 1
-  if(agrupado){
-    metaProspectos = metaProspectos * distinctAgentsCount
-  }
-  let y = contentStartY
-  if(!agrupado){
-  const head = [ ...(incluirId? ['ID']: []), 'Nombre','Teléfono','Estado','Notas' ]
-  const body = prospectos.map(p=> [ ...(incluirId? [p.id]: []), p.nombre, p.telefono||'', p.estado, (p.notas||'').slice(0,120) ])
-    const tableStartY = contentStartY
-    // @ts-expect-error autotable plugin
-    doc.autoTable({
-      startY: tableStartY,
-      head: [head],
-      body,
-  styles:{ fontSize:7, cellPadding:1.5, overflow:'linebreak' },
-      headStyles:{ fillColor:[7,46,64], fontSize:8, textColor:[255,255,255], halign:'center' },
-      alternateRowStyles:{ fillColor:[245,247,248] },
-      theme:'grid',
-      // Ajuste de anchos: considerar desplazamiento si se incluye ID
-  columnStyles: (()=>{ const s: Record<number,{ cellWidth?: number; halign?: 'left'|'center'|'right'; overflow?: 'linebreak'|'ellipsize'|'visible' }> = {}; let base=0; if(incluirId) { s[0]={ cellWidth: 12, halign:'center' } ; base=1 }
-  // Total 182mm: 48 + 28 + 24 + 82 = 182 (aprox)
-  s[base+0] = { cellWidth: 48, halign:'left' } // Nombre
-  s[base+1] = { cellWidth: 28, halign:'center' } // Teléfono
-  s[base+2] = { cellWidth: 24, halign:'center' } // Estado
-  s[base+3] = { cellWidth: 82, overflow:'linebreak', halign:'left' } // Notas
-        return s })(),
-      margin: { top: headerHeight + 6, left: 14, right: 14 },
-      didDrawPage: () => {
-        // Redibujar encabezado por página de la tabla
-        drawHeader()
-        doc.setTextColor(0,0,0)
+  resumenBody.push(totalRow);
+  autoTable(doc, {
+    startY: y,
+    head: [resumenHead],
+    body: resumenBody,
+    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
+    headStyles: { fillColor: [7, 46, 64], fontSize: 10, textColor: [255, 255, 255], halign: 'center' },
+    alternateRowStyles: { fillColor: [245, 247, 248] },
+    theme: 'grid',
+    margin: { left: 14, right: 14 },
+    tableWidth: 'wrap',
+    didDrawCell: (data: any) => {
+      // Si la fila es TOTAL, aplicar color institucional, texto blanco y borde claro a todas las celdas
+      if (data.row && data.row.raw && String(data.row.raw[0]).trim().toUpperCase() === 'TOTAL') {
+        data.cell.styles.fillColor = [7, 46, 64]; // color institucional
+        data.cell.styles.textColor = [255, 255, 255]; // texto blanco
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.lineColor = [220, 237, 200]; // borde claro
+        data.cell.styles.lineWidth = 0.5;
       }
-    })
-    interface DocMaybeAuto { lastAutoTable?: { finalY?: number } }
-    const docWith = doc as unknown as DocMaybeAuto
-    y = (docWith.lastAutoTable?.finalY || tableStartY) + GAP
-  }
-  doc.setFontSize(10)
-  // Ensure space for the section title
-  y = ensure(y, 8)
-  doc.setFont('helvetica','bold'); doc.text(agrupado? 'Resumen por agente':'Resumen',14,y); doc.setFont('helvetica','normal')
-  y += 4
-  if(!agrupado){
-    // Summary cards (2 columns)
-    const cards: Array<[string,string]> = [
-      ['Prospectos totales', String(resumen.total)],
-      ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
-      ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
-      ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
-      ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`],
-      ['Cumplimiento 30', resumen.cumplimiento_30? 'SI':'NO']
-    ]
-    // 3 tarjetas por fila dentro de 182mm útiles: 3*56 + 2*6 = 180 <= 182
-    const cardW = 56; const cardH=12; let cx=14; let cy=y
-    // Ensure space for the rows of cards
-    const rows = Math.max(1, Math.ceil(cards.length/3))
-    const requiredCards = rows*cardH + (rows-1)*4 + GAP
-    y = ensure(y, requiredCards)
-    doc.setFontSize(8)
-    cards.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10);
-      if((i+1)%3===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-  y = cy + cardH + GAP
-  if(opts?.chartEstados){
-    // Simple bar chart for estados con leyenda
-    // Ensure space for legend + chart + progress bar block
-    const legendH = 10
-    const requiredChart = (46 + legendH) /* chartHeight + legend */ + 14 /* progress */ + 12 /* spacing */
-    y = ensure(y, requiredChart)
-    const chartY = y + 4
-      const dataEntries: Array<[string, number, string]> = [
-        ['pendiente', resumen.por_estado.pendiente||0, ESTADO_COLORS.pendiente],
-        ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
-        ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
-        ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
-      ]
-    const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
-      const baseX = 14
-      const barW = 16
-      const gap = 6
-    const legendGap = 6
-    const barsTop = chartY + legendH + legendGap
-    const baseY = barsTop + 30
-      // Legend (horizontal)
-      doc.setFontSize(7)
-  let lx = baseX; const ly = chartY + 6
-      const itemW = 36
-  dataEntries.forEach(([key, , color]) => {
-        const hex = color.startsWith('#')? color.substring(1): color
-        const r = parseInt(hex.substring(0,2),16)
-        const g = parseInt(hex.substring(2,4),16)
-        const b = parseInt(hex.substring(4,6),16)
-        doc.setFillColor(r,g,b)
-        doc.rect(lx, ly - 3, 4, 4, 'F')
-        doc.setTextColor(0,0,0)
-        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-        doc.text(label, lx + 6, ly)
-        lx += itemW
-      })
-      doc.setFontSize(8)
-  dataEntries.forEach((d,i)=>{
-        const [key,val,color] = d
-        const h = (val/maxV)*30
-        const x = baseX + i*(barW+gap)
-    const yBar = baseY - h
-        // color fill
-  // color in hex -> convert to rgb
-  const hex = color.startsWith('#')? color.substring(1): color
-  const r = parseInt(hex.substring(0,2),16)
-  const g = parseInt(hex.substring(2,4),16)
-  const b = parseInt(hex.substring(4,6),16)
-  doc.setFillColor(r,g,b)
-        doc.rect(x, yBar, barW, h, 'F')
-        doc.text(String(val), x+barW/2, yBar-3, {align:'center'})
-        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-        doc.text(label, x+barW/2, barsTop + 32, {align:'center'})
-      })
-  y = baseY + GAP + 2
-      // Añadir progreso contra metas debajo del chart
-      // Progreso Prospectos
-  const progY = y
-  // Separador horizontal entre gráfica y barra de progreso (no agrupado)
-  doc.setDrawColor(230); doc.line(14, progY - 2, 196, progY - 2)
-      const drawProgress = (label:string, val:number, meta:number, pxY:number)=>{
-        const pctVal = meta? Math.min(1, val/meta): 0
-        const barWTotal = 80; const barH = 6
-        doc.setFontSize(7); doc.text(`${label}: ${val}/${meta}`, baseX, pxY-1)
-        doc.setDrawColor(200); doc.rect(baseX, pxY, barWTotal, barH)
-        doc.setFillColor(7,46,64); doc.rect(baseX, pxY, barWTotal*pctVal, barH, 'F')
-        doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+barWTotal/2, pxY+barH-1, {align:'center'}); doc.setTextColor(0,0,0)
-      }
-  drawProgress('Meta prospectos', resumen.total, metaProspectos, progY+2)
-  // Más espacio tras barra de progreso para separar del siguiente bloque
-      y += 14
+    },
+    didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
+  });
+  y = docTyped.lastAutoTable!.finalY! + 8;
+  // Gráfica de barras verticales y tarjetas a la derecha
+  const labelsGraficas = ['Pendiente', 'Seguimiento', 'Con cita', 'Descartado', 'Clientes', 'Previas'];
+  const totales = [totalRow[2], totalRow[3], totalRow[4], totalRow[5], totalRow[6], totalRow[7]];
+  // Bajar la gráfica más
+  y += 18;
+  // Área delimitada para gráfica y meta (máx 120mm de ancho)
+  const chartX = 26, chartY = y+2, chartW = 80, chartH = 18;
+  // Meta prospectos
+  const meta = opts?.metaProspectos ?? null;
+  const max = Math.max(...totales, meta || 1);
+  doc.setDrawColor(0); doc.setLineWidth(0.2);
+  doc.line(chartX, chartY, chartX, chartY+chartH);
+  doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
+  // Barras
+  const barW = 8;
+  // Colores de estado del front
+  const barColors = [
+    [255, 193, 7],    // Pendiente: amarillo
+    [33, 150, 243],   // Seguimiento: azul
+    [0, 200, 83],     // Con cita: verde
+    [158, 158, 158],  // Descartado: gris
+    [25, 118, 210],   // Clientes: azul fuerte
+    [120, 144, 156]   // Previas: gris azulado
+  ];
+  // Calcular separación para que todas las barras y etiquetas quepan en chartW
+  const barGap = (chartW - (labelsGraficas.length * barW)) / (labelsGraficas.length - 1);
+  totales.forEach((val: number, i: number) => {
+    const x = chartX + i * (barW + barGap);
+    const barH = (val/max)*chartH;
+    doc.setFillColor(...barColors[i]);
+    doc.rect(x, chartY+chartH-barH, barW, barH, 'F');
+    doc.setFontSize(8);
+    doc.text(String(val), x + barW/2, chartY+chartH-barH-2, {align:'center'});
+    doc.setFontSize(7);
+    doc.text(labelsGraficas[i], x + barW/2, chartY+chartH+8, {align:'center'});
+  });
+  // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
+  if(meta){
+    // La meta es solo la parametrizada + previas
+    const metaTotal = meta + totalRow[7];
+    // El avance es el total de prospectos (incluyendo previas)
+    const avance = (totalRow[1] || 0);
+    const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
+    const metaY = chartY+chartH+18;
+    const metaW = Math.round(chartW * 0.65); // Barra de meta al 65% del área
+    const metaBarH = 7;
+    // Barra de meta total
+    doc.setFillColor(7,46,64); // color institucional
+    doc.rect(chartX, metaY, metaW, metaBarH, 'F');
+    // Barra de avance (encima)
+    const avanceW = metaTotal > 0 ? Math.min(metaW, (avance/metaTotal)*metaW) : 0;
+    doc.setFillColor(60, 60, 60);
+    doc.rect(chartX, metaY, avanceW, metaBarH, 'F');
+    // Etiquetas
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8);
+    doc.setTextColor(7,46,64);
+    doc.text('Meta', chartX-2, metaY+metaBarH/2+2, {align:'right'});
+    doc.setTextColor(0,0,0);
+  // Mostrar: Meta: [meta] (avance/meta, %), justo al lado derecho de la barra
+  const metaLabel = `${avance}/ Meta: ${metaTotal}, ${porcentaje.toFixed(1)}%`;
+    // Calcular el ancho máximo para el texto (lo que queda del área de la gráfica)
+    const maxLabelWidth = chartW - metaW - 12;
+    let fontSize = 10;
+    doc.setFont('helvetica','bold');
+    // Reducir tamaño de fuente hasta que quepa
+    while(fontSize > 6 && doc.getTextWidth(metaLabel) > maxLabelWidth) {
+      fontSize--;
+      doc.setFontSize(fontSize);
     }
-    // Métricas avanzadas (agente individual) debajo del bloque anterior para evitar sobreposición
-    if(opts?.extendedMetrics){
-      const em = opts.extendedMetrics
-      // Línea separadora sutil y extra espacio antes del título
-      // Ensure room for a separator and section heading
-      y = ensure(y, 10)
-      doc.setDrawColor(230); doc.line(14, y, 196, y); y += 4
-      doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Métricas avanzadas',14,y)
-      y += 4; doc.setFontSize(7); doc.setFont('helvetica','normal')
-  // Secciones relacionadas con citas dormidas (citas por hora, riesgo seguimiento sin cita) no se incluyen
-      // Tabla compacta de métricas clave
-  const header = ['Conv P->S','Desc %','Proy semana']
-      const row = [
-        (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
-        (em.ratioDescartado*100).toFixed(1)+'%',
-        em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
-      ]
-      // @ts-expect-error autotable
-  doc.autoTable({
-        startY: y+2,
-        head:[header],
-        body:[row],
-    styles:{fontSize:7, cellPadding:1},
-        headStyles:{fillColor:[7,46,64]},
-  theme:'grid',
-  margin: { top: headerHeight + 6, left: 14, right: 14 },
-  columnStyles: { 0:{ halign:'center' }, 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' } },
-  didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
-      })
-      const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-  y = (withAuto.lastAutoTable?.finalY || y) + GAP
-    }
+    const labelX = chartX + metaW + 8;
+    doc.text(metaLabel, labelX, metaY+metaBarH/2+3, {align:'left'});
+    y = metaY + metaBarH + 8;
   } else {
-    // Reporte agrupado
-    // Tabla resumen por agente
-    const porAgente: Record<string,ResumenAgente> = {}
-    for(const p of prospectos){
-      const ep = p as ExtendedProspecto
-      const agName = agentesMap[ep.agente_id ?? -1] || `Ag ${ ep.agente_id}`
-  if(!porAgente[agName]) porAgente[agName] = { agente: agName, total:0, por_estado:{ pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 } }
-      const bucket = porAgente[agName]
-      bucket.total++
-      if(bucket.por_estado[p.estado] !== undefined) bucket.por_estado[p.estado]++
-    }
-    const head2 = ['Agente','Total','Pendiente','Seguimiento','Con cita','Descartado']
-  const body2 = Object.entries(porAgente).map(([, r])=> {
-      return [
-        r.agente,
-        r.total,
-        r.por_estado.pendiente,
-        r.por_estado.seguimiento,
-        r.por_estado.con_cita,
-        r.por_estado.descartado
-      ]
-    })
-    // Totales al final
-    const totals = Object.values(porAgente).reduce((acc, r)=>{
-      acc.total += r.total
-      acc.pendiente += r.por_estado.pendiente
-      acc.seguimiento += r.por_estado.seguimiento
-      acc.con_cita += r.por_estado.con_cita || 0
-  acc.descartado += r.por_estado.descartado
-  // Excluimos ya_es_cliente del acumulado mostrado (se ignora en impresión)
-      return acc
-  }, { total:0, pendiente:0, seguimiento:0, con_cita:0, descartado:0, ya_es_cliente:0 as number })
-    const footerRows = [ [
-      'TOTAL',
-      totals.total,
-      totals.pendiente,
-      totals.seguimiento,
-  totals.con_cita,
-      totals.descartado,
-  
-    ] ]
-  // @ts-expect-error autotable plugin
-      doc.autoTable({
-    startY:y,
-    head:[head2],
-    body:body2,
-  styles:{fontSize:7, cellPadding:1},
-  headStyles:{ fillColor:[7,46,64], fontSize:8 },
-  alternateRowStyles:{ fillColor:[245,247,248] },
-  theme:'grid',
-  margin: { top: headerHeight + 6, left: 14, right: 14 },
-  // Alinear: "Agente" a la izquierda, el resto centrado (incluyendo columnas delta si existen)
-  columnStyles: { 0:{ halign:'left' }, 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' }, 5:{ halign:'center' }, 6:{ halign:'center' }, 7:{ halign:'center' } },
-  foot: footerRows,
-  footStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontStyle:'bold' },
-  didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
-  })
-    const afterResumenTable = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y
-    y = afterResumenTable + GAP
-    // Global charts if requested (agrupado scenario)
-    if(opts?.chartEstados){
-      // Ensure space for chart + progress bar + cards block on grouped report
-    const legendH = 10
-    const requiredChartAgg = (46 + legendH) /* chart + legend */ + 14 /* progress */ + 16 /* spacing */ + 4
-      y = ensure(y, requiredChartAgg)
-      const chartTop = y
-      const baseX = 14
-  const barW = 16
-  const barGap = 6
-    const chartHeight = 46 + legendH // altura destino (30 barras + labels + margen + leyenda)
-      const dataEntries: Array<[string, number, string]> = [
-        ['pendiente', resumen.por_estado.pendiente||0, ESTADO_COLORS.pendiente],
-        ['seguimiento', resumen.por_estado.seguimiento||0, ESTADO_COLORS.seguimiento],
-        ['con_cita', resumen.por_estado.con_cita||0, ESTADO_COLORS.con_cita],
-        ['descartado', resumen.por_estado.descartado||0, ESTADO_COLORS.descartado]
-      ]
-      const maxV = Math.max(1,...dataEntries.map(d=>d[1]))
-      // Legend (horizontal)
-      doc.setFontSize(7)
-  let lx = baseX; const ly = chartTop + 6
-      const itemW = 36
-  dataEntries.forEach(([key, , color]) => {
-        const hex = color.replace('#','')
-        const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
-        doc.setFillColor(r,g,b)
-        doc.rect(lx, ly - 3, 4, 4, 'F')
-        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-        doc.setTextColor(0,0,0)
-        doc.text(label, lx + 6, ly)
-        lx += itemW
-      })
-      doc.setFontSize(8)
-      dataEntries.forEach((d,i)=>{
-        const [key,val,color] = d
-  const h = (val/maxV)*30
-  const x = baseX + i*(barW+barGap)
-  const legendGap = 6
-  const barsTop = chartTop + legendH + legendGap
-  const yBar = barsTop + 30 - h
-        const hex = color.replace('#','')
-        const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16)
-        doc.setFillColor(r,g,b)
-  doc.rect(x,yBar,barW,h,'F')
-  // Value label above bar with a bit more padding
-  doc.text(String(val), x+barW/2, yBar-3, {align:'center'})
-        const label = ESTADO_LABEL[key as ProspectoEstado] || key.replace('_',' ')
-  // Category label under bars area
-  doc.text(label, x+barW/2, barsTop + 32, {align:'center'})
-      })
-  // Progresos bajo chart
-  const progressTop = chartTop + chartHeight
-  // Separador horizontal entre gráfica y progreso
-  doc.setDrawColor(230); doc.line(14, progressTop - 2, 196, progressTop - 2)
-      const drawProgress = (label:string, val:number, meta:number, lineY:number)=>{
-        const pctVal = meta? Math.min(1,val/meta):0
-        const totalW=80, h=6
-        doc.setFontSize(7); doc.text(`${label}: ${val}/${meta}`, baseX, lineY-1)
-        doc.setDrawColor(200); doc.rect(baseX, lineY, totalW, h)
-        doc.setFillColor(7,46,64); doc.rect(baseX, lineY, totalW*pctVal, h, 'F')
-        doc.setTextColor(255,255,255); doc.text(Math.round(pctVal*100)+'%', baseX+totalW/2, lineY+h-1, {align:'center'}); doc.setTextColor(0,0,0)
-      }
-  drawProgress('Meta prospectos', resumen.total, metaProspectos, progressTop+2)
-  const chartBlockBottom = progressTop + 14
-  // Cards a la derecha
-      const cards: Array<[string,string]> = [
-        ['Total', String(resumen.total)],
-        ['Pendiente', `${resumen.por_estado.pendiente||0} (${pct(resumen.por_estado.pendiente||0,resumen.total)})`],
-        ['Seguimiento', `${resumen.por_estado.seguimiento||0} (${pct(resumen.por_estado.seguimiento||0,resumen.total)})`],
-        ['Con cita', `${resumen.por_estado.con_cita||0} (${pct(resumen.por_estado.con_cita||0,resumen.total)})`],
-        ['Descartado', `${resumen.por_estado.descartado||0} (${pct(resumen.por_estado.descartado||0,resumen.total)})`]
-      ]
-      const cardX = 110
-      let cardY = chartTop
-      const cardW = 80, cardH = 12
-      doc.setFontSize(8)
-  cards.forEach(c=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cardX,cardY,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cardX+3, cardY+5); doc.setFont('helvetica','normal'); doc.text(c[1], cardX+3, cardY+10); cardY += cardH+4 })
-  // Separador vertical sutil entre la gráfica (izquierda) y las tarjetas (derecha)
-  const vX = cardX - 6; doc.setDrawColor(230); doc.line(vX, chartTop, vX, Math.max(chartBlockBottom, cardY))
-  // Añadir más espacio antes del siguiente bloque para que 'Métricas avanzadas' no quede pegado
-  y = Math.max(chartBlockBottom, cardY) + GAP + 12
-    }
-  // Métricas por agente agrupado
-      if(opts?.perAgentExtended){
-        y = ensure(y, 10)
-        doc.setFontSize(10); doc.text('Métricas avanzadas por agente',14,y); y+=4
-        doc.setFontSize(7)
-  const header = ['Agente','Conv P->S','Desc %','Proy semana']
-        // @ts-expect-error autotable plugin
-  doc.autoTable({
-          startY: y,
-          head:[header],
-          body: Object.entries(opts.perAgentExtended).map(([agId, em])=>{
-            const agName = agentesMap[Number(agId)] || agId
-            return [
-              agName,
-              (em.conversionPendienteSeguimiento*100).toFixed(1)+'%',
-              (em.ratioDescartado*100).toFixed(1)+'%',
-              em.forecastSemanaTotal!=null? String(em.forecastSemanaTotal):'-'
-            ]
-          }),
-          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
-          margin: { top: headerHeight + 6, left: 14, right: 14 },
-          columnStyles: { 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' } },
-          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
-        })
-        const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-  y = (withAuto.lastAutoTable?.finalY || y) + GAP
-      }
+    y = chartY + chartH + 14;
+  }
+  // Tarjetas de resumen a la derecha de la gráfica
+  const totalConPrevias = (totalRow[1] as number);
+  const tarjetas = [
+    ['Total', `${totalConPrevias} (100.0%)`],
+    ['Pendiente', `${totalRow[2]} (${((totalRow[2]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Seguimiento', `${totalRow[3]} (${((totalRow[3]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Con cita', `${totalRow[4]} (${((totalRow[4]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Descartado', `${totalRow[5]} (${((totalRow[5]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Clientes', `${totalRow[6]} (${((totalRow[6]/totalConPrevias)*100||0).toFixed(1)}%)`],
+    ['Previas', `${totalRow[7]} (${((totalRow[7]/totalConPrevias)*100||0).toFixed(1)}%)`],
+  ];
+  const cxT = chartX+chartW+10; let cyT = chartY;
+  const cardWT = 60, cardHT = 14;
+  tarjetas.forEach((c) => {
+    doc.setDrawColor(220);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(cxT, cyT, cardWT, cardHT, 2, 2, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.text(c[0], cxT + 3, cyT + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.text(c[1], cxT + 3, cyT + 12);
+    cyT += cardHT + 4;
+  });
+  y = Math.max(y, cyT);
+  // --- (Eliminada sección Resumen semana actual y sus tarjetas) ---
 
-      // Resumen de planificación semanal por agente (si se proporcionó)
-      if(opts?.planningSummaries){
-        const totalAgg = Object.values(opts.planningSummaries).reduce((acc,cur)=>{ acc.prospeccion+=cur.prospeccion; acc.smnyl+=cur.smnyl; acc.total+=cur.total; return acc },{prospeccion:0,smnyl:0,total:0})
-        // Asegurar espacio para título + tarjetas resumen
-        y = ensure(y, 8 + 12 + GAP)
-        doc.setFontSize(10); doc.text('Planificación semanal (resumen y detalle por agente)',14,y); y+=4
-        // Tarjetas resumen total
-        const cardsPlan: Array<[string,string]> = [
-          ['Prospección', String(totalAgg.prospeccion)],
-          ['SMNYL', String(totalAgg.smnyl)],
-          ['Total bloques', String(totalAgg.total)]
-        ]
-  // 4 tarjetas en una fila: ajustar ancho para no exceder 210mm (14 + 4*W + 3*gap <= 210)
-  // 4 tarjetas por fila: 4*42 + 3*6 = 186 -> bajamos a 41: 4*41 + 18 = 182
-  const cardW=40, cardH=12; let cx=14; let cy=y
-        y = ensure(y, cardH + GAP)
-        doc.setFontSize(8)
-        cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-  y = cy + cardH + GAP
-        doc.setFontSize(7)
-  const headPlan = ['Agente','Prospección','SMNYL','Total']
-        // @ts-expect-error autotable
-        doc.autoTable({
-          startY:y,
-          head:[headPlan],
-          body: Object.entries(opts.planningSummaries).map(([agId,sum])=>[
-            agentesMap[Number(agId)]||agId, String(sum.prospeccion), String(sum.smnyl), String(sum.total)
-          ]),
-          styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], fontSize:8 }, theme:'grid',
-          margin: { top: headerHeight + 6, left: 14, right: 14 },
-          columnStyles: { 1:{ halign:'center' }, 2:{ halign:'center' }, 3:{ halign:'center' }, 4:{ halign:'center' } },
-          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
-        })
-        const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
-  y = (withAuto2.lastAutoTable?.finalY || y) + GAP
+  // --- Secciones avanzadas: métricas, planificación, actividad, acciones ---
+  // Usar allAgentIds (siempre contiene solo el agente seleccionado o todos)
+  // --- Métricas avanzadas ---
+  if (opts?.perAgentExtended && allAgentIds.length > 0) {
+    y = ensure(y, 10);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Métricas avanzadas por agente',14,y); y+=4;
+    const head = ['Agente','Conv P->S','Desc %','% Cliente','Proy semana'];
+    const body: Array<[string|number, string, string, string, number|null]> = [];
+    for(const agId of allAgentIds){
+      const m = opts.perAgentExtended[agId];
+      const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
+      const conv = m ? (m.conversionPendienteSeguimiento||0)*100 : 0;
+      const desc = m ? (m.ratioDescartado||0)*100 : 0;
+      const proy = m ? m.forecastSemanaTotal ?? null : null;
+      // Calcular % Cliente
+      const agPros = prospectos.filter((p: Prospecto) => p.agente_id === agId);
+      const total = agPros.length;
+      const clientes = agPros.filter((p: Prospecto) => p.estado === 'ya_es_cliente').length;
+      const pctCliente = total > 0 ? ((clientes/total)*100).toFixed(1)+'%' : '0.0%';
+      body.push([nombre, conv.toFixed(1)+'%', desc.toFixed(1)+'%', pctCliente, proy]);
+    }
+    autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7, cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+    y = (docTyped.lastAutoTable?.finalY || y) + 8;
+  }
+
+  // --- Planificación semanal resumen ---
+  if (opts?.planningSummaries && allAgentIds.length > 0) {
+    y = ensure(y, 10);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Planificación semanal (resumen por agente)',14,y); y+=4;
+    const headPlan = ['Agente','Prospección','Cita','Total'];
+    const body: Array<[string|number, number, number, number]> = [];
+    for(const agId of allAgentIds){
+      const sum = opts.planningSummaries[agId] || { prospeccion:0, smnyl:0, total:0 };
+      body.push([(opts.agentesMap||{})[Number(agId)]||agId, sum.prospeccion, sum.smnyl, sum.total]);
+    }
+    autoTable(doc,{ startY:y, head:[headPlan], body, styles:{fontSize:7,cellPadding:1.5}, headStyles:{ fillColor:[7,46,64], textColor:[255,255,255], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[245,247,248] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+    y = (docTyped.lastAutoTable?.finalY || y) + 8;
+  }
+
+  // --- Actividad de la semana (gráfica y tabla) ---
+  if (opts?.perAgentActivity && allAgentIds.length > 0) {
+    // Unificar labels
+    let labels: string[] = [];
+    for(const agId of allAgentIds){
+      const act = opts.perAgentActivity[agId];
+      if(act && act.labels && act.labels.length > 0){ labels = act.labels; break; }
+    }
+    const aggregated: number[] = Array(labels.length).fill(0);
+    for(const agId of allAgentIds){
+      const act = opts.perAgentActivity[agId];
+      if(act && act.counts){
+        act.counts.forEach((c: number, i: number) => { aggregated[i] = (aggregated[i]||0)+c });
       }
     }
-  // Sección de planificación para reporte individual de agente
-  if(!agrupado && opts?.singleAgentPlanning){
-    // Ensure space for title + one row of planning cards
-    y = ensure(y, 8 + 12 + GAP)
-  let y2 = y + 4
-    const plan = opts.singleAgentPlanning
-    doc.setFontSize(10); doc.text('Planificación semanal',14,y2); y2 += 4
-  const cardsPlan: Array<[string,string]> = [ ['Prospección', String(plan.summary.prospeccion)], ['SMNYL', String(plan.summary.smnyl)], ['Total bloques', String(plan.summary.total)] ]
-  // 4 tarjetas por fila: usar 41mm para caber en 182mm con 3 gaps de 6mm
-  const cardW=40, cardH=12; let cx=14; let cy=y2; doc.setFontSize(8)
-    // Ensure cards fit on current page; if not, move and recompute y2
-    const rows2 = Math.max(1, Math.ceil(cardsPlan.length/4))
-    const requiredCards2 = rows2*cardH + (rows2-1)*4 + GAP
-    const ensuredY = ensure(y2, requiredCards2)
-    if (ensuredY !== y2) { y2 = ensuredY; cx = 14; cy = y2 }
-    cardsPlan.forEach((c,i)=>{ doc.setDrawColor(220); doc.setFillColor(248,250,252); doc.roundedRect(cx,cy,cardW,cardH,2,2,'FD'); doc.setFont('helvetica','bold'); doc.text(c[0], cx+3, cy+5); doc.setFont('helvetica','normal'); doc.text(c[1], cx+3, cy+10); if((i+1)%4===0){ cx=14; cy+=cardH+4 } else { cx+=cardW+6 } })
-  cy += cardH + GAP
-    const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
-  const blocksSorted = [...plan.bloques].filter(b=> b.activity !== 'CITAS').sort((a,b)=> a.day===b.day? a.hour.localeCompare(b.hour): a.day-b.day)
-  if(blocksSorted.length){
-      const headPlan = ['Día','Hora','Actividad','Detalle']
-      const bodyPlan = blocksSorted.map(b=> [
-        DAY_NAMES[b.day]||String(b.day),
-        b.hour+':00',
-  b.activity==='PROSPECCION'? 'Prospección': b.activity,
-        (b.prospecto_nombre? b.prospecto_nombre: '') + (b.notas? (b.prospecto_nombre? ' - ':'')+ b.notas: '')
-      ])
-  // Ensure there is sufficient vertical space for at least a few rows before starting the table
-      const minTableBlock = 24
-      cy = ensure(cy, minTableBlock)
-  // @ts-expect-error autotable
-      doc.autoTable({
-        startY: cy,
-        head:[headPlan],
-        body: bodyPlan,
-  styles:{fontSize:7, cellPadding:1, overflow:'linebreak'}, headStyles:{ fillColor:[7,46,64], fontSize:8, textColor:[255,255,255], halign:'center' }, theme:'grid',
-  // 20 + 18 + 30 + 114 = 182
-  columnStyles: { 0: { cellWidth: 20, halign:'center' }, 1: { cellWidth: 18, halign:'center' }, 2: { cellWidth: 30, halign:'left' }, 3: { cellWidth: 114, overflow:'linebreak', halign:'left' } },
-        margin: { top: headerHeight + 6, left: 14, right: 14 },
-        didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
-      })
-      const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-      y2 = (withAuto.lastAutoTable?.finalY || cy) + 4
-      y = y2
-    } else {
-      // Si no hay tabla de bloques, avanzar y debajo de las tarjetas
-      y = Math.max(y, cy)
+    if(labels.length){
+      y = ensure(y, 40);
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Actividad total',14,y); y+=4;
+      const chartX = 26, chartY = y+2, chartW = 160, chartH = 42;
+      const max = Math.max(...aggregated,1);
+      doc.setDrawColor(0); doc.setLineWidth(0.2);
+      doc.line(chartX, chartY, chartX, chartY+chartH);
+      doc.line(chartX, chartY+chartH, chartX+chartW, chartY+chartH);
+      let prevX: number | undefined = undefined, prevY: number | undefined = undefined;
+      aggregated.forEach((val: number, i: number) => {
+        const x = chartX + (chartW/(aggregated.length-1||1))*i;
+        const yPt = chartY + chartH - (val/max)*chartH;
+        if(prevX!==undefined){ doc.line(prevX, prevY!, x, yPt); }
+  doc.setFillColor(0,0,0); try { if(typeof (docTyped as JsPDFWithAutoTable).circle === 'function'){ (docTyped as JsPDFWithAutoTable).circle!(x,yPt,1.2,'F'); } } catch { /* ignore circle error */ }
+        prevX = x; prevY = yPt;
+      });
+      doc.setFontSize(7);
+      labels.forEach((l: string, i: number) => { const x = chartX + (chartW/(labels.length-1||1))*i; doc.text(l, x-3, chartY+chartH+6); });
+      doc.setFontSize(8); doc.text(String(max), chartX-6, chartY+4);
+      y = chartY + chartH + 14;
+      // Mostrar tabla por usuario
+      const userBody: Array<(string|number)[]> = [];
+      for(const agId of allAgentIds){
+        const act = opts.perAgentActivity[agId];
+        const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
+        if(act && act.counts){
+          userBody.push([nombre, ...act.counts, act.counts.reduce((a: number, b: number) => a+b, 0)]);
+        } else {
+          userBody.push([nombre, ...labels.map(()=>0), 0]);
+        }
+      }
+      autoTable(doc,{ startY:y, head:[['Usuario',...labels,'Total']], body:userBody, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } });
+      y = (docTyped.lastAutoTable?.finalY || y) + 8;
     }
   }
-  // Sección: Actividad semanal (solo reporte individual)
-  if(!agrupado && opts?.activityWeekly && Array.isArray(opts.activityWeekly.counts) && opts.activityWeekly.counts.length){
-    // Dimensiones del bloque
-  const chartH = 38
-  const xLabelSpace = 10 // espacio para etiquetas del eje X bajo la gráfica
-    // Tarjetas de breakdown: 10 ítems, 4 por fila -> 3 filas
-    const totalItems = 10
-    const perRow = 4
-    const rows = Math.ceil(totalItems / perRow)
-    const cardH = 10
-    const rowGap = 4
-    const cardsHeight = rows * cardH + (rows - 1) * rowGap
-    // Asegurar espacio total: título (8) + gráfico + etiquetas X + margen entre gráfica y tarjetas (10) + tarjetas + GAP
-  // Reservar además el GAP superior para el separador y espacio antes del título
-  const required = SECTION_GAP + 8 + chartH + xLabelSpace + 10 + cardsHeight + GAP
-  // Forzar salto de página si el espacio libre es menor a 70mm para mantener la sección cohesionada
-  const limit = PAGE_H - BOTTOM_MARGIN
-  const free = limit - y
-  if (free < 70) { doc.addPage(); const hdr = drawHeader(); y = hdr.contentStartY }
-  y = ensure(y, required)
-  // Separador sutil con el bloque previo, con separación segura
-  doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
-  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
-    const labels = opts.activityWeekly.labels || []
-    const values = opts.activityWeekly.counts
-    const maxV = Math.max(1, ...values)
-    const baseX = 14
-    const width = 182
-    const leftPad = 12
-    const rightPad = 6
-    const plotX = baseX + leftPad
-    const plotW = width - (leftPad + rightPad)
-  const plotTop = y + 2 // pequeño padding superior del área de gráfica
-  const plotBottom = y + chartH
-    // Y axis (simple ticks at 0, max)
-    doc.setDrawColor(200)
-    doc.line(plotX, plotTop, plotX, plotBottom)
-    doc.line(plotX, plotBottom, plotX + plotW, plotBottom)
-    doc.setFontSize(7)
-  doc.text('0', plotX - 3, plotBottom + 4, { align: 'right' })
-    doc.text(String(maxV), plotX - 3, plotTop + 2, { align: 'right' })
-    // Polyline
-    const n = values.length
-    const step = n > 1 ? plotW / (n - 1) : plotW
-    // Path color
-    doc.setDrawColor(7,46,64)
-    let prevX = plotX, prevY = plotBottom - (values[0] / maxV) * chartH
-    for (let i = 1; i < n; i++){
-      const x = plotX + step * i
-      const yVal = plotBottom - (values[i] / maxV) * chartH
-      doc.line(prevX, prevY, x, yVal)
-      prevX = x; prevY = yVal
-    }
-    // Draw points
-    for (let i = 0; i < n; i++){
-      const x = plotX + step * i
-      const yVal = plotBottom - (values[i] / maxV) * chartH
-      doc.circle(x, yVal, 0.8, 'F')
-    }
-    // X labels
-    for (let i = 0; i < n; i++){
-      const x = plotX + step * i
-      const label = labels[i] || String(i+1)
-  doc.text(label, x, plotBottom + 7, { align: 'center' })
-    }
-  // Separador sutil bajo la línea base antes de las tarjetas
-  doc.setDrawColor(230); doc.line(14, plotBottom + xLabelSpace - 2, 196, plotBottom + xLabelSpace - 2)
-  // Tarjetas de desglose (ancho dinámico para respetar márgenes)
-  y = plotBottom + xLabelSpace
-  if (opts.activityWeekly.breakdown){
-      const b = opts.activityWeekly.breakdown
-      const items: Array<[string, number]> = [
-        ['Vistas', b.views], ['Clicks', b.clicks], ['Formularios', b.forms],
-        ['Prospectos', b.prospectos], ['Planificación', b.planificacion], ['Clientes', b.clientes],
-        ['Pólizas', b.polizas], ['Usuarios', b.usuarios], ['Parámetros', b.parametros], ['Reportes', b.reportes]
-      ]
-      const perRow = 4
-      const gapX = 6
-      const cardH = 10
-      const availW = 182
-      const cardW = Math.floor((availW - gapX * (perRow - 1)) / perRow)
-      let cx = 14, cy = y
-      doc.setFontSize(7)
-      for (let i = 0; i < items.length; i++){
-        const [label, val] = items[i]
-        doc.setDrawColor(220); doc.setFillColor(248,250,252)
-        doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD')
-        doc.setFont('helvetica','bold'); doc.text(label, cx + 3, cy + 4)
-        doc.setFont('helvetica','normal'); doc.text(String(val), cx + 3, cy + 9)
-        if ((i+1) % perRow === 0){ cx = 14; cy += cardH + 4 } else { cx += cardW + gapX }
+
+  // --- Acciones específicas en la semana (detalles por usuario) ---
+  if(opts?.perAgentActivity && allAgentIds.length > 0){
+    y = (docTyped.lastAutoTable?.finalY||contentStartY) + GAP
+    y = ensure(y, 12)
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Acciones específicas en la semana',14,y); y+=4
+    const head = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.','P. a cliente']
+    const body: Array<[string|number, number, number, number, number, number, number, number, number, number]> = []
+    for(const agId of allAgentIds){
+      const act = opts.perAgentActivity[agId];
+      const nombre = (opts.agentesMap||{})[Number(agId)] || agId;
+      const d = act?.details || { prospectos_altas:0, prospectos_cambios_estado:0, prospectos_notas:0, planificacion_ediciones:0, clientes_altas:0, clientes_modificaciones:0, polizas_altas:0, polizas_modificaciones:0 }
+      // Calcular cuántos prospectos están en estado 'ya_es_cliente' en la semana actual
+      let aCliente = 0;
+      if (opts?.perAgentActivity[agId]?.prospectosSemana) {
+        aCliente = opts.perAgentActivity[agId].prospectosSemana.filter((p: Prospecto) => p.estado === 'ya_es_cliente').length;
       }
-      y = cy + cardH + GAP
-  // Tabla compacta por día con categorías principales (si hay datos)
-      if (Array.isArray(opts.activityWeekly.dailyBreakdown) && opts.activityWeekly.dailyBreakdown.length === values.length){
-        const head = ['Día','Vistas','Clicks','Forms','Prospectos','Planif.','Clientes','Pólizas','Usuarios']
-        const rows = values.map((_, i) => {
-          const d = opts.activityWeekly!.dailyBreakdown![i]
-          return [labels[i] || String(i+1), String(d.views||0), String(d.clicks||0), String(d.forms||0), String(d.prospectos||0), String(d.planificacion||0), String(d.clientes||0), String(d.polizas||0), String(d.usuarios||0)]
-        })
-        // Reservar altura mínima de tabla compacta
-        y = ensure(y, 24)
-        // @ts-expect-error autotable
-        doc.autoTable({
-          startY: y,
-          head: [head],
-          body: rows,
-          styles: { fontSize: 6, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 7 }, theme: 'grid',
-          margin: { top: headerHeight + 6, left: 14, right: 14 },
-          columnStyles: { 0: { halign: 'left' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
-          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
-        })
-        const withAuto = doc as unknown as { lastAutoTable?: { finalY?: number } }
-        y = (withAuto.lastAutoTable?.finalY || y) + GAP
-      }
-      // Bloque adicional: resumen de acciones específicas y tabla diaria detallada (si la API las provee via details/detailsDaily en fetch y se inyectan al exporter más adelante)
-      // Notas: Para mantener compatibilidad, este bloque se activa si opts.activityWeekly incluye keys 'details' y 'detailsDaily'
-  type ActionDetails = { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
-  const anyAW = opts.activityWeekly as unknown as { details?: ActionDetails; detailsDaily?: ActionDetails[] }
-      if (anyAW && anyAW.details){
-        // Tarjetas resumen (asegurar márgenes seguros y no desbordar)
-        const d = anyAW.details as { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }
-        const items: Array<[string, number]> = [
-          ['Altas prospectos', d.prospectos_altas||0],
-          ['Cambios de estado', d.prospectos_cambios_estado||0],
-          ['Notas en prospectos', d.prospectos_notas||0],
-          ['Ediciones planificación', d.planificacion_ediciones||0],
-          ['Altas clientes', d.clientes_altas||0],
-          ['Cambios clientes', d.clientes_modificaciones||0],
-          ['Altas pólizas', d.polizas_altas||0],
-          ['Cambios pólizas', d.polizas_modificaciones||0]
-        ]
-        const perRow2 = 4
-        const gapX2 = 6
-        const cardH2 = 10
-        const availW = 182 // ancho útil entre márgenes 14..196
-        const cardW2 = Math.floor((availW - gapX2 * (perRow2 - 1)) / perRow2) // ancho dinámico que cabe en 4 columnas
-        const rows2 = Math.ceil(items.length / perRow2)
-        const cardsHeight2 = rows2 * cardH2 + (rows2 - 1) * 4
-        // Reservar espacio para separador + título + tarjetas + separaciones
-        // 1) separador (2) + SECTION_GAP (8) para bajar
-        // 2) título (aprox 6-8mm) -> usamos 8
-        // 3) tarjetas (cardsHeight2)
-        // 4) GAP final
-        y = ensure(y, 2 + SECTION_GAP + 8 + cardsHeight2 + GAP)
-        // Separador y título como en otras secciones
-        doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
-        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
-        // Tarjetas
-        let cx2 = 14, cy2 = y
-        doc.setFontSize(7)
-        for (let i = 0; i < items.length; i++){
-          const [label, val] = items[i]
-          doc.setDrawColor(220); doc.setFillColor(248,250,252)
-          doc.roundedRect(cx2, cy2, cardW2, cardH2, 2, 2, 'FD')
-          doc.setFont('helvetica','bold'); doc.text(label, cx2 + 3, cy2 + 4)
-          doc.setFont('helvetica','normal'); doc.text(String(val), cx2 + 3, cy2 + 9)
-          if ((i+1) % perRow2 === 0){ cx2 = 14; cy2 += cardH2 + 4 } else { cx2 += cardW2 + gapX2 }
-        }
-        y = cy2 + cardH2 + GAP
-      }
-      if (anyAW && Array.isArray(anyAW.detailsDaily) && anyAW.detailsDaily.length === values.length){
-        const head = ['Día','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas client.','Modif. client.','Altas pól.','Modif. pól.']
-        const rows = values.map((_, i) => {
-          const d = anyAW.detailsDaily![i] as ActionDetails
-          return [labels[i] || String(i+1), String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
-        })
-        // Asegurar altura mínima para que la tabla no se empalme con el título o tarjetas
-        y = ensure(y, 24)
-        // @ts-expect-error autotable
-        doc.autoTable({
-          startY: y,
-          head: [head],
-          body: rows,
-          styles: { fontSize: 6, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 7 }, theme: 'grid',
-          margin: { top: headerHeight + 6, left: 14, right: 14 },
-          columnStyles: { 0: { halign: 'left' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
-          didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
-        })
-        const withAuto2 = doc as unknown as { lastAutoTable?: { finalY?: number } }
-        y = (withAuto2.lastAutoTable?.finalY || y) + GAP
-      }
-    } else {
-      y += GAP
+      body.push([nombre, d.prospectos_altas, d.prospectos_cambios_estado, d.prospectos_notas, d.planificacion_ediciones, d.clientes_altas, d.clientes_modificaciones, d.polizas_altas, d.polizas_modificaciones, aCliente])
     }
+    autoTable(doc,{ startY:y, head:[head], body, styles:{fontSize:7,cellPadding:1}, headStyles:{ fillColor:[235,239,241], textColor:[7,46,64], fontSize:8 }, theme:'grid', margin:{ left:14, right:14 }, alternateRowStyles:{ fillColor:[248,250,252] }, didDrawPage:()=>{ drawHeader(); doc.setTextColor(0,0,0) } })
   }
-  // En reporte general (agrupado), mostrar "Actividad de la semana" y "Acciones específicas" por usuario
-  if(agrupado && opts?.perAgentActivity && Object.keys(opts.perAgentActivity).length){
-    // Título de sección general
-    y = ensure(y, 8)
-    doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
-    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad de la semana (por usuario)',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
-    // Tabla compacta por usuario con total de eventos (suma de counts)
-    const head1 = ['Usuario','Total actividad','Views','Clicks','Forms','Prospectos','Planif.','Clientes','Pólizas']
-    const rows1: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
-      const total = Array.isArray(act.counts)? act.counts.reduce((a,b)=>a+b,0) : 0
-      const b: { views?:number; clicks?:number; forms?:number; prospectos?:number; planificacion?:number; clientes?:number; polizas?:number } = act.breakdown || {}
-      const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
-      return [userLabel, String(total), String(b.views||0), String(b.clicks||0), String(b.forms||0), String(b.prospectos||0), String(b.planificacion||0), String(b.clientes||0), String(b.polizas||0)]
-    })
-    y = ensure(y, 24)
-    // @ts-expect-error autotable
-    doc.autoTable({ startY: y, head: [head1], body: rows1, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
-    const withAutoA = doc as unknown as { lastAutoTable?: { finalY?: number } }
-    y = (withAutoA.lastAutoTable?.finalY || y) + GAP
 
-    // Gráfica de línea agregada (suma de todos los usuarios)
-    try {
-      const first = Object.values(opts.perAgentActivity)[0]
-      const labelsAgg = (first?.labels && first.labels.length) ? first.labels : ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
-      const n = labelsAgg.length
-      const countsAgg: number[] = Array.from({length:n}, (_,i)=>{
-        let s = 0
-        for(const act of Object.values(opts.perAgentActivity!)) s += Number(act.counts?.[i]||0)
-        return s
-      })
-      if(countsAgg.some(v=>v>0)){
-        const chartH = 38; const xLabelSpace = 10
-        // Si queda poco espacio, pasar a nueva página para mantener cohesión
-        const limit = PAGE_H - BOTTOM_MARGIN; const free = limit - y
-        if(free < 70){ doc.addPage(); const hdr=drawHeader(); y = hdr.contentStartY }
-        // Separador
-        doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
-        doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Actividad total',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
-        const baseX = 14; const width=182; const leftPad=12; const rightPad=6
-        const plotX = baseX + leftPad; const plotW = width - (leftPad+rightPad)
-        const plotTop = y + 2; const plotBottom = y + chartH
-        const maxV = Math.max(1, ...countsAgg)
-        // Ejes
-        doc.setDrawColor(200)
-        doc.line(plotX, plotTop, plotX, plotBottom)
-        doc.line(plotX, plotBottom, plotX + plotW, plotBottom)
-        doc.setFontSize(7)
-        doc.text('0', plotX - 3, plotBottom + 4, { align: 'right' })
-        doc.text(String(maxV), plotX - 3, plotTop + 2, { align: 'right' })
-        // Línea
-        const step = n>1 ? plotW/(n-1) : plotW
-        doc.setDrawColor(7,46,64)
-        let prevX = plotX, prevY = plotBottom - (countsAgg[0] / maxV) * chartH
-        for(let i=1;i<n;i++){
-          const x = plotX + step * i
-          const yVal = plotBottom - (countsAgg[i] / maxV) * chartH
-          doc.line(prevX, prevY, x, yVal)
-          prevX = x; prevY = yVal
-        }
-        for(let i=0;i<n;i++){
-          const x = plotX + step * i
-          const yVal = plotBottom - (countsAgg[i] / maxV) * chartH
-          doc.circle(x, yVal, 0.8, 'F')
-        }
-        for(let i=0;i<n;i++){
-          const x = plotX + step * i
-          const label = labelsAgg[i] || String(i+1)
-          doc.text(label, x, plotBottom + 7, { align: 'center' })
-        }
-        // Separador inferior
-        doc.setDrawColor(230); doc.line(14, plotBottom + xLabelSpace - 2, 196, plotBottom + xLabelSpace - 2)
-        y = plotBottom + xLabelSpace + GAP
-      }
-    } catch { /* ignore chart errors */ }
 
-    // Tabla por día (por usuario): Usuario, Lun..Dom, Total
-    try {
-      const headDaily = ['Usuario','Lun','Mar','Mié','Jue','Vie','Sáb','Dom','Total']
-      const rowsDaily: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
-        const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
-        const counts = Array.isArray(act.counts) ? act.counts.slice(0,7) : []
-        while(counts.length<7) counts.push(0)
-        const total = counts.reduce((a,b)=>a+b,0)
-        return [userLabel, ...counts.map(c=>String(c)), String(total)]
-      })
-      // Asegurar espacio mínimo
-      y = ensure(y, 24)
-      // @ts-expect-error autotable
-      doc.autoTable({ startY: y, head: [headDaily], body: rowsDaily, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
-      const withAutoDaily = doc as unknown as { lastAutoTable?: { finalY?: number } }
-      y = (withAutoDaily.lastAutoTable?.finalY || y) + GAP
-    } catch { /* ignore daily table errors */ }
-
-    // Segunda sección: Acciones específicas por usuario (tarjetas resumidas en tabla)
-    y = ensure(y, 8)
-    doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
-    doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Acciones específicas en la semana',14,y); doc.setFont('helvetica','normal'); y += SECTION_GAP
-    const head2 = ['Usuario','Altas P.','Cambios est.','Notas P.','Edit. planif.','Altas cliente','Modif. cliente','Altas pól.','Modif. pól.']
-    const rows2: string[][] = Object.entries(opts.perAgentActivity).map(([agId, act])=>{
-      const d: { prospectos_altas?:number; prospectos_cambios_estado?:number; prospectos_notas?:number; planificacion_ediciones?:number; clientes_altas?:number; clientes_modificaciones?:number; polizas_altas?:number; polizas_modificaciones?:number } = act.details || {}
-      const userLabel = agentesMap[Number(agId)] || act.email || String(agId)
-      return [userLabel, String(d.prospectos_altas||0), String(d.prospectos_cambios_estado||0), String(d.prospectos_notas||0), String(d.planificacion_ediciones||0), String(d.clientes_altas||0), String(d.clientes_modificaciones||0), String(d.polizas_altas||0), String(d.polizas_modificaciones||0)]
-    })
-    y = ensure(y, 24)
-    // @ts-expect-error autotable
-    doc.autoTable({ startY: y, head: [head2], body: rows2, styles: { fontSize: 7, cellPadding: 1 }, headStyles: { fillColor: [235,239,241], textColor: [7,46,64], fontSize: 8 }, theme: 'grid', margin: { top: headerHeight + 6, left: 14, right: 14 }, columnStyles: { 0:{halign:'left'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center'}, 5:{halign:'center'}, 6:{halign:'center'}, 7:{halign:'center'}, 8:{halign:'center'} }, didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) } })
-    const withAutoB = doc as unknown as { lastAutoTable?: { finalY?: number } }
-    y = (withAutoB.lastAutoTable?.finalY || y) + GAP
-  }
   // Glosario de abreviaturas (siempre al final)
   try {
-    // Separador y título del glosario
+  let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : contentStartY;
     y = ensure(y, 8)
     doc.setDrawColor(230); doc.line(14, y, 196, y); y += SECTION_GAP
     doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('Glosario de abreviaturas',14,y); doc.setFont('helvetica','normal'); y += 4
     // Contenido del glosario (pares Abrev. - Significado)
     const glossary: Array<[string,string]> = [
-      ['SMNYL','Seguros Monterrey New York Life (bloques de actividad SMNYL)'],
+      ['Pendiente', 'Prospecto pendiente de gestión'],
+      ['Seguimiento', 'Prospecto en seguimiento activo'],
+      ['Con cita', 'Prospecto con cita agendada'],
+      ['Descartado', 'Prospecto descartado'],
+      ['Clientes', 'Prospectos que ya son clientes'],
+      ['Previas', 'Prospectos arrastrados de semanas anteriores'],
+      ['Cita','bloques de actividad Cita'],
       ['Conv P->S','Conversión de Pendiente a Seguimiento'],
       ['Desc %','Porcentaje de prospectos descartados'],
       ['Proy semana','Proyección de total de la semana (forecast)'],
@@ -905,13 +484,13 @@ export async function exportProspectosPDF(
       ['Modif. pól.','Modificaciones de pólizas'],
       ['Forms','Formularios enviados'],
       ['Vistas','Vistas registradas en la aplicación'],
-      ['Clicks','Clicks registrados en la aplicación']
+      ['Clicks','Clicks registrados en la aplicación'],
+      ['P. a cliente','Prospectos convertidos a cliente en la semana actual'],
     ]
     const headGloss = ['Abrev.','Significado']
     // Altura mínima para que no se empalme con el footer
     y = ensure(y, 24)
-    // @ts-expect-error autotable plugin
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [headGloss],
       body: glossary.map(([k,v])=>[k,v]),
@@ -922,15 +501,15 @@ export async function exportProspectosPDF(
       columnStyles: { 0: { cellWidth: 30, halign: 'left' }, 1: { halign: 'left' } },
       didDrawPage: () => { drawHeader(); doc.setTextColor(0,0,0) }
     })
-    const withAutoGloss = doc as unknown as { lastAutoTable?: { finalY?: number } }
-    y = (withAutoGloss.lastAutoTable?.finalY || y) + GAP
+  y = (docTyped.lastAutoTable?.finalY || y) + GAP
   } catch { /* ignore glossary render errors */ }
   // Footer with pagination
-  const pageCount: number = (doc as unknown as { internal:{ getNumberOfPages:()=>number } }).internal.getNumberOfPages()
+  const pageCount: number = docTyped.internal.getNumberOfPages();
   for(let i=1;i<=pageCount;i++){
-    doc.setPage(i)
-    // Footer únicamente (el header ya se dibuja por página en las tablas y cuando se crean páginas manuales)
-    doc.setFontSize(7); doc.setTextColor(120); doc.text(`Página ${i}/${pageCount}`, 200, 292, {align:'right'}); doc.text('Lealtia',14,292); doc.setTextColor(0,0,0)
+  docTyped.setPage(i)
+  // Footer únicamente (el header ya se dibuja por página en las tablas y cuando se crean páginas manuales)
+  const footerY = PAGE_H - 8;
+  docTyped.setFontSize(7); docTyped.setTextColor(120); docTyped.text(`Página ${i}/${pageCount}`, 200, footerY, {align:'right'}); docTyped.text('Lealtia',14,footerY); docTyped.setTextColor(0,0,0)
   }
   // Nombre de archivo dinámico
   const desired = opts?.filename || titulo.replace(/\s+/g,'_').toLowerCase()+'.pdf'

@@ -5,11 +5,16 @@ import { getCandidatos, deleteCandidato } from '@/lib/api';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 import { exportCandidatosExcel, exportCandidatoPDF } from '@/lib/exporters';
 import AppModal from '@/components/ui/AppModal';
-import type { Candidato } from '@/types';
+import type { Candidato, Parametro } from '@/types';
 import BasePage from '@/components/BasePage';
 import Link from 'next/link';
 
 export default function CandidatosPage() {
+  // ...existing code...
+  const [fichaMensajes, setFichaMensajes] = useState<Record<string, string>>({});
+  const [mensajesCargados, setMensajesCargados] = useState(false);
+  // DEBUG: Mostrar el valor de fichaMensajes en pantalla
+  const debugFichaMensajes = JSON.stringify(fichaMensajes);
   const [candidatos, setCandidatos] = useState<Candidato[]>([]);
   const [notif, setNotif] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Candidato | null>(null);
@@ -50,6 +55,28 @@ export default function CandidatosPage() {
 
   useEffect(() => {
     getCandidatos().then(setCandidatos).catch(err => setNotif(err.message));
+    // Fetch mensajes ficha_candidato
+    fetch('/api/parametros?tipo=ficha_candidato')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('Error al obtener parámetros')))
+      .then(j => {
+        // Espera { success: true, data: Parametro[] }
+        if (j && Array.isArray(j.data)) {
+          // Mapear clave->valor
+          const mensajes: Record<string, string> = {};
+          j.data.forEach((p: Parametro) => {
+            if (p.clave && typeof p.valor === 'string') mensajes[p.clave] = p.valor;
+          });
+          console.log('[DEBUG] fichaMensajes:', mensajes);
+          setFichaMensajes(mensajes);
+        } else {
+          setFichaMensajes({});
+        }
+        setMensajesCargados(true);
+      })
+      .catch(() => {
+        setFichaMensajes({});
+        setMensajesCargados(true);
+      });
   }, []);
 
   const performDelete = async () => {
@@ -70,6 +97,10 @@ export default function CandidatosPage() {
   return (
     <BasePage title="Candidatos" alert={notif ? { type: 'info', message: notif, show: true } : undefined}>
       <div className="d-flex justify-content-center align-items-center d-center-mobile min-vh-100 bg-light px-2 px-sm-3">
+        {/* DEBUG: Mostrar fichaMensajes */}
+        <div style={{background:'#ffe', color:'#333', fontSize:12, padding:4, marginBottom:8, border:'1px solid #ccc'}}>
+          <b>DEBUG fichaMensajes:</b> {debugFichaMensajes}
+        </div>
         <div className="card shadow w-100 app-shell-narrow border-0">
           <div className="card-body">
             <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
@@ -147,7 +178,27 @@ export default function CandidatosPage() {
                         <td className="p-1">
                           <div className="d-flex flex-column flex-sm-row gap-1 stack-actions">
                             <Link href={`/candidatos/nuevo/${c.id_candidato}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
-                            <button onClick={() => exportCandidatoPDF({ ...c, proceso })} className="btn btn-outline-secondary btn-sm flex-fill">PDF</button>
+                            <button
+                              onClick={() => {
+                                // Validar que fichaMensajes esté cargado y no sea undefined
+                                if (!mensajesCargados) {
+                                  alert('Los mensajes aún no están cargados. Intenta de nuevo en unos segundos.');
+                                  return;
+                                }
+                                const mensajes = fichaMensajes && typeof fichaMensajes === 'object' ? fichaMensajes : {};
+                                console.debug('[DEBUG][PAGE] fichaMensajes justo antes de exportar:', mensajes);
+                                if (!mensajes || Object.keys(mensajes).length === 0) {
+                                  console.error('[ERROR][PAGE] fichaMensajes está vacío o undefined. No se puede exportar PDF.');
+                                  alert('No se puede exportar el PDF porque los mensajes parametrizados no están cargados.');
+                                  return;
+                                }
+                                exportCandidatoPDF({ ...c, proceso }, mensajes);
+                              }}
+                              className="btn btn-outline-secondary btn-sm flex-fill"
+                              disabled={!mensajesCargados || !fichaMensajes || Object.keys(fichaMensajes).length === 0}
+                            >
+                              PDF
+                            </button>
                             <button onClick={() => setPendingDelete(c)} className="btn btn-danger btn-sm flex-fill">Eliminar</button>
                           </div>
                         </td>

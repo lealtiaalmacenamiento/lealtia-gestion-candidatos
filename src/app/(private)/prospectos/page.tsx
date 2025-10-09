@@ -3,13 +3,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { getSupabaseClient } from '@/lib/supabaseClient'
 import AppModal from '@/components/ui/AppModal'
-import type { BloquePlanificacion } from '@/types'
+// import type { BloquePlanificacion } from '@/types'
 import Notification from '@/components/ui/Notification'
 import { useAuth } from '@/context/AuthProvider'
 import type { Prospecto, ProspectoEstado } from '@/types'
 import { ESTADO_CLASSES, ESTADO_LABEL, estadoOptions } from '@/lib/prospectosUI'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import { exportProspectosPDF } from '@/lib/prospectosExport'
+import { exportProspectosPDF, pngToBase64 } from '@/lib/prospectosExport'
+import { exportProspectosPDFAgente } from '@/lib/prospectosExportAgente'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { computeExtendedMetrics, computePreviousWeekDelta } from '@/lib/prospectosMetrics'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
@@ -41,18 +44,38 @@ export default function ProspectosPage(){
   const metaWeek = semanaActual.semana
   const sourceAll = yearProspectos || prospectos
   // En la nueva lógica de reporte ya NO mezclamos semanas previas; mantenemos referencias pero se usarán solo para tabla secundaria
-  const activosPrevios = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso < metaWeek && ['pendiente','seguimiento','con_cita'].includes(p.estado)), [sourceAll, metaWeek, anio])
-  const actuales = useMemo(()=> sourceAll.filter(p=> p.anio===anio && p.semana_iso === metaWeek), [sourceAll, metaWeek, anio])
+  // Semana activa para UI y exportación: la seleccionada
+  const semanaActiva = semana === 'ALL' ? null : Number(semana)
+  // Prospectos de la semana seleccionada
+  const actuales = useMemo(() =>
+    semanaActiva == null
+      ? []
+      : sourceAll.filter(p => p.anio === anio && p.semana_iso === semanaActiva),
+    [sourceAll, semanaActiva, anio]
+  )
+  // Prospectos de semanas anteriores a la seleccionada
+  const activosPrevios = useMemo(() =>
+    semanaActiva == null
+      ? []
+      : sourceAll.filter(p => p.anio === anio && p.semana_iso < semanaActiva && ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado)),
+    [sourceAll, semanaActiva, anio]
+  )
   const [showPrevios,setShowPrevios]=useState(false)
   const [loading,setLoading]=useState(false)
   const yearCacheRef = useRef<Record<string,Prospecto[]>>({}) // key: anio|agenteId
   const [agg,setAgg]=useState<Aggregate|null>(null)
   const [prevAgg,setPrevAgg]=useState<Aggregate|null>(null)
-  // Conteos mostrados en badges: revertido a lógica original (solo semana seleccionada / agg directo)
-  const displayData = useMemo(()=>{
-    if(!agg) return { total:0, por_estado:{} as Record<string,number> }
-    return { total: agg.total, por_estado: { ...agg.por_estado } }
-  },[agg])
+  // Conteos mostrados en badges: suma de todos los prospectos del año (actual + anteriores)
+  const displayData = useMemo(() => {
+    const counts: Record<string, number> = { pendiente: 0, seguimiento: 0, con_cita: 0, descartado: 0, ya_es_cliente: 0 };
+    for (const p of sourceAll) {
+      if (counts[p.estado] !== undefined) counts[p.estado]++;
+    }
+    return {
+      total: sourceAll.length,
+      por_estado: counts
+    };
+  }, [sourceAll]);
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
   const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
   const [errorMsg,setErrorMsg]=useState<string>('')
@@ -373,7 +396,7 @@ export default function ProspectosPage(){
         <span className="text-muted small">Este selector también asigna el agente al crear un prospecto.</span>
   <button type="button" disabled={!prospectos.length} className="btn btn-outline-secondary btn-sm" onClick={async ()=>{
     const agrupado = superuser && !agenteId
-    const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
+  // const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{})
     const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })()
     const agName = agrupado? 'Todos' : (agentes.find(a=> String(a.id)===agenteId)?.nombre || agentes.find(a=> String(a.id)===agenteId)?.email || '')
     const general = agrupado
@@ -383,7 +406,7 @@ export default function ProspectosPage(){
       : `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`
   const hoy = new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay()
   if(agrupado){
-    // Tipo para la respuesta de actividad semanal (por usuario)
+    // Tipo para la respuesta de actividad semanal (por usuario) para push
     type ActivityResponse = {
       success?: boolean
       daily?: { labels?: string[]; counts?: number[] }
@@ -395,8 +418,9 @@ export default function ProspectosPage(){
     const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {}
     const grouped = prospectos.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{})
     for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual })
-    // Obtener planificación por agente (en paralelo)
-  let planningSummaries: Record<number,{ prospeccion:number; smnyl:number; total:number }> | undefined
+    // Obtener planificación por agente (en paralelo) y guardar bloques completos
+    let planningSummaries: Record<number,{ prospeccion:number; smnyl:number; total:number }> | undefined
+  const perAgentPlanning: Record<number, import('@/types').BloquePlanificacion[]> = {};
     try {
       const weekNum = semana==='ALL'? undefined : (semana as number)
       if(weekNum){
@@ -405,15 +429,17 @@ export default function ProspectosPage(){
           try { const r = await fetch('/api/planificacion?'+params.toString()); if(r.ok) return { id:Number(id), data: await r.json() }; } catch {/*ignore*/}
           return { id:Number(id), data:null }
         }))
-  planningSummaries = {}
+        planningSummaries = {}
         for(const {id,data} of responses){ if(data){
-          const counts = { prospeccion:0, smnyl:0 }
+          const counts = { prospeccion:0, smnyl:0, citas_confirmadas:0 }
           for(const b of (data.bloques||[])){
             if(b.activity==='PROSPECCION') counts.prospeccion++
             else if(b.activity==='SMNYL') counts.smnyl++
-            // CITAS dormidas: ignorar
+            else if(b.activity==='CITAS' && b.confirmada) counts.citas_confirmadas++
           }
-          planningSummaries[id] = { ...counts, total: counts.prospeccion + counts.smnyl }
+          // Ahora el total incluye también las citas confirmadas
+          planningSummaries[id] = { ...counts, total: counts.prospeccion + counts.smnyl + counts.citas_confirmadas }
+          perAgentPlanning[id] = data.bloques || [];
         }}
       }
     } catch {/* ignore planning errors */}
@@ -441,7 +467,17 @@ export default function ProspectosPage(){
       }
     }
       // Actividad semanal por usuario (solo si semana específica)
-      let perAgentActivity: Record<number,{ email?:string; labels:string[]; counts:number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }; detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }> }> | undefined
+      let perAgentActivity: Record<number,{
+        email?:string;
+        labels:string[];
+        counts:number[];
+        breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number };
+        details?: { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number };
+        detailsDaily?: Array<{ prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number }>;
+
+        planning: import('@/types').BloquePlanificacion[];
+        prospectosSemana: Prospecto[];
+      }> | undefined
       try {
         if (semana !== 'ALL'){
           const weekNum = semana as number
@@ -461,6 +497,8 @@ export default function ProspectosPage(){
           perAgentActivity = {}
           for(const resp of responses){
             const { id, data, email } = resp as { id:number; data: ActivityResponse | null; email?:string }
+            // Siempre incluir planning aunque esté vacío
+            const planningBlocks = perAgentPlanning[id] || [];
             if(data && data.success && data.daily && Array.isArray(data.daily.counts)){
               const b = data.breakdown || {}
               const d = data.details || undefined
@@ -502,86 +540,210 @@ export default function ProspectosPage(){
                   clientes_modificaciones: Number(d0.clientes_modificaciones||0),
                   polizas_altas: Number(d0.polizas_altas||0),
                   polizas_modificaciones: Number(d0.polizas_modificaciones||0)
-                })) } : {})
+                })) } : {}),
+                planning: planningBlocks,
+                // Agregar prospectosSemana: todos los prospectos del agente en la semana seleccionada
+                prospectosSemana: (yearProspectos || prospectos).filter(p => p.agente_id === id && p.anio === anio && p.semana_iso === weekNum)
+              }
+            } else {
+              // Si no hay datos de actividad, igual incluir planning vacío o real
+              perAgentActivity[id] = {
+                email,
+                labels: [],
+                counts: [],
+                breakdown: {
+                  views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0
+                },
+                planning: [],
+                prospectosSemana: []
               }
             }
           }
           if(Object.keys(perAgentActivity).length === 0) perAgentActivity = undefined
         }
       } catch { /* ignore activity errors */ }
-  // Limitar exportación a semana ISO actual (metaWeek) y excluir 'ya_es_cliente'
-      const exportPros = prospectos.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado !== 'ya_es_cliente')
+  // Exportación (agrupado) usando semana seleccionada
+      const selectedWeekNum = (semana === 'ALL') ? metaWeek : Number(semana)
+      const exportPros = prospectos.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNum)
+      // NOTA: Aunque no haya prospectos en la semana, seguiremos mostrando todos los agentes en la tabla (filas vacías)
       if(exportPros.length===0){
-        window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar. Cambia a la semana visible correspondiente o ajusta la lógica si deseas exportar otra semana.`)
-        return
+        // Antes retornábamos; ahora continuamos para que el PDF muestre estructura con agentes sin datos
+        console.warn('[export PDF] Semana sin prospectos, se generará PDF con filas vacías por agente.')
       }
-  const resumenExport = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
-  exportProspectosPDF(exportPros, resumenExport, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity })
+  // resumenExport no se usa más
+  // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
+  const perAgentPrevCounts = activosPrevios.reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{})
+  const allAgentIds = agentes.map(a=>a.id);
+  const doc = new jsPDF();
+  const logoW = 32;
+  const logoH = 16;
+  // Always use the institutional logo as base64
+  const logo = await pngToBase64('/Logolealtiaruedablanca.png');
+  // Usar yearProspectos si está disponible para incluir prospectos previos
+  const allProspectos = yearProspectos ? yearProspectos : prospectos;
+  await exportProspectosPDF(
+    doc,
+    allProspectos,
+    { incluirId:false, agrupadoPorAgente: agrupado, agentesMap: agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}), allAgentIds, chartEstados: true, metaProspectos, forceLogoBlanco:true, perAgentExtended: perAgent, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, perAgentDeltas, planningSummaries, perAgentActivity, perAgentPrevCounts, semanaActual: { anio, semana_iso: selectedWeekNum } },
+    autoTable,
+    titulo,
+    logo,
+    logoW,
+    logoH
+  );
   } else {
-    // Filtrar por agente seleccionado explícitamente para evitar incluir otros
-    const filtered = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos
-    // Limitar a semana actual y excluir 'ya_es_cliente'
-  const exportPros = filtered.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado!=='ya_es_cliente')
-  if(exportPros.length===0){ window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar.`); return }
-    const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })()
-  const extended = computeExtendedMetrics(exportPros,{ diaSemanaActual })
-    // Actividad semanal del agente (para línea de actividad)
-  let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined
+    // Usar yearProspectos si está disponible para el histórico completo del agente
+    const allAgentProspects = (superuser && agenteId)
+      ? (yearProspectos ? yearProspectos.filter(p => p.agente_id === Number(agenteId)) : prospectos.filter(p => p.agente_id === Number(agenteId)))
+      : (yearProspectos ? yearProspectos : prospectos);
+    const selectedWeekNumInd = (semana === 'ALL') ? metaWeek : Number(semana);
+    const exportProsSemana = allAgentProspects.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumInd);
+    if(exportProsSemana.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumInd}).`); return; }
+
+    // Calcular previas (arrastre) por agente: prospectos con semana < seleccionada activos (pendiente/seguimiento/con_cita)
+    const perAgentPrevCounts = allAgentProspects
+      .filter(p => Number(p.anio) === anio && Number(p.semana_iso) < selectedWeekNumInd && ['pendiente', 'seguimiento', 'con_cita'].includes(p.estado))
+      .reduce<Record<number,number>>((acc,p)=>{ acc[p.agente_id] = (acc[p.agente_id]||0)+1; return acc },{});
+    const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{});
+    // Calcular métricas avanzadas, planificación y actividad usando TODOS los prospectos del agente
+    const grouped = allAgentProspects.reduce<Record<number,Prospecto[]>>((acc,p)=>{ (acc[p.agente_id] ||= []).push(p); return acc },{});
+    const perAgent: Record<number, ReturnType<typeof computeExtendedMetrics>> = {};
+    for(const [agId, list] of Object.entries(grouped)) perAgent[Number(agId)] = computeExtendedMetrics(list,{ diaSemanaActual });
+    // Obtener planificación por agente (en paralelo) y guardar bloques completos
+    let planningSummaries: Record<number,{ prospeccion:number; smnyl:number; total:number }> | undefined;
+    try {
+      const weekNum = (semana === 'ALL') ? undefined : (semana as number);
+      if(weekNum){
+        const responses = await Promise.all(Object.keys(grouped).map(async id=>{
+          const params = new URLSearchParams({ agente_id:String(id), semana:String(weekNum), anio:String(anio) });
+          try { const r = await fetch('/api/planificacion?'+params.toString()); if(r.ok) return { id:Number(id), data: await r.json() }; } catch {/*ignore*/}
+          return { id:Number(id), data:null };
+        }));
+        planningSummaries = {};
+        for(const {id,data} of responses){ if(data){
+          const counts = { prospeccion:0, smnyl:0, citas_confirmadas:0 };
+          for(const b of (data.bloques||[])){
+            if(b.activity==='PROSPECCION') counts.prospeccion++;
+            else if(b.activity==='SMNYL') counts.smnyl++;
+            else if(b.activity==='CITAS' && b.confirmada) counts.citas_confirmadas++;
+          }
+          planningSummaries[id] = { ...counts, total: counts.prospeccion + counts.smnyl + counts.citas_confirmadas };
+        }}
+      }
+    } catch {/* ignore planning errors */}
+    // Actividad semanal por usuario (solo si semana específica)
+    type DetailsType = { prospectos_altas:number; prospectos_cambios_estado:number; prospectos_notas:number; planificacion_ediciones:number; clientes_altas:number; clientes_modificaciones:number; polizas_altas:number; polizas_modificaciones:number };
+    type BreakdownType = { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number };
+    type DailyType = { labels: string[]; counts: number[] };
+    type ApiActivityResponse = {
+      success: boolean;
+      daily: DailyType;
+      breakdown?: BreakdownType;
+      details?: DetailsType;
+      detailsDaily?: DetailsType[];
+    };
+    type PerAgentActivityType = {
+      email?:string;
+      labels:string[];
+      counts:number[];
+      breakdown?: BreakdownType;
+      details?: DetailsType;
+      detailsDaily?: DetailsType[];
+      planning?: unknown[];
+      prospectosSemana: Prospecto[];
+    };
+    let perAgentActivity: Record<number, PerAgentActivityType> | undefined;
     try {
       if (semana !== 'ALL'){
-  const who = (superuser && agenteId) ? (agentes.find(a=> String(a.id)===agenteId)?.email || '') : (user?.email || '')
-        if (who){
-          const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who })
-          const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString())
-          if (rAct.ok){
-            const j = await rAct.json()
-            if (j && j.success && j.daily && Array.isArray(j.daily.counts)){
-              const b = j.breakdown || {}
-              activityWeekly = {
-                labels: j.daily.labels || [],
-                counts: j.daily.counts || [],
-                breakdown: {
-                  views: Number(b.views||0),
-                  clicks: Number(b.clicks||0),
-                  forms: Number(b.forms||0),
-                  prospectos: Number(b.prospectos||0),
-                  planificacion: Number(b.planificacion||0),
-                  clientes: Number(b.clientes||0),
-                  polizas: Number(b.polizas||0),
-                  usuarios: Number(b.usuarios||0),
-                  parametros: Number(b.parametros||0),
-                  reportes: Number(b.reportes||0),
-                  otros: Number(b.otros||0)
-                },
-                dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined,
-                ...(j.details ? { details: j.details } : {}),
-                ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {})
-              }
-            }
+        const weekNum = semana as number;
+        const agentIds = Object.keys(grouped);
+        const responses = await Promise.all(agentIds.map(async id=>{
+          const ag = agentes.find(a=> String(a.id)===String(id));
+          const email = ag?.email;
+          if(!email) return { id:Number(id), data:null };
+          const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(weekNum), usuario: email });
+          try {
+            const r = await fetch('/api/auditoria/activity?' + paramsAct.toString());
+            if(!r.ok) return { id:Number(id), data:null };
+            const j: ApiActivityResponse = await r.json();
+            return { id:Number(id), data:j, email };
+          } catch { return { id:Number(id), data:null } }
+        }));
+        perAgentActivity = {};
+        for(const resp of responses){
+          const { id, data, email } = resp as { id:number; data:ApiActivityResponse|null; email?:string };
+          if(data && data.success && data.daily && Array.isArray(data.daily.counts)){
+            const b = data.breakdown || { views:0, clicks:0, forms:0, prospectos:0, planificacion:0, clientes:0, polizas:0, usuarios:0, parametros:0, reportes:0, otros:0 };
+            const d = data.details || undefined;
+            const dd = Array.isArray(data.detailsDaily) ? data.detailsDaily : undefined;
+            const normalizedDetails = d ? {
+              prospectos_altas: Number(d.prospectos_altas||0),
+              prospectos_cambios_estado: Number(d.prospectos_cambios_estado||0),
+              prospectos_notas: Number(d.prospectos_notas||0),
+              planificacion_ediciones: Number(d.planificacion_ediciones||0),
+              clientes_altas: Number(d.clientes_altas||0),
+              clientes_modificaciones: Number(d.clientes_modificaciones||0),
+              polizas_altas: Number(d.polizas_altas||0),
+              polizas_modificaciones: Number(d.polizas_modificaciones||0)
+            } : undefined;
+            perAgentActivity[id] = {
+              email,
+              labels: data.daily.labels || [],
+              counts: data.daily.counts || [],
+              breakdown: b,
+              ...(normalizedDetails ? { details: normalizedDetails } : {}),
+              ...(dd ? { detailsDaily: dd.map((d0: DetailsType)=>({
+                prospectos_altas: Number(d0.prospectos_altas||0),
+                prospectos_cambios_estado: Number(d0.prospectos_cambios_estado||0),
+                prospectos_notas: Number(d0.prospectos_notas||0),
+                planificacion_ediciones: Number(d0.planificacion_ediciones||0),
+                clientes_altas: Number(d0.clientes_altas||0),
+                clientes_modificaciones: Number(d0.clientes_modificaciones||0),
+                polizas_altas: Number(d0.polizas_altas||0),
+                polizas_modificaciones: Number(d0.polizas_modificaciones||0)
+              })) } : {}),
+              prospectosSemana: []
+            };
+          } else {
+            perAgentActivity[id] = {
+              email,
+              labels: [],
+              counts: [],
+              breakdown: {
+                views: 0, clicks: 0, forms: 0, prospectos: 0, planificacion: 0, clientes: 0, polizas: 0, usuarios: 0, parametros: 0, reportes: 0, otros: 0
+              },
+              planning: [],
+              prospectosSemana: []
+            };
           }
         }
+        if(Object.keys(perAgentActivity).length === 0) perAgentActivity = undefined;
       }
     } catch { /* ignore activity errors */ }
-    // Planificación single agente
-  let singleAgentPlanning: { bloques:BloquePlanificacion[]; summary:{ prospeccion:number; smnyl:number; total:number } } | undefined
-    try {
-      if(agenteId && semana!=='ALL'){
-        const params = new URLSearchParams({ agente_id:String(agenteId), semana:String(semana), anio:String(anio) })
-        const rPlan = await fetch('/api/planificacion?'+params.toString())
-        if(rPlan.ok){
-          const data = await rPlan.json()
-          const counts = { prospeccion:0, smnyl:0 }
-          for(const b of (data.bloques||[])){
-            if(b.activity==='PROSPECCION') counts.prospeccion++
-            else if(b.activity==='SMNYL') counts.smnyl++
-            // CITAS dormidas: ignorar
-          }
-          singleAgentPlanning = { bloques: data.bloques||[], summary: { ...counts, total: counts.prospeccion + counts.smnyl } }
-        }
-      }
-    } catch {/*ignore*/}
-  // Exportar sólo la semana actual filtrada y sin 'ya_es_cliente'
-  exportProspectosPDF(exportPros, resumenLocal, titulo, { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados: true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, singleAgentPlanning, activityWeekly })
+    const doc = new jsPDF();
+    const logoW = 32;
+    const logoH = 16;
+    const logo = await pngToBase64('/Logolealtiaruedablanca.png');
+    await exportProspectosPDFAgente(
+      doc,
+      allAgentProspects,
+      {
+        agenteId: (superuser && agenteId) ? Number(agenteId) : user?.id,
+        agentesMap,
+        perAgentPrevCounts,
+        filename,
+        perAgentExtended: perAgent,
+        planningSummaries,
+        perAgentActivity,
+        metaProspectos,
+        semanaActual: { anio, semana_iso: selectedWeekNumInd }
+      },
+      autoTable,
+      titulo,
+      logo,
+      logoW,
+      logoH
+    );
   }
   }}>PDF</button>
     </div>}
@@ -591,7 +753,7 @@ export default function ProspectosPage(){
           <button type="button" onClick={()=>applyEstadoFiltro('')} className={`badge border-0 ${estadoFiltro===''? 'bg-primary':'bg-secondary'} text-white`} title={semana==='ALL'? 'Total del año filtrado' : 'Total semana'}>Total {displayData.total}</button>
           {(['pendiente','seguimiento','con_cita','ya_es_cliente','descartado'] as ProspectoEstado[] | string[]).map(k=> { const v = Number(displayData.por_estado[k] ?? 0); const active = estadoFiltro===k; return <button type="button" key={k} onClick={()=>applyEstadoFiltro(k as ProspectoEstado)} className={`badge border ${active? 'bg-primary text-white':'bg-light text-dark'}`} style={{cursor:'pointer'}} title={ESTADO_LABEL[k as ProspectoEstado]}>{ESTADO_LABEL[k as ProspectoEstado] || k} {v}</button>})}
           {(()=>{ 
-            // Objetivo dinámico: meta parametrizada + pendientes (activosPrevios) de semanas anteriores
+            // Objetivo dinámico: meta parametrizada + pendientes (activosPrevios) de semanas anterioresa
             const carry = activosPrevios.length
             const objetivoBase = metaProspectos
             const objetivo = objetivoBase + carry
@@ -600,8 +762,71 @@ export default function ProspectosPage(){
             return <span className={"badge "+ (ok? 'bg-success':'bg-warning text-dark')} title={`Meta semana actual (${metaWeek}). Base ${objetivoBase} + pendientes previas ${carry} = ${objetivo}. Progreso ${progreso}/${objetivo}.`}>{ok? `Meta ${objetivo} ok` : (`${progreso}/${objetivo}`)}</span> 
           })()}
           {!superuser && (
-            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> { const agrupado=false; const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{}); const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })(); const agName = user?.nombre || user?.email || ''; const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`; const hoy=new Date(); const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay(); const base = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos; // aplicar filtro semana actual y excluir ya_es_cliente
-            const exportPros = base.filter(p=> p.anio===anio && p.semana_iso===metaWeek && p.estado!=='ya_es_cliente'); if(exportPros.length===0){ window.alert(`No hay prospectos en la semana actual (ISO ${metaWeek}) para exportar.`); return } const extended = computeExtendedMetrics(exportPros,{ diaSemanaActual }); const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`; const resumenLocal = (()=>{ const counts: Record<string,number> = { pendiente:0, seguimiento:0, con_cita:0, descartado:0 }; for(const p of exportPros){ if(counts[p.estado]!==undefined) counts[p.estado]++ } return { total: exportPros.length, por_estado: counts, cumplimiento_30: exportPros.length>=30 } })(); let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined; try { if (semana !== 'ALL') { const who = user?.email || ''; if (who) { const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who }); const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString()); if (rAct.ok) { const j = await rAct.json(); if (j && j.success && j.daily && Array.isArray(j.daily.counts)) { const b = j.breakdown || {}; activityWeekly = { labels: j.daily.labels || [], counts: j.daily.counts || [], breakdown: { views: Number(b.views||0), clicks: Number(b.clicks||0), forms: Number(b.forms||0), prospectos: Number(b.prospectos||0), planificacion: Number(b.planificacion||0), clientes: Number(b.clientes||0), polizas: Number(b.polizas||0), usuarios: Number(b.usuarios||0), parametros: Number(b.parametros||0), reportes: Number(b.reportes||0), otros: Number(b.otros||0) }, dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined, ...(j.details ? { details: j.details } : {}), ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {}) }; } } } } } catch { /* ignore */ } exportProspectosPDF(exportPros, resumenLocal, titulo,{incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly }) }}>PDF</button>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={async ()=> {
+              const agrupado = false;
+              const agentesMap = agentes.reduce<Record<number,string>>((acc,a)=>{ acc[a.id]= a.nombre||a.email; return acc },{});
+              const semanaLabel = semana==='ALL'? 'Año completo' : (()=>{ const r=semanaDesdeNumero(anio, semana as number); return `Semana ${semana} (${formatearRangoSemana(r)})` })();
+              const agName = user?.nombre || user?.email || '';
+              const titulo = `Reporte de prospectos Agente: ${agName || 'N/A'} ${semanaLabel}`;
+              const hoy=new Date();
+              const diaSemanaActual = hoy.getDay()===0?7:hoy.getDay();
+              const selectedWeekNumBtn = (semana==='ALL')? metaWeek: Number(semana);
+              const base = (superuser && agenteId)? prospectos.filter(p=> p.agente_id === Number(agenteId)) : prospectos;
+              const exportPros = base.filter(p=> p.anio===anio && p.semana_iso===selectedWeekNumBtn);
+              if(exportPros.length===0){ window.alert(`No hay prospectos en la semana seleccionada (ISO ${selectedWeekNumBtn}).`); return }
+              const extended = computeExtendedMetrics(exportPros,{ diaSemanaActual });
+              const filename = `Reporte_de_prospectos_Agente_${(agName||'NA').replace(/\s+/g,'_')}_semana_${semana==='ALL'?'ALL':semana}_${semanaLabel.replace(/[^0-9_-]+/g,'')}`;
+              let activityWeekly: { labels: string[]; counts: number[]; breakdown?: { views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }; dailyBreakdown?: Array<{ views:number; clicks:number; forms:number; prospectos:number; planificacion:number; clientes:number; polizas:number; usuarios:number; parametros:number; reportes:number; otros:number }> } | undefined = undefined;
+              try {
+                if (semana !== 'ALL') {
+                  const who = user?.email || '';
+                  if (who) {
+                    const paramsAct = new URLSearchParams({ anio:String(anio), semana:String(semana), usuario: who });
+                    const rAct = await fetch('/api/auditoria/activity?' + paramsAct.toString());
+                    if (rAct.ok) {
+                      const j = await rAct.json();
+                      if (j && j.success && j.daily && Array.isArray(j.daily.counts)) {
+                        const b = j.breakdown || {};
+                        activityWeekly = {
+                          labels: j.daily.labels || [],
+                          counts: j.daily.counts || [],
+                          breakdown: {
+                            views: Number(b.views||0),
+                            clicks: Number(b.clicks||0),
+                            forms: Number(b.forms||0),
+                            prospectos: Number(b.prospectos||0),
+                            planificacion: Number(b.planificacion||0),
+                            clientes: Number(b.clientes||0),
+                            polizas: Number(b.polizas||0),
+                            usuarios: Number(b.usuarios||0),
+                            parametros: Number(b.parametros||0),
+                            reportes: Number(b.reportes||0),
+                            otros: Number(b.otros||0)
+                          },
+                          dailyBreakdown: Array.isArray(j.dailyBreakdown) ? j.dailyBreakdown : undefined,
+                          ...(j.details ? { details: j.details } : {}),
+                          ...(Array.isArray(j.detailsDaily) ? { detailsDaily: j.detailsDaily } : {})
+                        };
+                      }
+                    }
+                  }
+                }
+              } catch { /* ignore */ }
+              const doc = new jsPDF();
+              const logo = '/Logolealtia.png';
+              const logoW = 32;
+              const logoH = 16;
+              await exportProspectosPDF(
+                doc,
+                exportPros,
+                { incluirId:false, agrupadoPorAgente: agrupado, agentesMap, chartEstados:true, metaProspectos, forceLogoBlanco:true, extendedMetrics: extended, prevWeekDelta: agg && prevAgg? computePreviousWeekDelta(agg, prevAgg): undefined, filename, activityWeekly, semanaActual: { anio, semana_iso: selectedWeekNumBtn } },
+                autoTable,
+                titulo,
+                logo,
+                logoW,
+                logoH
+              );
+            }}>PDF</button>
           )}
         </div>
         {(!superuser || (superuser && agenteId)) && (()=>{ 
@@ -791,17 +1016,17 @@ export default function ProspectosPage(){
           <div className="d-flex gap-2">
             <button className="btn btn-primary btn-sm" onClick={async ()=>{
               try {
-                const plan = conflicto.plan || { bloques: [] }
-                const bloques = (plan.bloques||[]).filter(b=> !(b.day===conflicto.day && b.hour===conflicto.horaLocal))
-                bloques.push({ day:conflicto.day, hour:conflicto.horaLocal, activity:'CITAS', origin:'manual' })
-                const body = { agente_id: conflicto.prospecto?.agente_id, semana_iso: conflicto.semana, anio: conflicto.anio, bloques }
-                await fetch('/api/planificacion',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
-                setConflicto(null)
-                window.dispatchEvent(new CustomEvent('prospectos:cita-updated'))
-                setToast({msg:'Bloque reemplazado por cita', type:'success'})
+                // 'planificacion' no existe en Prospecto, así que usamos un array vacío por defecto
+                const bloques = [];
+                bloques.push({ day:conflicto.day, hour:conflicto.horaLocal, activity:'CITAS', origin:'manual' });
+                const body = { agente_id: conflicto.prospecto?.agente_id, semana_iso: conflicto.semana, anio: conflicto.anio, bloques };
+                await fetch('/api/planificacion',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                setConflicto(null);
+                window.dispatchEvent(new CustomEvent('prospectos:cita-updated'));
+                setToast({msg:'Bloque reemplazado por cita', type:'success'});
               } catch {
-                setToast({msg:'Error al reemplazar bloque', type:'error'})
-                setConflicto(null)
+                setToast({msg:'Error al reemplazar bloque', type:'error'});
+                setConflicto(null);
               }
             }}>Reemplazar bloque</button>
             <button className="btn btn-outline-secondary btn-sm" onClick={()=> setConflicto(null)}>Mantener</button>

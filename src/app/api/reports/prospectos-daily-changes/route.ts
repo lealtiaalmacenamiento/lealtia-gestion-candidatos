@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { sendMail } from '@/lib/mailer'
-import * as XLSX from 'xlsx'
+
 
 // Asegurar runtime Node.js (necesario para nodemailer/xlsx)
 export const runtime = 'nodejs'
@@ -254,9 +254,12 @@ export async function GET(req: Request) {
     </div>
   </div>`
 
-  // Generar XLSX real como adjunto
+  // Generar Excel real como adjunto usando exceljs
+  const ExcelJS = await import('exceljs')
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Cambios')
   const header = ['Fecha', 'Prospecto', 'Pertenece a', 'Usuario (modificó)', 'De', 'A', 'Nota agregada']
-  const aoa: Array<Array<string>> = [header]
+  worksheet.addRow(header)
   for (const h of histRows) {
     const p = h.prospecto_id ? prospectosMap.get(h.prospecto_id) : undefined
     const ag = h.agente_id ? agentesMap.get(h.agente_id) : undefined
@@ -268,13 +271,18 @@ export async function GET(req: Request) {
     const a = h.estado_nuevo || ''
     const notaAgregada = h.nota_agregada ? 'Sí' : ((h.notas_anteriores || '') !== (h.notas_nuevas || '') ? 'Sí' : 'No')
     const fecha = fmtCDMX(h.created_at)
-    aoa.push([fecha, nombre, perteneceA, modLabel, de, a, notaAgregada])
+    worksheet.addRow([fecha, nombre, perteneceA, modLabel, de, a, notaAgregada])
   }
-  const ws = XLSX.utils.aoa_to_sheet(aoa)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
-  const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
-  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g, '_')}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+  // Opcional: autoajustar ancho de columnas
+  worksheet.columns.forEach(col => {
+    let maxLength = 10
+    col.eachCell?.({ includeEmpty: true }, cell => {
+      maxLength = Math.max(maxLength, (cell.value ? String(cell.value).length : 0))
+    })
+    col.width = maxLength + 2
+  })
+  const xlsxBuffer = await workbook.xlsx.writeBuffer()
+  const attachment = { filename: `reporte_prospectos_${rangeLabel.replace(/\s+/g, '_')}.xlsx`, content: Buffer.from(xlsxBuffer), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
 
   // Destinatarios: superusuarios activos
   const { data: supers, error: supErr } = await supa

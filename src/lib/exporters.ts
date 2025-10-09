@@ -6,19 +6,12 @@ import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 // Lazy dynamic imports para no inflar el bundle inicial
-type XLSXModule = typeof import('xlsx')
-async function loadXLSX(): Promise<XLSXModule> {
-  const mod = await import('xlsx')
-  const candidate = (mod as { default?: XLSXModule }).default
-  return (candidate ?? (mod as XLSXModule))
-}
-async function loadJSPDF() { return (await import('jspdf')).jsPDF }
-async function loadAutoTable() { return (await import('jspdf-autotable')).default }
+import * as ExcelJS from 'exceljs'
 
-export async function exportCandidatosExcel(candidatos: Candidato[]) {
+
+export async function exportCandidatosExcel(candidatos: Candidato[]): Promise<void> {
   if (!candidatos.length) return
-  const XLSX = await loadXLSX()
-  const data = candidatos.map(c => {
+  const data = candidatos.map((c: Candidato) => {
     const cand = c as CandidatoPOP
     const { proceso, dias_desde_ct, dias_desde_pop } = calcularDerivados({
       periodo_para_registro_y_envio_de_documentos: c.periodo_para_registro_y_envio_de_documentos,
@@ -42,16 +35,16 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       'fecha_limite_para_presentar_curricula_cdp',
       'inicio_escuela_fundamental'
     ].every(k => !!etapas[k]?.completed)
-  const isAgente = allCompleted
-  const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
+    const isAgente = allCompleted
+    const proc = isAgente ? 'Agente' : (etiquetaProceso(proceso) || '')
     return {
       ID: c.id_candidato,
-  CT: c.ct,
-  POP: cand.pop || '',
+      CT: c.ct,
+      POP: cand.pop || '',
       Candidato: c.candidato || '',
       'Email agente': c.email_agente || '',
       'Fecha creación CT': c.fecha_creacion_ct || '',
-  'Fecha creación POP': cand.fecha_creacion_pop || '',
+      'Fecha creación POP': cand.fecha_creacion_pop || '',
       Proceso: proc,
       'Cédula A1': c.mes || '',
       'Periodo registro/envío': c.periodo_para_registro_y_envio_de_documentos || '',
@@ -75,17 +68,33 @@ export async function exportCandidatosExcel(candidatos: Candidato[]) {
       'Días desde creación POP': dias_desde_pop ?? ''
     }
   })
-  const ws = XLSX.utils.json_to_sheet(data)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Candidatos')
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Candidatos')
+  if (data.length > 0) {
+    worksheet.columns = Object.keys(data[0]).map(key => ({ header: key, key }))
+    data.forEach((row: Record<string, unknown>) => worksheet.addRow(row))
+  }
   const fecha = new Date().toISOString().replace(/[:T]/g,'-').slice(0,16)
-  XLSX.writeFile(wb, `candidatos_${fecha}.xlsx`)
+  await workbook.xlsx.writeFile(`candidatos_${fecha}.xlsx`)
 }
 
-export async function exportCandidatoPDF(c: Candidato) {
-  const jsPDF = await loadJSPDF()
-  await loadAutoTable()
-  const doc = new jsPDF()
+/**
+ * Exporta la ficha de candidato a PDF.
+ * @param c Candidato
+ * @param mensajesPorCampo? Objeto opcional { [clave: string]: string } para mostrar mensajes personalizados por fila en la tabla de datos
+ */
+export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record<string, string>) {
+  // DEBUG: Mostrar claves y mensajes recibidos
+  if (typeof window !== 'undefined') {
+    console.log('[DEBUG][PDF] mensajesPorCampo:', mensajesPorCampo);
+    if (mensajesPorCampo && typeof mensajesPorCampo === 'object') {
+      console.log('[DEBUG][PDF] claves de mensajesPorCampo:', Object.keys(mensajesPorCampo));
+    }
+  }
+  try {
+    const { jsPDF } = await import('jspdf')
+    const autoTable = (await import('jspdf-autotable')).default
+    const doc = new jsPDF()
 
   // Helpers para header y branding uniforme
   const MX_TZ='America/Mexico_City'
@@ -234,45 +243,60 @@ export async function exportCandidatoPDF(c: Candidato) {
   const { headerHeight, contentStartY } = drawHeader({ procesoLabel })
   doc.setFontSize(10)
   // Tabla Datos de candidato (orden y etiquetas solicitadas)
-  const rows: Array<[string,string]> = []
-  const push = (k: string, v: unknown) => rows.push([U(k), U(v)])
-  push('clave temporal', c.ct)
-  push('Nombre de candidato', c.candidato)
-  push('POP', cand.pop || '')
-  push('Email de agente', c.email_agente || '')
-  push('Fecha de creación clave temporal', c.fecha_creacion_ct || '')
-  push('Fecha de creación POP', cand.fecha_creacion_pop || '')
-  push('Días desde creación CT', dias_desde_ct ?? '')
-  push('Días desde creación POP', dias_desde_pop ?? '')
-  push('Cédula A1', c.mes)
-  push('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', c.periodo_para_registro_y_envio_de_documentos || '')
-  push('Capacitación A1', c.capacitacion_cedula_a1 || '')
-  push('Fecha tent. examen', c.fecha_tentativa_de_examen || '')
-  push('EFC', c.efc)
-  push('Período folio oficina virtual', c.periodo_para_ingresar_folio_oficina_virtual || '')
-  push('Período playbook', c.periodo_para_playbook || '')
-  push('Pre-escuela sesión arranque', c.pre_escuela_sesion_unica_de_arranque || '')
-  push('Fecha límite curricula CDP', c.fecha_limite_para_presentar_curricula_cdp || '')
-  push('Inicio escuela fundamental', c.inicio_escuela_fundamental || '')
-  if (typeof c.seg_gmm === 'number') push('Seguro GMM', c.seg_gmm)
-  if (typeof c.seg_vida === 'number') push('Seguro Vida', c.seg_vida)
-  push('fecha de creacion de candidato', c.fecha_de_creacion || '')
-  push('ultima actualización de candidato', c.ultima_actualizacion || '')
-  // @ts-expect-error autoTable inyectada por plugin
-  doc.autoTable({
+  const rows: Array<[string, string, string]> = [];
+  // Mapeo exacto de claves para ficha de candidato (debe coincidir con el select y la BD)
+  const push = (k: string, v: unknown) => {
+    const mensaje = mensajesPorCampo?.[k] || '';
+    if (typeof window !== 'undefined') {
+      console.log(`[DEBUG][PDF] Buscando mensaje para clave: "${k}"`);
+      if (mensaje) {
+        console.log(`[DEBUG][PDF] Mensaje para "${k}":`, mensaje);
+      } else {
+        // Mostrar claves disponibles para comparar
+        if (mensajesPorCampo && typeof mensajesPorCampo === 'object') {
+          console.log('[DEBUG][PDF] Claves disponibles:', Object.keys(mensajesPorCampo));
+        }
+        console.log(`[DEBUG][PDF] Sin mensaje para "${k}"`);
+      }
+    }
+    rows.push([k, U(v), mensaje]);
+  };
+  push('CLAVE TEMPORAL', c.ct);
+  push('NOMBRE DE CANDIDATO', c.candidato);
+  push('POP', cand.pop || '');
+  push('EMAIL DE AGENTE', c.email_agente || '');
+  push('FECHA DE CREACIÓN CLAVE TEMPORAL', c.fecha_creacion_ct || '');
+  push('FECHA DE CREACIÓN POP', cand.fecha_creacion_pop || '');
+  push('DÍAS DESDE CREACIÓN CT', dias_desde_ct ?? '');
+  push('DÍAS DESDE CREACIÓN POP', dias_desde_pop ?? '');
+  push('CÉDULA A1', c.mes);
+  push('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS', c.periodo_para_registro_y_envio_de_documentos || '');
+  push('CAPACITACIÓN A1', c.capacitacion_cedula_a1 || '');
+  push('FECHA TENT. EXAMEN', c.fecha_tentativa_de_examen || '');
+  push('EFC', c.efc);
+  push('PERÍODO FOLIO OFICINA VIRTUAL', c.periodo_para_ingresar_folio_oficina_virtual || '');
+  push('PERÍODO PLAYBOOK', c.periodo_para_playbook || '');
+  push('PRE-ESCUELA SESIÓN ARRANQUE', c.pre_escuela_sesion_unica_de_arranque || '');
+  push('FECHA LÍMITE CURRICULA CDP', c.fecha_limite_para_presentar_curricula_cdp || '');
+  push('INICIO ESCUELA FUNDAMENTAL', c.inicio_escuela_fundamental || '');
+  if (typeof c.seg_gmm === 'number') push('SEGURO GMM', c.seg_gmm);
+  if (typeof c.seg_vida === 'number') push('SEGURO VIDA', c.seg_vida);
+  push('FECHA DE CREACION DE CANDIDATO', c.fecha_de_creacion || '');
+  push('ULTIMA ACTUALIZACIÓN DE CANDIDATO', c.ultima_actualizacion || '');
+  autoTable(doc, {
     startY: contentStartY,
-    head: [[U('Datos de candidato'), ' ']],
+    head: [[U('Datos de candidato'), 'Valor', 'Mensaje']],
     body: rows,
     styles:{ fontSize:8, overflow:'linebreak', cellPadding: 2, lineColor: [220,220,220], lineWidth: 0.1 },
     theme:'grid',
     headStyles:{ fillColor:[7,46,64], fontSize:8, textColor: [255,255,255] },
     alternateRowStyles: { fillColor: [245,249,252] },
-    columnStyles: { 0: { cellWidth: 80, fontStyle: 'bold' }, 1: { cellWidth: 100, overflow:'linebreak' } },
+    columnStyles: { 0: { cellWidth: 60, fontStyle: 'bold' }, 1: { cellWidth: 60, overflow:'linebreak' }, 2: { cellWidth: 60, overflow:'linebreak' } },
     margin: { top: headerHeight + 6, left: 14, right: 14 },
     didDrawPage: () => { drawHeader({ procesoLabel }); doc.setTextColor(0,0,0) }
-  })
+  });
 
-  // Sección: Resumen prospectos y planificación (si es posible obtener agente y datos)
+  // Sección: Resumen prospectos y planificación (si es posible obtener agente y datos )comentario para push
   type AutoTableDoc = typeof doc & { lastAutoTable?: { finalY?: number } }
   const atDoc = doc as AutoTableDoc
   let lastY: number | undefined = atDoc.lastAutoTable?.finalY || contentStartY
@@ -328,8 +352,7 @@ export async function exportCandidatoPDF(c: Candidato) {
       [U('Con cita'), U(resumen.por_estado?.con_cita ?? 0)],
       [U('Descartado'), U(resumen.por_estado?.descartado ?? 0)]
         ]
-        // @ts-expect-error autoTable inyectada por plugin
-        doc.autoTable({
+      autoTable(doc, {
           startY: (lastY || contentStartY) + 2,
       head: [[U('Resumen de prospectos (semana actual)'), U('Valor')]],
           body,
@@ -357,8 +380,7 @@ export async function exportCandidatoPDF(c: Candidato) {
           } catch { return String(iso) }
         }
         const body = citas.map(p=> [ fmtMX(p.fecha_cita||null), U(p.nombre), U(p.estado) ])
-        // @ts-expect-error autoTable inyectada por plugin
-        doc.autoTable({
+      autoTable(doc, {
           startY: (lastY || contentStartY) + 6,
           head: [[U('Próximas citas (semana actual)'), ' ', ''], head[0]],
           body,
@@ -384,8 +406,7 @@ export async function exportCandidatoPDF(c: Candidato) {
           [U('Bloques CITAS'), U(counts.CITAS)],
           [U('Bloques SMNYL'), U(counts.SMNYL)],
         ]
-        // @ts-expect-error autoTable
-        doc.autoTable({
+      autoTable(doc, {
           startY: (lastY || contentStartY) + 6,
           head: [[U('Resumen planificación (semana actual)'), U('Valor')]],
           body: resumenBody,
@@ -413,7 +434,11 @@ export async function exportCandidatoPDF(c: Candidato) {
   doc.text(U('Lealtia'),14,292)
     doc.setTextColor(0,0,0)
   }
-  const nombreC = (c.candidato || '').trim() || `ID_${c.id_candidato}`
-  const safe = nombreC.normalize('NFD').replace(/[^\p{L}\p{N}\s._-]+/gu,'').replace(/\s+/g,'_')
-  doc.save(`Ficha_de_candidato_${safe}.pdf`)
+    const nombreC = (c.candidato || '').trim() || `ID_${c.id_candidato}`
+    const safe = nombreC.normalize('NFD').replace(/[^\p{L}\p{N}\s._-]+/gu,'').replace(/\s+/g,'_')
+    doc.save(`Ficha_de_candidato_${safe}.pdf`)
+  } catch (err) {
+  alert('Ocurrió un error al generar o descargar el PDF. Revisa la consola para más detalles.')
+  console.error('Error exportCandidatoPDF:', err)
+  }
 }

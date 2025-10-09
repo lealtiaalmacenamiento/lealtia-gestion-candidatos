@@ -3,7 +3,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://YOUR_PROJEC
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  `connect-src 'self' ${supabaseUrl}`,
+  `connect-src 'self' ${supabaseUrl} ${supabaseUrl.replace('https://', 'wss://')}`,
   "img-src 'self' data: https://lh3.googleusercontent.com https://*.googleusercontent.com",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'"

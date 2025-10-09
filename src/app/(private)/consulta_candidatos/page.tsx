@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
+import type { Parametro } from '@/types';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 
 interface EtapaMeta { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
@@ -315,6 +316,31 @@ function ConsultaCandidatosInner() {
 
   // (utilidades CSV eliminadas; ahora generamos XLSX y se mantiene codificación correcta)
 
+  const [fichaMensajes, setFichaMensajes] = useState<Record<string, string>>({});
+const [mensajesCargados, setMensajesCargados] = useState(false);
+
+// Fetch mensajes ficha_candidato al montar
+useEffect(() => {
+  fetch('/api/parametros?tipo=ficha_candidato')
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('Error al obtener parámetros')))
+    .then(j => {
+      if (j && Array.isArray(j.data)) {
+        const mensajes: Record<string, string> = {};
+        j.data.forEach((p: Parametro) => {
+          if (p.clave && typeof p.valor === 'string') mensajes[p.clave] = p.valor;
+        });
+        setFichaMensajes(mensajes);
+      } else {
+        setFichaMensajes({});
+      }
+      setMensajesCargados(true);
+    })
+    .catch(() => {
+      setFichaMensajes({});
+      setMensajesCargados(true);
+    });
+}, []);
+
   return (
   <BasePage title="Consulta de candidatos">
       {search?.get('deleted') === '0' && (
@@ -459,7 +485,21 @@ function ConsultaCandidatosInner() {
                             >Editar</button>
                             <button
                               className="btn btn-sm btn-outline-secondary me-1"
-                              onClick={() => exportCandidatoPDF(c)}
+                              onClick={() => {
+                                // Usar fichaMensajes del estado React
+                                console.debug('[DEBUG][CONSULTA] fichaMensajes justo antes de exportar:', fichaMensajes);
+                                if (!mensajesCargados) {
+                                  alert('Los mensajes aún no están cargados. Intenta de nuevo en unos segundos.');
+                                  return;
+                                }
+                                if (!fichaMensajes || Object.keys(fichaMensajes).length === 0) {
+                                  console.error('[ERROR][CONSULTA] fichaMensajes está vacío o undefined. No se puede exportar PDF.');
+                                  alert('No se puede exportar el PDF porque los mensajes parametrizados no están cargados.');
+                                  return;
+                                }
+                                exportCandidatoPDF(c, fichaMensajes);
+                              }}
+                              disabled={!mensajesCargados || !fichaMensajes || Object.keys(fichaMensajes).length === 0}
                             >PDF</button>
                             {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
                             <button

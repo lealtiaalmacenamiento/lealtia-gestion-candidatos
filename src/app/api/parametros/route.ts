@@ -34,12 +34,13 @@ export async function PUT(request: Request) {
     if (!id) {
       return NextResponse.json({ success: false, message: 'Falta el ID del parámetro' }, { status: 400 })
     }
-    // Sanitizar payload: ignorar campos no permitidos y mapear solicitante -> actualizado_por
-    const updateFields: Partial<Parametro> = {}
-    if (valor !== undefined) updateFields.valor = valor
-    if (descripcion !== undefined) updateFields.descripcion = descripcion
-    updateFields.actualizado_por = raw.solicitante || raw.actualizado_por || null
-    updateFields.actualizado_en = new Date().toISOString()
+  // Sanitizar payload: ignorar campos no permitidos y mapear solicitante -> actualizado_por
+  const updateFields: Partial<Parametro> = {}
+  if (valor !== undefined) updateFields.valor = valor
+  if (descripcion !== undefined) updateFields.descripcion = descripcion
+  if (raw.clave !== undefined) updateFields.clave = raw.clave
+  updateFields.actualizado_por = raw.solicitante || raw.actualizado_por || null
+  updateFields.actualizado_en = new Date().toISOString()
 
     const { data, error } = await supabase
       .from('Parametros')
