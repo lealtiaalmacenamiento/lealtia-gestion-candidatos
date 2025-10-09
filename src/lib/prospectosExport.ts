@@ -301,7 +301,7 @@ export async function exportProspectosPDF(
   // Barra de meta prospectos (horizontal, debajo de la gráfica, dentro del área)
   if(meta){
     // La meta es solo la parametrizada + previas
-    const metaTotal = meta + totalRow[7];
+    const metaTotal = (meta * agentesMap.length)+ totalRow[7];
     // El avance es el total de prospectos (incluyendo previas)
     const avance = (totalRow[1] || 0);
     const porcentaje = metaTotal > 0 ? Math.min(100, (avance/metaTotal)*100) : 0;
