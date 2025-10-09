@@ -179,7 +179,8 @@ export async function exportProspectosPDF(
   const agentesMap = opts?.agentesMap || {};
   // --- Resumen por agente (dashboard) ---
   let y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP + 6 : contentStartY;
-  y = ensure(y, 18); // espacio para título y tabla
+  // Asegura que el título y la tabla no se corten entre páginas
+  y = ensure(y, 30); // deja más espacio para título y encabezado de tabla
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.text('Resumen por agente', 14, y);
@@ -228,6 +229,7 @@ export async function exportProspectosPDF(
     theme: 'grid',
     margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
+    pageBreak: 'auto', // fuerza saltos automáticos
     didDrawCell: (data: any) => {
       // Si la fila es TOTAL, aplicar color institucional, texto blanco y borde claro a todas las celdas
       if (data.row && data.row.raw && String(data.row.raw[0]).trim().toUpperCase() === 'TOTAL') {
