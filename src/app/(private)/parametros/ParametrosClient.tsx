@@ -472,7 +472,28 @@ export default function ParametrosClient(){
                               <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditFicha}>Cancelar</button>
                             </>
                           ) : (
-                            <button type="button" className="btn btn-primary btn-sm" onClick={()=>startEditFicha(r)}>Editar</button>
+                            <>
+                              <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditFicha(r)}>Editar</button>
+                              <button type="button" className="btn btn-danger btn-sm" onClick={async()=>{
+                                if(await dialog.confirm('¿Seguro que deseas eliminar este mensaje?')){
+                                  try {
+                                    const res = await fetch('/api/parametros', {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ id: r.id, solicitante: 'admin' })
+                                    });
+                                    if(res.ok){
+                                      setFichaRows(f=>f.filter(x=>x.id!==r.id));
+                                      setNotif({ msg: 'Mensaje eliminado', type: 'success' });
+                                    } else {
+                                      setNotif({ msg: 'Error al eliminar', type: 'danger' });
+                                    }
+                                  } catch { setNotif({ msg: 'Error', type: 'danger' }); }
+                                }
+                              }}>
+                                Eliminar
+                              </button>
+                            </>
                           )}
                         </td>
                       </tr>
