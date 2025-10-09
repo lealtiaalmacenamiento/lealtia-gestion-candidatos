@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
+import type { Parametro } from '@/types';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
 
 interface EtapaMeta { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
@@ -325,7 +326,7 @@ useEffect(() => {
     .then(j => {
       if (j && Array.isArray(j.data)) {
         const mensajes: Record<string, string> = {};
-        j.data.forEach((p: any) => {
+        j.data.forEach((p: Parametro) => {
           if (p.clave && typeof p.valor === 'string') mensajes[p.clave] = p.valor;
         });
         setFichaMensajes(mensajes);
