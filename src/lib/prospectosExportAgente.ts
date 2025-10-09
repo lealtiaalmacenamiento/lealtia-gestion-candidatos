@@ -292,12 +292,19 @@ export async function exportProspectosPDFAgente(
     startY: y,
     head: [['Nombre', 'Teléfono', 'Estado', 'Notas']],
     body: agProsSemana.map(p => [p.nombre, p.telefono || '', p.estado, (p.notas || '').slice(0, 120)]),
-  styles: { fontSize: 8, cellPadding: 1.5 },
-  headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
-  alternateRowStyles: { fillColor: [245, 247, 248] },
-  theme: 'grid',
-  margin: { left: 14, right: 14, top: headerHeight + 16 },
-  didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0); }
+    styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
+    headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
+    alternateRowStyles: { fillColor: [245, 247, 248] },
+    theme: 'grid',
+    margin: { left: 14, right: 14, top: headerHeight + 16 },
+    didDrawPage: (data: { cursor?: { y: number } | null }) => {
+      // Redibujar header y asegurar que la tabla nunca arranque debajo de éste
+      drawHeader();
+      doc.setTextColor(0, 0, 0);
+      if (data.cursor && typeof data.cursor.y === 'number' && data.cursor.y < headerHeight + 16) {
+        data.cursor.y = headerHeight + 16;
+      }
+    }
   });
   y = docTyped.lastAutoTable ? docTyped.lastAutoTable.finalY! + GAP : y + GAP;
 
@@ -324,12 +331,12 @@ export async function exportProspectosPDFAgente(
       headStyles: { fillColor: [7, 46, 64], fontSize: 8, textColor: [255, 255, 255], halign: 'center' },
       alternateRowStyles: { fillColor: [245, 247, 248] },
       theme: 'grid',
-      margin: { left: 14, right: 14, top: headerHeight + 6 },
-      didDrawPage: (data: { cursor: { y: number } | null }) => {
+      margin: { left: 14, right: 14, top: headerHeight + 16 },
+      didDrawPage: (data: { cursor?: { y: number } | null }) => {
         drawHeader();
         doc.setTextColor(0, 0, 0);
-        if (data.cursor && typeof data.cursor.y === 'number' && data.cursor.y < headerHeight + 6) {
-          data.cursor.y = headerHeight + 6;
+        if (data.cursor && typeof data.cursor.y === 'number' && data.cursor.y < headerHeight + 16) {
+          data.cursor.y = headerHeight + 16;
         }
       }
     });
