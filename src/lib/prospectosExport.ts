@@ -223,13 +223,28 @@ export async function exportProspectosPDF(
     startY: y,
     head: [resumenHead],
     body: resumenBody,
-    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
+    styles: {
+      fontSize: 9,
+      cellPadding: 2,
+      overflow: 'linebreak',
+      minCellHeight: 8,
+    },
+    columnStyles: {
+      0: { cellWidth: 54, fontStyle: 'normal', overflow: 'linebreak' }, // Agente
+      1: { cellWidth: 16 },
+      2: { cellWidth: 18 },
+      3: { cellWidth: 22 },
+      4: { cellWidth: 22 },
+      5: { cellWidth: 22 },
+      6: { cellWidth: 22 },
+      7: { cellWidth: 22 },
+    },
     headStyles: { fillColor: [7, 46, 64], fontSize: 10, textColor: [255, 255, 255], halign: 'center' },
     alternateRowStyles: { fillColor: [245, 247, 248] },
     theme: 'grid',
     margin: { left: 14, right: 14 },
     tableWidth: 'wrap',
-    pageBreak: 'auto', // fuerza saltos automáticos
+    pageBreak: 'auto',
     didDrawCell: (data: any) => {
       // Si la fila es TOTAL, aplicar color institucional, texto blanco y borde claro a todas las celdas
       if (data.row && data.row.raw && String(data.row.raw[0]).trim().toUpperCase() === 'TOTAL') {
@@ -238,6 +253,10 @@ export async function exportProspectosPDF(
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.lineColor = [220, 237, 200]; // borde claro
         data.cell.styles.lineWidth = 0.5;
+      }
+      // Si la columna es 'Agente' y el texto es muy largo, reducir fuente
+      if (data.column.index === 0 && data.cell.raw && String(data.cell.raw).length > 28) {
+        data.cell.styles.fontSize = 7;
       }
     },
     didDrawPage: () => { drawHeader(); doc.setTextColor(0, 0, 0) }
