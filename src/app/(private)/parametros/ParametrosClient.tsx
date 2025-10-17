@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 // Tipos para confirmación (export implícito dentro del archivo)
 type Diff = { campo: string; antes: string; despues: string }
@@ -14,7 +14,7 @@ const buildDiffs = (orig: unknown, edited: unknown): Diff[] => {
     .map(k => ({ campo: k, antes: String(o[k] ?? ''), despues: String(e[k] ?? '') }))
 }
 import BasePage from '@/components/BasePage';
-import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza, Parametro } from '@/types';
+import type { AgendaDeveloper, CedulaA1, Efc, IntegrationProviderKey, ProductoParametro, TipoProducto, MonedaPoliza, Parametro } from '@/types';
 // Campos posibles para ficha de candidato (deben coincidir con los usados en el PDF)
 const FICHA_CAMPOS = [
   'CLAVE TEMPORAL',
@@ -40,7 +40,13 @@ const FICHA_CAMPOS = [
   'FECHA DE CREACION DE CANDIDATO',
   'ULTIMA ACTUALIZACIÓN DE CANDIDATO',
 ];
-import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro } from '@/lib/api';
+import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro, getAgendaDevelopers, updateAgendaDevelopers } from '@/lib/api';
+
+const INTEGRATION_LABELS: Record<IntegrationProviderKey, string> = {
+  google: 'Google Meet',
+  microsoft: 'Microsoft 365',
+  zoom: 'Zoom'
+};
 import AppModal from '@/components/ui/AppModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
@@ -90,6 +96,12 @@ export default function ParametrosClient(){
   const [openMes, setOpenMes] = useState(false);
   const [openEfc, setOpenEfc] = useState(false);
   const [openProductos, setOpenProductos] = useState(false);
+  const [openAgenda, setOpenAgenda] = useState(true);
+  const [developers, setDevelopers] = useState<AgendaDeveloper[]>([]);
+  const [loadingDevelopers, setLoadingDevelopers] = useState(false);
+  const [developerSearch, setDeveloperSearch] = useState('');
+  const [developerError, setDeveloperError] = useState<string|null>(null);
+  const [togglingId, setTogglingId] = useState<number|null>(null);
   // Productos (Fase 3)
   const [productos, setProductos] = useState<ProductoParametro[]>([])
   const [editProdId, setEditProdId] = useState<string|null>(null)
@@ -108,6 +120,44 @@ export default function ParametrosClient(){
   // Confirmación de guardado
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
 
+  const loadDevelopers = async () => {
+    setLoadingDevelopers(true)
+    setDeveloperError(null)
+    try {
+      const list = await getAgendaDevelopers()
+      setDevelopers(list)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudieron cargar los usuarios'
+      setDeveloperError(message)
+      setNotif({ msg: message, type: 'danger' })
+    } finally {
+      setLoadingDevelopers(false)
+    }
+  }
+
+  const handleToggleDeveloper = async (dev: AgendaDeveloper) => {
+    setTogglingId(dev.id)
+    try {
+      const updated = await updateAgendaDevelopers({ usuarioId: dev.id, isDesarrollador: !dev.is_desarrollador })
+      setDevelopers(updated)
+      setNotif({ msg: !dev.is_desarrollador ? 'Usuario marcado como desarrollador' : 'Usuario removido como desarrollador', type: 'success' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo guardar el cambio'
+      setNotif({ msg: message, type: 'danger' })
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const filteredDevelopers = useMemo(() => {
+    const term = developerSearch.trim().toLowerCase()
+    if (!term) return developers
+    return developers.filter((dev) => {
+      const haystack = [dev.email, dev.nombre || '', dev.rol]
+      return haystack.some((value) => value?.toLowerCase().includes(term))
+    })
+  }, [developers, developerSearch])
+
   const loadAll = async () => {
     try {
       setLoading(true);
@@ -115,6 +165,7 @@ export default function ParametrosClient(){
       setMesRows([...mes].sort((a,b)=>a.id - b.id));
       setEfcRows([...efc].sort((a,b)=>a.id - b.id));
   setProductos([...prods]);
+      await loadDevelopers();
       // Cargar mensajes ficha_candidato
       try {
         const r = await fetch('/api/parametros?tipo=ficha_candidato');
@@ -154,7 +205,10 @@ export default function ParametrosClient(){
       setNotif({msg: e instanceof Error? e.message : 'Error cargando parámetros', type:'danger'});
     } finally { setLoading(false); }
   };
-  useEffect(()=>{ loadAll(); },[]);
+  useEffect(() => {
+    void loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onChangeEditMes = (e:React.ChangeEvent<HTMLInputElement>)=> setEditMesRow(r=> r? {...r,[e.target.name]:e.target.value}:r);
   const startEditMes = (r:CedulaA1)=>{ setEditMesId(r.id); setEditMesRow({...r}); };
@@ -396,6 +450,124 @@ export default function ParametrosClient(){
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
       {!loading && (
         <div className="d-flex flex-column gap-5">
+          <section className="border rounded p-3 bg-white shadow-sm">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setOpenAgenda((o) => !o)}
+                aria-expanded={openAgenda}
+                className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2"
+              >
+                <i className={`bi bi-caret-${openAgenda ? 'down' : 'right'}-fill`}></i>
+                <span className="fw-bold small text-uppercase">Agenda interna · desarrolladores</span>
+              </button>
+              {openAgenda && (
+                <div className="d-flex align-items-center gap-2">
+                  <span className="small text-muted">Controla quién puede acompañar citas y con qué proveedores</span>
+                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={loadDevelopers} disabled={loadingDevelopers}>
+                    {loadingDevelopers ? 'Cargando…' : 'Refrescar'}
+                  </button>
+                </div>
+              )}
+            </div>
+            {openAgenda && (
+              <>
+                <div className="row g-3 mt-3">
+                  <div className="col-12 col-md-6 col-lg-4">
+                    <label className="form-label small mb-1">Buscar</label>
+                    <input
+                      className="form-control form-control-sm"
+                      placeholder="Nombre, correo o rol"
+                      value={developerSearch}
+                      onChange={(e) => setDeveloperSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="col-12 col-lg-8">
+                    <div className="alert alert-info small mb-0">
+                      Marca como desarrollador a los perfiles que necesitan ver la agenda interna y generar enlaces. Cada badge indica que el usuario ya completó el flujo de conexión OAuth para ese proveedor (entrada en <code>tokens_integracion</code>).
+                    </div>
+                  </div>
+                </div>
+                {developerError && (
+                  <div className="alert alert-danger small mt-3 mb-0" role="alert">
+                    {developerError}
+                  </div>
+                )}
+                <div className="table-responsive mt-3" style={{ maxHeight: 420 }}>
+                  <table className="table table-sm align-middle table-hover">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Usuario</th>
+                        <th className="text-center">Rol</th>
+                        <th className="text-center">Desarrollador</th>
+                        <th className="text-center">Integraciones</th>
+                        <th style={{ width: 120 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingDevelopers && (
+                        <tr>
+                          <td colSpan={5} className="text-center text-muted small py-4">Cargando usuarios…</td>
+                        </tr>
+                      )}
+                      {!loadingDevelopers && filteredDevelopers.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="text-center text-muted small py-4">Sin resultados</td>
+                        </tr>
+                      )}
+                      {!loadingDevelopers &&
+                        filteredDevelopers.map((dev) => (
+                          <tr key={dev.id}>
+                            <td>
+                              <div className="fw-semibold">{dev.nombre || dev.email}</div>
+                              <div className="text-muted small">{dev.email}</div>
+                              {!dev.activo && (
+                                <span className="badge bg-warning-subtle text-warning border border-warning-subtle mt-1">Inactivo</span>
+                              )}
+                            </td>
+                            <td className="text-center small">{dev.rol}</td>
+                            <td className="text-center">
+                              {dev.is_desarrollador ? (
+                                <span className="badge bg-primary-subtle text-primary">Sí</span>
+                              ) : (
+                                <span className="badge bg-secondary-subtle text-secondary">No</span>
+                              )}
+                            </td>
+                            <td className="text-center small">
+                              {dev.tokens.length > 0 ? (
+                                <div className="d-flex flex-wrap gap-1 justify-content-center">
+                                  {dev.tokens.map((token) => (
+                                    <span key={token} className="badge bg-success-subtle text-success border border-success-subtle">
+                                      {INTEGRATION_LABELS[token] || token}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted">—</span>
+                              )}
+                            </td>
+                            <td className="text-end">
+                              <button
+                                type="button"
+                                className={`btn btn-sm ${dev.is_desarrollador ? 'btn-outline-danger' : 'btn-outline-success'}`}
+                                onClick={() => handleToggleDeveloper(dev)}
+                                disabled={togglingId === dev.id}
+                              >
+                                {togglingId === dev.id ? 'Guardando…' : dev.is_desarrollador ? 'Quitar' : 'Marcar'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="small text-muted mt-3 mb-0">
+                  Si faltan badges, confirma que el usuario tenga un token vigente en la tabla <code>tokens_integracion</code> (proveedor <code>google</code>, <code>microsoft</code> o <code>zoom</code>) y que su <code>id_auth</code> esté ligado en <code>usuarios</code>.
+                </p>
+              </>
+            )}
+          </section>
+
           {/* Sección FICHA CANDIDATO */}
           <section className="border rounded p-3 bg-white shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">

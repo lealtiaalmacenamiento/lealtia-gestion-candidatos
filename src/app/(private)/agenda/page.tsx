@@ -6,7 +6,6 @@ import Notification from '@/components/ui/Notification'
 import { useAuth } from '@/context/AuthProvider'
 import {
   getAgendaDevelopers,
-  updateAgendaDevelopers,
   createAgendaCita,
   cancelAgendaCita,
   getAgendaCitas,
@@ -18,12 +17,6 @@ const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
   zoom: 'Zoom',
   teams: 'Microsoft Teams'
-}
-
-const integrationLabels: Record<string, string> = {
-  google: 'Google',
-  microsoft: 'Microsoft',
-  zoom: 'Zoom'
 }
 
 type ToastState = { type: 'success' | 'error'; message: string } | null
@@ -94,9 +87,6 @@ function formatTimeRange(inicioIso: string, finIso: string): string {
 export default function AgendaPage() {
   const { user } = useAuth()
   const [developers, setDevelopers] = useState<AgendaDeveloper[]>([])
-  const [developerSearch, setDeveloperSearch] = useState('')
-  const [loadingDevelopers, setLoadingDevelopers] = useState(false)
-  const [togglingId, setTogglingId] = useState<number | null>(null)
 
   const [form, setForm] = useState<AgendaFormState>(() => initialFormState())
   const [creating, setCreating] = useState(false)
@@ -145,14 +135,11 @@ export default function AgendaPage() {
   }, [developers, form.agenteId])
 
   async function loadDevelopers() {
-    setLoadingDevelopers(true)
     try {
       const data = await getAgendaDevelopers()
       setDevelopers(data)
     } catch (err) {
       setToast({ type: 'error', message: err instanceof Error ? err.message : 'No se pudieron cargar los usuarios' })
-    } finally {
-      setLoadingDevelopers(false)
     }
   }
 
@@ -165,34 +152,6 @@ export default function AgendaPage() {
       setToast({ type: 'error', message: err instanceof Error ? err.message : 'No se pudieron cargar las citas' })
     } finally {
       setLoadingCitas(false)
-    }
-  }
-
-  const filteredDevelopers = useMemo(() => {
-    const term = developerSearch.trim().toLowerCase()
-    if (!term) return developers
-    return developers.filter((dev) => {
-      const target = `${dev.email} ${dev.nombre || ''}`.toLowerCase()
-      return target.includes(term)
-    })
-  }, [developers, developerSearch])
-
-  async function handleToggleDeveloper(dev: AgendaDeveloper) {
-    setTogglingId(dev.id)
-    try {
-      const updated = await updateAgendaDevelopers({ usuarioId: dev.id, isDesarrollador: !dev.is_desarrollador })
-      setDevelopers((prev) => {
-        const map = new Map(prev.map((item) => [item.id, item]))
-        for (const record of updated) {
-          map.set(record.id, record)
-        }
-        return Array.from(map.values()).sort((a, b) => a.email.localeCompare(b.email))
-      })
-      setToast({ type: 'success', message: !dev.is_desarrollador ? 'Usuario marcado como desarrollador' : 'Usuario removido de desarrolladores' })
-    } catch (err) {
-      setToast({ type: 'error', message: err instanceof Error ? err.message : 'No se pudo actualizar el usuario' })
-    } finally {
-      setTogglingId(null)
     }
   }
 
@@ -298,12 +257,6 @@ export default function AgendaPage() {
     }
   }
 
-  const developerBadges = (tokens: AgendaDeveloper['tokens']) => tokens.map((token) => (
-    <span key={token} className="badge bg-success-subtle text-success border border-success-subtle me-1">
-      {integrationLabels[token] || token}
-    </span>
-  ))
-
   if (!authorized) {
     return (
       <BasePage title="Agenda interna">
@@ -315,73 +268,22 @@ export default function AgendaPage() {
   return (
     <BasePage title="Agenda interna">
       <div className="row g-4">
-        <div className="col-xl-5">
-          <div className="card shadow-sm h-100">
-            <div className="card-header d-flex justify-content-between align-items-center">
-              <span className="fw-semibold">Parámetros de desarrolladores</span>
-              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={loadDevelopers} disabled={loadingDevelopers}>
-                {loadingDevelopers ? 'Actualizando...' : 'Refrescar'}
-              </button>
-            </div>
-            <div className="card-body">
-              <div className="mb-3">
-                <label className="form-label small text-muted">Buscar</label>
-                <input className="form-control form-control-sm" placeholder="Correo o nombre" value={developerSearch} onChange={(e) => setDeveloperSearch(e.target.value)} />
-              </div>
-              <div className="table-responsive" style={{ maxHeight: 360 }}>
-                <table className="table table-sm align-middle">
-                  <thead>
-                    <tr>
-                      <th>Usuario</th>
-                      <th className="text-center">Rol</th>
-                      <th className="text-center">Desarrollador</th>
-                      <th className="text-center">Integraciones</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDevelopers.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="text-center text-muted small py-4">
-                          {loadingDevelopers ? 'Cargando usuarios...' : 'Sin resultados'}
-                        </td>
-                      </tr>
-                    )}
-                    {filteredDevelopers.map((dev) => (
-                      <tr key={dev.id}>
-                        <td>
-                          <div className="fw-semibold">{dev.nombre || dev.email}</div>
-                          <div className="text-muted small">{dev.email}</div>
-                          {!dev.activo && <span className="badge bg-warning-subtle text-warning border border-warning-subtle mt-1">Inactivo</span>}
-                        </td>
-                        <td className="text-center small">{dev.rol}</td>
-                        <td className="text-center">
-                          {dev.is_desarrollador ? <span className="badge bg-primary-subtle text-primary">Sí</span> : <span className="badge bg-secondary-subtle text-secondary">No</span>}
-                        </td>
-                        <td className="text-center small">{dev.tokens.length > 0 ? developerBadges(dev.tokens) : <span className="text-muted">—</span>}</td>
-                        <td className="text-end">
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${dev.is_desarrollador ? 'btn-outline-danger' : 'btn-outline-success'}`}
-                            onClick={() => handleToggleDeveloper(dev)}
-                            disabled={togglingId === dev.id}
-                          >
-                            {togglingId === dev.id ? 'Guardando…' : dev.is_desarrollador ? 'Quitar' : 'Marcar'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="small text-muted mt-3 mb-0">
-                Marca como desarrollador a los usuarios que pueden acompañar citas y gestionar el módulo de agenda. Recuerda conectar sus integraciones desde el apartado correspondiente.
-              </p>
-            </div>
+        <div className="col-xl-4">
+          <div className="alert alert-info shadow-sm h-100">
+            <h6 className="fw-semibold mb-2">Configuración de desarrolladores</h6>
+            <p className="small mb-2">
+              La asignación de desarrolladores y la conexión con proveedores (Google Meet, Teams, Zoom) ahora vive en <strong>Parámetros &gt; Agenda interna</strong>.
+            </p>
+            <p className="small mb-2">
+              Desde ahí puedes marcar qué usuarios pueden acompañar citas y pedirles que vinculen su cuenta de Google para generar enlaces automáticamente.
+            </p>
+            <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/parametros#agenda-interna')}>
+              Abrir parámetros
+            </button>
           </div>
         </div>
 
-        <div className="col-xl-7">
+        <div className="col-xl-8">
           <div className="card shadow-sm mb-4">
             <div className="card-header">
               <span className="fw-semibold">Nueva cita</span>
