@@ -20,9 +20,6 @@ function humanizeProvider(provider: string) {
   switch (provider) {
     case 'google_meet':
       return 'Google Meet'
-    case 'microsoft':
-    case 'teams':
-      return 'Microsoft Teams'
     case 'zoom':
       return 'Zoom'
     default:

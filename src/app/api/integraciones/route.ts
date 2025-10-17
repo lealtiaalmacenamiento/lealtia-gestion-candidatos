@@ -4,7 +4,7 @@ import { logAccion } from '@/lib/logger'
 import { getIntegrationToken, removeIntegrationToken } from '@/lib/integrationTokens'
 import type { IntegrationProviderKey } from '@/types'
 
-const PROVIDERS: IntegrationProviderKey[] = ['google', 'microsoft', 'zoom']
+const PROVIDERS: IntegrationProviderKey[] = ['google', 'zoom']
 
 export async function GET() {
   const actor = await getUsuarioSesion()

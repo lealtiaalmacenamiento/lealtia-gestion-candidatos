@@ -19,12 +19,11 @@ function canViewAgenda(usuario: { rol?: string | null; is_desarrollador?: boolea
 
 function normalizeProvider(value: unknown): MeetingProvider {
   if (value === 'zoom') return 'zoom'
-  if (value === 'teams' || value === 'microsoft') return 'teams'
   return 'google_meet'
 }
 
 type CreateCitaBody = {
-  prospectoId?: number | null
+  prospectoId?: number | string | null
   agenteId: number
   supervisorId?: number | null
   inicio: string
@@ -221,7 +220,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
-  const prospectoId = payload.prospectoId != null ? Number(payload.prospectoId) : null
+  let prospectoId: number | null = null
+  if (payload.prospectoId !== undefined && payload.prospectoId !== null && payload.prospectoId !== '') {
+    const parsedProspectoId = typeof payload.prospectoId === 'number'
+      ? payload.prospectoId
+      : Number(payload.prospectoId)
+    if (!Number.isFinite(parsedProspectoId) || parsedProspectoId <= 0) {
+      return NextResponse.json({ error: 'prospectoId inválido' }, { status: 400 })
+    }
+    prospectoId = parsedProspectoId
+  }
   const agenteId = Number(payload.agenteId)
   const supervisorId = payload.supervisorId != null ? Number(payload.supervisorId) : null
   const inicioRaw = typeof payload.inicio === 'string' ? payload.inicio : ''

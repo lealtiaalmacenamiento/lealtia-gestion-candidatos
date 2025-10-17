@@ -9,7 +9,7 @@ const modules = [
   { key: 'consulta_candidatos', title: 'Consulta de candidatos', desc: 'Listado y seguimiento', icon: 'card-list', roles: ['viewer', 'lector', 'editor', 'superusuario', 'admin'], color: 'success' },
   { key: 'usuarios', title: 'Usuarios', desc: 'Gestión de cuentas', icon: 'people', roles: ['superusuario', 'admin'], color: 'secondary' },
   { key: 'parametros', title: 'Parámetros', desc: 'Catálogos y configuración', icon: 'gear', roles: ['superusuario', 'admin'], color: 'warning' },
-  { key: 'integraciones', title: 'Integraciones', desc: 'Conecta Google, Microsoft o Zoom', icon: 'plug', roles: ['viewer','lector','editor','superusuario','admin','agente'], color: 'secondary' },
+  { key: 'integraciones', title: 'Integraciones', desc: 'Conecta Google o Zoom', icon: 'plug', roles: ['viewer','lector','editor','superusuario','admin','agente'], color: 'secondary' },
   { key: 'auditoria', title: 'Registro de acciones', desc: 'Trazabilidad del sistema', icon: 'clock-history', roles: ['superusuario', 'admin'], color: 'info' },
   { key: 'eliminarcandidatos', title: 'Candidatos Eliminados', desc: 'Historial de bajas lógicas', icon: 'archive', roles: ['superusuario', 'admin'], color: 'dark' },
   // Fase 2

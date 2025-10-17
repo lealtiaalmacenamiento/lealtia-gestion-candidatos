@@ -15,8 +15,7 @@ import type { AgendaCita, AgendaDeveloper, AgendaSlotsResponse } from '@/types'
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
-  zoom: 'Zoom',
-  teams: 'Microsoft Teams'
+  zoom: 'Zoom'
 }
 
 type ToastState = { type: 'success' | 'error'; message: string } | null
@@ -26,7 +25,7 @@ type AgendaFormState = {
   supervisorId: string
   inicio: string
   fin: string
-  meetingProvider: 'google_meet' | 'zoom' | 'teams'
+  meetingProvider: 'google_meet' | 'zoom'
   meetingUrl: string
   generarEnlace: boolean
   prospectoId: string
@@ -227,6 +226,13 @@ export default function AgendaPage() {
       return
     }
 
+    const trimmedProspectoId = form.prospectoId.trim()
+    const prospectoIdValue = trimmedProspectoId.length ? Number(trimmedProspectoId) : null
+    if (trimmedProspectoId.length && (!Number.isFinite(prospectoIdValue) || prospectoIdValue === null || prospectoIdValue <= 0)) {
+      setToast({ type: 'error', message: 'ID de prospecto inválido' })
+      return
+    }
+
     const payload = {
       agenteId: Number(form.agenteId),
       supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
@@ -235,7 +241,7 @@ export default function AgendaPage() {
       meetingProvider: form.meetingProvider,
       meetingUrl: form.meetingUrl.trim() || null,
       generarEnlace: form.generarEnlace,
-      prospectoId: form.prospectoId ? Number(form.prospectoId) : null,
+      prospectoId: prospectoIdValue,
       prospectoNombre: form.prospectoNombre.trim() || null,
       notas: form.notas.trim() || null
     }
@@ -291,7 +297,7 @@ export default function AgendaPage() {
               <>
                 <h6 className="fw-semibold mb-2">Conecta tus integraciones</h6>
                 <p className="small mb-2">
-                  Vincula tu calendario de Google, Microsoft o Zoom desde el módulo <strong>Integraciones</strong> para generar enlaces de reunión automáticamente.
+                  Vincula tu calendario de Google o Zoom desde el módulo <strong>Integraciones</strong> para generar enlaces de reunión automáticamente.
                 </p>
                 <p className="small mb-2">
                   Si necesitas activar nuevos supervisores o permisos, contacta a un administrador.
@@ -304,7 +310,7 @@ export default function AgendaPage() {
               <>
                 <h6 className="fw-semibold mb-2">Configuración de desarrolladores</h6>
                 <p className="small mb-2">
-                  La asignación de desarrolladores y la conexión con proveedores (Google Meet, Teams, Zoom) ahora vive en <strong>Parámetros &gt; Agenda interna</strong>.
+                  La asignación de desarrolladores y la conexión con proveedores (Google Meet y Zoom) ahora vive en <strong>Parámetros &gt; Agenda interna</strong>.
                 </p>
                 <p className="small mb-2">
                   Desde ahí puedes marcar qué usuarios pueden acompañar citas y pedirles que vinculen su cuenta de Google para generar enlaces automáticamente.
@@ -382,7 +388,6 @@ export default function AgendaPage() {
                     onChange={(e) => setForm((prev) => ({ ...prev, meetingProvider: e.target.value as AgendaFormState['meetingProvider'] }))}
                   >
                     <option value="google_meet">Google Meet</option>
-                    <option value="teams">Microsoft Teams</option>
                     <option value="zoom">Zoom</option>
                   </select>
                 </div>

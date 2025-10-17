@@ -88,7 +88,7 @@ export interface Database {
           inicio: string
           fin: string
           meeting_url: string
-          meeting_provider: 'google_meet' | 'zoom' | 'teams'
+          meeting_provider: 'google_meet' | 'zoom'
           external_event_id: string | null
           estado: 'confirmada' | 'cancelada'
           created_at: string | null
@@ -102,7 +102,7 @@ export interface Database {
           inicio: string
           fin: string
           meeting_url: string
-          meeting_provider: 'google_meet' | 'zoom' | 'teams'
+          meeting_provider: 'google_meet' | 'zoom'
           external_event_id?: string | null
           estado?: 'confirmada' | 'cancelada'
           created_at?: string | null
@@ -116,7 +116,7 @@ export interface Database {
           inicio?: string
           fin?: string
           meeting_url?: string
-          meeting_provider?: 'google_meet' | 'zoom' | 'teams'
+          meeting_provider?: 'google_meet' | 'zoom'
           external_event_id?: string | null
           estado?: 'confirmada' | 'cancelada'
           created_at?: string | null

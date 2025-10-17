@@ -63,8 +63,8 @@ export interface Usuario {
   is_desarrollador?: boolean
 }
 
-export type IntegrationProviderKey = 'google' | 'microsoft' | 'zoom'
-export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
+export type IntegrationProviderKey = 'google' | 'zoom'
+export type MeetingProvider = 'google_meet' | 'zoom'
 
 export interface AgendaDeveloper {
   id: number

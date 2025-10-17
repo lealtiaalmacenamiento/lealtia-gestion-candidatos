@@ -22,10 +22,6 @@ const PROVIDER_META: Record<IntegrationProviderKey, { icon: string; description:
     icon: 'bi-google',
     description: 'Sincroniza Google Calendar y genera enlaces de Google Meet automáticamente.'
   },
-  microsoft: {
-    icon: 'bi-microsoft',
-    description: 'Usa Microsoft 365 / Teams para enviar invitaciones desde Outlook Calendar.'
-  },
   zoom: {
     icon: 'bi-camera-video-fill',
     description: 'Crea reuniones de Zoom y comparte enlaces al agendar.'

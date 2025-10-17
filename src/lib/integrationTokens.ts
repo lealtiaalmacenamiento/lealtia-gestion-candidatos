@@ -2,7 +2,7 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { ensureAdminClient } from './supabaseAdmin'
 import { decrypt, encrypt, type EncryptedPayload } from './encryption'
 
-export type IntegrationProvider = 'google' | 'microsoft' | 'zoom'
+export type IntegrationProvider = 'google' | 'zoom'
 
 export interface StoredIntegrationToken {
   accessToken: string

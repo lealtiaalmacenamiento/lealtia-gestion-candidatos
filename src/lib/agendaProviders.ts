@@ -25,8 +25,6 @@ function mapProvider(provider: MeetingProvider): IntegrationProvider {
   switch (provider) {
     case 'google_meet':
       return 'google'
-    case 'teams':
-      return 'microsoft'
     case 'zoom':
       return 'zoom'
     default:

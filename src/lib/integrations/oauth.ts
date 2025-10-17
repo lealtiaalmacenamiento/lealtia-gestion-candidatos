@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getIntegrationToken, upsertIntegrationToken } from '@/lib/integrationTokens'
 
-type Provider = 'google' | 'microsoft' | 'zoom'
+type Provider = 'google' | 'zoom'
 
 type IntegrationConfig = {
   provider: Provider
@@ -47,24 +47,6 @@ const PROVIDERS: Record<Provider, (origin: string) => IntegrationConfig | null> 
       extraAuthParams: {
         access_type: 'offline',
         prompt: 'consent'
-      }
-    }
-  },
-  microsoft: () => {
-    const clientId = process.env.MICROSOFT_CLIENT_ID
-    const clientSecret = process.env.MICROSOFT_CLIENT_SECRET
-    const tenant = process.env.MICROSOFT_TENANT_ID || 'common'
-    if (!clientId || !clientSecret) return null
-    const authBase = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0`
-    return {
-      provider: 'microsoft',
-      clientId,
-      clientSecret,
-      authUrl: `${authBase}/authorize`,
-      tokenUrl: `${authBase}/token`,
-      scopes: ['https://graph.microsoft.com/Calendars.ReadWrite', 'offline_access'],
-      extraAuthParams: {
-        response_mode: 'query'
       }
     }
   },
@@ -207,7 +189,7 @@ export async function validateState(provider: Provider, incoming: string | null)
 }
 
 export function toProviderKey(value: string): Provider | null {
-  if (value === 'google' || value === 'microsoft' || value === 'zoom') return value
+  if (value === 'google' || value === 'zoom') return value
   return null
 }
 

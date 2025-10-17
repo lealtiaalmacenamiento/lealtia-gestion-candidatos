@@ -44,7 +44,6 @@ import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, 
 
 const INTEGRATION_LABELS: Record<IntegrationProviderKey, string> = {
   google: 'Google Meet',
-  microsoft: 'Microsoft 365',
   zoom: 'Zoom'
 };
 import AppModal from '@/components/ui/AppModal';
@@ -562,7 +561,7 @@ export default function ParametrosClient(){
                   </table>
                 </div>
                 <p className="small text-muted mt-3 mb-0">
-                  Si faltan badges, confirma que el usuario tenga un token vigente en la tabla <code>tokens_integracion</code> (proveedor <code>google</code>, <code>microsoft</code> o <code>zoom</code>) y que su <code>id_auth</code> esté ligado en <code>usuarios</code>.
+                  Si faltan badges, confirma que el usuario tenga un token vigente en la tabla <code>tokens_integracion</code> (proveedor <code>google</code> o <code>zoom</code>) y que su <code>id_auth</code> esté ligado en <code>usuarios</code>.
                 </p>
               </>
             )}
