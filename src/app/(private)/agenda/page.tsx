@@ -251,7 +251,7 @@ export default function AgendaPage() {
       return
     }
 
-    const payload: Record<string, unknown> = {
+    const payload = {
       agenteId: Number(form.agenteId),
       supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
       inicio: inicioIso,
