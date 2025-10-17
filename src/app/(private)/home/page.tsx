@@ -14,6 +14,7 @@ const modules = [
   // Fase 2
   { key: 'prospectos', title: 'Prospectos', desc: 'Gestión semanal de prospectos', icon: 'people-fill', roles: ['agente','superusuario','admin'], color: 'info' },
   { key: 'planificacion', title: 'Planificación', desc: 'Bloques de actividades y citas', icon: 'calendar-week', roles: ['agente','superusuario','admin'], color: 'primary' },
+  { key: 'agenda', title: 'Agenda interna', desc: 'Agendar citas y gestionar desarrolladores', icon: 'calendar-event', roles: ['superusuario','admin'], color: 'secondary' },
   // Gestión unificada (CRUD + dispara solicitudes)
   { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['editor','superusuario','admin','agente'], color: 'primary' },
   // Pendientes de aprobación (cliente / póliza)

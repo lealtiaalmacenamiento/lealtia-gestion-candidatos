@@ -1,6 +1,4 @@
 ### Fase 4 backlog (internal)
-- [x] Implement token encryption helper and repository (store tokens_integracion)
-- [x] API routes: GET/PATCH desarrolladores, GET slots, POST create, POST cancel
-- [x] Email service updates (confirmación/recordatorio base)
-- [ ] UI components: parámetros desarrolladores, módulo agenda interno
-- [ ] Integración Google Meet + event creation abstraction
+- [x] Servicio de correo actualizado (confirmación/recordatorio base)
+- [x] Componentes UI: parámetros de desarrolladores y agenda interna
+- [x] Integración Google Meet y automatización de eventos

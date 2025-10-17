@@ -4,7 +4,7 @@ import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
 import { buildCitaConfirmacionEmail, sendMail } from '@/lib/mailer'
 import { createRemoteMeeting } from '@/lib/agendaProviders'
-import type { MeetingProvider } from '@/types'
+import type { MeetingProvider, AgendaCita, AgendaParticipant } from '@/types'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -30,6 +30,162 @@ type CreateCitaBody = {
   generarEnlace?: boolean
   prospectoNombre?: string | null
   notas?: string | null
+}
+
+export async function GET(req: Request) {
+  const actor = await getUsuarioSesion()
+  if (!actor) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  }
+  if (!canManageAgenda(actor)) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  }
+
+  const supabase = ensureAdminClient()
+  const url = new URL(req.url)
+  const estadoParam = url.searchParams.get('estado')
+  const desdeParam = url.searchParams.get('desde')
+  const hastaParam = url.searchParams.get('hasta')
+  const limitParam = url.searchParams.get('limit')
+  const agenteIdParam = url.searchParams.get('agente_id')
+
+  if (desdeParam) {
+    const test = new Date(desdeParam)
+    if (Number.isNaN(test.getTime())) {
+      return NextResponse.json({ error: 'Parámetro desde inválido' }, { status: 400 })
+    }
+  }
+  if (hastaParam) {
+    const test = new Date(hastaParam)
+    if (Number.isNaN(test.getTime())) {
+      return NextResponse.json({ error: 'Parámetro hasta inválido' }, { status: 400 })
+    }
+  }
+
+  let agenteAuthId: string | null = null
+  if (agenteIdParam) {
+    const agenteId = Number(agenteIdParam)
+    if (!Number.isFinite(agenteId)) {
+      return NextResponse.json({ error: 'agente_id inválido' }, { status: 400 })
+    }
+    const { data: agente, error: agenteLookupError } = await supabase
+      .from('usuarios')
+      .select('id,id_auth')
+      .eq('id', agenteId)
+      .maybeSingle()
+    if (agenteLookupError) {
+      return NextResponse.json({ error: agenteLookupError.message }, { status: 500 })
+    }
+    if (!agente || !agente.id_auth) {
+      return NextResponse.json({ error: 'El agente no tiene id_auth registrado' }, { status: 404 })
+    }
+    agenteAuthId = agente.id_auth
+  }
+
+  let query = supabase
+    .from('citas')
+    .select('id,prospecto_id,agente_id,supervisor_id,inicio,fin,meeting_url,meeting_provider,external_event_id,estado,created_at,updated_at')
+    .order('inicio', { ascending: true })
+
+  if (estadoParam === 'confirmada' || estadoParam === 'cancelada') {
+    query = query.eq('estado', estadoParam)
+  }
+  if (agenteAuthId) {
+    query = query.eq('agente_id', agenteAuthId)
+  }
+  if (desdeParam) {
+    query = query.gte('inicio', desdeParam)
+  }
+  if (hastaParam) {
+    query = query.lte('inicio', hastaParam)
+  }
+  const limit = limitParam ? Number(limitParam) : null
+  if (limit && Number.isFinite(limit) && limit > 0) {
+    query = query.limit(limit)
+  }
+
+  const { data: citas, error: citasError } = await query
+  if (citasError) {
+    return NextResponse.json({ error: citasError.message }, { status: 500 })
+  }
+
+  const authIds = new Set<string>()
+  const prospectoIds = new Set<number>()
+  for (const cita of citas || []) {
+    if (cita.agente_id) authIds.add(cita.agente_id)
+    if (cita.supervisor_id) authIds.add(cita.supervisor_id)
+    if (typeof cita.prospecto_id === 'number') prospectoIds.add(cita.prospecto_id)
+  }
+
+  const usuariosMap = new Map<string, { id: number; email: string; nombre: string | null; id_auth: string | null }>()
+  if (authIds.size > 0) {
+    const { data: usuarios } = await supabase
+      .from('usuarios')
+      .select('id,email,nombre,id_auth')
+      .in('id_auth', Array.from(authIds))
+    for (const usuario of usuarios || []) {
+      if (usuario.id_auth) {
+        usuariosMap.set(usuario.id_auth, {
+          id: usuario.id,
+          email: usuario.email,
+          nombre: usuario.nombre ?? null,
+          id_auth: usuario.id_auth ?? null
+        })
+      }
+    }
+  }
+
+  const prospectosMap = new Map<number, string>()
+  if (prospectoIds.size > 0) {
+    const { data: prospectos } = await supabase
+      .from('prospectos')
+      .select('id,nombre')
+      .in('id', Array.from(prospectoIds))
+    for (const prospecto of prospectos || []) {
+      if (prospecto?.id != null) {
+        prospectosMap.set(prospecto.id, prospecto.nombre ?? null)
+      }
+    }
+  }
+
+  const result = (citas || []).map((cita) => {
+    const agente = usuariosMap.get(cita.agente_id || '')
+    const supervisor = cita.supervisor_id ? usuariosMap.get(cita.supervisor_id) : null
+
+    const agentePayload: AgendaParticipant = {
+      id: agente?.id ?? null,
+      idAuth: cita.agente_id ?? null,
+      email: agente?.email ?? null,
+      nombre: agente?.nombre ?? null
+    }
+
+    const supervisorPayload: AgendaParticipant | null = cita.supervisor_id
+      ? {
+          id: supervisor?.id ?? null,
+          idAuth: cita.supervisor_id ?? null,
+          email: supervisor?.email ?? null,
+          nombre: supervisor?.nombre ?? null
+        }
+      : null
+
+    return {
+      id: cita.id,
+      prospectoId: cita.prospecto_id,
+      prospectoNombre: cita.prospecto_id != null ? prospectosMap.get(cita.prospecto_id) ?? null : null,
+      agente: agentePayload,
+      supervisor: supervisorPayload,
+      inicio: cita.inicio,
+      fin: cita.fin,
+      meetingUrl: cita.meeting_url,
+      meetingProvider: cita.meeting_provider,
+      externalEventId: cita.external_event_id,
+      estado: cita.estado,
+      createdAt: cita.created_at,
+      updatedAt: cita.updated_at
+    } as AgendaCita
+  })
+
+  return NextResponse.json({ citas: result })
 }
 
 export async function POST(req: Request) {
