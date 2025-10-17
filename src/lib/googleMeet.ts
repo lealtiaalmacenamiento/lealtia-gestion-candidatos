@@ -47,6 +47,17 @@ interface GoogleErrorPayload {
   error?: { message?: string }
 }
 
+interface GoogleTokenSuccessPayload {
+  access_token?: string
+  expires_in?: number
+  refresh_token?: string
+  scope?: string
+}
+
+function isGoogleTokenSuccessPayload(payload: GoogleErrorPayload | GoogleTokenSuccessPayload | null): payload is GoogleTokenSuccessPayload {
+  return payload != null && !('error' in payload)
+}
+
 function buildAuthHeaders(accessToken: string) {
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -142,15 +153,17 @@ export async function googleMeetRefreshAccessToken(refreshToken: string, clientI
     body: body.toString()
   })
 
-  const payload = (await response.json().catch(() => null)) as GoogleErrorPayload | { access_token?: string; expires_in?: number; refresh_token?: string; scope?: string } | null
+  const payload = (await response.json().catch(() => null)) as GoogleErrorPayload | GoogleTokenSuccessPayload | null
   if (!response.ok) {
     throw new GoogleMeetApiError(response.status, payload, extractErrorMessage(payload))
   }
 
+  const successPayload = isGoogleTokenSuccessPayload(payload) ? payload : null
+
   return {
-    accessToken: payload?.access_token ?? '',
-    expiresIn: Number(payload?.expires_in ?? 0),
-    refreshToken: payload?.refresh_token,
-    scope: payload?.scope
+    accessToken: successPayload?.access_token ?? '',
+    expiresIn: Number(successPayload?.expires_in ?? 0),
+    refreshToken: successPayload?.refresh_token,
+    scope: successPayload?.scope
   }
 }
