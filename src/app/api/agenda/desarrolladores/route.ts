@@ -10,6 +10,11 @@ function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: bool
   return Boolean(usuario.is_desarrollador)
 }
 
+function canReadAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
+  if (canManageAgenda(usuario)) return true
+  return usuario?.rol === 'agente'
+}
+
 type UsuarioAgenda = {
   id: number
   email: string
@@ -26,7 +31,7 @@ export async function GET(req: Request) {
   if (!actor) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   }
-  if (!canManageAgenda(actor)) {
+  if (!canReadAgenda(actor)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   }
 

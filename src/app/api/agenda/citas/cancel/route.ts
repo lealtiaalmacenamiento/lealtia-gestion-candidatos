@@ -12,6 +12,11 @@ function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: bool
   return Boolean(usuario.is_desarrollador)
 }
 
+function canCancelAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
+  if (canManageAgenda(usuario)) return true
+  return usuario?.rol === 'agente'
+}
+
 type CancelPayload = {
   citaId: number
   motivo?: string | null
@@ -22,7 +27,8 @@ export async function POST(req: Request) {
   if (!actor) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   }
-  if (!canManageAgenda(actor)) {
+  const actorIsAgente = actor.rol === 'agente'
+  if (!canCancelAgenda(actor)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   }
 
@@ -52,6 +58,15 @@ export async function POST(req: Request) {
   }
   if (!cita) {
     return NextResponse.json({ error: 'Cita no encontrada' }, { status: 404 })
+  }
+
+  if (actorIsAgente) {
+    if (!actor.id_auth) {
+      return NextResponse.json({ error: 'Tu usuario no tiene id_auth registrado' }, { status: 400 })
+    }
+    if (cita.agente_id !== actor.id_auth) {
+      return NextResponse.json({ error: 'Solo puedes cancelar tus propias citas' }, { status: 403 })
+    }
   }
   if (cita.estado === 'cancelada') {
     return NextResponse.json({ success: true, cita })

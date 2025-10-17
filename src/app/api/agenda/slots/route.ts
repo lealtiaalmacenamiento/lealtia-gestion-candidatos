@@ -5,6 +5,7 @@ import { ensureAdminClient } from '@/lib/supabaseAdmin'
 function canConsultSlots(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
   if (usuario.rol === 'admin' || usuario.rol === 'superusuario') return true
+  if (usuario.rol === 'agente') return true
   return Boolean(usuario.is_desarrollador)
 }
 

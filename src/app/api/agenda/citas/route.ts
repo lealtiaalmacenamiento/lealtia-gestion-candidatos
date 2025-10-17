@@ -12,6 +12,11 @@ function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: bool
   return Boolean(usuario.is_desarrollador)
 }
 
+function canViewAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
+  if (canManageAgenda(usuario)) return true
+  return usuario?.rol === 'agente'
+}
+
 function normalizeProvider(value: unknown): MeetingProvider {
   if (value === 'zoom') return 'zoom'
   if (value === 'teams' || value === 'microsoft') return 'teams'
@@ -37,10 +42,11 @@ export async function GET(req: Request) {
   if (!actor) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   }
-  if (!canManageAgenda(actor)) {
+  if (!canViewAgenda(actor)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   }
 
+  const actorIsAgente = actor.rol === 'agente'
   const supabase = ensureAdminClient()
   const url = new URL(req.url)
   const estadoParam = url.searchParams.get('estado')
@@ -80,6 +86,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'El agente no tiene id_auth registrado' }, { status: 404 })
     }
     agenteAuthId = agente.id_auth
+  }
+
+  if (actorIsAgente) {
+    if (!actor.id_auth) {
+      return NextResponse.json({ error: 'Tu usuario no tiene id_auth registrado' }, { status: 400 })
+    }
+    if (agenteAuthId && agenteAuthId !== actor.id_auth) {
+      return NextResponse.json({ error: 'Solo puedes consultar tus propias citas' }, { status: 403 })
+    }
+    agenteAuthId = actor.id_auth
   }
 
   let query = supabase
@@ -193,7 +209,8 @@ export async function POST(req: Request) {
   if (!actor) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   }
-  if (!canManageAgenda(actor)) {
+  const actorIsAgente = actor.rol === 'agente'
+  if (!canManageAgenda(actor) && !actorIsAgente) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   }
 
@@ -238,6 +255,15 @@ export async function POST(req: Request) {
 
   const inicioIso = inicioDate.toISOString()
   const finIso = finDate.toISOString()
+
+  if (actorIsAgente) {
+    if (!actor.id || !actor.id_auth) {
+      return NextResponse.json({ error: 'No tienes los datos necesarios para agendar citas. Contacta a un administrador.' }, { status: 400 })
+    }
+    if (agenteId !== actor.id) {
+      return NextResponse.json({ error: 'Solo puedes agendar citas para ti mismo' }, { status: 403 })
+    }
+  }
 
   const supabase = ensureAdminClient()
 

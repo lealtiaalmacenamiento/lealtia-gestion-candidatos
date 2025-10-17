@@ -86,6 +86,11 @@ function formatTimeRange(inicioIso: string, finIso: string): string {
 
 export default function AgendaPage() {
   const { user } = useAuth()
+  const role = (user?.rol || '').toLowerCase()
+  const isAgente = role === 'agente'
+  const isAgendaManager = role === 'superusuario' || role === 'admin' || Boolean(user?.is_desarrollador)
+  const authorized = isAgente || isAgendaManager
+  const actorId = typeof user?.id === 'number' ? user.id : null
   const [developers, setDevelopers] = useState<AgendaDeveloper[]>([])
 
   const [form, setForm] = useState<AgendaFormState>(() => initialFormState())
@@ -100,8 +105,6 @@ export default function AgendaPage() {
   const [slotsError, setSlotsError] = useState<string | null>(null)
 
   const [toast, setToast] = useState<ToastState>(null)
-
-  const authorized = user?.rol === 'superusuario' || user?.rol === 'admin'
 
   useEffect(() => {
     if (!authorized) return
@@ -124,15 +127,29 @@ export default function AgendaPage() {
     return map
   }, [developers])
 
+  const agenteOptions = useMemo(() => {
+    if (isAgente && actorId != null) {
+      return developers.filter((dev) => dev.id === actorId && dev.activo)
+    }
+    return developers.filter((dev) => dev.activo)
+  }, [developers, isAgente, actorId])
+
   useEffect(() => {
     if (developers.length === 0) return
+    if (isAgente && actorId != null) {
+      const ownId = String(actorId)
+      if (form.agenteId !== ownId) {
+        setForm((prev) => ({ ...prev, agenteId: ownId }))
+      }
+      return
+    }
     if (!form.agenteId) {
       const firstActive = developers.find((dev) => dev.activo)
       if (firstActive) {
         setForm((prev) => ({ ...prev, agenteId: String(firstActive.id) }))
       }
     }
-  }, [developers, form.agenteId])
+  }, [developers, form.agenteId, isAgente, actorId])
 
   async function loadDevelopers() {
     try {
@@ -270,16 +287,33 @@ export default function AgendaPage() {
       <div className="row g-4">
         <div className="col-xl-4">
           <div className="alert alert-info shadow-sm h-100">
-            <h6 className="fw-semibold mb-2">Configuración de desarrolladores</h6>
-            <p className="small mb-2">
-              La asignación de desarrolladores y la conexión con proveedores (Google Meet, Teams, Zoom) ahora vive en <strong>Parámetros &gt; Agenda interna</strong>.
-            </p>
-            <p className="small mb-2">
-              Desde ahí puedes marcar qué usuarios pueden acompañar citas y pedirles que vinculen su cuenta de Google para generar enlaces automáticamente.
-            </p>
-            <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/parametros#agenda-interna')}>
-              Abrir parámetros
-            </button>
+            {isAgente ? (
+              <>
+                <h6 className="fw-semibold mb-2">Conecta tus integraciones</h6>
+                <p className="small mb-2">
+                  Vincula tu calendario de Google, Microsoft o Zoom desde el módulo <strong>Integraciones</strong> para generar enlaces de reunión automáticamente.
+                </p>
+                <p className="small mb-2">
+                  Si necesitas activar nuevos supervisores o permisos, contacta a un administrador.
+                </p>
+                <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/integraciones')}>
+                  Abrir integraciones
+                </button>
+              </>
+            ) : (
+              <>
+                <h6 className="fw-semibold mb-2">Configuración de desarrolladores</h6>
+                <p className="small mb-2">
+                  La asignación de desarrolladores y la conexión con proveedores (Google Meet, Teams, Zoom) ahora vive en <strong>Parámetros &gt; Agenda interna</strong>.
+                </p>
+                <p className="small mb-2">
+                  Desde ahí puedes marcar qué usuarios pueden acompañar citas y pedirles que vinculen su cuenta de Google para generar enlaces automáticamente.
+                </p>
+                <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/parametros#agenda-interna')}>
+                  Abrir parámetros
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -292,10 +326,14 @@ export default function AgendaPage() {
               <form className="row g-3" onSubmit={handleCreateCita}>
                 <div className="col-md-6">
                   <label className="form-label small">Agente *</label>
-                  <select className="form-select form-select-sm" value={form.agenteId} onChange={(e) => setForm((prev) => ({ ...prev, agenteId: e.target.value }))}>
+                  <select
+                    className="form-select form-select-sm"
+                    value={form.agenteId}
+                    onChange={(e) => setForm((prev) => ({ ...prev, agenteId: e.target.value }))}
+                    disabled={isAgente}
+                  >
                     <option value="">Seleccione agente</option>
-                    {developers
-                      .filter((dev) => dev.activo)
+                    {agenteOptions
                       .map((dev) => (
                         <option key={dev.id} value={dev.id}>
                           {dev.nombre || dev.email}
