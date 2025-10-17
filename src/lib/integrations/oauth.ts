@@ -60,7 +60,7 @@ const PROVIDERS: Record<Provider, (origin: string) => IntegrationConfig | null> 
       clientSecret,
       authUrl: 'https://zoom.us/oauth/authorize',
       tokenUrl: 'https://zoom.us/oauth/token',
-  scopes: ['meeting:write', 'meeting:read'],
+  scopes: ['meeting:write:meeting', 'meeting:read:meeting'],
       extraAuthParams: {
         response_type: 'code'
       }
