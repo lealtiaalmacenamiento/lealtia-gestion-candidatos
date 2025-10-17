@@ -60,6 +60,57 @@ export interface Usuario {
   activo: boolean
   must_change_password?: boolean
   id_auth?: string
+  is_desarrollador?: boolean
+}
+
+export type IntegrationProviderKey = 'google' | 'microsoft' | 'zoom'
+export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
+
+export interface AgendaDeveloper {
+  id: number
+  email: string
+  nombre?: string | null
+  rol: string
+  activo: boolean
+  is_desarrollador: boolean
+  id_auth?: string | null
+  tokens: IntegrationProviderKey[]
+}
+
+export interface AgendaBusySlot {
+  usuarioId: number
+  usuarioAuthId: string
+  inicio: string
+  fin: string
+}
+
+export interface AgendaSlotsResponse {
+  range: { desde?: string | null; hasta?: string | null }
+  busy: AgendaBusySlot[]
+  missingAuth: number[]
+}
+
+export interface AgendaParticipant {
+  id: number | null
+  idAuth: string | null
+  email?: string | null
+  nombre?: string | null
+}
+
+export interface AgendaCita {
+  id: number
+  prospectoId: number | null
+  prospectoNombre?: string | null
+  agente: AgendaParticipant
+  supervisor?: AgendaParticipant | null
+  inicio: string
+  fin: string
+  meetingUrl: string
+  meetingProvider: MeetingProvider
+  externalEventId?: string | null
+  estado: 'confirmada' | 'cancelada'
+  createdAt?: string | null
+  updatedAt?: string | null
 }
 
 /** CedulaA1 */

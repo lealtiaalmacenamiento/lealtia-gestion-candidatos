@@ -1,4 +1,4 @@
-import { Auditoria, Candidato, CedulaA1, Efc, Usuario, ProductoParametro } from '@/types'
+import { Auditoria, Candidato, CedulaA1, Efc, Usuario, ProductoParametro, AgendaDeveloper, AgendaSlotsResponse, AgendaCita } from '@/types'
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const data = await res.json()
@@ -219,4 +219,83 @@ export async function updateProductoParametro(id: string, payload: Partial<Produ
 export async function deleteProductoParametro(id: string): Promise<{ success: boolean }> {
   const res = await fetch(`/api/producto_parametros/${id}?debug=1`, { method: 'DELETE' })
   return handleResponse<{ success: boolean }>(res)
+}
+
+/* ========= AGENDA (Fase 4) ========= */
+
+export async function getAgendaDevelopers(options?: { soloDesarrolladores?: boolean; soloActivos?: boolean }): Promise<AgendaDeveloper[]> {
+  const params = new URLSearchParams()
+  if (options?.soloDesarrolladores) params.set('solo_desarrolladores', '1')
+  if (options?.soloActivos) params.set('solo_activos', '1')
+  const qs = params.toString()
+  const url = qs ? `/api/agenda/desarrolladores?${qs}` : '/api/agenda/desarrolladores'
+  const res = await fetch(url, { cache: 'no-store' })
+  const data = await handleResponse<{ usuarios: AgendaDeveloper[] }>(res)
+  return data.usuarios
+}
+
+export async function updateAgendaDevelopers(payload: { usuarioId: number; isDesarrollador: boolean } | Array<{ usuarioId: number; isDesarrollador: boolean }>): Promise<AgendaDeveloper[]> {
+  const body = Array.isArray(payload) ? payload : [payload]
+  const res = await fetch('/api/agenda/desarrolladores', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  const data = await handleResponse<{ usuarios: AgendaDeveloper[] }>(res)
+  return data.usuarios
+}
+
+export async function getAgendaSlots(usuarioIds: number[], range?: { desde?: string; hasta?: string }): Promise<AgendaSlotsResponse> {
+  if (!usuarioIds.length) return { range: { desde: range?.desde || null, hasta: range?.hasta || null }, busy: [], missingAuth: [] }
+  const params = new URLSearchParams({ usuarios: usuarioIds.join(',') })
+  if (range?.desde) params.set('desde', range.desde)
+  if (range?.hasta) params.set('hasta', range.hasta)
+  const res = await fetch(`/api/agenda/slots?${params.toString()}`, { cache: 'no-store' })
+  return handleResponse<AgendaSlotsResponse>(res)
+}
+
+export interface CreateAgendaCitaPayload {
+  prospectoId?: number | null
+  agenteId: number
+  supervisorId?: number | null
+  inicio: string
+  fin: string
+  meetingProvider: string
+  meetingUrl?: string | null
+  externalEventId?: string | null
+  prospectoNombre?: string | null
+  notas?: string | null
+  generarEnlace?: boolean
+}
+
+export async function createAgendaCita(payload: CreateAgendaCitaPayload & Record<string, unknown>): Promise<AgendaCita> {
+  const res = await fetch('/api/agenda/citas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  const data = await handleResponse<{ cita: AgendaCita }>(res)
+  return data.cita
+}
+
+export async function cancelAgendaCita(citaId: number, motivo?: string): Promise<{ success: boolean }> {
+  const res = await fetch('/api/agenda/citas/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ citaId, motivo })
+  })
+  return handleResponse<{ success: boolean }>(res)
+}
+
+export async function getAgendaCitas(options?: { estado?: 'confirmada' | 'cancelada'; desde?: string; hasta?: string; limit?: number; agenteId?: number }): Promise<AgendaCita[]> {
+  const params = new URLSearchParams()
+  if (options?.estado) params.set('estado', options.estado)
+  if (options?.desde) params.set('desde', options.desde)
+  if (options?.hasta) params.set('hasta', options.hasta)
+  if (options?.limit) params.set('limit', String(options.limit))
+  if (options?.agenteId) params.set('agente_id', String(options.agenteId))
+  const qs = params.toString()
+  const res = await fetch(qs ? `/api/agenda/citas?${qs}` : '/api/agenda/citas', { cache: 'no-store' })
+  const data = await handleResponse<{ citas: AgendaCita[] }>(res)
+  return data.citas
 }
