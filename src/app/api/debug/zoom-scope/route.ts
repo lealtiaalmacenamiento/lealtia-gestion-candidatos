@@ -1,11 +1,5 @@
-import { buildIntegrationConfig } from '@/lib/integrations/oauth'
-
-export async function GET(req: Request) {
-  const config = buildIntegrationConfig({ req, provider: 'zoom' })
+export async function GET() {
   return Response.json({
-    scopes: config?.scopes ?? null,
-    redirectUri: config?.redirectUri ?? null,
-    authUrl: config?.authUrl ?? null,
-    requestedScopeString: config?.scopes.join(' ') ?? null
-  })
+    error: 'Integración OAuth de Zoom deshabilitada. Configura el enlace personal desde /integraciones.'
+  }, { status: 410 })
 }

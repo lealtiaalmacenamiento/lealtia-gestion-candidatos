@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getIntegrationToken, upsertIntegrationToken } from '@/lib/integrationTokens'
 
-type Provider = 'google' | 'zoom'
+type Provider = 'google'
 
 type IntegrationConfig = {
   provider: Provider
@@ -47,22 +47,6 @@ const PROVIDERS: Record<Provider, (origin: string) => IntegrationConfig | null> 
       extraAuthParams: {
         access_type: 'offline',
         prompt: 'consent'
-      }
-    }
-  },
-  zoom: () => {
-    const clientId = process.env.ZOOM_CLIENT_ID
-    const clientSecret = process.env.ZOOM_CLIENT_SECRET
-    if (!clientId || !clientSecret) return null
-    return {
-      provider: 'zoom',
-      clientId,
-      clientSecret,
-      authUrl: 'https://zoom.us/oauth/authorize',
-      tokenUrl: 'https://zoom.us/oauth/token',
-  scopes: ['meeting:write:meeting', 'meeting:read:meeting'],
-      extraAuthParams: {
-        response_type: 'code'
       }
     }
   }
@@ -128,13 +112,6 @@ async function exchangeCodeForTokens(config: BuildResult, code: string): Promise
   })
 
   const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' }
-  if (config.provider === 'zoom') {
-    const basic = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')
-    headers.Authorization = `Basic ${basic}`
-    body.delete('client_secret')
-    body.delete('client_id')
-  }
-
   const response = await fetch(config.tokenUrl, {
     method: 'POST',
     headers,
@@ -189,7 +166,7 @@ export async function validateState(provider: Provider, incoming: string | null)
 }
 
 export function toProviderKey(value: string): Provider | null {
-  if (value === 'google' || value === 'zoom') return value
+  if (value === 'google') return value
   return null
 }
 

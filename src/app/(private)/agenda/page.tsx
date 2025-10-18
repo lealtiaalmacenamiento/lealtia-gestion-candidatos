@@ -15,7 +15,7 @@ import type { AgendaCita, AgendaDeveloper, AgendaSlotsResponse } from '@/types'
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
-  zoom: 'Zoom'
+  zoom: 'Zoom personal'
 }
 
 type ToastState = { type: 'success' | 'error'; message: string } | null
@@ -104,6 +104,10 @@ export default function AgendaPage() {
   const [slotsError, setSlotsError] = useState<string | null>(null)
 
   const [toast, setToast] = useState<ToastState>(null)
+  const selectedAgente = useMemo(() => {
+    if (!form.agenteId) return null
+    return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
+  }, [developers, form.agenteId])
 
   useEffect(() => {
     if (!authorized) return
@@ -119,6 +123,23 @@ export default function AgendaPage() {
       setForm((prev) => ({ ...prev, generarEnlace: false }))
     }
   }, [form.meetingProvider, form.generarEnlace])
+
+  useEffect(() => {
+    if (form.meetingProvider !== 'zoom') return
+    const manualUrl = selectedAgente?.zoomManual?.meetingUrl || ''
+    if (!manualUrl) return
+    setForm((prev) => {
+      if (prev.meetingProvider !== 'zoom') return prev
+      const trimmed = prev.meetingUrl.trim()
+      if (trimmed === manualUrl && prev.generarEnlace === false) {
+        return prev
+      }
+      if (trimmed.length > 0 && trimmed !== manualUrl) {
+        return { ...prev, generarEnlace: false }
+      }
+      return { ...prev, meetingUrl: manualUrl, generarEnlace: false }
+    })
+  }, [form.meetingProvider, selectedAgente])
 
   const developerMap = useMemo(() => {
     const map = new Map<number, AgendaDeveloper>()
@@ -297,10 +318,10 @@ export default function AgendaPage() {
               <>
                 <h6 className="fw-semibold mb-2">Conecta tus integraciones</h6>
                 <p className="small mb-2">
-                  Vincula tu calendario de Google o Zoom desde el módulo <strong>Integraciones</strong> para generar enlaces de reunión automáticamente.
+                  Conecta tu calendario de Google desde el módulo <strong>Integraciones</strong> para generar enlaces de Google Meet automáticamente.
                 </p>
                 <p className="small mb-2">
-                  Si necesitas activar nuevos supervisores o permisos, contacta a un administrador.
+                  Ahí mismo puedes guardar tu enlace personal de Zoom para reutilizarlo al agendar. Si necesitas activar nuevos supervisores o permisos, contacta a un administrador.
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/integraciones')}>
                   Abrir integraciones
@@ -310,10 +331,10 @@ export default function AgendaPage() {
               <>
                 <h6 className="fw-semibold mb-2">Configuración de desarrolladores</h6>
                 <p className="small mb-2">
-                  La asignación de desarrolladores y la conexión con proveedores (Google Meet y Zoom) ahora vive en <strong>Parámetros &gt; Agenda interna</strong>.
+                  La asignación de desarrolladores y la conexión con Google Meet viven en <strong>Parámetros &gt; Agenda interna</strong>.
                 </p>
                 <p className="small mb-2">
-                  Desde ahí puedes marcar qué usuarios pueden acompañar citas y pedirles que vinculen su cuenta de Google para generar enlaces automáticamente.
+                  El enlace personal de Zoom se configura en <strong>Integraciones</strong>. Desde ahí puedes pedirles que guarden su sala para compartirla al agendar.
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/parametros#agenda-interna')}>
                   Abrir parámetros
@@ -388,7 +409,7 @@ export default function AgendaPage() {
                     onChange={(e) => setForm((prev) => ({ ...prev, meetingProvider: e.target.value as AgendaFormState['meetingProvider'] }))}
                   >
                     <option value="google_meet">Google Meet</option>
-                    <option value="zoom">Zoom</option>
+                    <option value="zoom">Zoom personal</option>
                   </select>
                 </div>
                 <div className="col-md-6">
@@ -408,6 +429,30 @@ export default function AgendaPage() {
                     </label>
                   </div>
                 </div>
+
+                {form.meetingProvider === 'zoom' && (
+                  <div className="col-12">
+                    {selectedAgente?.zoomManual?.meetingUrl ? (
+                      <div className="alert alert-secondary small mb-0">
+                        Se usará el enlace personal guardado para {selectedAgente.nombre || selectedAgente.email}. Puedes ajustarlo si necesitas una sala distinta.
+                        {selectedAgente.zoomManual?.meetingId && (
+                          <div className="mt-1">ID: {selectedAgente.zoomManual.meetingId}</div>
+                        )}
+                        {selectedAgente.zoomManual?.meetingPassword && (
+                          <div className="mt-1">Contraseña: {selectedAgente.zoomManual.meetingPassword}</div>
+                        )}
+                      </div>
+                    ) : selectedAgente?.zoomLegacy ? (
+                      <div className="alert alert-warning small mb-0">
+                        Este usuario tiene una conexión antigua de Zoom. Pídeles que guarden su enlace personal en Integraciones.
+                      </div>
+                    ) : (
+                      <div className="alert alert-warning small mb-0">
+                        No hay enlace personal de Zoom guardado para este usuario. Copia y pega el enlace manualmente.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {!form.generarEnlace && (
                   <div className="col-12">

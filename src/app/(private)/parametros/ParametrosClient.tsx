@@ -44,7 +44,7 @@ import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, 
 
 const INTEGRATION_LABELS: Record<IntegrationProviderKey, string> = {
   google: 'Google Meet',
-  zoom: 'Zoom'
+  zoom: 'Zoom personal'
 };
 import AppModal from '@/components/ui/AppModal';
 import { useDialog } from '@/components/ui/DialogProvider';

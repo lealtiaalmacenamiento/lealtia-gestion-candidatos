@@ -5,7 +5,7 @@ export function providerLabel(provider: IntegrationProviderKey): string {
     case 'google':
       return 'Google Calendar'
     case 'zoom':
-      return 'Zoom Meetings'
+      return 'Zoom personal'
     default:
       return provider
   }

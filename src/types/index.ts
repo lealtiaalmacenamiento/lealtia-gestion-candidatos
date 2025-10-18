@@ -66,6 +66,12 @@ export interface Usuario {
 export type IntegrationProviderKey = 'google' | 'zoom'
 export type MeetingProvider = 'google_meet' | 'zoom'
 
+export interface ZoomManualSettings {
+  meetingUrl: string
+  meetingId?: string | null
+  meetingPassword?: string | null
+}
+
 export interface AgendaDeveloper {
   id: number
   email: string
@@ -75,6 +81,8 @@ export interface AgendaDeveloper {
   is_desarrollador: boolean
   id_auth?: string | null
   tokens: IntegrationProviderKey[]
+  zoomManual?: ZoomManualSettings | null
+  zoomLegacy?: boolean
 }
 
 export interface AgendaBusySlot {

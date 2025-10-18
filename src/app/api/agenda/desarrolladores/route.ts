@@ -3,6 +3,8 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
 import type { IntegrationProvider } from '@/lib/integrationTokens'
+import { getZoomManualSettings } from '@/lib/zoomManual'
+import type { ZoomManualSettings } from '@/types'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -24,6 +26,8 @@ type UsuarioAgenda = {
   is_desarrollador: boolean
   id_auth?: string | null
   tokens: IntegrationProvider[]
+  zoomManual?: ZoomManualSettings | null
+  zoomLegacy?: boolean
 }
 
 export async function GET(req: Request) {
@@ -78,6 +82,14 @@ export async function GET(req: Request) {
     }
   }
 
+  const zoomDetails = new Map<string, { settings: ZoomManualSettings | null; legacy: boolean }>()
+  await Promise.all(filtered.map(async (usuario) => {
+    if (!usuario.id_auth) return
+    const { settings, legacy, error: zoomError } = await getZoomManualSettings(usuario.id_auth)
+    if (zoomError) return
+    zoomDetails.set(usuario.id_auth, { settings, legacy })
+  }))
+
   const payload: UsuarioAgenda[] = filtered.map((u) => ({
     id: u.id,
     email: u.email,
@@ -86,7 +98,25 @@ export async function GET(req: Request) {
     activo: u.activo,
     is_desarrollador: Boolean(u.is_desarrollador),
     id_auth: u.id_auth ?? null,
-    tokens: u.id_auth ? tokensByUsuario.get(u.id_auth) || [] : []
+    tokens: (() => {
+      if (!u.id_auth) return [] as IntegrationProvider[]
+      const base = [...(tokensByUsuario.get(u.id_auth) || [])]
+      const zoom = zoomDetails.get(u.id_auth)
+      if (zoom && (!zoom.settings || !zoom.settings.meetingUrl)) {
+        return base.filter((token) => token !== 'zoom')
+      }
+      return Array.from(new Set(base))
+    })(),
+    zoomManual: (() => {
+      if (!u.id_auth) return null
+      const info = zoomDetails.get(u.id_auth)
+      return info?.settings ?? null
+    })(),
+    zoomLegacy: (() => {
+      if (!u.id_auth) return false
+      const info = zoomDetails.get(u.id_auth)
+      return Boolean(info?.legacy)
+    })()
   }))
 
   try {
