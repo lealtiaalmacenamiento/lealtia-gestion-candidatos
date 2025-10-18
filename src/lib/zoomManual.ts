@@ -25,14 +25,19 @@ function parseZoomManual(token: StoredIntegrationToken | null): { settings: Zoom
     if (!parsed || typeof parsed !== 'object') {
       return { settings: null, legacy: true }
     }
-    const meetingUrl = typeof (parsed as { meetingUrl?: unknown }).meetingUrl === 'string'
-      ? (parsed as { meetingUrl?: unknown }).meetingUrl.trim()
+    const parsedObj = parsed as Record<string, unknown>
+    const meetingUrlValue = parsedObj.meetingUrl
+    const meetingIdValue = parsedObj.meetingId
+    const meetingPasswordValue = parsedObj.meetingPassword
+
+    const meetingUrl = typeof meetingUrlValue === 'string'
+      ? meetingUrlValue.trim()
       : ''
-    const meetingId = typeof (parsed as { meetingId?: unknown }).meetingId === 'string'
-      ? (parsed as { meetingId?: unknown }).meetingId.trim()
+    const meetingId = typeof meetingIdValue === 'string'
+      ? meetingIdValue.trim()
       : null
-    const meetingPassword = typeof (parsed as { meetingPassword?: unknown }).meetingPassword === 'string'
-      ? (parsed as { meetingPassword?: unknown }).meetingPassword.trim()
+    const meetingPassword = typeof meetingPasswordValue === 'string'
+      ? meetingPasswordValue.trim()
       : null
 
     if (!meetingUrl) {
