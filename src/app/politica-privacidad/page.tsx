@@ -9,16 +9,16 @@ const sections: Array<{ title: string; paragraphs: string[] }> = [
   {
     title: '1. Informacion que recabamos',
     paragraphs: [
-      'Dentro de Lealtia Gestion de Candidatos recopilamos datos de usuarios internos (administradores, supervisores, agentes) tales como nombre, correo electronico corporativo, rol, identificador de autenticacion y preferencias operativas.',
+      'Dentro de Lealtia Gestion de Candidatos recopilamos datos de usuarios internos (administradores, supervisores, agentes) tales como nombre, correo electronico corporativo, rol e identificadores de sesion.',
       'Respecto de prospectos y candidatos almacenamos la informacion necesaria para coordinar el proceso comercial, incluyendo nombre, medios de contacto, historial de citas, notas operativas, documentos adjuntos y resultado de seguimiento.',
-      'La plataforma registra adicionalmente metadatos tecnicos (direccion IP, dispositivo, fecha y hora de acceso, acciones relevantes) para auditoria y seguridad.'
+      'La plataforma registra metadatos tecnicos (direccion IP, dispositivo, fecha y hora de acceso) para mantener la continuidad del servicio y prevenir abusos.'
     ]
   },
   {
     title: '2. Finalidades del tratamiento',
     paragraphs: [
-      'Utilizamos la informacion personal para administrar el pipeline de candidatos, coordinar agendas y reuniones, enviar confirmaciones y recordatorios por correo, emitir reportes de seguimiento y mantener la seguridad de la aplicacion.',
-      'Cuando activas la integracion con Google Meet almacenamos de forma cifrada los tokens necesarios para generar enlaces automaticamente. Las reuniones de Zoom o Microsoft Teams se capturan manualmente; solo guardamos el enlace, ID y contraseña que proporciones.'
+      'Utilizamos la informacion personal para administrar el pipeline de candidatos, coordinar agendas y reuniones, enviar confirmaciones y recordatorios por correo, emitir reportes operativos y mantener la seguridad de la aplicacion.',
+      'Cuando activas la integracion con Google Meet se generan enlaces automaticamente dentro de la plataforma. Las reuniones de Zoom o Microsoft Teams se registran manualmente; solo guardamos el enlace, ID y contraseña que agregues al expediente.'
     ]
   },
   {
@@ -37,14 +37,14 @@ const sections: Array<{ title: string; paragraphs: string[] }> = [
   {
     title: '5. Conservacion y seguridad',
     paragraphs: [
-      'Conservamos los datos mientras exista una cuenta activa o un contrato vigente con la empresa cliente, y posteriormente por el periodo necesario para cumplir obligaciones fiscales o auditorias. Una vez vencidos dichos plazos, los datos se eliminan o anonimizan de manera segura.',
-      'Aplicamos controles de acceso basados en roles, autenticacion mediante Supabase Auth, bitacoras de acciones, cifrado TLS en transito y copias de seguridad. Recomendamos a los usuarios mantener contraseñas seguras y revocar accesos cuando ya no sean necesarios.'
+      'Conservamos los datos mientras exista una cuenta activa o un contrato vigente con la empresa cliente, y posteriormente solo por el periodo necesario para atender requisitos normativos. Una vez vencidos dichos plazos, los datos se eliminan o anonimizan de manera segura.',
+      'Aplicamos controles de acceso basados en roles, autenticacion mediante Supabase Auth, cifrado TLS en transito y copias de seguridad. Recomendamos a los usuarios mantener contraseñas seguras y revocar accesos cuando ya no sean necesarios.'
     ]
   },
   {
     title: '6. Derechos de los titulares',
     paragraphs: [
-      'Los usuarios internos y prospectos pueden ejercer derechos ARCO (acceso, rectificacion, cancelacion y oposicion) enviando su solicitud a privacidad@lealtia.com.mx o al responsable designado por la empresa que opera la plataforma.',
+      'Los usuarios internos y prospectos pueden ejercer derechos ARCO (acceso, rectificacion, cancelacion y oposicion) a traves del responsable designado por la empresa que opera la plataforma o mediante la mesa de ayuda indicada en los contratos de servicio.',
       'Atenderemos las solicitudes dentro de los plazos establecidos por la LFPDPPP. En algunos casos necesitaremos validar la identidad del solicitante o pedir informacion adicional para localizar los registros.'
     ]
   },
@@ -63,7 +63,7 @@ const sections: Array<{ title: string; paragraphs: string[] }> = [
   {
     title: '9. Contacto y responsable',
     paragraphs: [
-      'El responsable del tratamiento es Lealtia Gestion de Candidatos. Para cualquier duda sobre esta politica o para ejercer tus derechos, contactanos en privacidad@lealtia.com.mx. Tambien puedes dirigirte al area de cumplimiento de tu empresa para canalizar la solicitud.'
+      'El responsable del tratamiento es Lealtia Gestion de Candidatos. Para cualquier duda sobre esta politica o para ejercer tus derechos, utiliza los canales de atencion establecidos en tu contrato o coordina la solicitud con el area de cumplimiento de tu empresa.'
     ]
   }
 ]
