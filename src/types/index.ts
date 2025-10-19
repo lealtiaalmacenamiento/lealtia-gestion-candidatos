@@ -64,7 +64,7 @@ export interface Usuario {
 }
 
 export type IntegrationProviderKey = 'google' | 'zoom'
-export type MeetingProvider = 'google_meet' | 'zoom'
+export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
 
 export interface ZoomManualSettings {
   meetingUrl: string

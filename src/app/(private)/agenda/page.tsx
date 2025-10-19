@@ -15,7 +15,8 @@ import type { AgendaCita, AgendaDeveloper, AgendaSlotsResponse } from '@/types'
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
-  zoom: 'Zoom personal'
+  zoom: 'Zoom personal',
+  teams: 'Microsoft Teams (manual)'
 }
 
 type ToastState = { type: 'success' | 'error'; message: string } | null
@@ -25,7 +26,7 @@ type AgendaFormState = {
   supervisorId: string
   inicio: string
   fin: string
-  meetingProvider: 'google_meet' | 'zoom'
+  meetingProvider: 'google_meet' | 'zoom' | 'teams'
   meetingUrl: string
   generarEnlace: boolean
   prospectoId: string
@@ -410,6 +411,7 @@ export default function AgendaPage() {
                   >
                     <option value="google_meet">Google Meet</option>
                     <option value="zoom">Zoom personal</option>
+                    <option value="teams">Microsoft Teams (manual)</option>
                   </select>
                 </div>
                 <div className="col-md-6">
@@ -451,6 +453,14 @@ export default function AgendaPage() {
                         No hay enlace personal de Zoom guardado para este usuario. Copia y pega el enlace manualmente.
                       </div>
                     )}
+                  </div>
+                )}
+
+                {form.meetingProvider === 'teams' && (
+                  <div className="col-12">
+                    <div className="alert alert-warning small mb-0">
+                      Inicia sesión en Microsoft Teams y copia el enlace de la reunión que quieras compartir. Pégalo en el campo de enlace manual.
+                    </div>
                   </div>
                 )}
 

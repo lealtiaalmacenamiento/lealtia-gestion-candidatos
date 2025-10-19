@@ -19,6 +19,7 @@ function canViewAgenda(usuario: { rol?: string | null; is_desarrollador?: boolea
 
 function normalizeProvider(value: unknown): MeetingProvider {
   if (value === 'zoom') return 'zoom'
+  if (value === 'teams') return 'teams'
   return 'google_meet'
 }
 
@@ -381,70 +382,71 @@ export async function POST(req: Request) {
   }
 
   if (generarEnlace) {
-    if (provider !== 'google_meet') {
+    if (provider === 'google_meet') {
+      const attendees = Array.from(new Set([
+        agente.email || null,
+        supervisorRecord?.email || null,
+        actor.email || null
+      ].filter((value): value is string => Boolean(value && value.includes('@')))))
+
+      const summary = prospectoNombre ? `Cita con ${prospectoNombre}` : 'Cita agenda Lealtia'
+      const descriptionParts: string[] = []
+      if (payload.notas && payload.notas.trim().length > 0) {
+        descriptionParts.push(payload.notas.trim())
+      }
+      if (prospectoNombre) {
+        descriptionParts.push(`Prospecto: ${prospectoNombre}`)
+      }
+      if (actor.email) {
+        descriptionParts.push(`Programada por: ${actor.email}`)
+      }
+
+      try {
+        const remote = await createRemoteMeeting({
+          usuarioAuthId: agente.id_auth,
+          provider,
+          start: inicioIso,
+          end: finIso,
+          summary,
+          description: descriptionParts.length ? descriptionParts.join('\n\n') : null,
+          attendees,
+          timezone: process.env.AGENDA_TZ || null
+        })
+        meetingUrl = remote.meetingUrl
+        externalEventId = remote.externalEventId
+        try {
+          await supabase.from('logs_integracion').insert({
+            usuario_id: agente.id_auth,
+            proveedor: provider,
+            operacion: 'create_cita',
+            nivel: 'info',
+            detalle: {
+              inicio: inicioIso,
+              fin: finIso,
+              meetingUrl,
+              external_event_id: externalEventId,
+              attendees
+            }
+          })
+        } catch {}
+      } catch (err) {
+        try {
+          await supabase.from('logs_integracion').insert({
+            usuario_id: agente.id_auth,
+            proveedor: provider,
+            operacion: 'create_cita',
+            nivel: 'error',
+            detalle: {
+              inicio: inicioIso,
+              fin: finIso,
+              error: err instanceof Error ? err.message : String(err)
+            }
+          })
+        } catch {}
+        return NextResponse.json({ error: err instanceof Error ? err.message : 'No se pudo generar el enlace de la reunión' }, { status: 502 })
+      }
+    } else {
       return NextResponse.json({ error: 'La generación automática solo está disponible para Google Meet' }, { status: 400 })
-    }
-    const attendees = Array.from(new Set([
-      agente.email || null,
-      supervisorRecord?.email || null,
-      actor.email || null
-    ].filter((value): value is string => Boolean(value && value.includes('@')))))
-
-    const summary = prospectoNombre ? `Cita con ${prospectoNombre}` : 'Cita agenda Lealtia'
-    const descriptionParts: string[] = []
-    if (payload.notas && payload.notas.trim().length > 0) {
-      descriptionParts.push(payload.notas.trim())
-    }
-    if (prospectoNombre) {
-      descriptionParts.push(`Prospecto: ${prospectoNombre}`)
-    }
-    if (actor.email) {
-      descriptionParts.push(`Programada por: ${actor.email}`)
-    }
-
-    try {
-      const remote = await createRemoteMeeting({
-        usuarioAuthId: agente.id_auth,
-        provider,
-        start: inicioIso,
-        end: finIso,
-        summary,
-        description: descriptionParts.length ? descriptionParts.join('\n\n') : null,
-        attendees,
-        timezone: process.env.AGENDA_TZ || null
-      })
-      meetingUrl = remote.meetingUrl
-      externalEventId = remote.externalEventId
-      try {
-        await supabase.from('logs_integracion').insert({
-          usuario_id: agente.id_auth,
-          proveedor: provider,
-          operacion: 'create_cita',
-          nivel: 'info',
-          detalle: {
-            inicio: inicioIso,
-            fin: finIso,
-            meetingUrl,
-            external_event_id: externalEventId,
-            attendees
-          }
-        })
-      } catch {}
-    } catch (err) {
-      try {
-        await supabase.from('logs_integracion').insert({
-          usuario_id: agente.id_auth,
-          proveedor: provider,
-          operacion: 'create_cita',
-          nivel: 'error',
-          detalle: {
-            inicio: inicioIso,
-            fin: finIso,
-            error: err instanceof Error ? err.message : String(err)
-          }
-        })
-      } catch {}
-      return NextResponse.json({ error: err instanceof Error ? err.message : 'No se pudo generar el enlace de la reunión' }, { status: 502 })
     }
   }
 
