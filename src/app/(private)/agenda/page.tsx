@@ -53,7 +53,6 @@ type AgendaFormState = {
   fin: string
   meetingProvider: 'google_meet' | 'zoom' | 'teams'
   meetingUrl: string
-  generarEnlace: boolean
   prospectoId: string
   prospectoNombre: string
   prospectoEmail: string
@@ -79,7 +78,6 @@ function initialFormState(): AgendaFormState {
     fin: formatLocalInputValue(end),
     meetingProvider: 'google_meet',
     meetingUrl: '',
-    generarEnlace: true,
     prospectoId: '',
     prospectoNombre: '',
     prospectoEmail: '',
@@ -183,10 +181,10 @@ export default function AgendaPage() {
     if (!selectedAgente) return
     if (availableProviders.length === 0) {
       setForm((prev) => {
-        if (prev.meetingProvider === 'google_meet' && prev.generarEnlace === false) {
+        if (prev.meetingProvider === 'google_meet') {
           return prev
         }
-        return { ...prev, meetingProvider: 'google_meet', generarEnlace: false }
+        return { ...prev, meetingProvider: 'google_meet' }
       })
       return
     }
@@ -194,8 +192,7 @@ export default function AgendaPage() {
       const nextProvider = availableProviders[0]
       setForm((prev) => ({
         ...prev,
-        meetingProvider: nextProvider.value,
-        generarEnlace: nextProvider.value === 'google_meet' && selectedAgente.googleMeetAutoEnabled !== false
+        meetingProvider: nextProvider.value
       }))
     }
   }, [availableProviders, form.meetingProvider, selectedAgente])
@@ -210,25 +207,19 @@ export default function AgendaPage() {
   }, [authorized])
 
   useEffect(() => {
-    if (form.meetingProvider !== 'google_meet' && form.generarEnlace) {
-      setForm((prev) => ({ ...prev, generarEnlace: false }))
-    }
-  }, [form.meetingProvider, form.generarEnlace])
-
-  useEffect(() => {
     if (form.meetingProvider !== 'zoom') return
     const manualUrl = selectedAgente?.zoomManual?.meetingUrl || ''
     if (!manualUrl) return
     setForm((prev) => {
       if (prev.meetingProvider !== 'zoom') return prev
       const trimmed = prev.meetingUrl.trim()
-      if (trimmed === manualUrl && prev.generarEnlace === false) {
+      if (trimmed === manualUrl) {
         return prev
       }
       if (trimmed.length > 0 && trimmed !== manualUrl) {
-        return { ...prev, generarEnlace: false }
+        return prev
       }
-      return { ...prev, meetingUrl: manualUrl, generarEnlace: false }
+      return { ...prev, meetingUrl: manualUrl }
     })
   }, [form.meetingProvider, selectedAgente])
 
@@ -250,11 +241,14 @@ export default function AgendaPage() {
   }, [form.meetingProvider, selectedAgente])
 
   useEffect(() => {
-    if (!selectedAgente) return
-    if (selectedAgente.googleMeetAutoEnabled === false && form.generarEnlace) {
-      setForm((prev) => ({ ...prev, generarEnlace: false }))
-    }
-  }, [selectedAgente, form.generarEnlace])
+    if (form.meetingProvider !== 'google_meet') return
+    if (form.meetingUrl.trim().length === 0) return
+    setForm((prev) => {
+      if (prev.meetingProvider !== 'google_meet') return prev
+      if (prev.meetingUrl.trim().length === 0) return prev
+      return { ...prev, meetingUrl: '' }
+    })
+  }, [form.meetingProvider, form.meetingUrl])
 
   const developerMap = useMemo(() => {
     const map = new Map<number, AgendaDeveloper>()
@@ -340,7 +334,7 @@ export default function AgendaPage() {
         if (cancelled) return
         setProspectOptions(results)
         if (!results.length) {
-          setProspectOptionsError('No se encontraron prospectos con correo para este agente. Revisa la semana actual y anteriores en Prospectos.')
+          setProspectOptionsError('No se encontraron prospectos recientes para este agente. Revisa la semana actual y anteriores en Prospectos.')
         }
       })
       .catch((err) => {
@@ -460,13 +454,26 @@ export default function AgendaPage() {
       setToast({ type: 'error', message: 'La hora de fin debe ser posterior a la de inicio' })
       return
     }
-    if (!form.generarEnlace && !form.meetingUrl.trim()) {
-      setToast({ type: 'error', message: 'Capture un enlace de reunión o activa la generación automática' })
+    if (!availableProviders.find((provider) => provider.value === form.meetingProvider)) {
+      setToast({ type: 'error', message: 'El agente seleccionado no tiene configurado el proveedor elegido. Revisa las integraciones.' })
       return
     }
 
-    if (!availableProviders.find((provider) => provider.value === form.meetingProvider)) {
-      setToast({ type: 'error', message: 'El agente seleccionado no tiene configurado el proveedor elegido. Revisa las integraciones.' })
+    const isGoogleMeet = form.meetingProvider === 'google_meet'
+    const trimmedMeetingUrl = form.meetingUrl.trim()
+
+    if (isGoogleMeet) {
+      if (!selectedAgente?.tokens.includes('google')) {
+        setToast({ type: 'error', message: 'Conecta Google Calendar en Integraciones antes de agendar.' })
+        setShowConnectModal(true)
+        return
+      }
+      if (selectedAgente?.googleMeetAutoEnabled === false) {
+        setToast({ type: 'error', message: 'Habilita la generación automática de enlaces en Integraciones antes de usar Google Meet.' })
+        return
+      }
+    } else if (!trimmedMeetingUrl) {
+      setToast({ type: 'error', message: 'Este proveedor necesita un enlace personal guardado en Integraciones.' })
       return
     }
 
@@ -479,7 +486,7 @@ export default function AgendaPage() {
       return
     }
     if (!form.prospectoEmail.trim()) {
-      setToast({ type: 'error', message: 'El prospecto seleccionado debe tener correo electrónico registrado.' })
+      setToast({ type: 'error', message: 'Captura el correo electrónico del prospecto antes de agendar.' })
       return
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.prospectoEmail.trim())) {
@@ -499,9 +506,9 @@ export default function AgendaPage() {
       supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
       inicio: inicioIso,
       fin: finIso,
-      meetingProvider: form.meetingProvider,
-      meetingUrl: form.meetingUrl.trim() || null,
-      generarEnlace: form.generarEnlace,
+  meetingProvider: form.meetingProvider,
+  meetingUrl: isGoogleMeet ? null : trimmedMeetingUrl || null,
+  generarEnlace: isGoogleMeet,
       prospectoId: prospectoIdValue,
       prospectoNombre: form.prospectoNombre.trim() || null,
       prospectoEmail: form.prospectoEmail.trim() || null,
@@ -517,7 +524,6 @@ export default function AgendaPage() {
       next.agenteId = form.agenteId
       next.supervisorId = form.supervisorId
       next.meetingProvider = form.meetingProvider
-      next.generarEnlace = form.meetingProvider === 'google_meet' && selectedAgente?.googleMeetAutoEnabled !== false
       next.prospectoEmail = ''
       setForm(next)
       setSlots(null)
@@ -673,28 +679,10 @@ export default function AgendaPage() {
                     </div>
                   </div>
                 )}
-                <div className="col-md-6">
-                  <label className="form-label small">Generar enlace automáticamente</label>
-                  <div className="form-check form-switch">
-                    <input
-                      className="form-check-input"
-                      type="checkbox"
-                      role="switch"
-                      id="generarEnlaceSwitch"
-                      checked={form.generarEnlace}
-                      disabled={form.meetingProvider !== 'google_meet' || selectedAgente?.googleMeetAutoEnabled === false}
-                      onChange={(e) => setForm((prev) => ({ ...prev, generarEnlace: e.target.checked }))}
-                    />
-                    <label className="form-check-label small text-muted" htmlFor="generarEnlaceSwitch">
-                      Disponible solo para Google Meet con integración activa
-                    </label>
-                  </div>
-                </div>
-
                 {selectedAgente && selectedAgente.googleMeetAutoEnabled === false && (
                   <div className="col-12">
                     <div className="alert alert-warning small mb-0">
-                      Este agente tiene deshabilitada la generación automática de Google Meet. Captura el enlace manualmente o pide que enlace su calendario en Integraciones.
+                      Este agente tiene deshabilitada la generación automática de Google Meet. Activa la integración en <strong>Integraciones</strong> antes de agendar.
                     </div>
                   </div>
                 )}
@@ -703,7 +691,8 @@ export default function AgendaPage() {
                   <div className="col-12">
                     {selectedAgente?.zoomManual?.meetingUrl ? (
                       <div className="alert alert-secondary small mb-0">
-                        Se usará el enlace personal guardado para {selectedAgente.nombre || selectedAgente.email}. Puedes ajustarlo si necesitas una sala distinta.
+                        Se usará el enlace personal guardado para {selectedAgente.nombre || selectedAgente.email}.
+                        <div className="mt-1 text-break">{selectedAgente.zoomManual.meetingUrl}</div>
                         {selectedAgente.zoomManual?.meetingId && (
                           <div className="mt-1">ID: {selectedAgente.zoomManual.meetingId}</div>
                         )}
@@ -713,11 +702,11 @@ export default function AgendaPage() {
                       </div>
                     ) : selectedAgente?.zoomLegacy ? (
                       <div className="alert alert-warning small mb-0">
-                        Este usuario tiene una conexión antigua de Zoom. Pídeles que guarden su enlace personal en Integraciones.
+                        Este usuario tiene una conexión antigua de Zoom. Guarda un enlace personal actualizado en <strong>Integraciones</strong> antes de agendar.
                       </div>
                     ) : (
                       <div className="alert alert-warning small mb-0">
-                        No hay enlace personal de Zoom guardado para este usuario. Copia y pega el enlace manualmente.
+                        No hay enlace personal de Zoom guardado para este usuario. Regístralo en <strong>Integraciones</strong> para agendar con Zoom.
                       </div>
                     )}
                   </div>
@@ -727,7 +716,8 @@ export default function AgendaPage() {
                   <div className="col-12">
                     {selectedAgente?.teamsManual?.meetingUrl ? (
                       <div className="alert alert-secondary small mb-0">
-                        Se usará el enlace de Teams guardado para {selectedAgente.nombre || selectedAgente.email}. Puedes ajustarlo si necesitas una sala distinta.
+                        Se usará el enlace de Teams guardado para {selectedAgente.nombre || selectedAgente.email}.
+                        <div className="mt-1 text-break">{selectedAgente.teamsManual.meetingUrl}</div>
                         {selectedAgente.teamsManual?.meetingId && (
                           <div className="mt-1">ID: {selectedAgente.teamsManual.meetingId}</div>
                         )}
@@ -737,21 +727,9 @@ export default function AgendaPage() {
                       </div>
                     ) : (
                       <div className="alert alert-warning small mb-0">
-                        Inicia sesión en Microsoft Teams y copia el enlace de la reunión que quieras compartir. Pégalo en el campo de enlace manual.
+                        No hay un enlace de Teams guardado para este usuario. Regístralo en <strong>Integraciones</strong> antes de agendar con este proveedor.
                       </div>
                     )}
-                  </div>
-                )}
-
-                {!form.generarEnlace && (
-                  <div className="col-12">
-                    <label className="form-label small">Enlace de reunión *</label>
-                    <input
-                      className="form-control form-control-sm"
-                      placeholder="https://..."
-                      value={form.meetingUrl}
-                      onChange={(e) => setForm((prev) => ({ ...prev, meetingUrl: e.target.value }))}
-                    />
                   </div>
                 )}
 
@@ -775,7 +753,7 @@ export default function AgendaPage() {
                       <optgroup label="Semana actual">
                         {prospectGroups.current.map((option) => (
                           <option key={option.id} value={option.id}>
-                            {option.nombre || option.email} · {option.email}
+                            {(option.nombre && option.nombre.trim()) || 'Sin nombre'} · {(option.email && option.email.trim()) || 'Sin correo'}
                           </option>
                         ))}
                       </optgroup>
@@ -784,13 +762,13 @@ export default function AgendaPage() {
                       <optgroup label="Semanas anteriores">
                         {prospectGroups.previous.map((option) => (
                           <option key={option.id} value={option.id}>
-                            {option.nombre || option.email} · {option.email}
+                            {(option.nombre && option.nombre.trim()) || 'Sin nombre'} · {(option.email && option.email.trim()) || 'Sin correo'}
                           </option>
                         ))}
                       </optgroup>
                     )}
                   </select>
-                  <div className="form-text">La lista incluye prospectos recientes y de semanas anteriores con correo registrado.</div>
+                  <div className="form-text">La lista incluye prospectos recientes y de semanas anteriores. Completa o corrige la información si hace falta.</div>
                   {prospectOptionsLoading && <div className="text-muted small mt-1">Cargando prospectos…</div>}
                   {prospectOptionsError && <div className="text-danger small mt-1">{prospectOptionsError}</div>}
                   {selectedProspect && (
