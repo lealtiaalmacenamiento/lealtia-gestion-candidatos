@@ -25,7 +25,7 @@ export async function GET() {
       legacy: boolean
     }
   }>
-
+//comentario para push
   for (const provider of PROVIDERS) {
     if (provider === 'zoom' || provider === 'teams') {
       const { settings, legacy, error } = provider === 'zoom'
