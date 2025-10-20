@@ -160,7 +160,7 @@ export default function ParametrosClient(){
   const loadAll = async () => {
     try {
       setLoading(true);
-  const [mes, efc, prods] = await Promise.all([getCedulaA1(), getEfc(), getProductoParametros()]);
+  const [mes, efc, prods] = await Promise.all([getCedulaA1(), getEfc(), getProductoParametros({ includeInactivos: true })]);
       setMesRows([...mes].sort((a,b)=>a.id - b.id));
       setEfcRows([...efc].sort((a,b)=>a.id - b.id));
   setProductos([...prods]);
@@ -366,12 +366,17 @@ export default function ParametrosClient(){
   } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) } finally { setSavingProdNew(false) }
   }
   const removeProd = async (id: string)=>{
-  const ok = await dialog.confirm(`¿Eliminar la variante de producto?`, { icon: 'exclamation-triangle-fill', confirmText: 'Eliminar' })
-  if(!ok) return
+    const ok = await dialog.confirm(`¿Inhabilitar la variante de producto?`, { icon: 'exclamation-triangle-fill', confirmText: 'Inhabilitar' })
+    if(!ok) return
     try {
-      await deleteProductoParametro(id)
-      setProductos(list=> list.filter(p=> p.id!==id))
-      setNotif({msg:'Producto eliminado', type:'success'})
+      const res = await deleteProductoParametro(id)
+      const data = res?.data
+      if (data) {
+        setProductos(list=> list.map(p=> p.id===data.id? data: p))
+      } else {
+        setProductos(list=> list.map(p=> p.id===id ? { ...p, activo: false } : p))
+      }
+      setNotif({msg:'Producto marcado como inactivo', type:'success'})
     } catch(e){ setNotif({msg: e instanceof Error? e.message: 'Error', type:'danger'}) }
   }
 
@@ -730,6 +735,7 @@ export default function ParametrosClient(){
                       <tr>
             <th>Producto</th>
             <th>Tipo</th>
+            <th>Estado</th>
             <th>Moneda</th>
             <th>Duración (años)</th>
             <th>Suma Asegurada (SA)</th>
@@ -748,11 +754,16 @@ export default function ParametrosClient(){
                       </tr>
                     </thead>
                     <tbody>
-                      {productos.length===0 && (<tr><td colSpan={16} className="text-center small">Sin variantes</td></tr>)}
+                      {productos.length===0 && (<tr><td colSpan={18} className="text-center small">Sin variantes</td></tr>)}
                       {productos.map(p=> (
-                        <tr key={p.id}>
+                        <tr key={p.id} className={p.activo === false ? 'table-secondary' : undefined}>
                           <td>{p.nombre_comercial}</td>
                           <td>{p.tipo_producto}</td>
+                          <td>
+                            <span className={`badge ${p.activo === false ? 'text-bg-secondary' : 'text-bg-success'}`}>
+                              {p.activo === false ? 'Inactivo' : 'Activo'}
+                            </span>
+                          </td>
                           <td>{p.moneda||''}</td>
                           <td>{p.duracion_anios??''}</td>
                           <td>{formatCondExpr(p)}</td>
@@ -768,7 +779,9 @@ export default function ParametrosClient(){
                           <td style={{whiteSpace:'nowrap'}}>
                             <>
                               <button type="button" className="btn btn-primary btn-sm me-1" onClick={()=>startEditProd(p)}>Editar</button>
-                              <button type="button" className="btn btn-outline-danger btn-sm" onClick={()=>removeProd(p.id)}>Eliminar</button>
+                              <button type="button" className="btn btn-outline-danger btn-sm" disabled={p.activo === false} onClick={()=>removeProd(p.id)}>
+                                {p.activo === false ? 'Inactivo' : 'Inactivar'}
+                              </button>
                             </>
                           </td>
                         </tr>

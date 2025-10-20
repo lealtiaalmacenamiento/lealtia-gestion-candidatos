@@ -28,13 +28,14 @@ export async function GET() {
     let puntos = 0
     let comisiones_mxn_total = 0
     if (self.id_auth) {
-      const cc = await supabase.from('clientes').select('asesor_id').eq('asesor_id', self.id_auth)
+      const cc = await supabase.from('clientes').select('asesor_id').eq('asesor_id', self.id_auth).eq('activo', true)
       if (cc.error) return NextResponse.json({ error: cc.error.message }, { status: 500 })
       clientes_count = (cc.data || []).length
       const pj = await supabase
         .from('polizas')
-        .select('estatus, puntos_actuales, poliza_puntos_cache(base_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
+        .select('estatus, puntos_actuales, poliza_puntos_cache(base_factor,prima_anual_snapshot), clientes!inner(asesor_id,activo)')
         .eq('clientes.asesor_id', self.id_auth)
+        .eq('clientes.activo', true)
       if (pj.error) return NextResponse.json({ error: pj.error.message }, { status: 500 })
       for (const r of (pj.data as unknown as Array<{ estatus?: string|null; puntos_actuales: number|null; poliza_puntos_cache?: { base_factor?: number|null; prima_anual_snapshot?: number|null }|null; clientes: { asesor_id: string|null } }> | null) || []) {
         const add = typeof r.puntos_actuales === 'number' ? r.puntos_actuales : 0
@@ -89,10 +90,12 @@ export async function GET() {
     .from('clientes')
     .select('asesor_id')
     .not('asesor_id','is', null)
+    .eq('activo', true)
   // Sumar puntos_total por agente (desde poliza_puntos_cache join polizas -> clientes.asesor_id)
   const puntosJoinPromise = supabase
     .from('polizas')
-    .select('id, estatus, puntos_actuales, poliza_puntos_cache(base_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
+    .select('id, estatus, puntos_actuales, poliza_puntos_cache(base_factor,prima_anual_snapshot), clientes!inner(asesor_id,activo)')
+    .eq('clientes.activo', true)
 
   const metaPromise = supabase.from('agente_meta').select('usuario_id, fecha_conexion_text, objetivo')
   const [agentesRol, emailsCand, clientesCount, puntosJoin, metaRes] = await Promise.all([agentesRolPromise, emailsCandidatosPromise, clientesCountPromise, puntosJoinPromise, metaPromise])

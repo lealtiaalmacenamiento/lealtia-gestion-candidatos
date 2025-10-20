@@ -32,7 +32,8 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const body: CandidatoParcial = sanitizeCandidatoPayload(await req.json() as CandidatoParcial)
   // Normalizar email_agente (correo candidato) si viene
   if (typeof (body as any).email_agente === 'string') {
-    (body as any).email_agente = String((body as any).email_agente).trim().toLowerCase()
+    const trimmed = String((body as any).email_agente || '').trim().toLowerCase()
+    ;(body as any).email_agente = trimmed ? trimmed : null
   }
 
   const existenteData: CandidatoParcial = existente.data || {}

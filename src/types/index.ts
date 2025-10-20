@@ -172,6 +172,7 @@ export interface Prospecto {
   semana_iso: number
   nombre: string
   telefono?: string | null
+  email?: string | null
   notas?: string | null
   estado: ProspectoEstado
   // Ahora timestamp (ISO) con fecha y hora

@@ -64,6 +64,12 @@ export async function deleteCandidato(id: number): Promise<{ success: boolean }>
   return handleResponse<{ success: boolean }>(res)
 }
 
+/* ========= CLIENTES ========= */
+export async function deleteCliente(id: string): Promise<{ success: boolean; polizasAnuladas?: number; alreadyInactive?: boolean }> {
+  const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
+  return handleResponse<{ success: boolean; polizasAnuladas?: number; alreadyInactive?: boolean }>(res)
+}
+
 /* ========= USUARIOS ========= */
 export async function getUsuarios(): Promise<Usuario[]> {
   const res = await fetch('/api/usuarios')
@@ -94,9 +100,15 @@ export async function updateUsuario(id: number, payload: Partial<Usuario>): Prom
   return handleResponse<Usuario>(res)
 }
 
-export async function deleteUsuario(id: number): Promise<{ success: boolean }> {
-  const res = await fetch(`/api/usuarios/${id}`, { method: 'DELETE' })
-  return handleResponse<{ success: boolean }>(res)
+export interface DeleteUsuarioOptions { transferTo?: number }
+export async function deleteUsuario(id: number, options?: DeleteUsuarioOptions): Promise<{ success: boolean; stats?: Record<string, number>; warning?: string }> {
+  const fetchOptions: RequestInit = { method: 'DELETE' }
+  if (options?.transferTo) {
+    fetchOptions.headers = { 'Content-Type': 'application/json' }
+    fetchOptions.body = JSON.stringify({ transferTo: options.transferTo })
+  }
+  const res = await fetch(`/api/usuarios/${id}`, fetchOptions)
+  return handleResponse<{ success: boolean; stats?: Record<string, number>; warning?: string }>(res)
 }
 
 export async function resetPasswordUsuario(email: string): Promise<{ success: boolean }> {
@@ -197,8 +209,10 @@ export async function deleteAuditoria(id: number): Promise<{ success: boolean }>
 }
 
 /* ========= PRODUCTO PARAMETROS (Fase 3) ========= */
-export async function getProductoParametros(): Promise<ProductoParametro[]> {
-  const res = await fetch('/api/producto_parametros?debug=1', { cache: 'no-store' })
+export async function getProductoParametros(options?: { includeInactivos?: boolean }): Promise<ProductoParametro[]> {
+  const params = new URLSearchParams({ debug: '1' })
+  if (options?.includeInactivos) params.set('include_inactivos', '1')
+  const res = await fetch(`/api/producto_parametros?${params.toString()}`, { cache: 'no-store' })
   return handleResponse<ProductoParametro[]>(res)
 }
 
@@ -216,9 +230,9 @@ export async function updateProductoParametro(id: string, payload: Partial<Produ
   return handleResponse<ProductoParametro>(res)
 }
 
-export async function deleteProductoParametro(id: string): Promise<{ success: boolean }> {
+export async function deleteProductoParametro(id: string): Promise<{ success: boolean; data?: ProductoParametro }> {
   const res = await fetch(`/api/producto_parametros/${id}?debug=1`, { method: 'DELETE' })
-  return handleResponse<{ success: boolean }>(res)
+  return handleResponse<{ success: boolean; data?: ProductoParametro }>(res)
 }
 
 /* ========= AGENDA (Fase 4) ========= */

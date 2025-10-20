@@ -46,6 +46,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim().toLowerCase()
   const clienteId = (url.searchParams.get('cliente_id') || '').trim()
+  const includeClientesInactivos = url.searchParams.get('include_clientes_inactivos') === '1'
   const role = (usuario?.rol || '').toString().trim().toLowerCase()
   const isSuper = ['superusuario','super_usuario','supervisor','admin','root'].includes(role)
 
@@ -54,15 +55,16 @@ export async function GET(req: Request) {
       const admin = getServiceClient()
       let sel = admin
     .from('polizas')
-  .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot)')
+  .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(id,activo)')
         .order('fecha_alta_sistema', { ascending: false })
         .limit(100)
+  if (!includeClientesInactivos) sel = sel.eq('clientes.activo', true)
   if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,producto_parametros.nombre_comercial.ilike.%${q}%`)
       if (clienteId) sel = sel.eq('cliente_id', clienteId)
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // map join + computed fields
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null; clientes?: { activo?: boolean | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
@@ -118,7 +120,7 @@ export async function GET(req: Request) {
   const admin = getServiceClient()
   let sel = admin
     .from('polizas')
-    .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(asesor_id)')
+    .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(asesor_id,activo)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
   if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,producto_parametros.nombre_comercial.ilike.%${q}%`)
@@ -131,11 +133,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   }
   sel = sel.eq('clientes.asesor_id', asesorId)
+  if (!includeClientesInactivos) sel = sel.eq('clientes.activo', true)
 
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // quitar campo join anidado
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null; clientes?: { activo?: boolean | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null

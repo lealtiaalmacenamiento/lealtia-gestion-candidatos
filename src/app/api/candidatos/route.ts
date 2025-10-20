@@ -156,7 +156,11 @@ export async function POST(req: Request) {
   // 2) Insertar candidato
   normalizeDateFields(body)
   // aseguramos que email_agente se guarde normalizado
-  if (emailAgente) body.email_agente = emailAgente
+  if (emailAgente) {
+    body.email_agente = emailAgente
+  } else {
+    body.email_agente = null
+  }
   const { data, error } = await supabase.from('candidatos').insert([body]).select().single()
   if (error) return NextResponse.json({ error: error.message, _agente_meta: agenteMeta }, { status: 500 })
 
