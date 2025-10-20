@@ -13,6 +13,7 @@ import {
   searchAgendaProspectos
 } from '@/lib/api'
 import type { AgendaCita, AgendaDeveloper, AgendaSlotsResponse, AgendaProspectoOption, AgendaPlanificacionSummary } from '@/types'
+import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
@@ -131,15 +132,73 @@ export default function AgendaPage() {
   const [slotsError, setSlotsError] = useState<string | null>(null)
 
   const [toast, setToast] = useState<ToastState>(null)
-  const [prospectSearchQuery, setProspectSearchQuery] = useState('')
-  const [prospectSearchResults, setProspectSearchResults] = useState<AgendaProspectoOption[]>([])
-  const [prospectSearchLoading, setProspectSearchLoading] = useState(false)
-  const [prospectSearchError, setProspectSearchError] = useState<string | null>(null)
+  const [prospectOptions, setProspectOptions] = useState<AgendaProspectoOption[]>([])
+  const [prospectOptionsLoading, setProspectOptionsLoading] = useState(false)
+  const [prospectOptionsError, setProspectOptionsError] = useState<string | null>(null)
   const [selectedProspect, setSelectedProspect] = useState<AgendaProspectoOption | null>(null)
+  const [showConnectModal, setShowConnectModal] = useState(false)
   const selectedAgente = useMemo(() => {
     if (!form.agenteId) return null
     return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
   }, [developers, form.agenteId])
+  const currentWeekInfo = useMemo(() => obtenerSemanaIso(), [])
+  const availableProviders = useMemo(() => {
+    if (!selectedAgente) return [] as Array<{ value: AgendaFormState['meetingProvider']; label: string }>
+    const providers: Array<{ value: AgendaFormState['meetingProvider']; label: string }> = []
+    if (selectedAgente.tokens.includes('google')) {
+      providers.push({ value: 'google_meet', label: 'Google Meet' })
+    }
+    if (selectedAgente.tokens.includes('zoom')) {
+      providers.push({ value: 'zoom', label: 'Zoom personal' })
+    }
+    if (selectedAgente.tokens.includes('teams')) {
+      providers.push({ value: 'teams', label: 'Microsoft Teams (manual)' })
+    }
+    return providers
+  }, [selectedAgente])
+  const prospectGroups = useMemo(() => {
+    const groups = {
+      current: [] as AgendaProspectoOption[],
+      previous: [] as AgendaProspectoOption[]
+    }
+    for (const option of prospectOptions) {
+      if (option.anio === currentWeekInfo.anio && option.semana_iso === currentWeekInfo.semana) {
+        groups.current.push(option)
+      } else {
+        groups.previous.push(option)
+      }
+    }
+    const compare = (a: AgendaProspectoOption, b: AgendaProspectoOption) => {
+      const nameA = (a.nombre || '').toLowerCase()
+      const nameB = (b.nombre || '').toLowerCase()
+      if (nameA && nameB && nameA !== nameB) return nameA.localeCompare(nameB)
+      return a.id - b.id
+    }
+    groups.current.sort(compare)
+    groups.previous.sort(compare)
+    return groups
+  }, [prospectOptions, currentWeekInfo])
+
+  useEffect(() => {
+    if (!selectedAgente) return
+    if (availableProviders.length === 0) {
+      setForm((prev) => {
+        if (prev.meetingProvider === 'google_meet' && prev.generarEnlace === false) {
+          return prev
+        }
+        return { ...prev, meetingProvider: 'google_meet', generarEnlace: false }
+      })
+      return
+    }
+    if (!availableProviders.some((provider) => provider.value === form.meetingProvider)) {
+      const nextProvider = availableProviders[0]
+      setForm((prev) => ({
+        ...prev,
+        meetingProvider: nextProvider.value,
+        generarEnlace: nextProvider.value === 'google_meet' && selectedAgente.googleMeetAutoEnabled !== false
+      }))
+    }
+  }, [availableProviders, form.meetingProvider, selectedAgente])
 
   useEffect(() => {
     if (!authorized) return
@@ -245,11 +304,56 @@ export default function AgendaPage() {
   }, [developers, form.agenteId, isAgente, actorId])
 
   useEffect(() => {
+    if (!isAgente || actorId == null) {
+      setShowConnectModal(false)
+      return
+    }
+    const own = developers.find((dev) => dev.id === actorId)
+    if (!own) return
+    setShowConnectModal(!own.tokens.includes('google'))
+  }, [developers, isAgente, actorId])
+
+  useEffect(() => {
+    if (!showConnectModal) return
+    if (typeof document === 'undefined') return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [showConnectModal])
+
+  useEffect(() => {
+    let cancelled = false
     setSelectedProspect(null)
-    setProspectSearchResults([])
-    setProspectSearchQuery('')
-    setProspectSearchError(null)
     setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
+    setProspectOptions([])
+    setProspectOptionsError(null)
+    if (!form.agenteId) {
+      setProspectOptionsLoading(false)
+      return
+    }
+    setProspectOptionsLoading(true)
+    const agenteNumeric = Number(form.agenteId)
+    searchAgendaProspectos({ agenteId: agenteNumeric, limit: 50, includeConCita: true })
+      .then((results) => {
+        if (cancelled) return
+        setProspectOptions(results)
+        if (!results.length) {
+          setProspectOptionsError('No se encontraron prospectos con correo para este agente. Revisa la semana actual y anteriores en Prospectos.')
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setProspectOptionsError(err instanceof Error ? err.message : 'No se pudieron cargar los prospectos')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setProspectOptionsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [form.agenteId])
 
   async function loadDevelopers() {
@@ -307,40 +411,8 @@ export default function AgendaPage() {
     }
   }
 
-  async function handleSearchProspects() {
-    setProspectSearchError(null)
-    if (!form.agenteId) {
-      setProspectSearchError('Selecciona un agente antes de buscar prospectos')
-      return
-    }
-    const query = prospectSearchQuery.trim()
-    if (query.length < 2) {
-      setProspectSearchError('Escribe al menos 2 caracteres para buscar')
-      return
-    }
-    setProspectSearchLoading(true)
-    try {
-      const results = await searchAgendaProspectos({
-        agenteId: Number(form.agenteId),
-        query,
-        limit: 12,
-        includeConCita: true
-      })
-      setProspectSearchResults(results)
-      if (!results.length) {
-        setProspectSearchError('Sin coincidencias para el criterio ingresado')
-      }
-    } catch (err) {
-      setProspectSearchResults([])
-      setProspectSearchError(err instanceof Error ? err.message : 'No se pudo buscar prospectos')
-    } finally {
-      setProspectSearchLoading(false)
-    }
-  }
-
   function handleSelectProspect(option: AgendaProspectoOption) {
     setSelectedProspect(option)
-    setProspectSearchError(null)
     setForm((prev) => ({
       ...prev,
       prospectoId: String(option.id),
@@ -349,12 +421,27 @@ export default function AgendaPage() {
     }))
   }
 
+  function handleProspectSelectChange(value: string) {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      handleClearProspect()
+      return
+    }
+    const match = prospectOptions.find((option) => String(option.id) === trimmed)
+    if (match) {
+      handleSelectProspect(match)
+    } else {
+      handleClearProspect()
+    }
+  }
+
   function handleClearProspect() {
     setSelectedProspect(null)
-    setProspectSearchResults([])
-    setProspectSearchError(null)
-    setProspectSearchQuery('')
     setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
+  }
+
+  function handleConnectModalAction() {
+    window.location.assign('/integraciones')
   }
 
   async function handleCreateCita(e: React.FormEvent<HTMLFormElement>) {
@@ -375,6 +462,28 @@ export default function AgendaPage() {
     }
     if (!form.generarEnlace && !form.meetingUrl.trim()) {
       setToast({ type: 'error', message: 'Capture un enlace de reunión o activa la generación automática' })
+      return
+    }
+
+    if (!availableProviders.find((provider) => provider.value === form.meetingProvider)) {
+      setToast({ type: 'error', message: 'El agente seleccionado no tiene configurado el proveedor elegido. Revisa las integraciones.' })
+      return
+    }
+
+    if (!form.prospectoId.trim()) {
+      setToast({ type: 'error', message: 'Selecciona un prospecto existente antes de agendar.' })
+      return
+    }
+    if (!form.prospectoNombre.trim()) {
+      setToast({ type: 'error', message: 'El prospecto seleccionado no tiene nombre registrado. Actualiza el prospecto antes de agendar.' })
+      return
+    }
+    if (!form.prospectoEmail.trim()) {
+      setToast({ type: 'error', message: 'El prospecto seleccionado debe tener correo electrónico registrado.' })
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.prospectoEmail.trim())) {
+      setToast({ type: 'error', message: 'El correo del prospecto es inválido.' })
       return
     }
 
@@ -404,9 +513,6 @@ export default function AgendaPage() {
       await createAgendaCita(payload)
       setToast({ type: 'success', message: 'Cita creada y notificada' })
       setSelectedProspect(null)
-      setProspectSearchResults([])
-      setProspectSearchQuery('')
-      setProspectSearchError(null)
       const next = initialFormState()
       next.agenteId = form.agenteId
       next.supervisorId = form.supervisorId
@@ -415,6 +521,12 @@ export default function AgendaPage() {
       next.prospectoEmail = ''
       setForm(next)
       setSlots(null)
+      if (form.agenteId) {
+        try {
+          const refreshed = await searchAgendaProspectos({ agenteId: Number(form.agenteId), limit: 50, includeConCita: true })
+          setProspectOptions(refreshed)
+        } catch {}
+      }
       await loadCitas()
     } catch (err) {
       setToast({ type: 'error', message: err instanceof Error ? err.message : 'No se pudo crear la cita' })
@@ -544,12 +656,23 @@ export default function AgendaPage() {
                     className="form-select form-select-sm"
                     value={form.meetingProvider}
                     onChange={(e) => setForm((prev) => ({ ...prev, meetingProvider: e.target.value as AgendaFormState['meetingProvider'] }))}
+                    disabled={availableProviders.length === 0}
                   >
-                    <option value="google_meet">Google Meet</option>
-                    <option value="zoom">Zoom personal</option>
-                    <option value="teams">Microsoft Teams (manual)</option>
+                    {availableProviders.length === 0 && <option value="google_meet">Sin proveedores configurados</option>}
+                    {availableProviders.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
+                {selectedAgente && availableProviders.length === 0 && (
+                  <div className="col-12">
+                    <div className="alert alert-warning small mb-0">
+                      Este usuario no tiene integraciones activas para agendar. Ve a <strong>Integraciones</strong> para conectar Google Calendar o guardar enlaces personales.
+                    </div>
+                  </div>
+                )}
                 <div className="col-md-6">
                   <label className="form-label small">Generar enlace automáticamente</label>
                   <div className="form-check form-switch">
@@ -634,79 +757,52 @@ export default function AgendaPage() {
 
                 <div className="col-12">
                   <div className="d-flex justify-content-between align-items-center">
-                    <label className="form-label small mb-0">Buscar prospecto existente (opcional)</label>
+                    <label className="form-label small mb-0">Prospecto *</label>
                     {selectedProspect && (
                       <button type="button" className="btn btn-link btn-sm p-0" onClick={handleClearProspect}>
                         Quitar selección
                       </button>
                     )}
                   </div>
-                  <div className="input-group input-group-sm">
-                    <input
-                      className="form-control"
-                      placeholder="Nombre, email o teléfono"
-                      value={prospectSearchQuery}
-                      onChange={(e) => setProspectSearchQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          handleSearchProspects().catch(() => {})
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => handleSearchProspects().catch(() => {})}
-                      disabled={prospectSearchLoading}
-                    >
-                      {prospectSearchLoading ? 'Buscando…' : 'Buscar'}
-                    </button>
-                  </div>
-                  <div className="form-text">Los resultados se filtran por el agente seleccionado.</div>
-                  {prospectSearchError && <div className="text-danger small mt-1">{prospectSearchError}</div>}
+                  <select
+                    className="form-select form-select-sm"
+                    value={form.prospectoId}
+                    onChange={(e) => handleProspectSelectChange(e.target.value)}
+                    disabled={prospectOptionsLoading || !prospectOptions.length}
+                  >
+                    <option value="">Selecciona un prospecto</option>
+                    {prospectGroups.current.length > 0 && (
+                      <optgroup label="Semana actual">
+                        {prospectGroups.current.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.nombre || option.email} · {option.email}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {prospectGroups.previous.length > 0 && (
+                      <optgroup label="Semanas anteriores">
+                        {prospectGroups.previous.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.nombre || option.email} · {option.email}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <div className="form-text">La lista incluye prospectos recientes y de semanas anteriores con correo registrado.</div>
+                  {prospectOptionsLoading && <div className="text-muted small mt-1">Cargando prospectos…</div>}
+                  {prospectOptionsError && <div className="text-danger small mt-1">{prospectOptionsError}</div>}
                   {selectedProspect && (
                     <div className="alert alert-success small mt-2 mb-0">
                       <div className="d-flex flex-column">
                         <span className="fw-semibold">{selectedProspect.nombre || 'Sin nombre registrado'}</span>
                         <span>{selectedProspect.email || 'Sin correo'}</span>
                         <span className="text-muted">Estado: {formatProspectEstado(selectedProspect.estado)}</span>
+                        {selectedProspect.fecha_cita && (
+                          <span className="text-muted">Última cita: {formatDateTime(selectedProspect.fecha_cita)}</span>
+                        )}
                       </div>
-                    </div>
-                  )}
-                  {!prospectSearchLoading && prospectSearchResults.length > 0 && (
-                    <div className="table-responsive mt-2">
-                      <table className="table table-sm table-hover align-middle mb-0">
-                        <thead>
-                          <tr>
-                            <th>Prospecto</th>
-                            <th>Correo</th>
-                            <th>Estado</th>
-                            <th>Última cita</th>
-                            <th className="text-end">&nbsp;</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {prospectSearchResults.map((option) => (
-                            <tr key={option.id}>
-                              <td>
-                                <div className="fw-semibold small">{option.nombre || 'Sin nombre'}</div>
-                                <div className="text-muted small">ID #{option.id}</div>
-                              </td>
-                              <td className="small">{option.email || 'Sin correo'}</td>
-                              <td>
-                                <span className="badge text-bg-light border small">{formatProspectEstado(option.estado)}</span>
-                              </td>
-                              <td className="small">{option.fecha_cita ? formatDateTime(option.fecha_cita) : 'Sin cita'}</td>
-                              <td className="text-end">
-                                <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => handleSelectProspect(option)}>
-                                  Usar
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
                     </div>
                   )}
                 </div>
@@ -714,22 +810,24 @@ export default function AgendaPage() {
                 <input type="hidden" value={form.prospectoId} readOnly />
 
                 <div className="col-md-6">
-                  <label className="form-label small">Nombre del prospecto</label>
+                  <label className="form-label small">Nombre del prospecto *</label>
                   <input
                     className="form-control form-control-sm"
                     value={form.prospectoNombre}
                     onChange={(e) => setForm((prev) => ({ ...prev, prospectoNombre: e.target.value }))}
-                    placeholder="Opcional"
+                    placeholder="Selecciona un prospecto"
+                    required
                   />
                 </div>
                 <div className="col-md-6">
-                  <label className="form-label small">Correo del prospecto</label>
+                  <label className="form-label small">Correo del prospecto *</label>
                   <input
                     className="form-control form-control-sm"
                     value={form.prospectoEmail}
                     onChange={(e) => setForm((prev) => ({ ...prev, prospectoEmail: e.target.value }))}
-                    placeholder="Opcional"
+                    placeholder="correo@ejemplo.com"
                     type="email"
+                    required
                   />
                 </div>
 
@@ -890,6 +988,24 @@ export default function AgendaPage() {
         </div>
       </div>
       {toast && <Notification message={toast.message} type={toast.type === 'error' ? 'error' : 'success'} onClose={() => setToast(null)} />}
+      {showConnectModal && (
+        <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex align-items-center justify-content-center" style={{ zIndex: 1050 }}>
+          <div className="bg-white rounded shadow p-4" role="dialog" aria-modal="true" style={{ maxWidth: 420, width: '90%' }}>
+            <h5 className="fw-semibold">Conecta Google Calendar</h5>
+            <p className="small mb-3">
+              Para usar la agenda interna necesitas conectar tu calendario de Google desde el módulo <strong>Integraciones</strong>. Una vez vinculado podrás generar enlaces automáticos.
+            </p>
+            <div className="d-flex justify-content-end gap-2">
+              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setShowConnectModal(false)}>
+                Recordar más tarde
+              </button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleConnectModalAction}>
+                Ir a Integraciones
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </BasePage>
   )
 }
