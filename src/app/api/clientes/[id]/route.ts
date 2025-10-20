@@ -5,8 +5,9 @@ import { logAccion } from '@/lib/logger'
 
 const SUPER_ROLES = new Set(['superusuario', 'super_usuario', 'supervisor', 'admin', 'root'])
 
-export async function DELETE(_req: Request, context: { params: { id: string } }) {
-  const clienteId = (context.params?.id || '').trim()
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params
+  const clienteId = (id || '').trim()
   if (!clienteId) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
 
   const usuario = await getUsuarioSesion()
@@ -66,8 +67,12 @@ export async function DELETE(_req: Request, context: { params: { id: string } })
     await logAccion('inactivacion_cliente', {
       usuario: usuario.email,
       tabla_afectada: 'clientes',
-      id_registro: (updated as { id: string }).id,
-      snapshot: { cliente_code: (updated as { cliente_code?: string | null }).cliente_code || null, polizasAnuladas: 0 }
+      id_registro: null,
+      snapshot: {
+        cliente_id: (updated as { id: string }).id,
+        cliente_code: (updated as { cliente_code?: string | null }).cliente_code || null,
+        polizasAnuladas: 0
+      }
     })
   } catch {
     // no bloquear por fallo de auditoría
