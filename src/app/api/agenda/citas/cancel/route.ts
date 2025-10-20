@@ -5,6 +5,7 @@ import { logAccion } from '@/lib/logger'
 import { buildCitaCancelacionEmail, sendMail } from '@/lib/mailer'
 import { cancelRemoteMeeting } from '@/lib/agendaProviders'
 import type { MeetingProvider } from '@/types'
+import { detachPlanificacionCita } from '../planificacionSync'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
     try {
       await supabase
         .from('prospectos')
-        .update({ cita_creada: false, fecha_cita: null })
+        .update({ cita_creada: false, fecha_cita: null, estado: 'seguimiento' })
         .eq('id', cita.prospecto_id)
     } catch {}
   }
@@ -137,8 +138,9 @@ export async function POST(req: Request) {
     } catch {}
   }
 
-  let agenteRecord: { email: string; nombre: string | null; id_auth: string | null } | null = null
-  let supervisorRecord: { email: string; nombre: string | null; id_auth: string | null } | null = null
+  let agenteRecord: { id: number | null; email: string; nombre: string | null; id_auth: string | null } | null = null
+  let supervisorRecord: { id: number | null; email: string; nombre: string | null; id_auth: string | null } | null = null
+  let agenteNumericId: number | null = null
   try {
     const ids = [cita.agente_id, cita.supervisor_id].filter((value): value is string => Boolean(value))
     if (ids.length === 0) {
@@ -146,17 +148,29 @@ export async function POST(req: Request) {
     }
     const { data: usuarios } = await supabase
       .from('usuarios')
-      .select('email,nombre,id_auth')
+      .select('id,email,nombre,id_auth')
       .in('id_auth', ids)
 
     for (const user of usuarios || []) {
       if (user.id_auth === cita.agente_id) {
-        agenteRecord = { email: user.email, nombre: user.nombre ?? null, id_auth: user.id_auth ?? null }
+        agenteRecord = { id: user.id ?? null, email: user.email, nombre: user.nombre ?? null, id_auth: user.id_auth ?? null }
+        if (typeof user.id === 'number') agenteNumericId = user.id
       } else if (cita.supervisor_id && user.id_auth === cita.supervisor_id) {
-        supervisorRecord = { email: user.email, nombre: user.nombre ?? null, id_auth: user.id_auth ?? null }
+        supervisorRecord = { id: user.id ?? null, email: user.email, nombre: user.nombre ?? null, id_auth: user.id_auth ?? null }
       }
     }
   } catch {}
+
+  if (agenteNumericId != null) {
+    try {
+      await detachPlanificacionCita({
+        supabase,
+        agenteId: agenteNumericId,
+        inicioIso: cita.inicio,
+        citaId
+      })
+    } catch {}
+  }
 
   if (agenteRecord?.email) {
     const ccList = [supervisorRecord?.email, actor.email].filter((value): value is string => Boolean(value && value !== agenteRecord?.email))

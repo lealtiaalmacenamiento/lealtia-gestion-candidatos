@@ -9,15 +9,39 @@ import {
   createAgendaCita,
   cancelAgendaCita,
   getAgendaCitas,
-  getAgendaSlots
+  getAgendaSlots,
+  searchAgendaProspectos
 } from '@/lib/api'
-import type { AgendaCita, AgendaDeveloper, AgendaSlotsResponse } from '@/types'
+import type { AgendaCita, AgendaDeveloper, AgendaSlotsResponse, AgendaProspectoOption, AgendaPlanificacionSummary } from '@/types'
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
   zoom: 'Zoom personal',
   teams: 'Microsoft Teams (manual)'
 }
+
+const slotSourceLabels: Record<'calendar' | 'agenda' | 'planificacion', string> = {
+  calendar: 'Calendario conectado',
+  agenda: 'Cita interna',
+  planificacion: 'Planificación semanal'
+}
+
+const ISO_WEEK_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+const prospectEstadoLabels: Record<string, string> = {
+  pendiente: 'Pendiente',
+  seguimiento: 'Seguimiento',
+  'con_cita': 'Con cita',
+  descartado: 'Descartado',
+  'ya_es_cliente': 'Cliente'
+}
+
+function formatProspectEstado(estado?: string | null): string {
+  if (!estado) return 'Sin estado'
+  return prospectEstadoLabels[estado] || estado
+}
+
+type PlanRow = { plan: AgendaPlanificacionSummary; block: AgendaPlanificacionSummary['bloques'][number] }
 
 type ToastState = { type: 'success' | 'error'; message: string } | null
 
@@ -31,6 +55,7 @@ type AgendaFormState = {
   generarEnlace: boolean
   prospectoId: string
   prospectoNombre: string
+  prospectoEmail: string
   notas: string
 }
 
@@ -56,6 +81,7 @@ function initialFormState(): AgendaFormState {
     generarEnlace: true,
     prospectoId: '',
     prospectoNombre: '',
+    prospectoEmail: '',
     notas: ''
   }
 }
@@ -105,6 +131,11 @@ export default function AgendaPage() {
   const [slotsError, setSlotsError] = useState<string | null>(null)
 
   const [toast, setToast] = useState<ToastState>(null)
+  const [prospectSearchQuery, setProspectSearchQuery] = useState('')
+  const [prospectSearchResults, setProspectSearchResults] = useState<AgendaProspectoOption[]>([])
+  const [prospectSearchLoading, setProspectSearchLoading] = useState(false)
+  const [prospectSearchError, setProspectSearchError] = useState<string | null>(null)
+  const [selectedProspect, setSelectedProspect] = useState<AgendaProspectoOption | null>(null)
   const selectedAgente = useMemo(() => {
     if (!form.agenteId) return null
     return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
@@ -142,6 +173,30 @@ export default function AgendaPage() {
     })
   }, [form.meetingProvider, selectedAgente])
 
+  useEffect(() => {
+    if (form.meetingProvider !== 'teams') return
+    const manualUrl = selectedAgente?.teamsManual?.meetingUrl || ''
+    if (!manualUrl) return
+    setForm((prev) => {
+      if (prev.meetingProvider !== 'teams') return prev
+      const trimmed = prev.meetingUrl.trim()
+      if (trimmed === manualUrl) {
+        return prev
+      }
+      if (trimmed.length > 0 && trimmed !== manualUrl) {
+        return prev
+      }
+      return { ...prev, meetingUrl: manualUrl }
+    })
+  }, [form.meetingProvider, selectedAgente])
+
+  useEffect(() => {
+    if (!selectedAgente) return
+    if (selectedAgente.googleMeetAutoEnabled === false && form.generarEnlace) {
+      setForm((prev) => ({ ...prev, generarEnlace: false }))
+    }
+  }, [selectedAgente, form.generarEnlace])
+
   const developerMap = useMemo(() => {
     const map = new Map<number, AgendaDeveloper>()
     developers.forEach((dev) => map.set(dev.id, dev))
@@ -154,6 +209,23 @@ export default function AgendaPage() {
     }
     return developers.filter((dev) => dev.activo)
   }, [developers, isAgente, actorId])
+
+  const planRows = useMemo<PlanRow[]>(() => {
+    if (!slots?.planificaciones?.length) return []
+    const rows: PlanRow[] = slots.planificaciones.flatMap((plan) =>
+      (plan.bloques || [])
+        .filter((block) => block.activity === 'CITAS')
+        .map((block) => ({ plan, block }))
+    )
+    return rows.sort((a, b) => {
+      const aTs = a.block.fecha ? new Date(a.block.fecha).getTime() : Number.POSITIVE_INFINITY
+      const bTs = b.block.fecha ? new Date(b.block.fecha).getTime() : Number.POSITIVE_INFINITY
+      if (Number.isFinite(aTs) && Number.isFinite(bTs)) return aTs - bTs
+      if (Number.isFinite(aTs)) return -1
+      if (Number.isFinite(bTs)) return 1
+      return (a.block.day ?? 0) - (b.block.day ?? 0)
+    })
+  }, [slots])
 
   useEffect(() => {
     if (developers.length === 0) return
@@ -171,6 +243,14 @@ export default function AgendaPage() {
       }
     }
   }, [developers, form.agenteId, isAgente, actorId])
+
+  useEffect(() => {
+    setSelectedProspect(null)
+    setProspectSearchResults([])
+    setProspectSearchQuery('')
+    setProspectSearchError(null)
+    setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
+  }, [form.agenteId])
 
   async function loadDevelopers() {
     try {
@@ -227,6 +307,56 @@ export default function AgendaPage() {
     }
   }
 
+  async function handleSearchProspects() {
+    setProspectSearchError(null)
+    if (!form.agenteId) {
+      setProspectSearchError('Selecciona un agente antes de buscar prospectos')
+      return
+    }
+    const query = prospectSearchQuery.trim()
+    if (query.length < 2) {
+      setProspectSearchError('Escribe al menos 2 caracteres para buscar')
+      return
+    }
+    setProspectSearchLoading(true)
+    try {
+      const results = await searchAgendaProspectos({
+        agenteId: Number(form.agenteId),
+        query,
+        limit: 12,
+        includeConCita: true
+      })
+      setProspectSearchResults(results)
+      if (!results.length) {
+        setProspectSearchError('Sin coincidencias para el criterio ingresado')
+      }
+    } catch (err) {
+      setProspectSearchResults([])
+      setProspectSearchError(err instanceof Error ? err.message : 'No se pudo buscar prospectos')
+    } finally {
+      setProspectSearchLoading(false)
+    }
+  }
+
+  function handleSelectProspect(option: AgendaProspectoOption) {
+    setSelectedProspect(option)
+    setProspectSearchError(null)
+    setForm((prev) => ({
+      ...prev,
+      prospectoId: String(option.id),
+      prospectoNombre: option.nombre || '',
+      prospectoEmail: option.email || ''
+    }))
+  }
+
+  function handleClearProspect() {
+    setSelectedProspect(null)
+    setProspectSearchResults([])
+    setProspectSearchError(null)
+    setProspectSearchQuery('')
+    setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
+  }
+
   async function handleCreateCita(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!form.agenteId) {
@@ -265,6 +395,7 @@ export default function AgendaPage() {
       generarEnlace: form.generarEnlace,
       prospectoId: prospectoIdValue,
       prospectoNombre: form.prospectoNombre.trim() || null,
+      prospectoEmail: form.prospectoEmail.trim() || null,
       notas: form.notas.trim() || null
     }
 
@@ -272,11 +403,16 @@ export default function AgendaPage() {
     try {
       await createAgendaCita(payload)
       setToast({ type: 'success', message: 'Cita creada y notificada' })
+      setSelectedProspect(null)
+      setProspectSearchResults([])
+      setProspectSearchQuery('')
+      setProspectSearchError(null)
       const next = initialFormState()
       next.agenteId = form.agenteId
       next.supervisorId = form.supervisorId
       next.meetingProvider = form.meetingProvider
-      next.generarEnlace = form.meetingProvider === 'google_meet'
+      next.generarEnlace = form.meetingProvider === 'google_meet' && selectedAgente?.googleMeetAutoEnabled !== false
+      next.prospectoEmail = ''
       setForm(next)
       setSlots(null)
       await loadCitas()
@@ -322,7 +458,7 @@ export default function AgendaPage() {
                   Conecta tu calendario de Google desde el módulo <strong>Integraciones</strong> para generar enlaces de Google Meet automáticamente.
                 </p>
                 <p className="small mb-2">
-                  Ahí mismo puedes guardar tu enlace personal de Zoom para reutilizarlo al agendar. Si necesitas activar nuevos supervisores o permisos, contacta a un administrador.
+                  Ahí mismo puedes guardar tus enlaces personales de Zoom o Microsoft Teams para reutilizarlos al agendar. Si necesitas activar nuevos supervisores o permisos, contacta a un administrador.
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/integraciones')}>
                   Abrir integraciones
@@ -330,12 +466,12 @@ export default function AgendaPage() {
               </>
             ) : (
               <>
-                <h6 className="fw-semibold mb-2">Configuración de desarrolladores</h6>
+                <h6 className="fw-semibold mb-2">Configuración de agenda interna</h6>
                 <p className="small mb-2">
-                  La asignación de desarrolladores y la conexión con Google Meet viven en <strong>Parámetros &gt; Agenda interna</strong>.
+                  Marca a los usuarios como desarrolladores y gestiona supervisores desde <strong>Parámetros &gt; Agenda interna</strong>. Ahí mismo podrás ver quién tiene acceso a la agenda y ajustar sus permisos.
                 </p>
                 <p className="small mb-2">
-                  El enlace personal de Zoom se configura en <strong>Integraciones</strong>. Desde ahí puedes pedirles que guarden su sala para compartirla al agendar.
+                  Los enlaces personales de Zoom o Microsoft Teams se guardan en el módulo <strong>Integraciones</strong>. Pídeles a los desarrolladores que registren sus salas ahí para que se autocompleten al agendar.
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/parametros#agenda-interna')}>
                   Abrir parámetros
@@ -423,14 +559,22 @@ export default function AgendaPage() {
                       role="switch"
                       id="generarEnlaceSwitch"
                       checked={form.generarEnlace}
-                      disabled={form.meetingProvider !== 'google_meet'}
+                      disabled={form.meetingProvider !== 'google_meet' || selectedAgente?.googleMeetAutoEnabled === false}
                       onChange={(e) => setForm((prev) => ({ ...prev, generarEnlace: e.target.checked }))}
                     />
                     <label className="form-check-label small text-muted" htmlFor="generarEnlaceSwitch">
-                      Disponible solo para Google Meet
+                      Disponible solo para Google Meet con integración activa
                     </label>
                   </div>
                 </div>
+
+                {selectedAgente && selectedAgente.googleMeetAutoEnabled === false && (
+                  <div className="col-12">
+                    <div className="alert alert-warning small mb-0">
+                      Este agente tiene deshabilitada la generación automática de Google Meet. Captura el enlace manualmente o pide que enlace su calendario en Integraciones.
+                    </div>
+                  </div>
+                )}
 
                 {form.meetingProvider === 'zoom' && (
                   <div className="col-12">
@@ -458,9 +602,21 @@ export default function AgendaPage() {
 
                 {form.meetingProvider === 'teams' && (
                   <div className="col-12">
-                    <div className="alert alert-warning small mb-0">
-                      Inicia sesión en Microsoft Teams y copia el enlace de la reunión que quieras compartir. Pégalo en el campo de enlace manual.
-                    </div>
+                    {selectedAgente?.teamsManual?.meetingUrl ? (
+                      <div className="alert alert-secondary small mb-0">
+                        Se usará el enlace de Teams guardado para {selectedAgente.nombre || selectedAgente.email}. Puedes ajustarlo si necesitas una sala distinta.
+                        {selectedAgente.teamsManual?.meetingId && (
+                          <div className="mt-1">ID: {selectedAgente.teamsManual.meetingId}</div>
+                        )}
+                        {selectedAgente.teamsManual?.meetingPassword && (
+                          <div className="mt-1">Contraseña: {selectedAgente.teamsManual.meetingPassword}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="alert alert-warning small mb-0">
+                        Inicia sesión en Microsoft Teams y copia el enlace de la reunión que quieras compartir. Pégalo en el campo de enlace manual.
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -476,15 +632,87 @@ export default function AgendaPage() {
                   </div>
                 )}
 
-                <div className="col-md-6">
-                  <label className="form-label small">Prospecto (ID)</label>
-                  <input
-                    className="form-control form-control-sm"
-                    value={form.prospectoId}
-                    onChange={(e) => setForm((prev) => ({ ...prev, prospectoId: e.target.value }))}
-                    placeholder="Opcional"
-                  />
+                <div className="col-12">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <label className="form-label small mb-0">Buscar prospecto existente (opcional)</label>
+                    {selectedProspect && (
+                      <button type="button" className="btn btn-link btn-sm p-0" onClick={handleClearProspect}>
+                        Quitar selección
+                      </button>
+                    )}
+                  </div>
+                  <div className="input-group input-group-sm">
+                    <input
+                      className="form-control"
+                      placeholder="Nombre, email o teléfono"
+                      value={prospectSearchQuery}
+                      onChange={(e) => setProspectSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleSearchProspects().catch(() => {})
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={() => handleSearchProspects().catch(() => {})}
+                      disabled={prospectSearchLoading}
+                    >
+                      {prospectSearchLoading ? 'Buscando…' : 'Buscar'}
+                    </button>
+                  </div>
+                  <div className="form-text">Los resultados se filtran por el agente seleccionado.</div>
+                  {prospectSearchError && <div className="text-danger small mt-1">{prospectSearchError}</div>}
+                  {selectedProspect && (
+                    <div className="alert alert-success small mt-2 mb-0">
+                      <div className="d-flex flex-column">
+                        <span className="fw-semibold">{selectedProspect.nombre || 'Sin nombre registrado'}</span>
+                        <span>{selectedProspect.email || 'Sin correo'}</span>
+                        <span className="text-muted">Estado: {formatProspectEstado(selectedProspect.estado)}</span>
+                      </div>
+                    </div>
+                  )}
+                  {!prospectSearchLoading && prospectSearchResults.length > 0 && (
+                    <div className="table-responsive mt-2">
+                      <table className="table table-sm table-hover align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Prospecto</th>
+                            <th>Correo</th>
+                            <th>Estado</th>
+                            <th>Última cita</th>
+                            <th className="text-end">&nbsp;</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {prospectSearchResults.map((option) => (
+                            <tr key={option.id}>
+                              <td>
+                                <div className="fw-semibold small">{option.nombre || 'Sin nombre'}</div>
+                                <div className="text-muted small">ID #{option.id}</div>
+                              </td>
+                              <td className="small">{option.email || 'Sin correo'}</td>
+                              <td>
+                                <span className="badge text-bg-light border small">{formatProspectEstado(option.estado)}</span>
+                              </td>
+                              <td className="small">{option.fecha_cita ? formatDateTime(option.fecha_cita) : 'Sin cita'}</td>
+                              <td className="text-end">
+                                <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => handleSelectProspect(option)}>
+                                  Usar
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
+
+                <input type="hidden" value={form.prospectoId} readOnly />
+
                 <div className="col-md-6">
                   <label className="form-label small">Nombre del prospecto</label>
                   <input
@@ -492,6 +720,16 @@ export default function AgendaPage() {
                     value={form.prospectoNombre}
                     onChange={(e) => setForm((prev) => ({ ...prev, prospectoNombre: e.target.value }))}
                     placeholder="Opcional"
+                  />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small">Correo del prospecto</label>
+                  <input
+                    className="form-control form-control-sm"
+                    value={form.prospectoEmail}
+                    onChange={(e) => setForm((prev) => ({ ...prev, prospectoEmail: e.target.value }))}
+                    placeholder="Opcional"
+                    type="email"
                   />
                 </div>
 
@@ -527,14 +765,71 @@ export default function AgendaPage() {
                         const owner = developerMap.get(slot.usuarioId)
                         return (
                           <li key={`${slot.usuarioId}-${idx}`} className="list-group-item px-0">
-                            <div className="d-flex justify-content-between">
-                              <span>{owner?.nombre || owner?.email || `Usuario #${slot.usuarioId}`}</span>
-                              <span className="text-muted">{formatTimeRange(slot.inicio, slot.fin)}</span>
+                            <div className="d-flex justify-content-between align-items-start gap-3">
+                              <div>
+                                <div className="fw-semibold">{owner?.nombre || owner?.email || `Usuario #${slot.usuarioId}`}</div>
+                                <div className="small text-muted mt-1 d-flex flex-wrap align-items-center gap-2">
+                                  <span className="badge text-bg-light border">
+                                    {slotSourceLabels[slot.source as keyof typeof slotSourceLabels] || slot.source}
+                                  </span>
+                                  {slot.title && <span>{slot.title}</span>}
+                                  {slot.prospectoId != null && <span>Prospecto #{slot.prospectoId}</span>}
+                                  {slot.citaId != null && slot.source === 'agenda' && <span>Cita #{slot.citaId}</span>}
+                                  {slot.descripcion && <span className="text-break">{slot.descripcion}</span>}
+                                </div>
+                              </div>
+                              <div className="text-muted small text-end">
+                                {formatTimeRange(slot.inicio, slot.fin)}
+                                {slot.source === 'planificacion' && slot.planId != null && (
+                                  <div className="mt-1">Plan #{slot.planId}</div>
+                                )}
+                              </div>
                             </div>
                           </li>
                         )
                       })}
                     </ul>
+                  )}
+                  {planRows.length > 0 && (
+                    <div className="mt-3">
+                      <h6 className="small text-uppercase text-muted mb-2">Planificación semanal (CITAS)</h6>
+                      <div className="table-responsive">
+                        <table className="table table-sm align-middle mb-0">
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th>Horario</th>
+                              <th>Prospecto</th>
+                              <th>Estado</th>
+                              <th>Notas</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {planRows.map(({ plan, block }, idx) => (
+                              <tr key={`${plan.agenteId}-${plan.semanaIso}-${idx}-${block.fecha || block.hour}`}> 
+                                <td className="small">
+                                  {block.fecha ? formatDateTime(block.fecha) : ISO_WEEK_DAYS[block.day] || `Día ${block.day}`}
+                                </td>
+                                <td className="small">
+                                  {block.fecha && block.fin ? formatTimeRange(block.fecha, block.fin) : `${block.hour}:00`}
+                                </td>
+                                <td className="small">
+                                  {block.prospecto_nombre || 'Sin prospecto'}
+                                  {block.prospecto_id != null && <div className="text-muted">ID #{block.prospecto_id}</div>}
+                                </td>
+                                <td className="small">
+                                  <span className="badge text-bg-light border">{formatProspectEstado(block.prospecto_estado)}</span>
+                                </td>
+                                <td className="small">
+                                  <div>{block.notas || '—'}</div>
+                                  <div className="text-muted">Origen: {block.source === 'manual' ? 'Manual' : 'Automático'}</div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   )}
                   {slots.missingAuth.length > 0 && (
                     <div className="alert alert-warning mt-3 py-2 small">
@@ -575,6 +870,7 @@ export default function AgendaPage() {
                             </div>
                           )}
                           {cita.prospectoNombre && <div className="small">Prospecto: {cita.prospectoNombre}</div>}
+                          {cita.prospectoEmail && <div className="small text-muted">Correo prospecto: {cita.prospectoEmail}</div>}
                         </div>
                         <button
                           type="button"

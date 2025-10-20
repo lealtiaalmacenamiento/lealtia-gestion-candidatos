@@ -1,4 +1,4 @@
-import { Auditoria, Candidato, CedulaA1, Efc, Usuario, ProductoParametro, AgendaDeveloper, AgendaSlotsResponse, AgendaCita } from '@/types'
+import { Auditoria, Candidato, CedulaA1, Efc, Usuario, ProductoParametro, AgendaDeveloper, AgendaSlotsResponse, AgendaCita, AgendaProspectoOption } from '@/types'
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const data = await res.json()
@@ -278,6 +278,7 @@ export interface CreateAgendaCitaPayload {
   meetingUrl?: string | null
   externalEventId?: string | null
   prospectoNombre?: string | null
+  prospectoEmail?: string | null
   notas?: string | null
   generarEnlace?: boolean
 }
@@ -312,4 +313,16 @@ export async function getAgendaCitas(options?: { estado?: 'confirmada' | 'cancel
   const res = await fetch(qs ? `/api/agenda/citas?${qs}` : '/api/agenda/citas', { cache: 'no-store' })
   const data = await handleResponse<{ citas: AgendaCita[] }>(res)
   return data.citas
+}
+
+export async function searchAgendaProspectos(options?: { agenteId?: number; query?: string; limit?: number; includeConCita?: boolean }): Promise<AgendaProspectoOption[]> {
+  const params = new URLSearchParams()
+  if (options?.agenteId) params.set('agente_id', String(options.agenteId))
+  if (options?.query) params.set('q', options.query)
+  if (options?.limit) params.set('limit', String(options.limit))
+  if (options?.includeConCita) params.set('include_con_cita', '1')
+  const qs = params.toString()
+  const res = await fetch(qs ? `/api/agenda/prospectos?${qs}` : '/api/agenda/prospectos', { cache: 'no-store' })
+  const data = await handleResponse<{ prospectos: AgendaProspectoOption[] }>(res)
+  return data.prospectos
 }

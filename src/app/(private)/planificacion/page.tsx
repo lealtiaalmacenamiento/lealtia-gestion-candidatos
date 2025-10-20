@@ -50,21 +50,26 @@ export default function PlanificacionPage(){
     }
     if(plan){
       // Normalizar horas a 'HH'
-      plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
+      const normalizados = (plan.bloques||[]).map(b=> ({
+        ...b,
+        hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'),
+        origin: b.origin ? b.origin : 'manual'
+      }))
       // Si había cambios locales pendientes y este es un fetch forzado (post-guardado), mergeamos bloques manuales que aún no estén en remoto
       // Solo mergear manuales locales tras un guardado exitoso; evitar mezclar al cambiar de semana/agente
+      let bloquesConsolidados = normalizados
       if(force && trigger==='postsave' && data && data.bloques && data.bloques.length){
-        const remoteKeys = new Set(plan.bloques.map(b=> `${b.day}-${b.hour}-${b.activity}`))
+        const remoteKeys = new Set(normalizados.map(b=> `${b.day}-${b.hour}-${b.activity}`))
         for(const b of data.bloques){
           if(b.origin !== 'auto'){
             const k = `${b.day}-${b.hour}-${b.activity}`
-            if(!remoteKeys.has(k)) plan.bloques.push(b)
+            if(!remoteKeys.has(k)) bloquesConsolidados.push({ ...b, origin: b.origin ?? 'manual' })
           }
         }
       }
-  // Mantener solo bloques del servidor (o los locales si se está en flujo post-guardado con merge más arriba)
-  const manual = plan.bloques.filter(b=> b.origin !== 'auto')
-  plan = {...plan, bloques: manual}
+      // Ordenamos por día/hora para representación consistente
+      bloquesConsolidados = bloquesConsolidados.sort((a,b)=> a.day - b.day || a.hour.localeCompare(b.hour) || a.activity.localeCompare(b.activity))
+      plan = {...plan, bloques: bloquesConsolidados}
     }
   setData(plan)
   if(showLoading) setLoading(false)
@@ -105,7 +110,7 @@ export default function PlanificacionPage(){
 
   const upsertBloque=(b:BloquePlanificacion|null)=>{
     if(!data) return
-  const nuevos = data.bloques.filter(x=> !(x.day===modal?.day && x.hour===modal?.hour))
+  const nuevos = data.bloques.filter(x=> !(x.day===modal?.day && x.hour===modal?.hour && x.origin!=='auto'))
     if(b) nuevos.push(b)
   const updated = {...data,bloques:nuevos}
   setData(updated)
@@ -119,7 +124,7 @@ export default function PlanificacionPage(){
     return Array.from(set).sort()
   },[data])
   // Conteo de SMNYL para meta/progreso
-  const horasSmnyl = data?.bloques.filter(b=>b.activity==='SMNYL').length || 0
+  const horasSmnyl = data?.bloques.filter(b=> b.activity==='SMNYL' || b.activity==='CITAS').length || 0
   // Cálculo de "puedes ganar" = prima anual promedio * (porcentaje comisión/100) * bloques SMNYL
   const puedesGanar = (data?.prima_anual_promedio || 0) * ((data?.porcentaje_comision || 0) / 100) * horasSmnyl
 
@@ -198,16 +203,52 @@ export default function PlanificacionPage(){
               {horasPlan.map(h=> <tr key={h}> <th className="bg-light fw-normal">{h}:00</th>
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
-                  const color = blk? (blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark') : ''
-                  const label = blk? (blk.activity==='PROSPECCION'? 'Prospección':'Cita') : ''
+                  const isAuto = blk?.origin === 'auto'
                   const base=semanaDesdeNumero(anio, semana as number).inicio
                   // Construir fecha local evitando mezcla UTC/local
                   const cellDate = new Date(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()+day, Number(h), 0, 0, 0)
-                  const now = new Date()
-                  const isPast = cellDate.getTime() < now.getTime() - 60000
-                  const disabledCls = isPast ? ' opacity-50 position-relative' : ''
-                  const blockClick = isPast ? undefined : ()=>openModal(day,h,blk)
-                  return <td key={day} style={{cursor: isPast? 'not-allowed':'pointer', fontSize:'0.7rem'}} onClick={blockClick} className={color+disabledCls} title={isPast? 'Pasado' : label}>{label}{isPast && !label && <span style={{fontSize:'0.55rem'}}>—</span>}</td>
+                  const isPast = cellDate.getTime() < Date.now() - 60000
+                  const canEdit = !isPast && (!blk || !isAuto)
+                  const color = (()=>{
+                    if(!blk) return ''
+                    if(blk.activity==='PROSPECCION') return 'bg-primary text-white'
+                    if(blk.activity==='SMNYL') return 'bg-info text-dark'
+                    if(blk.activity==='CITAS') return blk.confirmada ? 'bg-success text-white' : 'bg-warning text-dark'
+                    return ''
+                  })()
+                  const titleParts: string[] = []
+                  if(blk){
+                    if(blk.activity==='PROSPECCION') titleParts.push('Prospección manual')
+                    if(blk.activity==='SMNYL') titleParts.push(`Cita manual${blk.confirmada ? ' confirmada' : ''}`.trim())
+                    if(blk.activity==='CITAS') titleParts.push(`Cita agenda${blk.confirmada ? ' confirmada' : ' por confirmar'}`)
+                    if(blk.prospecto_nombre) titleParts.push(`Prospecto: ${blk.prospecto_nombre}`)
+                    if(blk.prospecto_estado) titleParts.push(`Estado: ${blk.prospecto_estado}`)
+                    if(blk.notas) titleParts.push(`Notas: ${blk.notas}`)
+                  } else {
+                    titleParts.push(isPast? 'Horario en el pasado' : 'Vacío')
+                  }
+                  const cellTitle = titleParts.join('\n')
+                  const emptyPast = !blk && isPast
+                  const cellClass = [color, emptyPast ? 'opacity-50' : '', !canEdit && blk ? 'position-relative' : ''].filter(Boolean).join(' ')
+                  return <td key={day} style={{cursor: canEdit? 'pointer':'not-allowed', fontSize:'0.7rem'}} onClick={canEdit? ()=>openModal(day,h,blk): undefined} className={cellClass} title={cellTitle}>
+                    {blk ? (
+                      <div className="d-flex flex-column align-items-center gap-1 py-1" style={{minHeight:34}}>
+                        <span className="fw-semibold" style={{fontSize:'0.68rem'}}>
+                          {blk.activity==='PROSPECCION' && 'Prospección'}
+                          {blk.activity==='SMNYL' && (blk.confirmada ? 'Cita manual (confirmada)' : 'Cita manual')}
+                          {blk.activity==='CITAS' && (blk.confirmada ? 'Cita agenda (confirmada)' : 'Cita agenda')}
+                        </span>
+                        {blk.prospecto_nombre && <span className="text-wrap" style={{fontSize:'0.65rem'}}>{blk.prospecto_nombre}</span>}
+                        {blk.activity!=='PROSPECCION' && (
+                          <span className="badge rounded-pill bg-light text-dark" style={{fontSize:'0.55rem'}}>
+                            {blk.prospecto_estado ? blk.prospecto_estado : (blk.confirmada ? 'confirmada' : 'por confirmar')}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      emptyPast ? <span style={{fontSize:'0.55rem'}}>—</span> : null
+                    )}
+                  </td>
                 })}
               </tr>)}
             </tbody>
@@ -215,14 +256,20 @@ export default function PlanificacionPage(){
         </div>
         <div className="small text-muted mt-2 d-flex flex-wrap gap-3">
           <span><span className="badge bg-primary">Prospección</span></span>
-          <span><span className="badge bg-info text-dark">Cita</span></span>
-          <span>Click celda = editar / crear bloque</span>
+          <span><span className="badge bg-info text-dark">Cita manual</span></span>
+          <span><span className="badge bg-success">Cita agenda confirmada</span></span>
+          <span><span className="badge bg-warning text-dark">Cita agenda por confirmar</span></span>
+          <span>Click celda = editar / crear bloque manual</span>
+        </div>
+        <div className="alert alert-secondary small py-2 px-3 mt-2 mb-0">
+          Las citas sincronizadas desde la agenda se muestran en verde o amarillo y son de solo lectura desde esta vista.
         </div>
       </div>
       <div className="col-lg-3">
         <div className="card p-3 shadow-sm">
           <div className="mb-1 small text-muted">Manual Prospecto: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='PROSPECCION').length}</div>
-          <div className="mb-2 small text-muted">Manual Cita: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
+          <div className="mb-1 small text-muted">Manual Cita: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
+          <div className="mb-2 small text-muted">Citas agenda: {data.bloques.filter(b=>b.origin==='auto' && b.activity==='CITAS').length}</div>
           <div className="mb-2 small">
             <label className="form-label small mb-1">Prima anual promedio</label>
             <div className="input-group input-group-sm">

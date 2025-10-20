@@ -63,14 +63,18 @@ export interface Usuario {
   is_desarrollador?: boolean
 }
 
-export type IntegrationProviderKey = 'google' | 'zoom'
+export type IntegrationProviderKey = 'google' | 'zoom' | 'teams'
+export type ManualMeetingProvider = 'zoom' | 'teams'
 export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
 
-export interface ZoomManualSettings {
+export interface ManualMeetingSettings {
   meetingUrl: string
   meetingId?: string | null
   meetingPassword?: string | null
 }
+
+export type ZoomManualSettings = ManualMeetingSettings
+export type TeamsManualSettings = ManualMeetingSettings
 
 export interface AgendaDeveloper {
   id: number
@@ -83,6 +87,8 @@ export interface AgendaDeveloper {
   tokens: IntegrationProviderKey[]
   zoomManual?: ZoomManualSettings | null
   zoomLegacy?: boolean
+  teamsManual?: TeamsManualSettings | null
+  googleMeetAutoEnabled?: boolean
 }
 
 export interface AgendaBusySlot {
@@ -90,12 +96,21 @@ export interface AgendaBusySlot {
   usuarioAuthId: string
   inicio: string
   fin: string
+  source: 'calendar' | 'agenda' | 'planificacion'
+  provider?: IntegrationProviderKey | MeetingProvider | null
+  title?: string | null
+  descripcion?: string | null
+  prospectoId?: number | null
+  citaId?: number | null
+  planId?: number | null
 }
 
 export interface AgendaSlotsResponse {
   range: { desde?: string | null; hasta?: string | null }
   busy: AgendaBusySlot[]
   missingAuth: number[]
+  planificaciones?: AgendaPlanificacionSummary[]
+  warnings?: string[]
 }
 
 export interface AgendaParticipant {
@@ -109,6 +124,7 @@ export interface AgendaCita {
   id: number
   prospectoId: number | null
   prospectoNombre?: string | null
+  prospectoEmail?: string | null
   agente: AgendaParticipant
   supervisor?: AgendaParticipant | null
   inicio: string
@@ -192,6 +208,7 @@ export interface BloquePlanificacion {
   prospecto_estado?: ProspectoEstado
   notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
   confirmada?: boolean // para bloques tipo SMNYL/Cita
+  agenda_cita_id?: number | null
 }
 
 export interface PlanificacionSemana {
@@ -204,6 +221,31 @@ export interface PlanificacionSemana {
   bloques: BloquePlanificacion[]
   created_at?: string
   updated_at?: string
+}
+
+export interface AgendaPlanBlock extends BloquePlanificacion {
+  fecha: string
+  fin: string
+  source?: 'auto' | 'manual'
+}
+
+export interface AgendaPlanificacionSummary {
+  agenteId: number
+  planId?: number | null
+  semanaIso: number
+  anio: number
+  bloques: AgendaPlanBlock[]
+}
+
+export interface AgendaProspectoOption {
+  id: number
+  nombre: string
+  email: string
+  estado: ProspectoEstado
+  telefono?: string | null
+  semana_iso?: number
+  anio?: number
+  fecha_cita?: string | null
 }
 
 /* ===== Fase 3: Productos parametrizados ===== */

@@ -5,6 +5,7 @@ import { logAccion } from '@/lib/logger'
 import { buildCitaConfirmacionEmail, sendMail } from '@/lib/mailer'
 import { createRemoteMeeting } from '@/lib/agendaProviders'
 import type { MeetingProvider, AgendaCita, AgendaParticipant } from '@/types'
+import { syncPlanificacionCita } from './planificacionSync'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -34,6 +35,7 @@ type CreateCitaBody = {
   externalEventId?: string | null
   generarEnlace?: boolean
   prospectoNombre?: string | null
+  prospectoEmail?: string | null
   notas?: string | null
 }
 
@@ -151,15 +153,18 @@ export async function GET(req: Request) {
     }
   }
 
-  const prospectosMap = new Map<number, string>()
+  const prospectosMap = new Map<number, { nombre: string | null; email: string | null }>()
   if (prospectoIds.size > 0) {
     const { data: prospectos } = await supabase
       .from('prospectos')
-      .select('id,nombre')
+      .select('id,nombre,email')
       .in('id', Array.from(prospectoIds))
     for (const prospecto of prospectos || []) {
       if (prospecto?.id != null) {
-        prospectosMap.set(prospecto.id, prospecto.nombre ?? null)
+        prospectosMap.set(prospecto.id, {
+          nombre: prospecto.nombre ?? null,
+          email: prospecto.email ?? null
+        })
       }
     }
   }
@@ -187,7 +192,8 @@ export async function GET(req: Request) {
     return {
       id: cita.id,
       prospectoId: cita.prospecto_id,
-      prospectoNombre: cita.prospecto_id != null ? prospectosMap.get(cita.prospecto_id) ?? null : null,
+  prospectoNombre: cita.prospecto_id != null ? prospectosMap.get(cita.prospecto_id)?.nombre ?? null : null,
+  prospectoEmail: cita.prospecto_id != null ? prospectosMap.get(cita.prospecto_id)?.email ?? null : null,
       agente: agentePayload,
       supervisor: supervisorPayload,
       inicio: cita.inicio,
@@ -239,6 +245,7 @@ export async function POST(req: Request) {
   const provider = normalizeProvider(payload.meetingProvider)
   let externalEventId = payload.externalEventId ? String(payload.externalEventId) : null
   const generarEnlace = payload.generarEnlace ?? meetingUrl.length === 0
+  const notas = typeof payload.notas === 'string' && payload.notas.trim().length > 0 ? payload.notas.trim() : null
 
   if (!Number.isFinite(agenteId)) {
     return NextResponse.json({ error: 'agenteId inválido' }, { status: 400 })
@@ -295,15 +302,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'El agente está inactivo' }, { status: 400 })
   }
 
+  let googleMeetAutoEnabled = true
+  if (agente.id_auth) {
+    try {
+      const { data: googleToken } = await supabase
+        .from('tokens_integracion')
+        .select('scopes')
+        .eq('usuario_id', agente.id_auth)
+        .eq('proveedor', 'google')
+        .maybeSingle()
+      if (googleToken && Array.isArray(googleToken.scopes)) {
+        googleMeetAutoEnabled = !googleToken.scopes.includes('auto_meet_disabled')
+      }
+    } catch {}
+  }
+
   let prospectoNombre = typeof payload.prospectoNombre === 'string' && payload.prospectoNombre.trim().length > 0
     ? payload.prospectoNombre.trim()
     : null
+  let prospectoEmail = typeof payload.prospectoEmail === 'string' && payload.prospectoEmail.includes('@')
+    ? payload.prospectoEmail.trim()
+    : null
 
-  if (prospectoId != null && !prospectoNombre) {
+  if (prospectoId != null && (!prospectoNombre || !prospectoEmail)) {
     try {
       const { data: prospecto, error: prospectoError } = await supabase
         .from('prospectos')
-        .select('id,nombre')
+        .select('id,nombre,email')
         .eq('id', prospectoId)
         .maybeSingle()
       if (prospectoError) {
@@ -312,7 +337,12 @@ export async function POST(req: Request) {
       if (!prospecto) {
         return NextResponse.json({ error: 'Prospecto no encontrado' }, { status: 404 })
       }
-      prospectoNombre = prospecto.nombre ?? null
+      if (!prospectoNombre) {
+        prospectoNombre = prospecto.nombre ?? null
+      }
+      if (!prospectoEmail && prospecto.email && prospecto.email.includes('@')) {
+        prospectoEmail = prospecto.email
+      }
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : 'Error consultando prospecto' }, { status: 500 })
     }
@@ -383,16 +413,20 @@ export async function POST(req: Request) {
 
   if (generarEnlace) {
     if (provider === 'google_meet') {
+      if (!googleMeetAutoEnabled) {
+        return NextResponse.json({ error: 'La generación automática de enlaces está deshabilitada para este agente. Ingresa un enlace manual.' }, { status: 400 })
+      }
       const attendees = Array.from(new Set([
         agente.email || null,
         supervisorRecord?.email || null,
-        actor.email || null
+        actor.email || null,
+        prospectoEmail || null
       ].filter((value): value is string => Boolean(value && value.includes('@')))))
 
       const summary = prospectoNombre ? `Cita con ${prospectoNombre}` : 'Cita agenda Lealtia'
       const descriptionParts: string[] = []
-      if (payload.notas && payload.notas.trim().length > 0) {
-        descriptionParts.push(payload.notas.trim())
+      if (notas) {
+        descriptionParts.push(notas)
       }
       if (prospectoNombre) {
         descriptionParts.push(`Prospecto: ${prospectoNombre}`)
@@ -478,12 +512,32 @@ export async function POST(req: Request) {
 
   if (prospectoId != null) {
     try {
+      const updatePayload: Record<string, unknown> = {
+        cita_creada: true,
+        fecha_cita: inicioIso,
+        estado: 'con_cita'
+      }
+      if (prospectoEmail) {
+        updatePayload.email = prospectoEmail
+      }
       await supabase
         .from('prospectos')
-        .update({ cita_creada: true, fecha_cita: inicioIso })
+        .update(updatePayload)
         .eq('id', prospectoId)
     } catch {}
   }
+
+  try {
+    await syncPlanificacionCita({
+      supabase,
+      agenteId,
+      inicioIso,
+      prospectoId,
+      prospectoNombre,
+      citaId: created.id,
+      notas
+    })
+  } catch {}
 
   if (agente.email) {
     const ccList = [supervisorRecord?.email, actor.email].filter((value): value is string => Boolean(value && value !== agente.email))
@@ -548,5 +602,34 @@ export async function POST(req: Request) {
     })
   } catch {}
 
-  return NextResponse.json({ cita: created })
+  const citaResponse: AgendaCita = {
+    id: created.id,
+    prospectoId: created.prospecto_id ?? null,
+    prospectoNombre,
+    prospectoEmail,
+    agente: {
+      id: agente.id,
+      idAuth: created.agente_id ?? agente.id_auth ?? null,
+      email: agente.email ?? null,
+      nombre: agente.nombre ?? null
+    },
+    supervisor: supervisorAuthId
+      ? {
+          id: supervisorRecord?.id ?? null,
+          idAuth: created.supervisor_id ?? supervisorAuthId,
+          email: supervisorRecord?.email ?? null,
+          nombre: supervisorRecord?.nombre ?? null
+        }
+      : null,
+    inicio: created.inicio,
+    fin: created.fin,
+    meetingUrl: created.meeting_url,
+    meetingProvider: created.meeting_provider,
+    externalEventId: created.external_event_id ?? null,
+    estado: created.estado,
+    createdAt: created.created_at ?? null,
+    updatedAt: created.updated_at ?? null
+  }
+
+  return NextResponse.json({ cita: citaResponse })
 }

@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { getIntegrationToken, removeIntegrationToken } from '@/lib/integrationTokens'
-import { getZoomManualSettings } from '@/lib/zoomManual'
-import type { IntegrationProviderKey, ZoomManualSettings } from '@/types'
+import { getTeamsManualSettings, getZoomManualSettings } from '@/lib/zoomManual'
+import type { IntegrationProviderKey, ManualMeetingSettings } from '@/types'
 
-const PROVIDERS: IntegrationProviderKey[] = ['google', 'zoom']
+const PROVIDERS: IntegrationProviderKey[] = ['google', 'zoom', 'teams']
 
 export async function GET() {
   const actor = await getUsuarioSesion()
@@ -20,15 +20,17 @@ export async function GET() {
     connected: boolean
     expiresAt: string | null
     scopes: string[] | null
-    zoomManual?: {
-      settings: ZoomManualSettings | null
+    manual?: {
+      settings: ManualMeetingSettings | null
       legacy: boolean
     }
   }>
 
   for (const provider of PROVIDERS) {
-    if (provider === 'zoom') {
-      const { settings, legacy, error } = await getZoomManualSettings(actor.id_auth)
+    if (provider === 'zoom' || provider === 'teams') {
+      const { settings, legacy, error } = provider === 'zoom'
+        ? await getZoomManualSettings(actor.id_auth)
+        : await getTeamsManualSettings(actor.id_auth)
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
@@ -37,7 +39,7 @@ export async function GET() {
         connected: Boolean(settings?.meetingUrl),
         expiresAt: null,
         scopes: settings ? ['manual'] : null,
-        zoomManual: {
+        manual: {
           settings,
           legacy
         }

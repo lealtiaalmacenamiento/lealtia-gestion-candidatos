@@ -6,7 +6,7 @@ import BasePage from '@/components/BasePage'
 import type { IntegrationProviderKey } from '@/types'
 import { providerLabel } from '@/lib/integrations/providerLabels'
 
-interface ZoomManualStatus {
+interface ManualStatus {
   settings: {
     meetingUrl: string
     meetingId?: string | null
@@ -20,7 +20,7 @@ interface ProviderStatus {
   connected: boolean
   expiresAt: string | null
   scopes: string[] | null
-  zoomManual?: ZoomManualStatus
+  manual?: ManualStatus
 }
 
 interface StatusResponse {
@@ -35,6 +35,10 @@ const PROVIDER_META: Record<IntegrationProviderKey, { icon: string; description:
   zoom: {
     icon: 'bi-camera-video-fill',
     description: 'Guarda tu enlace personal de Zoom para compartirlo al agendar.'
+  },
+  teams: {
+    icon: 'bi-calendar3',
+    description: 'Comparte tu sala de Microsoft Teams guardando un enlace personal.'
   }
 }
 
@@ -61,6 +65,8 @@ export default function IntegracionesPage() {
   const [disconnecting, setDisconnecting] = useState<IntegrationProviderKey | null>(null)
   const [zoomForm, setZoomForm] = useState({ meetingUrl: '', meetingId: '', meetingPassword: '' })
   const [zoomSaving, setZoomSaving] = useState(false)
+  const [teamsForm, setTeamsForm] = useState({ meetingUrl: '', meetingId: '', meetingPassword: '' })
+  const [teamsSaving, setTeamsSaving] = useState(false)
 
   const metaList = useMemo(() => PROVIDER_META, [])
 
@@ -86,9 +92,15 @@ export default function IntegracionesPage() {
         setProviders(fetched)
         const zoom = fetched.find(item => item.provider === 'zoom')
         setZoomForm({
-          meetingUrl: zoom?.zoomManual?.settings?.meetingUrl ?? '',
-          meetingId: zoom?.zoomManual?.settings?.meetingId ?? '',
-          meetingPassword: zoom?.zoomManual?.settings?.meetingPassword ?? ''
+          meetingUrl: zoom?.manual?.settings?.meetingUrl ?? '',
+          meetingId: zoom?.manual?.settings?.meetingId ?? '',
+          meetingPassword: zoom?.manual?.settings?.meetingPassword ?? ''
+        })
+        const teams = fetched.find(item => item.provider === 'teams')
+        setTeamsForm({
+          meetingUrl: teams?.manual?.settings?.meetingUrl ?? '',
+          meetingId: teams?.manual?.settings?.meetingId ?? '',
+          meetingPassword: teams?.manual?.settings?.meetingPassword ?? ''
         })
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando integraciones')
@@ -111,13 +123,15 @@ export default function IntegracionesPage() {
       setProviders(prev => prev.map(p => {
         if (p.provider !== provider) return p
         const base = { ...p, connected: false, expiresAt: null, scopes: null }
-        if (provider === 'zoom') {
-          return { ...base, zoomManual: { settings: null, legacy: false } }
+        if (provider === 'zoom' || provider === 'teams') {
+          return { ...base, manual: { settings: null, legacy: false } }
         }
         return base
       }))
       if (provider === 'zoom') {
         setZoomForm({ meetingUrl: '', meetingId: '', meetingPassword: '' })
+      } else if (provider === 'teams') {
+        setTeamsForm({ meetingUrl: '', meetingId: '', meetingPassword: '' })
       }
       setNotif({ type: 'info', message: `${providerLabel(provider)} desconectado.` })
     } catch (err) {
@@ -152,7 +166,7 @@ export default function IntegracionesPage() {
         connected: true,
         expiresAt: null,
         scopes: ['manual'],
-        zoomManual: { settings: data.settings, legacy: false }
+        manual: { settings: data.settings, legacy: false }
       } : p))
       setNotif({ type: 'success', message: 'Enlace de Zoom guardado correctamente.' })
       setZoomForm({
@@ -167,6 +181,46 @@ export default function IntegracionesPage() {
     }
   }
 
+  const handleTeamsSave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setTeamsSaving(true)
+    setNotif(null)
+    try {
+      const payload = {
+        meetingUrl: teamsForm.meetingUrl.trim(),
+        meetingId: teamsForm.meetingId.trim() || undefined,
+        meetingPassword: teamsForm.meetingPassword.trim() || undefined
+      }
+      const res = await fetch('/api/integraciones/teams/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(detail.error || `Error ${res.status}`)
+      }
+      const data = await res.json() as { settings: { meetingUrl: string; meetingId?: string | null; meetingPassword?: string | null } }
+      setProviders(prev => prev.map(p => p.provider === 'teams' ? {
+        ...p,
+        connected: true,
+        expiresAt: null,
+        scopes: ['manual'],
+        manual: { settings: data.settings, legacy: false }
+      } : p))
+      setNotif({ type: 'success', message: 'Enlace de Microsoft Teams guardado correctamente.' })
+      setTeamsForm({
+        meetingUrl: data.settings.meetingUrl,
+        meetingId: data.settings.meetingId ?? '',
+        meetingPassword: data.settings.meetingPassword ?? ''
+      })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'No se pudo guardar el enlace de Teams' })
+    } finally {
+      setTeamsSaving(false)
+    }
+  }
+
   return (
     <BasePage title="Integraciones de Calendario" alert={notif ? { type: notif.type === 'error' ? 'danger' : notif.type, message: notif.message, show: true } : undefined}>
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
@@ -176,6 +230,9 @@ export default function IntegracionesPage() {
           {providers.map((provider) => {
             const meta = metaList[provider.provider]
             const isZoom = provider.provider === 'zoom'
+            const isTeams = provider.provider === 'teams'
+            const isManual = isZoom || isTeams
+            const manualStatus = provider.manual
             return (
               <div className="col-12 col-md-4" key={provider.provider}>
                 <div className="card h-100 shadow-sm border-0">
@@ -190,7 +247,7 @@ export default function IntegracionesPage() {
                       </div>
                     </div>
                     <p className="small text-muted mb-0">{meta?.description}</p>
-                    {!isZoom && (
+                    {!isManual && (
                       <>
                         <div className="small bg-light rounded px-3 py-2">
                           <div className="fw-semibold mb-1">Estado del token</div>
@@ -216,61 +273,89 @@ export default function IntegracionesPage() {
                         </div>
                       </>
                     )}
-                    {isZoom && (
+                    {isManual && (
                       <>
-                        {provider.zoomManual?.legacy && (
+                        {isZoom && manualStatus?.legacy && (
                           <div className="alert alert-warning small mb-0">
                             Se encontró una conexión de Zoom antigua. Guarda tu enlace personal para completar la migración.
                           </div>
                         )}
-                        <form className="d-flex flex-column gap-3" onSubmit={handleZoomSave}>
+                        <form
+                          className="d-flex flex-column gap-3"
+                          onSubmit={isZoom ? handleZoomSave : handleTeamsSave}
+                        >
                           <div className="form-floating">
                             <input
                               type="url"
                               className="form-control"
-                              id="zoomMeetingUrl"
-                              value={zoomForm.meetingUrl}
-                              onChange={(event) => setZoomForm(prev => ({ ...prev, meetingUrl: event.target.value }))}
-                              placeholder="https://us06web.zoom.us/j/xxxxxxxx"
+                              id={`${provider.provider}-meeting-url`}
+                              value={isZoom ? zoomForm.meetingUrl : teamsForm.meetingUrl}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                if (isZoom) {
+                                  setZoomForm(prev => ({ ...prev, meetingUrl: value }))
+                                } else {
+                                  setTeamsForm(prev => ({ ...prev, meetingUrl: value }))
+                                }
+                              }}
+                              placeholder={isZoom ? 'https://us06web.zoom.us/j/xxxxxxxx' : 'https://teams.microsoft.com/l/meetup-join/...'}
                               required
                             />
-                            <label htmlFor="zoomMeetingUrl">Enlace personal</label>
+                            <label htmlFor={`${provider.provider}-meeting-url`}>Enlace personal</label>
                           </div>
                           <div className="form-floating">
                             <input
                               type="text"
                               className="form-control"
-                              id="zoomMeetingId"
-                              value={zoomForm.meetingId}
-                              onChange={(event) => setZoomForm(prev => ({ ...prev, meetingId: event.target.value }))}
+                              id={`${provider.provider}-meeting-id`}
+                              value={isZoom ? zoomForm.meetingId : teamsForm.meetingId}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                if (isZoom) {
+                                  setZoomForm(prev => ({ ...prev, meetingId: value }))
+                                } else {
+                                  setTeamsForm(prev => ({ ...prev, meetingId: value }))
+                                }
+                              }}
                               placeholder="Opcional"
                             />
-                            <label htmlFor="zoomMeetingId">Meeting ID (opcional)</label>
+                            <label htmlFor={`${provider.provider}-meeting-id`}>Meeting ID (opcional)</label>
                           </div>
                           <div className="form-floating">
                             <input
                               type="text"
                               className="form-control"
-                              id="zoomMeetingPassword"
-                              value={zoomForm.meetingPassword}
-                              onChange={(event) => setZoomForm(prev => ({ ...prev, meetingPassword: event.target.value }))}
+                              id={`${provider.provider}-meeting-password`}
+                              value={isZoom ? zoomForm.meetingPassword : teamsForm.meetingPassword}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                if (isZoom) {
+                                  setZoomForm(prev => ({ ...prev, meetingPassword: value }))
+                                } else {
+                                  setTeamsForm(prev => ({ ...prev, meetingPassword: value }))
+                                }
+                              }}
                               placeholder="Opcional"
                             />
-                            <label htmlFor="zoomMeetingPassword">Contraseña (opcional)</label>
+                            <label htmlFor={`${provider.provider}-meeting-password`}>Contraseña (opcional)</label>
                           </div>
                           <div className="small bg-light rounded px-3 py-2">
                             <div className="fw-semibold mb-1">Estado</div>
                             <div>{provider.connected ? 'Enlace guardado' : 'Sin enlace guardado'}</div>
                           </div>
                           <div className="d-flex gap-2 mt-auto">
-                            <button type="submit" className="btn btn-primary btn-sm flex-fill" disabled={zoomSaving}>
-                              {zoomSaving ? 'Guardando…' : provider.connected ? 'Actualizar enlace' : 'Guardar enlace'}
+                            <button
+                              type="submit"
+                              className="btn btn-primary btn-sm flex-fill"
+                              disabled={isZoom ? zoomSaving : teamsSaving}
+                            >
+                              {(isZoom ? zoomSaving : teamsSaving) ? 'Guardando…' : provider.connected ? 'Actualizar enlace' : 'Guardar enlace'}
                             </button>
                             <button
                               type="button"
                               className="btn btn-outline-secondary btn-sm"
                               onClick={() => handleDisconnect(provider.provider)}
-                              disabled={disconnecting === provider.provider || zoomSaving}
+                              disabled={disconnecting === provider.provider || (isZoom ? zoomSaving : teamsSaving)}
                             >
                               {disconnecting === provider.provider ? 'Limpiando…' : 'Quitar enlace'}
                             </button>
