@@ -5,6 +5,9 @@ import { getIntegrationToken, removeIntegrationToken } from '@/lib/integrationTo
 import { getTeamsManualSettings, getZoomManualSettings } from '@/lib/zoomManual'
 import type { IntegrationProviderKey, ManualMeetingSettings } from '@/types'
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
 const PROVIDERS: IntegrationProviderKey[] = ['google', 'zoom', 'teams']
 
 export async function GET() {
