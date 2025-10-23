@@ -15,7 +15,11 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
     remove(name: string, options: CookieOptions) { store.set({ name, value: '', ...options }) }
   }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    ?? process.env.SUPABASE_URL
+    ?? process.env.SUPABASE_PROJECT_URL
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ?? process.env.SUPABASE_ANON_KEY
+    ?? process.env.SUPABASE_PUBLIC_ANON_KEY
   if (!supabaseUrl || !supabaseAnon) return null
 
   const supabase = createServerClient<Database>(supabaseUrl, supabaseAnon, { cookies: cookieAdapter })
