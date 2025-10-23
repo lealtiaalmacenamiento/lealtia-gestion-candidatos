@@ -9,6 +9,12 @@ export type UsuarioSesion = Database['public']['Tables']['usuarios']['Row']
 // Versión simplificada y robusta usando createServerClient (maneja todos los formatos de cookie de Supabase)
 export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | null> {
   const store = await nextCookies()
+  const cookieNames = store.getAll().map(c => c.name)
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[auth] cookies presentes', cookieNames)
+  } else if (process.env.AUTH_DEBUG_LOG === '1') {
+    console.log('[auth] cookies presentes', cookieNames)
+  }
   const cookieAdapter = {
     get(name: string) { return store.get(name)?.value },
     set(name: string, value: string, options: CookieOptions) { store.set({ name, value, ...options }) },
@@ -38,6 +44,9 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
     }
   } else {
   const res = await supabase.auth.getUser()
+    if (!res.data?.user && res.error && (process.env.NODE_ENV !== 'production' || process.env.AUTH_DEBUG_LOG === '1')) {
+      console.warn('[auth] getUser sin usuario', { error: res.error.message })
+    }
     user = (res.data?.user as UserMinimal) ?? null
     // Fallback: extraer access_token directo de cookies sb-<projectRef>-auth-token o sb-access-token
     if (!user) {
@@ -81,11 +90,17 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
         if (accessToken) {
           const { data } = await supabase.auth.getUser(accessToken)
           user = (data?.user as UserMinimal) ?? null
+          if (!user && (process.env.NODE_ENV !== 'production' || process.env.AUTH_DEBUG_LOG === '1')) {
+            console.warn('[auth] access token fallback sin usuario')
+          }
         }
       } catch {
         // sin cambio
       }
     }
+  }
+  if (!user && (process.env.NODE_ENV !== 'production' || process.env.AUTH_DEBUG_LOG === '1')) {
+    console.warn('[auth] no se obtuvo usuario de cookies/bearer')
   }
   if (!user?.email) return null
 
@@ -93,26 +108,48 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
   // Primero con service role (evita RLS); si no se encuentra o no hay service key, usamos SSR.
   // No uses last_login in select to avoid errors if column is missing in some environments
   const selectCols = 'id,email,rol,activo,nombre,id_auth,must_change_password,is_desarrollador'
+  const legacySelectCols = 'id,email,rol,activo,nombre,id_auth'
+
+  async function fetchUsuario(
+    client: SupabaseClient,
+    column: 'id_auth' | 'email',
+    value: string
+  ) {
+    const attempt = await client
+      .from('usuarios')
+      .select(selectCols)
+      .eq(column, value)
+      .maybeSingle()
+    const needsLegacy = attempt.error && /must_change_password|is_desarrollador/i.test(attempt.error.message || '')
+    if (!needsLegacy) return attempt
+
+    const fallback = await client
+      .from('usuarios')
+      .select(legacySelectCols)
+      .eq(column, value)
+      .maybeSingle()
+    if (fallback.data) {
+      fallback.data = {
+        ...fallback.data,
+        must_change_password: false,
+        is_desarrollador: false
+      } as unknown as typeof attempt.data
+    }
+    return fallback
+  }
+
   async function lookupUsuarioBy(client: SupabaseClient): Promise<UsuarioSesion | null> {
     // 1) id_auth si existe
     try {
       if (user && user.id) {
-        const { data } = await client
-          .from('usuarios')
-          .select(selectCols)
-          .eq('id_auth', user.id)
-          .maybeSingle()
+        const { data } = await fetchUsuario(client, 'id_auth', user.id)
         if (data) return data as UsuarioSesion
       }
     } catch {}
     // 2) email exacto
     try {
       if (user && user.email) {
-        const { data } = await client
-          .from('usuarios')
-          .select(selectCols)
-          .eq('email', user.email)
-          .maybeSingle()
+        const { data } = await fetchUsuario(client, 'email', user.email)
         if (data) return data as UsuarioSesion
       }
     } catch {}
@@ -121,11 +158,7 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
       if (user && user.email) {
         const emailTrim = user.email.trim()
         if (emailTrim !== user.email) {
-          const { data } = await client
-            .from('usuarios')
-            .select(selectCols)
-            .eq('email', emailTrim)
-            .maybeSingle()
+          const { data } = await fetchUsuario(client, 'email', emailTrim)
           if (data) return data as UsuarioSesion
         }
       }
@@ -133,12 +166,27 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
     // 4) email case-insensitive exact (ilike sin comodines)
     try {
       if (user && user.email) {
-        const { data } = await client
+        const attempt = await client
           .from('usuarios')
           .select(selectCols)
           .ilike('email', user.email)
           .maybeSingle()
-        if (data) return data as UsuarioSesion
+        const needsLegacy = attempt.error && /must_change_password|is_desarrollador/i.test(attempt.error.message || '')
+        if (attempt.data) return attempt.data as UsuarioSesion
+        if (needsLegacy) {
+          const fallback = await client
+            .from('usuarios')
+            .select(legacySelectCols)
+            .ilike('email', user.email)
+            .maybeSingle()
+          if (fallback.data) {
+            return {
+              ...fallback.data,
+              must_change_password: false,
+              is_desarrollador: false
+            } as unknown as UsuarioSesion
+          }
+        }
       }
     } catch {}
     return null
