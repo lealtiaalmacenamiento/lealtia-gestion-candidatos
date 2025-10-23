@@ -198,6 +198,7 @@ export default function AgendaPage() {
   const [selectedProspect, setSelectedProspect] = useState<AgendaProspectoOption | null>(null)
   const [showConnectModal, setShowConnectModal] = useState(false)
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false)
+  const [prospectEmailLocked, setProspectEmailLocked] = useState(false)
   const selectedAgente = useMemo(() => {
     if (!form.agenteId) return null
     return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
@@ -387,6 +388,15 @@ export default function AgendaPage() {
   useEffect(() => {
     setHasCheckedAvailability(false)
   }, [form.agenteId, form.supervisorId, form.inicio, form.fin])
+
+  useEffect(() => {
+    if (!selectedProspect) {
+      setProspectEmailLocked(false)
+      return
+    }
+    const hasEmail = Boolean(selectedProspect.email && selectedProspect.email.trim().length > 0)
+    setProspectEmailLocked(hasEmail)
+  }, [selectedProspect])
 
   useEffect(() => {
     if (developers.length === 0) return
@@ -1004,8 +1014,17 @@ export default function AgendaPage() {
                     placeholder="correo@ejemplo.com"
                     type="email"
                     required
-                    readOnly={Boolean(form.prospectoId && form.prospectoEmail)}
+                    readOnly={prospectEmailLocked}
                   />
+                  {prospectEmailLocked && (
+                    <button
+                      type="button"
+                      className="btn btn-link btn-sm px-0"
+                      onClick={() => setProspectEmailLocked(false)}
+                    >
+                      Editar correo
+                    </button>
+                  )}
                 </div>
 
                 <div className="col-12">
