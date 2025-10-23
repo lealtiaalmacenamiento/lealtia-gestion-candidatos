@@ -60,6 +60,92 @@ export interface Usuario {
   activo: boolean
   must_change_password?: boolean
   id_auth?: string
+  is_desarrollador?: boolean
+}
+
+export type IntegrationProviderKey = 'google' | 'zoom' | 'teams'
+export type ManualMeetingProvider = 'zoom' | 'teams'
+export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
+
+export interface ManualMeetingSettings {
+  meetingUrl: string
+  meetingId?: string | null
+  meetingPassword?: string | null
+}
+
+export type ZoomManualSettings = ManualMeetingSettings
+export type TeamsManualSettings = ManualMeetingSettings
+
+export interface AgendaDeveloper {
+  id: number
+  email: string
+  nombre?: string | null
+  rol: string
+  activo: boolean
+  is_desarrollador: boolean
+  id_auth?: string | null
+  tokens: IntegrationProviderKey[]
+  zoomManual?: ZoomManualSettings | null
+  zoomLegacy?: boolean
+  teamsManual?: TeamsManualSettings | null
+  googleMeetAutoEnabled?: boolean
+}
+
+export interface AgendaBusySourceDetail {
+  source: 'calendar' | 'agenda' | 'planificacion'
+  title?: string | null
+  descripcion?: string | null
+  provider?: IntegrationProviderKey | MeetingProvider | null
+  prospectoId?: number | null
+  citaId?: number | null
+  planId?: number | null
+}
+
+export interface AgendaBusySlot {
+  usuarioId: number
+  usuarioAuthId: string
+  inicio: string
+  fin: string
+  source: 'calendar' | 'agenda' | 'planificacion'
+  provider?: IntegrationProviderKey | MeetingProvider | null
+  title?: string | null
+  descripcion?: string | null
+  prospectoId?: number | null
+  citaId?: number | null
+  planId?: number | null
+  sourceDetails?: AgendaBusySourceDetail[]
+}
+
+export interface AgendaSlotsResponse {
+  range: { desde?: string | null; hasta?: string | null }
+  busy: AgendaBusySlot[]
+  missingAuth: number[]
+  planificaciones?: AgendaPlanificacionSummary[]
+  warnings?: string[]
+}
+
+export interface AgendaParticipant {
+  id: number | null
+  idAuth: string | null
+  email?: string | null
+  nombre?: string | null
+}
+
+export interface AgendaCita {
+  id: number
+  prospectoId: number | null
+  prospectoNombre?: string | null
+  prospectoEmail?: string | null
+  agente: AgendaParticipant
+  supervisor?: AgendaParticipant | null
+  inicio: string
+  fin: string
+  meetingUrl: string
+  meetingProvider: MeetingProvider
+  externalEventId?: string | null
+  estado: 'confirmada' | 'cancelada'
+  createdAt?: string | null
+  updatedAt?: string | null
 }
 
 /** CedulaA1 */
@@ -113,6 +199,7 @@ export interface Prospecto {
   semana_iso: number
   nombre: string
   telefono?: string | null
+  email?: string | null
   notas?: string | null
   estado: ProspectoEstado
   // Ahora timestamp (ISO) con fecha y hora
@@ -132,6 +219,7 @@ export interface BloquePlanificacion {
   prospecto_estado?: ProspectoEstado
   notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
   confirmada?: boolean // para bloques tipo SMNYL/Cita
+  agenda_cita_id?: number | null
 }
 
 export interface PlanificacionSemana {
@@ -144,6 +232,31 @@ export interface PlanificacionSemana {
   bloques: BloquePlanificacion[]
   created_at?: string
   updated_at?: string
+}
+
+export interface AgendaPlanBlock extends BloquePlanificacion {
+  fecha: string
+  fin: string
+  source?: 'auto' | 'manual'
+}
+
+export interface AgendaPlanificacionSummary {
+  agenteId: number
+  planId?: number | null
+  semanaIso: number
+  anio: number
+  bloques: AgendaPlanBlock[]
+}
+
+export interface AgendaProspectoOption {
+  id: number
+  nombre: string
+  email: string | null
+  estado: ProspectoEstado
+  telefono?: string | null
+  semana_iso?: number
+  anio?: number
+  fecha_cita?: string | null
 }
 
 /* ===== Fase 3: Productos parametrizados ===== */

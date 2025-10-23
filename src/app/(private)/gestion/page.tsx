@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
 import { useDialog } from '@/components/ui/DialogProvider'
+import { deleteCliente } from '@/lib/api'
 
 type Cliente = {
   id: string
@@ -14,6 +15,8 @@ type Cliente = {
   email?: string|null
   telefono_celular?: string|null
   fecha_nacimiento?: string|null
+  activo?: boolean | null
+  inactivado_at?: string | null
 }
 
 type Poliza = {
@@ -58,6 +61,7 @@ export default function GestionPage() {
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [view, setView] = useState<'list' | 'cliente' | 'polizas'>('list')
   const [loading, setLoading] = useState(false)
+  const [deletingClienteId, setDeletingClienteId] = useState<string | null>(null)
 
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
@@ -105,7 +109,11 @@ export default function GestionPage() {
           }
         } catch {}
       } else {
-        const rc = await fetch(`/api/clientes?q=${encodeURIComponent(qClientes)}`)
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+  const urlClientes = new URL('/api/clientes', origin)
+  if (qClientes.trim()) urlClientes.searchParams.set('q', qClientes.trim())
+  urlClientes.searchParams.set('include_inactivos', '1')
+  const rc = await fetch(urlClientes.toString())
         const jc = await rc.json()
         setClientes(jc.items || [])
         // cargar meta propia (conexión/objetivo)
@@ -134,7 +142,11 @@ export default function GestionPage() {
     if (!q) { setClientesSuper([]); return }
     setSearchingSuper(true)
     try {
-      const r = await fetch(`/api/clientes?q=${encodeURIComponent(q)}`, { cache: 'no-store' })
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+  const superUrl = new URL('/api/clientes', origin)
+  superUrl.searchParams.set('q', q)
+  superUrl.searchParams.set('include_inactivos', '1')
+  const r = await fetch(superUrl.toString(), { cache: 'no-store' })
       const j = await r.json().catch(()=>({}))
       setClientesSuper(j.items || [])
     } finally { setSearchingSuper(false) }
@@ -465,6 +477,7 @@ export default function GestionPage() {
                         <tr>
                           <th>Número de cliente</th>
                           <th>Contratante</th>
+                          <th>Estado</th>
                           <th>Teléfono</th>
                           <th>Correo</th>
                           <th></th>
@@ -472,9 +485,10 @@ export default function GestionPage() {
                       </thead>
                       <tbody>
                         {clientesSuper.map(c => (
-                          <tr key={c.id}>
+                          <tr key={c.id} className={c.activo === false ? 'table-secondary' : undefined}>
                             <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
                             <td className="text-xs">{fmtNombre(c)}</td>
+                            <td className="text-xs">{renderEstadoBadge(c)}</td>
                             <td className="text-xs">{c.telefono_celular ? (<a href={buildWhatsAppLink(c.telefono_celular, agentDisplayName)} target="_blank" rel="noopener noreferrer">{c.telefono_celular}</a>) : '—'}</td>
                             <td className="text-xs">{c.email ? (<a href={`mailto:${c.email}`}>{c.email}</a>) : '—'}</td>
                             <td className="text-end">
@@ -486,7 +500,7 @@ export default function GestionPage() {
                           </tr>
                         ))}
                         {!clientesSuper.length && !searchingSuper && (
-                          <tr><td colSpan={5} className="text-center text-muted py-3">Sin resultados</td></tr>
+                          <tr><td colSpan={6} className="text-center text-muted py-3">Sin resultados</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -508,10 +522,10 @@ export default function GestionPage() {
                             if (!expanded && !clientesPorAgente[key]) {
                               try {
                                 // Preferir id_auth; si no existe, enviar usuario_id para que el API resuelva id_auth
-                                const url = ag.id_auth
+                                const urlBase = ag.id_auth
                                   ? `/api/clientes/by-asesor?asesor_id=${encodeURIComponent(ag.id_auth)}`
                                   : `/api/clientes/by-asesor?usuario_id=${encodeURIComponent(String(ag.id))}`
-                                const rc = await fetch(url, { cache: 'no-store' })
+                                const rc = await fetch(`${urlBase}&include_inactivos=1`, { cache: 'no-store' })
                                 const jc = await rc.json().catch(()=>({ error: 'parse' }))
                                 if (!rc.ok) {
                                   console.error('Error cargando clientes por asesor', jc)
@@ -557,6 +571,7 @@ export default function GestionPage() {
                                 <tr>
                                   <th>Número de cliente</th>
                                   <th>Contratante</th>
+                                  <th>Estado</th>
                                   <th>Teléfono</th>
                                   <th>Correo</th>
                                   <th>Cumpleaños</th>
@@ -565,9 +580,10 @@ export default function GestionPage() {
                               </thead>
                               <tbody>
                                 {(clientesPorAgente[key] || []).map(c => (
-                                  <tr key={c.id}>
+                                  <tr key={c.id} className={c.activo === false ? 'table-secondary' : undefined}>
                                     <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
                                     <td className="text-xs">{fmtNombre(c)}</td>
+                                    <td className="text-xs">{renderEstadoBadge(c)}</td>
                                     <td className="text-xs">
                                       {c.telefono_celular ? (
                                         <a
@@ -593,7 +609,7 @@ export default function GestionPage() {
                                     </td>
                                   </tr>
                                 ))}
-                                {!((clientesPorAgente[key] || []).length) && <tr><td colSpan={6} className="text-center text-muted py-3">Sin clientes</td></tr>}
+                                {!((clientesPorAgente[key] || []).length) && <tr><td colSpan={7} className="text-center text-muted py-3">Sin clientes</td></tr>}
                               </tbody>
                             </table>
                           </div>
@@ -653,6 +669,7 @@ export default function GestionPage() {
                     <tr>
                       <th>Número de cliente</th>
                       <th>Contratante</th>
+                      <th>Estado</th>
                       <th>Teléfono</th>
                       <th>Correo</th>
                       <th>Cumpleaños</th>
@@ -661,9 +678,10 @@ export default function GestionPage() {
                   </thead>
                   <tbody>
                     {clientes.map(c => (
-                      <tr key={c.id}>
+                      <tr key={c.id} className={c.activo === false ? 'table-secondary' : undefined}>
                         <td className="font-mono text-xs">{c.cliente_code || c.id}</td>
                         <td className="text-xs">{fmtNombre(c)}</td>
+                        <td className="text-xs">{renderEstadoBadge(c)}</td>
                         <td className="text-xs">
                           {c.telefono_celular ? (
                             <a
@@ -685,11 +703,41 @@ export default function GestionPage() {
                           <div className="d-flex gap-2 justify-content-end">
                             <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
                             <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              disabled={deletingClienteId === c.id || c.activo === false}
+                              onClick={async () => {
+                                if (deletingClienteId || c.activo === false) return
+                                const confirmado = await dialog.confirm(
+                                  '¿Seguro que deseas inactivar este cliente? Solo es posible si no tiene pólizas en vigor.',
+                                  { icon: 'exclamation-triangle-fill', title: 'Confirmar inactivación', confirmText: 'Inactivar' }
+                                )
+                                if (!confirmado) return
+                                const stamp = new Date().toISOString()
+                                try {
+                                  setDeletingClienteId(c.id)
+                                  const res = await deleteCliente(c.id)
+                                  setClientes(prev => prev.map(x => x.id === c.id ? { ...x, activo: false, inactivado_at: stamp } : x))
+                                  if (isSuper) setClientesSuper(prev => prev.map(x => x.id === c.id ? { ...x, activo: false, inactivado_at: stamp } : x))
+                                  setSelectedCliente(prev => (prev && prev.id === c.id) ? { ...prev, activo: false, inactivado_at: stamp } : prev)
+                                  await load()
+                                  const alreadyInactive = (res as unknown as { alreadyInactive?: boolean }).alreadyInactive
+                                  await dialog.alert(alreadyInactive ? 'El cliente ya estaba inactivo.' : 'Cliente inactivado.')
+                                } catch (err) {
+                                  const msg = err instanceof Error ? err.message : 'Error al inactivar cliente'
+                                  await dialog.alert(msg, { icon: 'exclamation-triangle-fill', title: 'Error' })
+                                } finally {
+                                  setDeletingClienteId(null)
+                                }
+                              }}
+                            >
+                              {c.activo === false ? 'Inactivo' : (deletingClienteId === c.id ? 'Inactivando…' : 'Inactivar')}
+                            </button>
                           </div>
                         </td>
                       </tr>
                     ))}
-                    {!clientes.length && <tr><td colSpan={6} className="text-center text-muted py-3">Sin resultados</td></tr>}
+                    {!clientes.length && <tr><td colSpan={7} className="text-center text-muted py-3">Sin resultados</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -762,6 +810,7 @@ export default function GestionPage() {
           <div className="d-flex align-items-center mb-3 gap-2">
             <button className="btn btn-sm btn-light border" onClick={()=>setView('list')}>← Volver</button>
             <h2 className="mb-0">Cliente</h2>
+            <div className="ms-2">{renderEstadoBadge(selectedCliente)}</div>
             <span className="ms-auto small text-muted">Número de cliente: {selectedCliente.cliente_code || selectedCliente.id}</span>
           </div>
           <div className="mb-3">
@@ -1093,6 +1142,15 @@ export default function GestionPage() {
       )}
     </div>
   )
+}
+
+function renderEstadoBadge(c: Cliente): React.ReactNode {
+  if (c.activo === false) {
+    const inactiveDate = c.inactivado_at ? new Date(c.inactivado_at) : null
+    const inactiveSince = inactiveDate && !Number.isNaN(inactiveDate.valueOf()) ? inactiveDate.toLocaleDateString() : null
+    return <span className="badge text-bg-secondary">{inactiveSince ? `Inactivo · ${inactiveSince}` : 'Inactivo'}</span>
+  }
+  return <span className="badge text-bg-success">Activo</span>
 }
 
 function fmtNombre(c: Cliente) {

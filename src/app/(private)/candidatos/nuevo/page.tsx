@@ -288,6 +288,14 @@ export default function NuevoCandidato() {
   // Preparar payload sin campos derivados (ni dias_desde_pop/dias_desde_ct, proceso, etc.)
   // Omitir campos derivados del submit usando sanitización
   const payload = sanitizeCandidatoPayload(form as unknown as Record<string, unknown>)
+  if (typeof (payload as Record<string, unknown>).email_agente === 'string') {
+    const normalized = ((payload as Record<string, unknown>).email_agente as string).trim().toLowerCase()
+    if (normalized) {
+      (payload as Record<string, unknown>).email_agente = normalized
+    } else {
+      (payload as Record<string, unknown>).email_agente = null
+    }
+  }
   await createCandidato({ ...(payload as unknown as Partial<Candidato>), seg_gmm: 0, seg_vida: 0 })
       setNotif({ type: 'success', msg: 'Candidato guardado correctamente. (Se intentó crear el usuario agente en backend si no existía).' })
       // Reiniciar formulario limpio

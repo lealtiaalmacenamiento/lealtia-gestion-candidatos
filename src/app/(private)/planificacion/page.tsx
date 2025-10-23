@@ -7,6 +7,7 @@ import type { BloquePlanificacion } from '@/types'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { useDialog } from '@/components/ui/DialogProvider'
+import { cancelAgendaCita } from '@/lib/api'
 
 interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:number; anio:number; bloques:BloquePlanificacion[]; prima_anual_promedio:number; porcentaje_comision:number }
 
@@ -30,6 +31,7 @@ export default function PlanificacionPage(){
   const [dirty,setDirty]=useState(false)
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const [modal,setModal]=useState<null|{day:number; hour:string; blk?:BloquePlanificacion}>(null)
+  const [actionBusy, setActionBusy] = useState(false)
   // Autosave eliminado
   const lastSavedManualRef = useRef<string>('') // para evitar refetch innecesario post-guardado
   const localManualRef = useRef<BloquePlanificacion[]>([])
@@ -50,21 +52,26 @@ export default function PlanificacionPage(){
     }
     if(plan){
       // Normalizar horas a 'HH'
-      plan.bloques = (plan.bloques||[]).map(b=> ({...b, hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'), origin: b.origin ? b.origin : 'manual'}))
+      const normalizados = (plan.bloques||[]).map(b=> ({
+        ...b,
+        hour: typeof b.hour === 'string'? b.hour.padStart(2,'0'): String(b.hour).padStart(2,'0'),
+        origin: b.origin ? b.origin : 'manual'
+      }))
       // Si había cambios locales pendientes y este es un fetch forzado (post-guardado), mergeamos bloques manuales que aún no estén en remoto
       // Solo mergear manuales locales tras un guardado exitoso; evitar mezclar al cambiar de semana/agente
+      let bloquesConsolidados = normalizados
       if(force && trigger==='postsave' && data && data.bloques && data.bloques.length){
-        const remoteKeys = new Set(plan.bloques.map(b=> `${b.day}-${b.hour}-${b.activity}`))
+        const remoteKeys = new Set(normalizados.map(b=> `${b.day}-${b.hour}-${b.activity}`))
         for(const b of data.bloques){
           if(b.origin !== 'auto'){
             const k = `${b.day}-${b.hour}-${b.activity}`
-            if(!remoteKeys.has(k)) plan.bloques.push(b)
+            if(!remoteKeys.has(k)) bloquesConsolidados.push({ ...b, origin: b.origin ?? 'manual' })
           }
         }
       }
-  // Mantener solo bloques del servidor (o los locales si se está en flujo post-guardado con merge más arriba)
-  const manual = plan.bloques.filter(b=> b.origin !== 'auto')
-  plan = {...plan, bloques: manual}
+      // Ordenamos por día/hora para representación consistente
+      bloquesConsolidados = bloquesConsolidados.sort((a,b)=> a.day - b.day || a.hour.localeCompare(b.hour) || a.activity.localeCompare(b.activity))
+      plan = {...plan, bloques: bloquesConsolidados}
     }
   setData(plan)
   if(showLoading) setLoading(false)
@@ -105,12 +112,103 @@ export default function PlanificacionPage(){
 
   const upsertBloque=(b:BloquePlanificacion|null)=>{
     if(!data) return
-  const nuevos = data.bloques.filter(x=> !(x.day===modal?.day && x.hour===modal?.hour))
-    if(b) nuevos.push(b)
-  const updated = {...data,bloques:nuevos}
-  setData(updated)
-  localManualRef.current = updated.bloques.filter(b=> b.origin!=='auto')
+    const targetDay = modal?.day
+    const targetHour = modal?.hour
+    const targetOrigin = modal?.blk?.origin
+
+    let updatedBlocks: BloquePlanificacion[]
+
+    if (targetDay != null && targetHour && targetOrigin === 'auto') {
+      if (b) {
+        updatedBlocks = data.bloques.map((existing) => {
+          if (existing.day === targetDay && existing.hour === targetHour && existing.origin === 'auto') {
+            return {
+              ...existing,
+              ...b,
+              day: existing.day,
+              hour: existing.hour,
+              activity: existing.activity,
+              origin: 'auto'
+            }
+          }
+          return existing
+        })
+      } else {
+        updatedBlocks = data.bloques.map((existing) => {
+          if (existing.day === targetDay && existing.hour === targetHour && existing.origin === 'auto') {
+            return {
+              ...existing,
+              confirmada: false,
+              notas: undefined
+            }
+          }
+          return existing
+        })
+      }
+    } else {
+      const filtered = data.bloques.filter((block) => !(block.day === targetDay && block.hour === targetHour && block.origin !== 'auto'))
+      if (b) filtered.push(b)
+      updatedBlocks = filtered
+    }
+
+    const updated = { ...data, bloques: updatedBlocks }
+    setData(updated)
+    localManualRef.current = updated.bloques.filter((block) => block.origin !== 'auto')
     setDirty(true)
+  }
+
+  const removeAutoBlockFromState = (target?: BloquePlanificacion) => {
+    if (!target || !data) return
+    const updatedBlocks = data.bloques.filter(existing => {
+      if (existing.origin !== 'auto') return true
+      if (target.agenda_cita_id != null && existing.agenda_cita_id != null) {
+        return existing.agenda_cita_id !== target.agenda_cita_id
+      }
+      return !(existing.day === target.day && existing.hour === target.hour && existing.activity === 'CITAS')
+    })
+    if (updatedBlocks.length === data.bloques.length) return
+    const next = { ...data, bloques: updatedBlocks }
+    setData(next)
+    localManualRef.current = updatedBlocks.filter(block => block.origin !== 'auto')
+    setDirty(true)
+  }
+
+  const handleDeleteBloque = async () => {
+    if (!modal) return
+    const targetBlock = modal.blk
+    if (targetBlock && targetBlock.origin === 'auto' && targetBlock.activity === 'CITAS') {
+      const proceed = await dialog.confirm('Se cancelará la cita sincronizada y se notificará a los participantes. ¿Deseas continuar?', { icon: 'exclamation-triangle-fill' })
+      if (!proceed) return
+      if (targetBlock.agenda_cita_id == null) {
+        const fallback = await dialog.confirm('No encontramos el identificador de la cita. Solo se removerá el bloque de planificación. ¿Continuar?', { icon: 'exclamation-circle-fill' })
+        if (!fallback) return
+        removeAutoBlockFromState(targetBlock)
+        setToast({ msg: 'Bloque eliminado. Guarda la planificación para conservar los cambios.', type: 'success' })
+        closeModal()
+        return
+      }
+      let motivo: string | undefined
+      if (typeof window !== 'undefined') {
+        const promptValue = window.prompt('Motivo de cancelación (opcional)', '')
+        if (promptValue === null) return
+        motivo = promptValue.trim() ? promptValue.trim() : undefined
+      }
+      setActionBusy(true)
+      try {
+        await cancelAgendaCita(targetBlock.agenda_cita_id, motivo || 'Cancelada desde planificación semanal')
+        removeAutoBlockFromState(targetBlock)
+        setToast({ msg: 'Cita cancelada. Guarda la planificación para conservar los cambios.', type: 'success' })
+        closeModal()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'No se pudo cancelar la cita'
+        setToast({ msg: message, type: 'error' })
+      } finally {
+        setActionBusy(false)
+      }
+      return
+    }
+    upsertBloque(null)
+    closeModal()
   }
 
   const horasPlan = useMemo(()=>{
@@ -119,7 +217,7 @@ export default function PlanificacionPage(){
     return Array.from(set).sort()
   },[data])
   // Conteo de SMNYL para meta/progreso
-  const horasSmnyl = data?.bloques.filter(b=>b.activity==='SMNYL').length || 0
+  const horasSmnyl = data?.bloques.filter(b=> b.activity==='SMNYL' || b.activity==='CITAS').length || 0
   // Cálculo de "puedes ganar" = prima anual promedio * (porcentaje comisión/100) * bloques SMNYL
   const puedesGanar = (data?.prima_anual_promedio || 0) * ((data?.porcentaje_comision || 0) / 100) * horasSmnyl
 
@@ -198,16 +296,53 @@ export default function PlanificacionPage(){
               {horasPlan.map(h=> <tr key={h}> <th className="bg-light fw-normal">{h}:00</th>
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
-                  const color = blk? (blk.activity==='PROSPECCION'? 'bg-primary text-white':'bg-info text-dark') : ''
-                  const label = blk? (blk.activity==='PROSPECCION'? 'Prospección':'Cita') : ''
                   const base=semanaDesdeNumero(anio, semana as number).inicio
                   // Construir fecha local evitando mezcla UTC/local
                   const cellDate = new Date(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()+day, Number(h), 0, 0, 0)
-                  const now = new Date()
-                  const isPast = cellDate.getTime() < now.getTime() - 60000
-                  const disabledCls = isPast ? ' opacity-50 position-relative' : ''
-                  const blockClick = isPast ? undefined : ()=>openModal(day,h,blk)
-                  return <td key={day} style={{cursor: isPast? 'not-allowed':'pointer', fontSize:'0.7rem'}} onClick={blockClick} className={color+disabledCls} title={isPast? 'Pasado' : label}>{label}{isPast && !label && <span style={{fontSize:'0.55rem'}}>—</span>}</td>
+                  const isPast = cellDate.getTime() < Date.now() - 60000
+                  const canEdit = !isPast
+                  const color = (()=>{
+                    if(!blk) return ''
+                    if(blk.activity==='PROSPECCION') return 'bg-primary text-white'
+                    if(blk.activity==='SMNYL') return 'bg-info text-dark'
+                    if(blk.activity==='CITAS') return 'bg-info text-dark'
+                    return ''
+                  })()
+                  const titleParts: string[] = []
+                  if(blk){
+                    if(blk.activity==='PROSPECCION') titleParts.push('Prospección')
+                    if(blk.activity==='SMNYL') titleParts.push(`Cita${blk.confirmada ? ' confirmada' : ''}`.trim())
+                    if(blk.activity==='CITAS') {
+                      titleParts.push(`Cita agenda${blk.confirmada ? ' confirmada' : ' por confirmar'}`)
+                      titleParts.push('Sincronizada desde agenda interna')
+                    }
+                    if(blk.prospecto_nombre) titleParts.push(`Prospecto: ${blk.prospecto_nombre}`)
+                    if(blk.prospecto_estado) titleParts.push(`Estado: ${blk.prospecto_estado}`)
+                    if(blk.notas) titleParts.push(`Notas: ${blk.notas}`)
+                  } else {
+                    titleParts.push(isPast? 'Horario en el pasado' : 'Vacío')
+                  }
+                  const cellTitle = titleParts.join('\n')
+                  const emptyPast = !blk && isPast
+                  const cellClass = [color, emptyPast ? 'opacity-50' : '', !canEdit && blk ? 'position-relative' : ''].filter(Boolean).join(' ')
+                  return <td key={day} style={{cursor: canEdit? 'pointer':'not-allowed', fontSize:'0.7rem'}} onClick={canEdit? ()=>openModal(day,h,blk): undefined} className={cellClass} title={cellTitle}>
+                    {blk ? (
+                      <div className="d-flex flex-column align-items-center gap-1 py-1" style={{minHeight:34}}>
+                        <span className="fw-semibold" style={{fontSize:'0.68rem'}}>
+                          {blk.activity==='PROSPECCION' && 'Prospección'}
+                          {(blk.activity==='SMNYL' || blk.activity==='CITAS') && 'Cita'}
+                        </span>
+                        {blk.prospecto_nombre && <span className="text-wrap" style={{fontSize:'0.65rem'}}>{blk.prospecto_nombre}</span>}
+                        {blk.activity!=='PROSPECCION' && (
+                          <span className="badge rounded-pill bg-light text-dark" style={{fontSize:'0.55rem'}}>
+                            {blk.confirmada ? 'confirmada' : 'por confirmar'}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      emptyPast ? <span style={{fontSize:'0.55rem'}}>—</span> : null
+                    )}
+                  </td>
                 })}
               </tr>)}
             </tbody>
@@ -216,13 +351,17 @@ export default function PlanificacionPage(){
         <div className="small text-muted mt-2 d-flex flex-wrap gap-3">
           <span><span className="badge bg-primary">Prospección</span></span>
           <span><span className="badge bg-info text-dark">Cita</span></span>
-          <span>Click celda = editar / crear bloque</span>
+          <span>Click celda = editar o crear bloque</span>
+        </div>
+        <div className="alert alert-secondary small py-2 px-3 mt-2 mb-0">
+          Las citas sincronizadas desde la agenda también se muestran como <strong>Cita</strong> (azul) y puedes editarlas para marcar la confirmación o añadir notas.
         </div>
       </div>
       <div className="col-lg-3">
         <div className="card p-3 shadow-sm">
-          <div className="mb-1 small text-muted">Manual Prospecto: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='PROSPECCION').length}</div>
-          <div className="mb-2 small text-muted">Manual Cita: {data.bloques.filter(b=>b.origin!=='auto' && b.activity==='SMNYL').length}</div>
+          <div className="mb-1 small text-muted">Prospección planificada: {data.bloques.filter(b=> b.origin!=='auto' && b.activity==='PROSPECCION').length}</div>
+          <div className="mb-1 small text-muted">Citas planificadas: {data.bloques.filter(b=> b.origin!=='auto' && b.activity==='SMNYL').length}</div>
+          <div className="mb-2 small text-muted">Citas agenda sincronizadas: {data.bloques.filter(b=> b.origin==='auto' && b.activity==='CITAS').length}</div>
           <div className="mb-2 small">
             <label className="form-label small mb-1">Prima anual promedio</label>
             <div className="input-group input-group-sm">
@@ -253,26 +392,34 @@ export default function PlanificacionPage(){
   {loading && <div>Cargando...</div>}
   {toast && <Notification message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
   {modal && data && <AppModal title={(()=>{ const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+modal.day); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); return `${['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'][modal.day]} ${dia}/${mes} ${modal.hour}:00` })()} icon="calendar-event" onClose={closeModal}>
-    <BloqueEditor modal={modal} semanaBase={semanaDesdeNumero(anio, semana as number).inicio} onSave={b=>{ upsertBloque(b); closeModal() }} onDelete={()=>{ upsertBloque(null); closeModal() }} />
+    <BloqueEditor modal={modal} semanaBase={semanaDesdeNumero(anio, semana as number).inicio} onSave={b=>{ upsertBloque(b); closeModal() }} onDelete={handleDeleteBloque} pending={actionBusy} />
   </AppModal>}
   </div>
 }
 
-function BloqueEditor({ modal, semanaBase, onSave, onDelete }: { modal:{day:number; hour:string; blk?:BloquePlanificacion}; semanaBase: Date; onSave:(b:BloquePlanificacion|null)=>void; onDelete:()=>void }){
+function BloqueEditor({ modal, semanaBase, onSave, onDelete, pending = false }: { modal:{day:number; hour:string; blk?:BloquePlanificacion}; semanaBase: Date; onSave:(b:BloquePlanificacion|null)=>void; onDelete:()=>void; pending?: boolean }){
   const dias = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
-  const [tipo,setTipo]=useState< 'PROSPECCION'|'SMNYL' | ''>(modal.blk? (modal.blk.activity==='CITAS'? '' : modal.blk.activity) : '')
+  const isAgendaCita = modal.blk?.origin === 'auto' && modal.blk.activity === 'CITAS'
+  const [tipo,setTipo]=useState<'PROSPECCION'|'SMNYL'|''>(isAgendaCita ? 'SMNYL' : modal.blk ? (modal.blk.activity==='CITAS'? '' : modal.blk.activity) : '')
   const [notas,setNotas]=useState(modal.blk?.notas || '')
   const [confirmada, setConfirmada] = useState(modal.blk?.confirmada || false)
   const dialog = useDialog()
   const guardar=async()=>{
-    if(!tipo){ onSave(null); return }
+  if(!tipo && !isAgendaCita){ onSave(null); return }
     // Bloquear guardar en pasado (recalcular con lógica local consistente)
     const target = new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour), 0,0,0)
     if(target.getTime() < Date.now()-60000){ await dialog.alert('No se puede editar un bloque en el pasado'); return }
     // Notas opcionales
-    const base: BloquePlanificacion = {day:modal.day, hour:modal.hour, activity:tipo, origin:'manual'}
-    base.notas = notas.trim()
-    if (tipo === 'SMNYL') base.confirmada = confirmada
+    const activity: BloquePlanificacion['activity'] = isAgendaCita ? 'CITAS' : (tipo || 'SMNYL')
+    const base: BloquePlanificacion = {
+      day: modal.day,
+      hour: modal.hour,
+      activity,
+      origin: isAgendaCita ? 'auto' : 'manual'
+    }
+    const trimmedNotes = notas.trim()
+    if (trimmedNotes.length > 0) base.notas = trimmedNotes
+    if (isAgendaCita || activity === 'SMNYL') base.confirmada = confirmada
     onSave(base)
   }
   const fechaBloque = new Date(semanaBase); fechaBloque.setUTCDate(fechaBloque.getUTCDate()+modal.day)
@@ -280,15 +427,22 @@ function BloqueEditor({ modal, semanaBase, onSave, onDelete }: { modal:{day:numb
   const mesNum = (fechaBloque.getUTCMonth()+1).toString().padStart(2,'0')
   return <div className="small">
     <div className="mb-2 fw-semibold">{dias[modal.day]} {diaNum}/{mesNum} {modal.hour}:00</div>
-    <div className="mb-2">
-      <label className="form-label small mb-1">Tipo</label>
-      <select className="form-select form-select-sm" value={tipo} onChange={e=> setTipo(e.target.value as 'PROSPECCION'|'SMNYL'|'') }>
-        <option value="">(Vacío)</option>
-        <option value="PROSPECCION">Prospección</option>
-        <option value="SMNYL">Cita</option>
-      </select>
-    </div>
-    {tipo === 'SMNYL' && (
+    {isAgendaCita ? (
+      <div className="mb-2">
+        <label className="form-label small mb-1">Tipo</label>
+        <div className="form-control form-control-sm bg-light">Cita agenda (sincronizada)</div>
+      </div>
+    ) : (
+      <div className="mb-2">
+        <label className="form-label small mb-1">Tipo</label>
+        <select className="form-select form-select-sm" value={tipo} onChange={e=> setTipo(e.target.value as 'PROSPECCION'|'SMNYL'|'') }>
+          <option value="">(Vacío)</option>
+          <option value="PROSPECCION">Prospección</option>
+          <option value="SMNYL">Cita</option>
+        </select>
+      </div>
+    )}
+    {(isAgendaCita || tipo === 'SMNYL') && (
       <div className="form-check form-switch mb-2">
         <input className="form-check-input" type="checkbox" id="cita-confirmada-toggle" checked={confirmada} onChange={e=>setConfirmada(e.target.checked)} />
         <label className="form-check-label" htmlFor="cita-confirmada-toggle">Cita confirmada</label>
@@ -299,9 +453,9 @@ function BloqueEditor({ modal, semanaBase, onSave, onDelete }: { modal:{day:numb
       <textarea rows={3} className="form-control form-control-sm" value={notas} onChange={e=> setNotas(e.target.value)} />
     </div>}
     <div className="d-flex gap-2 mt-3">
-      <button className="btn btn-primary btn-sm" onClick={guardar} disabled={(()=>{ const t=new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour),0,0,0); return t.getTime()<Date.now()-60000 })()}>Guardar</button>
-      <button className="btn btn-outline-secondary btn-sm" onClick={()=> onSave(null)}>Vaciar</button>
-      <button className="btn btn-outline-danger btn-sm ms-auto" onClick={onDelete}>Eliminar</button>
+      <button className="btn btn-primary btn-sm" onClick={guardar} disabled={pending || (()=>{ const t=new Date(semanaBase.getUTCFullYear(), semanaBase.getUTCMonth(), semanaBase.getUTCDate()+modal.day, Number(modal.hour),0,0,0); return t.getTime()<Date.now()-60000 })()}>Guardar</button>
+      <button className="btn btn-outline-secondary btn-sm" onClick={()=> onSave(null)} disabled={pending}>Vaciar</button>
+      <button className="btn btn-outline-danger btn-sm ms-auto" onClick={onDelete} disabled={pending}>Eliminar</button>
     </div>
   </div>
 }

@@ -86,9 +86,14 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
   const existente = await supabase.from('producto_parametros').select('*').eq('id', id).single()
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
 
-  const { error } = await supabase.from('producto_parametros').delete().eq('id', id)
+  const { data: updated, error } = await supabase
+    .from('producto_parametros')
+    .update({ activo: false })
+    .eq('id', id)
+    .select()
+    .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  await logAccion('borrado_producto_parametro', { usuario: usuario.email, tabla_afectada: 'producto_parametros', id_registro: 0, snapshot: existente.data })
-  return NextResponse.json({ success: true })
+  await logAccion('inactivacion_producto_parametro', { usuario: usuario.email, tabla_afectada: 'producto_parametros', id_registro: 0, snapshot: existente.data })
+  return NextResponse.json({ success: true, data: updated })
 }

@@ -34,7 +34,6 @@ const sections: Array<{ title: string; paragraphs: string[] }> = [
       'Todos los proveedores operan bajo contratos que obligan a proteger la informacion. No comercializamos la informacion personal con terceros ajenos al servicio.'
     ]
   },
-
   {
     title: '5. Conservacion y seguridad',
     paragraphs: [
@@ -94,4 +93,3 @@ export default function PrivacyPolicyPage() {
     </main>
   )
 }
-

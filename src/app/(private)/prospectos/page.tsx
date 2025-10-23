@@ -77,7 +77,7 @@ export default function ProspectosPage(){
     };
   }, [sourceAll]);
   const [estadoFiltro,setEstadoFiltro]=useState<ProspectoEstado|''>('')
-  const [form,setForm]=useState({ nombre:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
+  const [form,setForm]=useState({ nombre:'', email:'', telefono:'', notas:'', estado:'pendiente' as ProspectoEstado })
   const [errorMsg,setErrorMsg]=useState<string>('')
   const [toast,setToast]=useState<{msg:string; type:'success'|'error'}|null>(null)
   const bcRef = useRef<BroadcastChannel|null>(null)
@@ -202,13 +202,22 @@ export default function ProspectosPage(){
     setSaving(true)
     setErrorMsg('')
     if(!form.nombre.trim()) { setSaving(false); submittingRef.current = false; return }
+    if (emailInvalido) {
+      setSaving(false)
+      submittingRef.current = false
+      setToast({ msg: 'Correo electrónico inválido', type: 'error' })
+      return
+    }
+
+    const normalizedEmail = form.email.trim().toLowerCase()
     const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
+    if (normalizedEmail) body.email = normalizedEmail
     // Si superusuario/admin y se eligió agente en el selector superior, enviar agente_id para asignación
     if (superuser && agenteId) body.agente_id = Number(agenteId)
     // Ya no se agenda cita durante el registro
     try {
       const r=await fetch('/api/prospectos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(r.ok){ setForm({nombre:'',telefono:'',notas:'',estado:'pendiente'}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
+  if(r.ok){ setForm({nombre:'',email:'',telefono:'',notas:'',estado:'pendiente'}); fetchAll(); setToast({msg:'Prospecto creado', type:'success'}) }
       else { try { const j=await r.json(); setErrorMsg(j.error||'Error'); setToast({msg:j.error||'Error', type:'error'}) } catch { setErrorMsg('Error al guardar'); setToast({msg:'Error al guardar', type:'error'}) } }
   } finally { setSaving(false); submittingRef.current = false }
   }
@@ -236,7 +245,16 @@ export default function ProspectosPage(){
   },[superuser, agenteId, anio, semana])
 
   // Validaciones extra: formato teléfono y posible duplicado por nombre
-  const telefonoValido = (v:string)=> !v || /^\+?[0-9\s-]{7,15}$/.test(v)
+  const telefonoValido = (v:string)=> {
+    const value = (v || '').trim()
+    if (!value) return true
+    return /^\+?[0-9\s-]{7,15}$/.test(value)
+  }
+  const emailValido = (v:string)=> {
+    const value = (v || '').trim()
+    if (!value) return true
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+  }
   const posibleDuplicado = (nombre:string)=> {
     const n = nombre.trim().toLowerCase()
     if(!n) return false
@@ -244,10 +262,13 @@ export default function ProspectosPage(){
   }
   const nombreDuplicado = posibleDuplicado(form.nombre)
   const telefonoInvalido = !telefonoValido(form.telefono)
+  const emailInvalido = Boolean(form.email.trim()) && !emailValido(form.email)
+  const busquedaNormalizada = busqueda.trim().toLowerCase()
 
   // Modal de edición de prospecto
   const [editTarget, setEditTarget] = useState<Prospecto|null>(null)
-  const [editForm, setEditForm] = useState<{ nombre:string; telefono:string; notas:string; estado:string }>({ nombre:'', telefono:'', notas:'', estado:'pendiente' })
+  const [editForm, setEditForm] = useState<{ nombre:string; email:string; telefono:string; notas:string; estado:string }>({ nombre:'', email:'', telefono:'', notas:'', estado:'pendiente' })
+  const editEmailInvalido = Boolean(editForm.email.trim()) && !emailValido(editForm.email)
   // Estado para modal de nuevo cliente
   const [showNuevoCliente, setShowNuevoCliente] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteDraft>({ primer_nombre:'', segundo_nombre:'', primer_apellido:'', segundo_apellido:'', telefono_celular:'', email:'' })
@@ -315,6 +336,7 @@ export default function ProspectosPage(){
     setEditTarget(p)
     setEditForm({
       nombre: p.nombre || '',
+      email: p.email || '',
       telefono: p.telefono || '',
       notas: p.notas || '',
       estado: p.estado
@@ -331,8 +353,16 @@ export default function ProspectosPage(){
   const wasCliente = currentEstado === 'ya_es_cliente'
   const newIsCliente = newEstado === 'ya_es_cliente'
     const convertingToCliente = newIsCliente && !wasCliente
+    if (editEmailInvalido) {
+      setToast({ msg: 'Correo electrónico inválido', type: 'error' })
+      return
+    }
+    const trimmedEmail = (editForm.email || '').trim()
     const patch: Partial<Prospecto> = {}
     if (editForm.nombre.trim() !== (editTarget.nombre||'').trim()) patch.nombre = editForm.nombre.trim()
+    const normalizedEmail = trimmedEmail ? trimmedEmail.toLowerCase() : null
+    const previousEmail = (editTarget.email || '').trim().toLowerCase()
+    if ((normalizedEmail || '') !== previousEmail) patch.email = normalizedEmail
     if ((editForm.telefono||'').trim() !== (editTarget.telefono||'').trim()) patch.telefono = (editForm.telefono||'').trim()
     if ((editForm.notas||'').trim() !== (editTarget.notas||'').trim()) patch.notas = (editForm.notas||'').trim()
     // NO incluir estado ya_es_cliente en este primer patch; se hará tras crear el cliente
@@ -852,22 +882,26 @@ export default function ProspectosPage(){
           <input required value={form.nombre} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Nombre" className="form-control"/>
           {nombreDuplicado && <div className="form-text text-warning small">Nombre ya existe en la lista actual.</div>}
         </div>
+        <div className="col-sm-3">
+          <input value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="Correo" className={`form-control ${emailInvalido? 'is-invalid':''}`} type="email" />
+          {emailInvalido && <div className="invalid-feedback d-block">Correo electrónico inválido.</div>}
+        </div>
         <div className="col-sm-2">
           <input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} placeholder="Teléfono" className={`form-control ${telefonoInvalido? 'is-invalid':''}`}/>
           {telefonoInvalido && <div className="invalid-feedback">Teléfono inválido. Use 7-15 dígitos, opcional +, espacios o guiones.</div>}
         </div>
-        <div className="col-sm-3"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
-  <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().filter(o=> o.value!=='ya_es_cliente').map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+        <div className="col-sm-2"><input value={form.notas} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} placeholder="Notas" className="form-control"/></div>
+        <div className="col-sm-2"><select value={form.estado} onChange={e=>setForm(f=>({...f,estado:e.target.value as ProspectoEstado}))} className="form-select">{estadoOptions().filter(o=> o.value!=='ya_es_cliente').map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
       </div>
   <div className="mt-2">
-        <button className="btn btn-primary btn-sm" disabled={saving || loading || telefonoInvalido} aria-busy={saving} type="submit">
+  <button className="btn btn-primary btn-sm" disabled={saving || loading || telefonoInvalido || emailInvalido} aria-busy={saving} type="submit">
           {saving ? 'Guardando…' : 'Agregar'}
         </button>
       </div>
       {errorMsg && <div className="text-danger small mt-2">{errorMsg}</div>}
     </form>
     <div className="mt-4 mb-2" style={{maxWidth:320}}>
-      <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar por nombre" className="form-control form-control-sm" />
+      <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar por nombre o correo" className="form-control form-control-sm" />
     </div>
     <h5 className="mb-2">Prospectos semana actual</h5>
   <div className="table-responsive mb-4 fade-in">
@@ -875,6 +909,7 @@ export default function ProspectosPage(){
         <thead>
           <tr>
             <th>Nombre</th>
+            <th>Correo</th>
             <th>Teléfono</th>
             <th>Notas</th>
             <th>Estado</th>
@@ -882,9 +917,16 @@ export default function ProspectosPage(){
           </tr>
         </thead>
         <tbody>
-          {actuales.filter(p=> (!estadoFiltro || p.estado===estadoFiltro) && (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))).map(p=> (
+          {actuales.filter(p=> {
+            if (estadoFiltro && p.estado !== estadoFiltro) return false
+            if (!busquedaNormalizada) return true
+            const nombreMatch = p.nombre?.toLowerCase().includes(busquedaNormalizada)
+            const emailMatch = p.email ? p.email.toLowerCase().includes(busquedaNormalizada) : false
+            return Boolean(nombreMatch || emailMatch)
+          }).map(p=> (
             <tr key={p.id}>
               <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
+              <td>{p.email ? <a href={`mailto:${p.email}`}>{p.email}</a> : ''}</td>
               <td>{p.telefono? (()=>{ const digits = p.telefono.replace(/[^0-9]/g,''); if(!digits) return p.telefono; const withCode = digits.length===10? '52'+digits : digits; const waUrl = 'https://wa.me/'+withCode; return <a href={waUrl} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp">{p.telefono}</a>; })(): ''}</td>
               <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
               <td>{ESTADO_LABEL[p.estado]}</td>
@@ -893,7 +935,7 @@ export default function ProspectosPage(){
               </td>
             </tr>
           ))}
-          {(!loading && actuales.length===0) && <tr><td colSpan={7} className="text-center py-4 text-muted">No hay prospectos de la semana actual (para los filtros).</td></tr>}
+          {(!loading && actuales.length===0) && <tr><td colSpan={6} className="text-center py-4 text-muted">No hay prospectos de la semana actual (para los filtros).</td></tr>}
         </tbody>
       </table>
       {loading && <div className="p-3">Cargando...</div>}
@@ -911,6 +953,7 @@ export default function ProspectosPage(){
             <tr>
               <th>Semana</th>
               <th>Nombre</th>
+              <th>Correo</th>
               <th>Teléfono</th>
               <th>Notas</th>
               <th>Estado</th>
@@ -918,10 +961,17 @@ export default function ProspectosPage(){
             </tr>
           </thead>
           <tbody>
-            {activosPrevios.filter(p=> (!estadoFiltro || p.estado===estadoFiltro) && (!busqueda.trim() || p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()))).map(p=> (
+            {activosPrevios.filter(p=> {
+              if (estadoFiltro && p.estado !== estadoFiltro) return false
+              if (!busquedaNormalizada) return true
+              const nombreMatch = p.nombre?.toLowerCase().includes(busquedaNormalizada)
+              const emailMatch = p.email ? p.email.toLowerCase().includes(busquedaNormalizada) : false
+              return Boolean(nombreMatch || emailMatch)
+            }).map(p=> (
               <tr key={p.id}>
                 <td>{p.semana_iso}</td>
                 <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
+                <td>{p.email ? <a href={`mailto:${p.email}`}>{p.email}</a> : ''}</td>
                 <td>{p.telefono? (()=>{ const digits = p.telefono.replace(/[^0-9]/g,''); if(!digits) return p.telefono; const withCode = digits.length===10? '52'+digits : digits; const waUrl = 'https://wa.me/'+withCode; return <a href={waUrl} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp">{p.telefono}</a>; })(): ''}</td>
                 <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
                 <td>{ESTADO_LABEL[p.estado]}</td>
@@ -945,12 +995,13 @@ export default function ProspectosPage(){
               <input className="form-control" value={editForm.nombre} onChange={e=>setEditForm(f=>({...f,nombre:e.target.value}))} />
             </div>
             <div className="col-sm-6">
+              <label className="form-label small">Correo</label>
+              <input className={`form-control ${editEmailInvalido ? 'is-invalid' : ''}`} value={editForm.email} onChange={e=>setEditForm(f=>({...f,email:e.target.value}))} />
+              {editEmailInvalido && <div className="invalid-feedback d-block">Correo electrónico inválido.</div>}
+            </div>
+            <div className="col-sm-6">
               <label className="form-label small">Teléfono</label>
               <input className="form-control" value={editForm.telefono} onChange={e=>setEditForm(f=>({...f,telefono:e.target.value}))} />
-            </div>
-            <div className="col-12">
-              <label className="form-label small">Notas</label>
-              <input className="form-control" value={editForm.notas} onChange={e=>setEditForm(f=>({...f,notas:e.target.value}))} />
             </div>
             <div className="col-sm-6">
               <label className="form-label small">Estado</label>
@@ -958,10 +1009,14 @@ export default function ProspectosPage(){
                 {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
+            <div className="col-12">
+              <label className="form-label small">Notas</label>
+              <input className="form-control" value={editForm.notas} onChange={e=>setEditForm(f=>({...f,notas:e.target.value}))} />
+            </div>
           </div>
           <div className="d-flex justify-content-end gap-2 mt-3">
             <button className="btn btn-outline-secondary btn-sm" onClick={closeEdit}>Cancelar</button>
-            <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={!editForm.nombre.trim()}>Guardar cambios</button>
+            <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={!editForm.nombre.trim() || editEmailInvalido}>Guardar cambios</button>
           </div>
         </div>
       </AppModal>

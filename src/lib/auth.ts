@@ -88,7 +88,7 @@ export async function getUsuarioSesion(h?: Headers): Promise<UsuarioSesion | nul
   // Traer registro de tabla usuarios intentando por id_auth y por email.
   // Primero con service role (evita RLS); si no se encuentra o no hay service key, usamos SSR.
   // No uses last_login in select to avoid errors if column is missing in some environments
-  const selectCols = 'id,email,rol,activo,nombre,id_auth'
+  const selectCols = 'id,email,rol,activo,nombre,id_auth,must_change_password,is_desarrollador'
   async function lookupUsuarioBy(client: SupabaseClient): Promise<UsuarioSesion | null> {
     // 1) id_auth si existe
     try {

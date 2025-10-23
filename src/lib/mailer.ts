@@ -1,4 +1,34 @@
 // Felicitación por 2 citas confirmadas en un día
+const DEFAULT_TIMEZONE = process.env.AGENDA_TZ || 'America/Mexico_City'
+
+function formatDateRange(inicioIso: string, finIso: string, tz: string = DEFAULT_TIMEZONE) {
+  try {
+    const inicio = new Date(inicioIso)
+    const fin = new Date(finIso)
+    const dateFormatter = new Intl.DateTimeFormat('es-MX', { dateStyle: 'full', timeZone: tz })
+    const timeFormatter = new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz })
+    const fecha = dateFormatter.format(inicio)
+    const horaInicio = timeFormatter.format(inicio)
+    const horaFin = timeFormatter.format(fin)
+    return { fecha, horaInicio, horaFin }
+  } catch {
+    return { fecha: inicioIso, horaInicio: inicioIso, horaFin: finIso }
+  }
+}
+
+function humanizeProvider(provider: string) {
+  switch (provider) {
+    case 'google_meet':
+      return 'Google Meet'
+    case 'zoom':
+      return 'Zoom'
+    case 'teams':
+      return 'Microsoft Teams'
+    default:
+      return provider
+  }
+}
+
 export function buildFelicitacionCitasEmail(nombreAgente: string, fecha: string, total: number) {
   const subject = `¡Felicidades por agendar ${total} citas confirmadas en un solo día!`;
   const year = new Date().getFullYear();
@@ -53,6 +83,127 @@ Has registrado al menos 2 citas confirmadas cada día durante la semana ${semana
 ¡Sigue así!
 © ${year} Lealtia`;
   return { subject, html, text };
+}
+
+export function buildCitaConfirmacionEmail(opts: {
+  nombreAgente: string
+  emailAgente: string
+  inicio: string
+  fin: string
+  meetingUrl: string
+  meetingProvider: string
+  nombreProspecto?: string | null
+  supervisorNombre?: string | null
+  solicitante?: string | null
+  timezone?: string | null
+  meetingId?: string | null
+  meetingPassword?: string | null
+}) {
+  const tz = opts.timezone || DEFAULT_TIMEZONE
+  const { fecha, horaInicio, horaFin } = formatDateRange(opts.inicio, opts.fin, tz)
+  const subject = `Cita confirmada — ${fecha} ${horaInicio}`
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">Cita confirmada</h2>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <p>Hola <strong>${opts.nombreAgente || opts.emailAgente}</strong>,</p>
+      <p>Tu cita ha sido confirmada para el <strong>${fecha}</strong> de <strong>${horaInicio}</strong> a <strong>${horaFin}</strong> (${tz}).</p>
+      ${opts.nombreProspecto ? `<p><strong>Prospecto:</strong> ${opts.nombreProspecto}</p>` : ''}
+  <p><strong>Enlace:</strong> <a href="${opts.meetingUrl}" style="color:#004481">${opts.meetingUrl}</a></p>
+  <p><strong>Plataforma:</strong> ${humanizeProvider(opts.meetingProvider)}</p>
+      ${opts.meetingId ? `<p><strong>ID de sesión:</strong> ${opts.meetingId}</p>` : ''}
+      ${opts.meetingPassword ? `<p><strong>Contraseña:</strong> ${opts.meetingPassword}</p>` : ''}
+      ${opts.supervisorNombre ? `<p><strong>Supervisor:</strong> ${opts.supervisorNombre}</p>` : ''}
+      ${opts.solicitante ? `<p>Solicitada por: ${opts.solicitante}</p>` : ''}
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
+  const textLines = [
+    `Cita confirmada`,
+    `Fecha: ${fecha}`,
+    `Horario: ${horaInicio} - ${horaFin} (${tz})`,
+    opts.nombreProspecto ? `Prospecto: ${opts.nombreProspecto}` : undefined,
+    `Enlace: ${opts.meetingUrl}`,
+  `Plataforma: ${humanizeProvider(opts.meetingProvider)}`,
+    opts.meetingId ? `ID de sesión: ${opts.meetingId}` : undefined,
+    opts.meetingPassword ? `Contraseña: ${opts.meetingPassword}` : undefined,
+    opts.supervisorNombre ? `Supervisor: ${opts.supervisorNombre}` : undefined,
+    opts.solicitante ? `Solicitada por: ${opts.solicitante}` : undefined,
+    `© ${year} Lealtia`
+  ].filter(Boolean)
+  return { subject, html, text: textLines.join('\n') }
+}
+
+export function buildCitaCancelacionEmail(opts: {
+  nombreAgente: string
+  emailAgente: string
+  inicio: string
+  fin: string
+  meetingUrl: string
+  meetingProvider: string
+  motivo?: string | null
+  nombreProspecto?: string | null
+  supervisorNombre?: string | null
+  solicitante?: string | null
+  timezone?: string | null
+  meetingId?: string | null
+  meetingPassword?: string | null
+}) {
+  const tz = opts.timezone || DEFAULT_TIMEZONE
+  const { fecha, horaInicio, horaFin } = formatDateRange(opts.inicio, opts.fin, tz)
+  const subject = `Cita cancelada — ${fecha} ${horaInicio}`
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#7a0019;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">Cita cancelada</h2>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <p>Hola <strong>${opts.nombreAgente || opts.emailAgente}</strong>,</p>
+      <p>La cita programada para el <strong>${fecha}</strong> de <strong>${horaInicio}</strong> a <strong>${horaFin}</strong> (${tz}) ha sido cancelada.</p>
+      ${opts.motivo ? `<p><strong>Motivo:</strong> ${opts.motivo}</p>` : ''}
+      ${opts.nombreProspecto ? `<p><strong>Prospecto:</strong> ${opts.nombreProspecto}</p>` : ''}
+  <p><strong>Enlace (referencia):</strong> ${opts.meetingUrl ? `<a href="${opts.meetingUrl}" style="color:#004481">${opts.meetingUrl}</a>` : 'No disponible'}</p>
+  <p><strong>Plataforma:</strong> ${humanizeProvider(opts.meetingProvider)}</p>
+      ${opts.meetingId ? `<p><strong>ID de sesión:</strong> ${opts.meetingId}</p>` : ''}
+      ${opts.meetingPassword ? `<p><strong>Contraseña:</strong> ${opts.meetingPassword}</p>` : ''}
+      ${opts.supervisorNombre ? `<p><strong>Supervisor:</strong> ${opts.supervisorNombre}</p>` : ''}
+      ${opts.solicitante ? `<p>Gestionada por: ${opts.solicitante}</p>` : ''}
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
+  const textLines = [
+    `Cita cancelada`,
+    `Fecha: ${fecha}`,
+    `Horario: ${horaInicio} - ${horaFin} (${tz})`,
+    opts.motivo ? `Motivo: ${opts.motivo}` : undefined,
+    opts.nombreProspecto ? `Prospecto: ${opts.nombreProspecto}` : undefined,
+  opts.meetingUrl ? `Enlace: ${opts.meetingUrl}` : 'Enlace: No disponible',
+  `Plataforma: ${humanizeProvider(opts.meetingProvider)}`,
+    opts.meetingId ? `ID de sesión: ${opts.meetingId}` : undefined,
+    opts.meetingPassword ? `Contraseña: ${opts.meetingPassword}` : undefined,
+    opts.supervisorNombre ? `Supervisor: ${opts.supervisorNombre}` : undefined,
+    opts.solicitante ? `Gestionada por: ${opts.solicitante}` : undefined,
+    `© ${year} Lealtia`
+  ].filter(Boolean)
+  return { subject, html, text: textLines.join('\n') }
 }
 // Carga perezosa de nodemailer para evitar que se incluya en el bundle cliente.
 

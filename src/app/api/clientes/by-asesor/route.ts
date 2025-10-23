@@ -37,11 +37,19 @@ export async function GET(req: Request) {
   }
 
   const admin = getServiceClient()
-  const { data, error, count } = await admin
+  const includeInactivos = url.searchParams.get('include_inactivos') === '1'
+
+  let query = admin
     .from('clientes')
-    .select('id, cliente_code, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, telefono_celular, email:correo, fecha_nacimiento', { count: 'exact' })
+    .select('id, cliente_code, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, telefono_celular, email:correo, fecha_nacimiento, activo, inactivado_at', { count: 'exact' })
     .eq('asesor_id', asesorId)
     .order('id', { ascending: true })
+
+  if (!includeInactivos) {
+    query = query.eq('activo', true)
+  }
+
+  const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json({ items: data || [], count: typeof count === 'number' ? count : (data?.length || 0) })
 }

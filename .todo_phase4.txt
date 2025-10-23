@@ -1,0 +1,4 @@
+### Fase 4 backlog (internal)
+- [x] Servicio de correo actualizado (confirmación/recordatorio base)
+- [x] Componentes UI: parámetros de desarrolladores y agenda interna
+- [x] Integración Google Meet y automatización de eventos

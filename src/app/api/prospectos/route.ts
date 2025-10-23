@@ -93,6 +93,16 @@ export async function POST(req: Request) {
   if (!nombre) return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
 
   const telefono: string | undefined = body.telefono?.trim() || undefined
+  const emailRaw: string | undefined = body.email?.trim() || undefined
+  let email: string | undefined
+  if (emailRaw) {
+    const normalizedEmail = emailRaw.toLowerCase()
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailPattern.test(normalizedEmail)) {
+      return NextResponse.json({ error: 'Correo electrónico inválido' }, { status: 400 })
+    }
+    email = normalizedEmail
+  }
   const notas: string | undefined = body.notas?.trim() || undefined
   let estado: ProspectoEstado = 'pendiente'
   const estadoRaw: string | undefined = body.estado
@@ -164,6 +174,7 @@ export async function POST(req: Request) {
     semana_iso: semana,
     nombre,
     telefono,
+    email: email ?? null,
     notas,
     estado,
     fecha_cita

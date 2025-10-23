@@ -21,6 +21,19 @@ export async function PATCH(req: Request) {
     const n = String(body.nombre).trim(); if (n) fields.nombre = n
   }
   if (body.telefono !== undefined) fields.telefono = String(body.telefono).trim() || null
+  if (body.email !== undefined) {
+    const rawEmail = String(body.email).trim()
+    if (!rawEmail) {
+      fields.email = null
+    } else {
+      const normalizedEmail = rawEmail.toLowerCase()
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailPattern.test(normalizedEmail)) {
+        return NextResponse.json({ error: 'Correo electrónico inválido' }, { status: 400 })
+      }
+      fields.email = normalizedEmail
+    }
+  }
   if (body.notas !== undefined) fields.notas = String(body.notas).trim() || null
   if (body.estado !== undefined) {
     const e = String(body.estado)

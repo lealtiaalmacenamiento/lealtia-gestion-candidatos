@@ -21,6 +21,7 @@ export default function UsuariosPage() {
   const [pendingReset, setPendingReset] = useState<Usuario | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [transferDialog, setTransferDialog] = useState<{ usuario: Usuario; transferTo: number | null; loading: boolean; error: string | null; stats: Record<string, number> | null } | null>(null)
 
   useEffect(() => { getUsuarios().then(setUsuarios); }, []);
 
@@ -60,16 +61,20 @@ export default function UsuariosPage() {
                           <button
                             onClick={async () => {
                               if (u.rol === 'admin' || u.rol === 'superusuario' || deletingId) return;
+                              if (u.rol === 'agente') {
+                                setNotif(null);
+                                setTransferDialog({ usuario: u, transferTo: null, loading: false, error: null, stats: null })
+                                return
+                              }
                               setNotif(null);
                               setDeletingId(u.id);
                               const original = usuarios;
-                              // Optimistic remove
                               setUsuarios(prev => prev.filter(x => x.id !== u.id));
                               try {
                                 await deleteUsuario(u.id);
                                 setNotif({ msg: 'Usuario eliminado', type: 'success' });
                               } catch (e) {
-                                setUsuarios(original); // rollback
+                                setUsuarios(original);
                                 const msg = e instanceof Error ? e.message : 'Error al eliminar';
                                 setNotif({ msg, type: 'error' });
                               } finally {
@@ -123,6 +128,31 @@ export default function UsuariosPage() {
           </div>
         </div>
       </div>
+      {transferDialog && (
+        <TransferAgenteModal
+          usuarios={usuarios}
+          dialog={transferDialog}
+          onDismiss={() => { if (!transferDialog.loading) setTransferDialog(null) }}
+          onChange={(transferTo) => setTransferDialog(prev => prev ? { ...prev, transferTo, error: null } : prev)}
+          onConfirm={async () => {
+            if (!transferDialog.transferTo) {
+              setTransferDialog(prev => prev ? { ...prev, error: 'Selecciona un agente destino' } : prev)
+              return
+            }
+            setTransferDialog(prev => prev ? { ...prev, loading: true, error: null } : prev)
+            try {
+              const res = await deleteUsuario(transferDialog.usuario.id, { transferTo: transferDialog.transferTo })
+              setUsuarios(prev => prev.filter(x => x.id !== transferDialog.usuario.id))
+              setNotif({ msg: 'Agente eliminado y registros transferidos', type: 'success' })
+              setTransferDialog(prev => prev ? { ...prev, loading: false, stats: res.stats || null } : prev)
+              setTimeout(() => setTransferDialog(null), 1600)
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : 'Error al transferir y eliminar'
+              setTransferDialog(prev => prev ? { ...prev, loading: false, error: msg } : prev)
+            }
+          }}
+        />
+      )}
     </BasePage>
   );
 }
@@ -159,6 +189,73 @@ function ResetPasswordModal({ usuario, onClose, onConfirm, loading, message }: R
           <button className="btn btn-soft-warning btn-sm d-flex align-items-center gap-2 fw-semibold" onClick={onConfirm} disabled={loading || !!message}>
             {loading && <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>}
             {loading? 'Procesando...':'Confirmar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type TransferModalProps = {
+  usuarios: Usuario[]
+  dialog: { usuario: Usuario; transferTo: number | null; loading: boolean; error: string | null; stats: Record<string, number> | null }
+  onDismiss: () => void
+  onChange: (transferTo: number | null) => void
+  onConfirm: () => void
+}
+
+function TransferAgenteModal({ usuarios, dialog, onDismiss, onChange, onConfirm }: TransferModalProps) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
+  const opciones = usuarios.filter(u => u.rol === 'agente' && u.activo && u.id !== dialog.usuario.id)
+
+  return (
+    <div className="app-modal" role="dialog" aria-modal="true" aria-labelledby="transferAgenteTitle">
+      <div className="app-modal-content" data-testid="transfer-modal">
+        <div className="app-modal-header">
+          <span className="d-inline-flex align-items-center justify-content-center bg-white text-primary rounded-circle" style={{ width: 32, height: 32 }}>
+            <i className="bi bi-arrow-left-right"></i>
+          </span>
+          <h6 id="transferAgenteTitle" className="mb-0">Reasignar registros</h6>
+          <button className="app-modal-close" aria-label="Cerrar" onClick={onDismiss} disabled={dialog.loading}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+        <div className="app-modal-body">
+          <p className="mb-3">Antes de eliminar al agente <strong>{dialog.usuario.email}</strong>, selecciona un agente activo que recibirá sus prospectos, citas y clientes asignados.</p>
+          <label className="form-label">Reasignar a</label>
+          <select
+            className="form-select"
+            value={dialog.transferTo ?? ''}
+            onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+            disabled={dialog.loading}
+          >
+            <option value="">Selecciona un agente…</option>
+            {opciones.map(o => (
+              <option key={o.id} value={o.id}>{o.email}</option>
+            ))}
+          </select>
+          {dialog.error && <div className="alert alert-danger py-2 mt-3">{dialog.error}</div>}
+          {dialog.stats && (
+            <div className="alert alert-success py-2 mt-3">
+              <p className="mb-1 fw-semibold">Registros transferidos:</p>
+              <ul className="mb-0 ps-3">
+                {Object.entries(dialog.stats).map(([key, value]) => (
+                  <li key={key}><span className="text-capitalize">{key}</span>: {value}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        <div className="app-modal-footer">
+          <button className="btn btn-soft-secondary btn-sm" onClick={onDismiss} disabled={dialog.loading || !!dialog.stats}>Cancelar</button>
+          <button className="btn btn-danger btn-sm d-flex align-items-center gap-2" onClick={onConfirm} disabled={dialog.loading || !!dialog.stats}>
+            {dialog.loading && <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>}
+            {dialog.loading ? 'Reasignando…' : 'Confirmar eliminación'}
           </button>
         </div>
       </div>

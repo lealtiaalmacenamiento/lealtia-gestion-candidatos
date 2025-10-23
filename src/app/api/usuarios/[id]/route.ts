@@ -48,6 +48,13 @@ export async function DELETE(req: Request) {
   if (!usuario?.activo || !['admin','superusuario'].includes(usuario.rol))
     return NextResponse.json({ error: 'Sin permiso' }, { status: 403 })
 
+  let body: { transferTo?: number } = {}
+  if (req.headers.get('content-type')?.includes('application/json')) {
+    try {
+      body = await req.json()
+    } catch {/* ignore malformed body; se tratará como vacío */}
+  }
+
   const existente = await supabase.from('usuarios').select('*').eq('id', idStr).single()
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
   const target = existente.data as { rol?: string } | null
@@ -57,9 +64,43 @@ export async function DELETE(req: Request) {
   }
 
   const authUserId = (existente.data as Record<string, unknown>)?.['id_auth'] as string | undefined || null
+  const requiresTransfer = targetRol === 'agente'
+  let transferStats: Record<string, number> | null = null
 
-  const { error } = await supabase.from('usuarios').delete().eq('id', idStr)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (requiresTransfer) {
+    const rawTransfer = body?.transferTo
+    const transferId = typeof rawTransfer === 'number' ? rawTransfer : Number(rawTransfer)
+    if (!transferId || Number.isNaN(transferId)) {
+      return NextResponse.json({ error: 'Debes seleccionar a qué agente transferir los registros antes de eliminar.' }, { status: 400 })
+    }
+    if (transferId === Number(idStr)) {
+      return NextResponse.json({ error: 'El agente destino debe ser distinto al agente que deseas eliminar.' }, { status: 400 })
+    }
+
+    const { data: destino, error: destinoErr } = await supabase.from('usuarios').select('*').eq('id', transferId).maybeSingle()
+    if (destinoErr) return NextResponse.json({ error: destinoErr.message }, { status: 500 })
+    if (!destino) return NextResponse.json({ error: 'El agente destino no existe.' }, { status: 404 })
+    const destinoRol = String(destino.rol || '').toLowerCase()
+    if (destinoRol !== 'agente') {
+      return NextResponse.json({ error: 'Debes seleccionar un agente activo como destino.' }, { status: 400 })
+    }
+    if (!destino.activo) {
+      return NextResponse.json({ error: 'El agente destino está inactivo.' }, { status: 400 })
+    }
+
+    const rpc = await supabase.rpc('transfer_reassign_usuario', {
+      p_old_id: Number(idStr),
+      p_new_id: transferId,
+      p_actor_email: usuario.email
+    })
+    if (rpc.error) {
+      return NextResponse.json({ error: rpc.error.message }, { status: 500 })
+    }
+    transferStats = (rpc.data || null) as Record<string, number> | null
+  } else {
+    const { error } = await supabase.from('usuarios').delete().eq('id', idStr)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   // Intentar eliminar también en Auth (no revertimos si falla). Guardamos warning.
   let authWarning: string | null = null
@@ -76,7 +117,18 @@ export async function DELETE(req: Request) {
     }
   }
 
-  await logAccion('borrado_usuario', { usuario: usuario.email, tabla_afectada: 'usuarios', id_registro: Number(idStr), snapshot: existente.data })
+  const logPayload: Record<string, unknown> = {
+    usuario: usuario.email,
+    tabla_afectada: 'usuarios',
+    id_registro: Number(idStr),
+    snapshot: existente.data,
+    metadata: transferStats || undefined
+  }
+  await logAccion(requiresTransfer ? 'transfer_delete_usuario' : 'borrado_usuario', logPayload)
 
-  return NextResponse.json(authWarning ? { success: true, warning: authWarning } : { success: true })
+  const response: { success: true; stats?: Record<string, number> | null; warning?: string | null } = { success: true }
+  if (transferStats) response.stats = transferStats
+  if (authWarning) response.warning = authWarning
+
+  return NextResponse.json(response)
 }

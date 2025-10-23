@@ -37,10 +37,16 @@ export async function GET(req: Request) {
     const debug = url.searchParams.get('debug') === '1'
     return NextResponse.json({ error: 'Sin permiso', ...(debug ? { rol, activo: usuario?.activo } : {}) }, { status: 403 })
   }
-  const { data, error } = await supabase
+  const url = new URL(req.url)
+  const includeInactive = url.searchParams.get('include_inactivos') === '1'
+  let query = supabase
     .from('producto_parametros')
     .select('*')
     .order('nombre_comercial', { ascending: true })
+  if (!includeInactive) {
+    query = query.eq('activo', true)
+  }
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }

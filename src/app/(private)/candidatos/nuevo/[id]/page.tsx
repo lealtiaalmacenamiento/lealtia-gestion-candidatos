@@ -260,7 +260,17 @@ export default function EditarCandidato() {
   // Extraer y descartar campos derivados sin declararlos (para evitar warnings)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { dias_desde_ct: _d, dias_desde_pop: _dp, proceso: _p, ...payload } = form // payload incluye email_agente si fue editado
-  await updateCandidato(Number(params.id), payload as Partial<Candidato>)
+  const normalizedPayload: Partial<Candidato> = { ...payload }
+  if (typeof (normalizedPayload as Record<string, unknown>).email_agente === 'string') {
+    const raw = String((normalizedPayload as Record<string, unknown>).email_agente || '')
+    const trimmed = raw.trim().toLowerCase()
+    if (trimmed) {
+      (normalizedPayload as Record<string, unknown>).email_agente = trimmed
+    } else {
+      (normalizedPayload as Record<string, unknown>).email_agente = null
+    }
+  }
+  await updateCandidato(Number(params.id), normalizedPayload)
   router.push('/consulta_candidatos')
     } catch (err) {
       if (err instanceof Error && err.message && err.message.includes('ux_candidatos_email_agente_not_deleted')) {

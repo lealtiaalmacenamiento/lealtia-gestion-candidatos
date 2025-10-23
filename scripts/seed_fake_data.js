@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /* Seed demo data: 50 prospectos, 50 clientes, 3 pólizas por cliente */
 require('dotenv').config()
 const { createClient } = require('@supabase/supabase-js')

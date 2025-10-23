@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
+import { cancelAgendaCitaCascade } from '../../agenda/citas/cancel/cascade'
 
 const supabase = getServiceClient()
 
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     const { data: plan, error } = await supabase.from('planificaciones').select('id,bloques').eq('agente_id', agente_id).eq('semana_iso', semana_iso).eq('anio', anio).maybeSingle()
     if(error) return NextResponse.json({ error: error.message }, { status: 500 })
     if(!plan) return NextResponse.json({ success:true, removed:false })
-  interface Bloque { day:number; hour:string; activity:string; origin?:string; prospecto_id?:number }
+  interface Bloque { day:number; hour:string; activity:string; origin?:string; prospecto_id?:number; agenda_cita_id?: number | null }
   const bloques = (plan.bloques||[]) as Bloque[]
     const before = bloques.length
     const filtrados = bloques.filter(b=> !(b.origin==='auto' && b.activity==='CITAS' && b.prospecto_id===prospecto_id))
@@ -29,10 +30,44 @@ export async function POST(req: Request) {
       try { await logAccion('remove_cita_noop', { tabla_afectada: 'planificaciones', snapshot: { agente_id, semana_iso, anio, prospecto_id } }) } catch {}
       return NextResponse.json({ success:true, removed:false })
     }
+    const citaIds = new Set<number>()
+    for (const bloque of bloques) {
+      if (bloque.origin === 'auto' && bloque.activity === 'CITAS' && bloque.prospecto_id === prospecto_id && bloque.agenda_cita_id != null) {
+        const numeric = Number(bloque.agenda_cita_id)
+        if (Number.isFinite(numeric) && numeric > 0) {
+          citaIds.add(numeric)
+        }
+      }
+    }
+
     const { error: upErr } = await supabase.from('planificaciones').update({ bloques: filtrados, updated_at: new Date().toISOString() }).eq('id', plan.id)
     if(upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     try { await logAccion('remove_cita_bloques', { usuario: usuario.email, tabla_afectada: 'planificaciones', snapshot: { agente_id, semana_iso, anio, prospecto_id, eliminados: before - filtrados.length } }) } catch {}
-    return NextResponse.json({ success:true, removed:true })
+
+    const cancelled: number[] = []
+    const failed: Array<{ citaId: number; error: string }> = []
+    for (const citaId of citaIds) {
+      const cancelResult = await cancelAgendaCitaCascade({
+        citaId,
+        actor: {
+          id: usuario.id ?? null,
+          id_auth: usuario.id_auth ?? null,
+          email: usuario.email ?? null,
+          rol: usuario.rol ?? null,
+          is_desarrollador: usuario.is_desarrollador ?? null
+        },
+        origin: 'planificacion',
+        motivo: null,
+        supabase
+      })
+      if (!cancelResult.success) {
+        failed.push({ citaId, error: cancelResult.error || 'Error desconocido' })
+      } else if (!cancelResult.alreadyCancelled) {
+        cancelled.push(citaId)
+      }
+    }
+
+    return NextResponse.json({ success:true, removed:true, cancellations: { cancelled, errors: failed } })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error? e.message: 'Error' }, { status: 500 })
   }

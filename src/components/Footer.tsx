@@ -1,4 +1,5 @@
 "use client";
+import Link from 'next/link'
 import React from 'react'
 import { useState } from 'react'
 
@@ -14,7 +15,7 @@ export default function Footer() {
       }}
       className="py-2"
     >
-      <div className="container d-flex align-items-center justify-content-center gap-2">
+      <div className="container d-flex flex-column flex-sm-row align-items-center justify-content-center gap-2 gap-sm-3">
         <span className="small text-uppercase opacity-75">powered by:</span>
         {imgOk ? (
           <picture>
@@ -36,6 +37,11 @@ export default function Footer() {
             At3lier Diballo
           </span>
         )}
+        <span className="small">
+          <Link href="/politica-privacidad" className="text-white text-decoration-underline opacity-75">
+            Politica de privacidad
+          </Link>
+        </span>
       </div>
     </footer>
   )
