@@ -13,10 +13,12 @@ export interface RemoteMeetingRequest {
   description?: string | null
   attendees?: string[]
   timezone?: string | null
+  conferenceMode?: 'google' | 'none'
+  location?: string | null
 }
 
 export interface RemoteMeetingResult {
-  meetingUrl: string
+  meetingUrl: string | null
   externalEventId: string
   raw: unknown
 }
@@ -78,6 +80,7 @@ async function getAccessToken(usuarioAuthId: string, provider: MeetingProvider):
 export async function createRemoteMeeting(request: RemoteMeetingRequest): Promise<RemoteMeetingResult> {
   const { accessToken } = await getAccessToken(request.usuarioAuthId, request.provider)
   const timezone = request.timezone || process.env.AGENDA_TZ || 'America/Mexico_City'
+  const conferenceMode = request.conferenceMode ?? 'google'
 
   const attempt = async (token: string): Promise<RemoteMeetingResult> => {
     const result = await googleMeetCreateEvent(token, {
@@ -86,12 +89,14 @@ export async function createRemoteMeeting(request: RemoteMeetingRequest): Promis
       start: request.start,
       end: request.end,
       attendees: request.attendees,
-      timezone
+      timezone,
+      conferenceMode,
+      location: request.location || undefined
     })
-    if (!result.meetingUrl) {
+    if (conferenceMode === 'google' && !result.meetingUrl) {
       throw new Error('Google Meet no devolvió un enlace de reunión')
     }
-    return { meetingUrl: result.meetingUrl, externalEventId: result.eventId, raw: result.raw }
+    return { meetingUrl: result.meetingUrl || null, externalEventId: result.eventId, raw: result.raw }
   }
 
   try {
@@ -126,6 +131,93 @@ export async function cancelRemoteMeeting(usuarioAuthId: string, provider: Meeti
         await attempt(refreshed.accessToken)
         return
       }
+    }
+    throw err instanceof Error ? err : new Error(String(err))
+  }
+}
+
+interface GoogleFreeBusySlot {
+  start?: string
+  end?: string
+}
+
+interface GoogleFreeBusyCalendar {
+  busy?: GoogleFreeBusySlot[]
+}
+
+interface GoogleFreeBusyResponse {
+  calendars?: Record<string, GoogleFreeBusyCalendar>
+}
+
+function buildGoogleBusyRequest(timeMin: string, timeMax: string) {
+  const timezone = process.env.AGENDA_TZ || 'America/Mexico_City'
+  return {
+    timeMin,
+    timeMax,
+    timeZone: timezone,
+    items: [{ id: 'primary' }]
+  }
+}
+
+async function ensureGoogleToken(usuarioAuthId: string): Promise<{ accessToken: string; token: StoredIntegrationToken } | null> {
+  const { token, error } = await getIntegrationToken(usuarioAuthId, 'google')
+  if (error) throw new Error(error.message)
+  if (!token) return null
+  return ensureGoogleAccessToken(usuarioAuthId, token)
+}
+
+async function requestGoogleBusy(accessToken: string, body: unknown): Promise<Array<{ start: string; end: string }>> {
+  const response = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  })
+
+  let payload: GoogleFreeBusyResponse | null = null
+  try {
+    payload = (await response.json()) as GoogleFreeBusyResponse | null
+  } catch {
+    payload = null
+  }
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new GoogleMeetApiError(response.status, payload, 'Token inválido para Google Calendar')
+    }
+    const message = (payload as unknown as { error?: { message?: string } } | null)?.error?.message
+    throw new Error(message || `Google Calendar devolvió ${response.status}`)
+  }
+
+  const busyEntries = payload?.calendars?.primary?.busy ?? []
+  return busyEntries
+    .filter((entry): entry is Required<GoogleFreeBusySlot> => typeof entry.start === 'string' && typeof entry.end === 'string')
+    .map((entry) => ({ start: entry.start!, end: entry.end! }))
+}
+
+export async function fetchGoogleCalendarBusy(
+  usuarioAuthId: string,
+  timeMin: string,
+  timeMax: string
+): Promise<Array<{ start: string; end: string }>> {
+  const ensured = await ensureGoogleToken(usuarioAuthId)
+  if (!ensured) {
+    return []
+  }
+
+  let currentToken = ensured.token
+  const requestBody = buildGoogleBusyRequest(timeMin, timeMax)
+
+  try {
+    return await requestGoogleBusy(ensured.accessToken, requestBody)
+  } catch (err) {
+    const apiErr = err instanceof GoogleMeetApiError ? err : null
+    if (apiErr && (apiErr.status === 401 || apiErr.status === 403)) {
+      const refreshed = await ensureGoogleAccessToken(usuarioAuthId, currentToken)
+      currentToken = refreshed.token
+      return await requestGoogleBusy(refreshed.accessToken, requestBody)
     }
     throw err instanceof Error ? err : new Error(String(err))
   }

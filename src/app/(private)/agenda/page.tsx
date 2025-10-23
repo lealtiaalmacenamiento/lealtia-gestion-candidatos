@@ -12,19 +12,31 @@ import {
   getAgendaSlots,
   searchAgendaProspectos
 } from '@/lib/api'
-import type { AgendaCita, AgendaDeveloper, AgendaSlotsResponse, AgendaProspectoOption, AgendaPlanificacionSummary } from '@/types'
+import type { AgendaBusySlot, AgendaCita, AgendaDeveloper, AgendaSlotsResponse, AgendaProspectoOption, AgendaPlanificacionSummary } from '@/types'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
   zoom: 'Zoom personal',
-  teams: 'Microsoft Teams (manual)'
+  teams: 'Microsoft Teams'
 }
 
 const slotSourceLabels: Record<'calendar' | 'agenda' | 'planificacion', string> = {
   calendar: 'Calendario conectado',
-  agenda: 'Cita interna',
-  planificacion: 'Planificación semanal'
+  agenda: 'Agenda interna',
+  planificacion: 'Planificación CITAS'
+}
+
+const meetingProviderLabels: Record<string, string> = {
+  google_meet: 'Google Meet',
+  zoom: 'Zoom',
+  teams: 'Microsoft Teams',
+  google: 'Google Calendar'
+}
+
+function formatMeetingProviderLabel(provider?: string | null) {
+  if (!provider) return null
+  return meetingProviderLabels[provider] || provider
 }
 
 const ISO_WEEK_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -92,12 +104,15 @@ function isoFromLocalInput(value: string): string | null {
   return parsed.toISOString()
 }
 
+const CDMX_TIME_ZONE = 'America/Mexico_City' as const
+
 function formatDateTime(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
   return new Intl.DateTimeFormat('es-MX', {
     dateStyle: 'medium',
-    timeStyle: 'short'
+    timeStyle: 'short',
+    timeZone: CDMX_TIME_ZONE
   }).format(date)
 }
 
@@ -105,8 +120,55 @@ function formatTimeRange(inicioIso: string, finIso: string): string {
   const inicio = new Date(inicioIso)
   const fin = new Date(finIso)
   if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return `${inicioIso} - ${finIso}`
-  const timeFormatter = new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit' })
   return `${timeFormatter.format(inicio)} — ${timeFormatter.format(fin)}`
+}
+
+const dateFormatter = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeZone: CDMX_TIME_ZONE })
+const timeFormatter = new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: CDMX_TIME_ZONE })
+
+function formatDateOnly(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const value = new Date(iso)
+  if (Number.isNaN(value.getTime())) return iso
+  return dateFormatter.format(value)
+}
+
+function formatAvailabilityRange(desde?: string | null, hasta?: string | null): string | null {
+  const startLabel = formatDateOnly(desde)
+  const endLabel = formatDateOnly(hasta)
+  if (startLabel && endLabel) {
+    if (startLabel === endLabel) return startLabel
+    return `${startLabel} — ${endLabel}`
+  }
+  return startLabel ?? endLabel
+}
+
+function formatDateTimeRangeDetailed(inicioIso: string, finIso: string): string {
+  const inicio = new Date(inicioIso)
+  const fin = new Date(finIso)
+  if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) {
+    return `${inicioIso} — ${finIso}`
+  }
+  const sameDay =
+    inicio.getFullYear() === fin.getFullYear() &&
+    inicio.getMonth() === fin.getMonth() &&
+    inicio.getDate() === fin.getDate()
+  if (sameDay) {
+    return `${dateFormatter.format(inicio)} · ${timeFormatter.format(inicio)} — ${timeFormatter.format(fin)}`
+  }
+  return `${dateFormatter.format(inicio)} ${timeFormatter.format(inicio)} — ${dateFormatter.format(fin)} ${timeFormatter.format(fin)}`
+}
+
+function safeTimestamp(iso?: string | null): number | null {
+  if (!iso) return null
+  const value = new Date(iso)
+  const ms = value.getTime()
+  return Number.isNaN(ms) ? null : ms
+}
+
+function slotHasSource(slot: AgendaBusySlot, source: 'calendar' | 'agenda' | 'planificacion'): boolean {
+  if (slot.source === source) return true
+  return Boolean(slot.sourceDetails?.some((detail) => detail.source === source))
 }
 
 export default function AgendaPage() {
@@ -135,6 +197,7 @@ export default function AgendaPage() {
   const [prospectOptionsError, setProspectOptionsError] = useState<string | null>(null)
   const [selectedProspect, setSelectedProspect] = useState<AgendaProspectoOption | null>(null)
   const [showConnectModal, setShowConnectModal] = useState(false)
+  const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false)
   const selectedAgente = useMemo(() => {
     if (!form.agenteId) return null
     return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
@@ -150,7 +213,7 @@ export default function AgendaPage() {
       providers.push({ value: 'zoom', label: 'Zoom personal' })
     }
     if (selectedAgente.tokens.includes('teams')) {
-      providers.push({ value: 'teams', label: 'Microsoft Teams (manual)' })
+      providers.push({ value: 'teams', label: 'Microsoft Teams' })
     }
     return providers
   }, [selectedAgente])
@@ -256,6 +319,14 @@ export default function AgendaPage() {
     return map
   }, [developers])
 
+  const availabilityRangeBounds = useMemo(() => {
+    if (!slots?.range) return null
+    const start = safeTimestamp(slots.range.desde ?? null)
+    const end = safeTimestamp(slots.range.hasta ?? null)
+    if (start == null && end == null) return null
+    return { start: start ?? null, end: end ?? null }
+  }, [slots])
+
   const agenteOptions = useMemo(() => {
     if (isAgente && actorId != null) {
       return developers.filter((dev) => dev.id === actorId && dev.activo)
@@ -265,20 +336,57 @@ export default function AgendaPage() {
 
   const planRows = useMemo<PlanRow[]>(() => {
     if (!slots?.planificaciones?.length) return []
+    const startBound = availabilityRangeBounds?.start ?? null
+    const endBound = availabilityRangeBounds?.end ?? null
     const rows: PlanRow[] = slots.planificaciones.flatMap((plan) =>
       (plan.bloques || [])
         .filter((block) => block.activity === 'CITAS')
+        .filter((block) => {
+          const blockTs = safeTimestamp(block.fecha ?? null)
+          if (blockTs == null) return startBound == null && endBound == null
+          if (startBound != null && blockTs < startBound) return false
+          if (endBound != null && blockTs > endBound) return false
+          return true
+        })
         .map((block) => ({ plan, block }))
     )
     return rows.sort((a, b) => {
-      const aTs = a.block.fecha ? new Date(a.block.fecha).getTime() : Number.POSITIVE_INFINITY
-      const bTs = b.block.fecha ? new Date(b.block.fecha).getTime() : Number.POSITIVE_INFINITY
-      if (Number.isFinite(aTs) && Number.isFinite(bTs)) return aTs - bTs
-      if (Number.isFinite(aTs)) return -1
-      if (Number.isFinite(bTs)) return 1
+      const aTs = safeTimestamp(a.block.fecha ?? null)
+      const bTs = safeTimestamp(b.block.fecha ?? null)
+      if (aTs != null && bTs != null) return aTs - bTs
+      if (aTs != null) return -1
+      if (bTs != null) return 1
       return (a.block.day ?? 0) - (b.block.day ?? 0)
     })
+  }, [availabilityRangeBounds, slots])
+
+  const availabilityRangeLabel = useMemo(() => {
+    if (!slots) return null
+    return formatAvailabilityRange(slots.range?.desde ?? null, slots.range?.hasta ?? null)
   }, [slots])
+
+  const busySlotsInRange = useMemo(() => {
+    if (!slots?.busy?.length) return []
+    const startBound = availabilityRangeBounds?.start ?? null
+    const endBound = availabilityRangeBounds?.end ?? null
+    return slots.busy.filter((slot) => {
+      const slotStart = safeTimestamp(slot.inicio)
+      const slotEnd = safeTimestamp(slot.fin)
+      if (startBound != null) {
+        const effectiveStart = slotEnd ?? slotStart
+        if (effectiveStart != null && effectiveStart < startBound) return false
+      }
+      if (endBound != null) {
+        const effectiveEnd = slotStart ?? slotEnd
+        if (effectiveEnd != null && effectiveEnd > endBound) return false
+      }
+      return true
+    })
+  }, [availabilityRangeBounds, slots])
+
+  useEffect(() => {
+    setHasCheckedAvailability(false)
+  }, [form.agenteId, form.supervisorId, form.inicio, form.fin])
 
   useEffect(() => {
     if (developers.length === 0) return
@@ -298,14 +406,21 @@ export default function AgendaPage() {
   }, [developers, form.agenteId, isAgente, actorId])
 
   useEffect(() => {
-    if (!isAgente || actorId == null) {
+    if (actorId == null) {
       setShowConnectModal(false)
       return
     }
-    const own = developers.find((dev) => dev.id === actorId)
-    if (!own) return
-    setShowConnectModal(!own.tokens.includes('google'))
-  }, [developers, isAgente, actorId])
+    if (!selectedAgente) {
+      setShowConnectModal(false)
+      return
+    }
+    const isOwnAgenda = Number(form.agenteId) === actorId
+    if (!isOwnAgenda) {
+      setShowConnectModal(false)
+      return
+    }
+    setShowConnectModal(!selectedAgente.tokens.includes('google'))
+  }, [actorId, form.agenteId, selectedAgente])
 
   useEffect(() => {
     if (!showConnectModal) return
@@ -329,12 +444,12 @@ export default function AgendaPage() {
     }
     setProspectOptionsLoading(true)
     const agenteNumeric = Number(form.agenteId)
-    searchAgendaProspectos({ agenteId: agenteNumeric, limit: 50, includeConCita: true })
+    searchAgendaProspectos({ agenteId: agenteNumeric, limit: 50, includeConCita: true, includeSinCorreo: true })
       .then((results) => {
         if (cancelled) return
         setProspectOptions(results)
         if (!results.length) {
-          setProspectOptionsError('No se encontraron prospectos recientes para este agente. Revisa la semana actual y anteriores en Prospectos.')
+          setProspectOptionsError('No se encontraron prospectos recientes para este agente. Completa el correo desde Prospectos o crea un nuevo registro.')
         }
       })
       .catch((err) => {
@@ -373,8 +488,10 @@ export default function AgendaPage() {
 
   async function handleCheckAvailability() {
     const ids = [] as number[]
-    if (form.agenteId) ids.push(Number(form.agenteId))
-    if (form.supervisorId) ids.push(Number(form.supervisorId))
+    const agenteIdNumeric = form.agenteId ? Number(form.agenteId) : null
+    const supervisorIdNumeric = form.supervisorId ? Number(form.supervisorId) : null
+    if (agenteIdNumeric) ids.push(agenteIdNumeric)
+    if (supervisorIdNumeric) ids.push(supervisorIdNumeric)
     if (ids.length === 0) {
       setToast({ type: 'error', message: 'Seleccione al menos un usuario para consultar disponibilidad' })
       return
@@ -384,22 +501,98 @@ export default function AgendaPage() {
       setToast({ type: 'error', message: 'Fecha de inicio inválida' })
       return
     }
+    const finIso = isoFromLocalInput(form.fin)
+    let rangeEndSource = inicioIso
+    if (finIso) {
+      const inicioDate = new Date(inicioIso)
+      const finDate = new Date(finIso)
+      if (finDate < inicioDate) {
+        setToast({ type: 'error', message: 'La fecha de fin no puede ser anterior a la de inicio.' })
+        return
+      }
+      rangeEndSource = finIso
+    }
+
     const rangeStart = new Date(inicioIso)
     rangeStart.setHours(0, 0, 0, 0)
-    const rangeEnd = new Date(rangeStart.getTime())
+    const rangeEnd = new Date(rangeEndSource)
     rangeEnd.setHours(23, 59, 59, 999)
+    const rangeStartIso = rangeStart.toISOString()
+    const rangeEndIso = rangeEnd.toISOString()
+    const rangeLabel = formatAvailabilityRange(rangeStartIso, rangeEndIso)
 
     setSlotsLoading(true)
     setSlotsError(null)
     try {
-      const data = await getAgendaSlots(ids, { desde: rangeStart.toISOString(), hasta: rangeEnd.toISOString() })
+      const data = await getAgendaSlots(ids, { desde: rangeStartIso, hasta: rangeEndIso })
       setSlots(data)
-      if (data.busy.length === 0) {
-        setToast({ type: 'success', message: 'Sin conflictos para el día seleccionado' })
+      const startBound = safeTimestamp(rangeStartIso)
+      const endBound = safeTimestamp(rangeEndIso)
+      const conflicts = data.busy.filter((slot) => {
+        const slotStart = safeTimestamp(slot.inicio)
+        const slotEnd = safeTimestamp(slot.fin)
+        if (startBound != null) {
+          const effectiveStart = slotEnd ?? slotStart
+          if (effectiveStart != null && effectiveStart < startBound) return false
+        }
+        if (endBound != null) {
+          const effectiveEnd = slotStart ?? slotEnd
+          if (effectiveEnd != null && effectiveEnd > endBound) return false
+        }
+        return true
+      })
+      const supervisorConflicts = supervisorIdNumeric == null
+        ? []
+        : conflicts.filter((slot) => {
+            if (slot.usuarioId === supervisorIdNumeric) return true
+            const numericId = Number(slot.usuarioId)
+            if (Number.isFinite(numericId) && numericId === supervisorIdNumeric) return true
+            return false
+          })
+
+      const hasSupervisorConflicts = supervisorConflicts.length > 0
+      const hasConflicts = conflicts.length > 0
+
+      if (hasSupervisorConflicts) {
+        const supervisorConflictSources = {
+          calendar: supervisorConflicts.some((slot) => slotHasSource(slot, 'calendar')),
+          planificacion: supervisorConflicts.some((slot) => slotHasSource(slot, 'planificacion'))
+        }
+        const parts: string[] = []
+        if (supervisorConflictSources.calendar) {
+          parts.push('calendario de Google')
+        }
+        if (supervisorConflictSources.planificacion) {
+          const planTitles = new Set(
+            supervisorConflicts
+              .flatMap((slot) => slot.sourceDetails ?? [])
+              .filter((detail) => detail.source === 'planificacion')
+              .map((detail) => (detail.title || '').toLowerCase())
+          )
+          if ([...planTitles].some((title) => title.includes('prospección'))) {
+            parts.push('planificación (Prospección)')
+          }
+          if ([...planTitles].some((title) => title.includes('citas'))) {
+            parts.push('planificación (Citas)')
+          }
+          if (planTitles.size === 0) {
+            parts.push('planificación')
+          }
+        }
+        const sourceLabel = parts.length ? parts.join(' y ') : 'los horarios del supervisor'
+        setToast({ type: 'error', message: `El supervisor seleccionado tiene eventos en ${sourceLabel} para el rango elegido. Ajusta fecha y hora antes de continuar.` })
+      } else if (hasConflicts) {
+        setToast({ type: 'error', message: 'Se detectaron conflictos en el rango seleccionado. Revisa los horarios ocupados antes de agendar.' })
+      } else {
+        const successMessage = rangeLabel ? `Sin conflictos en ${rangeLabel}.` : 'Sin conflictos en el rango seleccionado.'
+        setToast({ type: 'success', message: successMessage })
       }
+
+      setHasCheckedAvailability(!hasConflicts && !hasSupervisorConflicts)
     } catch (err) {
       setSlots(null)
       setSlotsError(err instanceof Error ? err.message : 'No se pudo consultar disponibilidad')
+      setHasCheckedAvailability(false)
     } finally {
       setSlotsLoading(false)
     }
@@ -456,6 +649,11 @@ export default function AgendaPage() {
     }
     if (!availableProviders.find((provider) => provider.value === form.meetingProvider)) {
       setToast({ type: 'error', message: 'El agente seleccionado no tiene configurado el proveedor elegido. Revisa las integraciones.' })
+      return
+    }
+
+    if (!hasCheckedAvailability) {
+      setToast({ type: 'error', message: 'Consulta disponibilidad antes de crear la cita.' })
       return
     }
 
@@ -529,7 +727,7 @@ export default function AgendaPage() {
       setSlots(null)
       if (form.agenteId) {
         try {
-          const refreshed = await searchAgendaProspectos({ agenteId: Number(form.agenteId), limit: 50, includeConCita: true })
+          const refreshed = await searchAgendaProspectos({ agenteId: Number(form.agenteId), limit: 50, includeConCita: true, includeSinCorreo: true })
           setProspectOptions(refreshed)
         } catch {}
       }
@@ -576,7 +774,7 @@ export default function AgendaPage() {
                   Conecta tu calendario de Google desde el módulo <strong>Integraciones</strong> para generar enlaces de Google Meet automáticamente.
                 </p>
                 <p className="small mb-2">
-                  Ahí mismo puedes guardar tus enlaces personales de Zoom o Microsoft Teams para reutilizarlos al agendar. Si necesitas activar nuevos supervisores o permisos, contacta a un administrador.
+                  Ahí mismo puedes guardar tus enlaces personales de Zoom o Microsoft Teams para reutilizarlos al agendar.
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/integraciones')}>
                   Abrir integraciones
@@ -586,10 +784,10 @@ export default function AgendaPage() {
               <>
                 <h6 className="fw-semibold mb-2">Configuración de agenda interna</h6>
                 <p className="small mb-2">
-                  Marca a los usuarios como desarrolladores y gestiona supervisores desde <strong>Parámetros &gt; Agenda interna</strong>. Ahí mismo podrás ver quién tiene acceso a la agenda y ajustar sus permisos.
+                  Marca a los usuarios como desarrolladores y gestiona desde <strong>Parámetros &gt; Agenda interna</strong>. Ahí mismo podrás ver quién tiene acceso a la agenda y ajustar sus permisos.
                 </p>
                 <p className="small mb-2">
-                  Los enlaces personales de Zoom o Microsoft Teams se guardan en el módulo <strong>Integraciones</strong>. Pídeles a los desarrolladores que registren sus salas ahí para que se autocompleten al agendar.
+                  Los enlaces personales de Zoom o Microsoft Teams se guardan en el módulo <strong>Integraciones</strong>. 
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/parametros#agenda-interna')}>
                   Abrir parámetros
@@ -792,7 +990,7 @@ export default function AgendaPage() {
                   <input
                     className="form-control form-control-sm"
                     value={form.prospectoNombre}
-                    onChange={(e) => setForm((prev) => ({ ...prev, prospectoNombre: e.target.value }))}
+                    readOnly
                     placeholder="Selecciona un prospecto"
                     required
                   />
@@ -806,6 +1004,7 @@ export default function AgendaPage() {
                     placeholder="correo@ejemplo.com"
                     type="email"
                     required
+                    readOnly={Boolean(form.prospectoId && form.prospectoEmail)}
                   />
                 </div>
 
@@ -816,49 +1015,144 @@ export default function AgendaPage() {
                     rows={2}
                     value={form.notas}
                     onChange={(e) => setForm((prev) => ({ ...prev, notas: e.target.value }))}
-                    placeholder="Emails adicionales, contexto, etc."
+                    placeholder="Contexto, etc."
                   />
                 </div>
 
                 <div className="col-12 d-flex flex-wrap gap-2 align-items-center">
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={creating}>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={creating || !hasCheckedAvailability}>
                     {creating ? 'Creando cita…' : 'Crear cita'}
                   </button>
                   <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleCheckAvailability} disabled={slotsLoading}>
                     {slotsLoading ? 'Consultando…' : 'Ver disponibilidad'}
                   </button>
+                  {!hasCheckedAvailability && (
+                    <span className="text-danger small">Verifica disponibilidad antes de crear la cita.</span>
+                  )}
                 </div>
               </form>
 
               {slotsError && <div className="alert alert-danger mt-3 py-2 small">{slotsError}</div>}
               {slots && (
                 <div className="mt-3">
-                  <h6 className="small text-uppercase text-muted mb-2">Horarios ocupados del día</h6>
-                  {slots.busy.length === 0 && <div className="text-muted small">No se encontraron conflictos.</div>}
-                  {slots.busy.length > 0 && (
+                  <h6 className="small text-uppercase text-muted mb-1">Horarios ocupados en el rango seleccionado</h6>
+                  {availabilityRangeLabel && <div className="text-muted small mb-2">{availabilityRangeLabel}</div>}
+                  {busySlotsInRange.length === 0 && <div className="text-muted small">No se encontraron conflictos en el rango seleccionado.</div>}
+                  {busySlotsInRange.length > 0 && (
                     <ul className="list-group list-group-flush small">
-                      {slots.busy.map((slot, idx) => {
+                      {busySlotsInRange.map((slot) => {
                         const owner = developerMap.get(slot.usuarioId)
+                        const sourceDetails = slot.sourceDetails && slot.sourceDetails.length > 0
+                          ? slot.sourceDetails
+                          : [
+                              {
+                                source: slot.source,
+                                title: slot.title ?? null,
+                                descripcion: slot.descripcion ?? null,
+                                provider: slot.provider ?? null,
+                                prospectoId: slot.prospectoId ?? null,
+                                citaId: slot.citaId ?? null,
+                                planId: slot.planId ?? null
+                              }
+                            ]
+
+                        const seenBadges = new Set<string>()
+                        const badgeElements = sourceDetails.flatMap((detail, index) => {
+                          const base = slotSourceLabels[detail.source as keyof typeof slotSourceLabels] || detail.source
+                          const extras: string[] = []
+                          if (detail.source === 'agenda' && detail.citaId != null) {
+                            extras.push(`Cita #${detail.citaId}`)
+                          }
+                          if (detail.source === 'calendar' && detail.citaId != null) {
+                            extras.push(`Sincronizada con cita #${detail.citaId}`)
+                          }
+                          if (detail.source === 'planificacion' && detail.planId != null) {
+                            extras.push(`Plan #${detail.planId}`)
+                          }
+                          const label = extras.length ? `${base} · ${extras.join(' · ')}` : base
+                          if (seenBadges.has(label)) return []
+                          seenBadges.add(label)
+                          return [
+                            <span key={`${slot.usuarioId}-${slot.inicio}-${slot.fin}-badge-${detail.source}-${index}`} className="badge text-bg-light border">
+                              {label}
+                            </span>
+                          ]
+                        })
+
+                        const providerLabel = formatMeetingProviderLabel(
+                          slot.provider ?? sourceDetails.find((detail) => detail.provider)?.provider
+                        )
+
+                        const prospectoIds = new Set<number>()
+                        for (const detail of sourceDetails) {
+                          if (detail.prospectoId != null) {
+                            prospectoIds.add(detail.prospectoId)
+                          }
+                        }
+                        if (slot.prospectoId != null) {
+                          prospectoIds.add(slot.prospectoId)
+                        }
+                        const prospectoLabel = prospectoIds.size
+                          ? `Prospecto ${Array.from(prospectoIds).map((id) => `#${id}`).join(', ')}`
+                          : null
+
+                        const titleParts = Array.from(
+                          new Set(
+                            sourceDetails
+                              .map((detail) => (detail.title || '').trim())
+                              .filter((value): value is string => value.length > 0)
+                          )
+                        )
+
+                        const descriptionParts = Array.from(
+                          new Set(
+                            sourceDetails
+                              .map((detail) => (detail.descripcion || '').trim())
+                              .filter((value): value is string => value.length > 0)
+                          )
+                        )
+
+                        const metaFragments: string[] = []
+                        if (providerLabel) {
+                          metaFragments.push(`Plataforma: ${providerLabel}`)
+                        }
+                        if (prospectoLabel) {
+                          metaFragments.push(prospectoLabel)
+                        }
+                        metaFragments.push(...titleParts)
+                        if (descriptionParts.length > 0) {
+                          for (const fragment of descriptionParts) {
+                            if (!metaFragments.includes(fragment)) {
+                              metaFragments.push(fragment)
+                            }
+                          }
+                        }
+
+                        const metaElements = metaFragments.map((fragment, index) => (
+                          <span key={`${slot.usuarioId}-${slot.inicio}-${slot.fin}-meta-${index}`} className="text-break">
+                            {fragment}
+                          </span>
+                        ))
+
+                        const key = `${slot.usuarioId}-${slot.inicio}-${slot.fin}`
                         return (
-                          <li key={`${slot.usuarioId}-${idx}`} className="list-group-item px-0">
+                          <li key={key} className="list-group-item px-0">
                             <div className="d-flex justify-content-between align-items-start gap-3">
                               <div>
                                 <div className="fw-semibold">{owner?.nombre || owner?.email || `Usuario #${slot.usuarioId}`}</div>
-                                <div className="small text-muted mt-1 d-flex flex-wrap align-items-center gap-2">
-                                  <span className="badge text-bg-light border">
-                                    {slotSourceLabels[slot.source as keyof typeof slotSourceLabels] || slot.source}
-                                  </span>
-                                  {slot.title && <span>{slot.title}</span>}
-                                  {slot.prospectoId != null && <span>Prospecto #{slot.prospectoId}</span>}
-                                  {slot.citaId != null && slot.source === 'agenda' && <span>Cita #{slot.citaId}</span>}
-                                  {slot.descripcion && <span className="text-break">{slot.descripcion}</span>}
-                                </div>
+                                {badgeElements.length > 0 && (
+                                  <div className="small text-muted mt-1 d-flex flex-wrap align-items-center gap-2">
+                                    {badgeElements}
+                                  </div>
+                                )}
+                                {metaElements.length > 0 && (
+                                  <div className="small text-muted mt-1 d-flex flex-wrap align-items-center gap-2">
+                                    {metaElements}
+                                  </div>
+                                )}
                               </div>
                               <div className="text-muted small text-end">
-                                {formatTimeRange(slot.inicio, slot.fin)}
-                                {slot.source === 'planificacion' && slot.planId != null && (
-                                  <div className="mt-1">Plan #{slot.planId}</div>
-                                )}
+                                {formatDateTimeRangeDetailed(slot.inicio, slot.fin)}
                               </div>
                             </div>
                           </li>
@@ -973,10 +1267,7 @@ export default function AgendaPage() {
             <p className="small mb-3">
               Para usar la agenda interna necesitas conectar tu calendario de Google desde el módulo <strong>Integraciones</strong>. Una vez vinculado podrás generar enlaces automáticos.
             </p>
-            <div className="d-flex justify-content-end gap-2">
-              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setShowConnectModal(false)}>
-                Recordar más tarde
-              </button>
+            <div className="d-flex justify-content-end">
               <button type="button" className="btn btn-primary btn-sm" onClick={handleConnectModalAction}>
                 Ir a Integraciones
               </button>

@@ -5,6 +5,7 @@ import { obtenerSemanaIso } from '@/lib/semanaIso'
 import type { BloquePlanificacion } from '@/types'
 import { logAccion } from '@/lib/logger'
 import { sendMail, buildFelicitacionCitasEmail, buildFelicitacionSemanaCitasEmail } from '@/lib/mailer'
+import { cancelAgendaCitaCascade } from '../agenda/citas/cancel/cascade'
 
 
 
@@ -54,6 +55,25 @@ export async function POST(req: Request) {
     const obj = b as Record<string, unknown>
     return typeof obj.day === 'number' && typeof obj.hour === 'string' && typeof obj.activity === 'string'
   }
+  let previousPlanBlocks: BloquePlanificacion[] = []
+  try {
+    const { data: previousPlan, error: previousError } = await supabase
+      .from('planificaciones')
+      .select('bloques')
+      .eq('agente_id', agente_id)
+      .eq('semana_iso', semana_iso)
+      .eq('anio', anio)
+      .maybeSingle()
+    if (previousError) {
+      return NextResponse.json({ error: previousError.message, detalle: 'fetch_planificacion_actual' }, { status: 500 })
+    }
+    if (previousPlan && Array.isArray(previousPlan.bloques)) {
+      previousPlanBlocks = previousPlan.bloques.filter(isBloque)
+    }
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'No se pudo consultar la planificación actual' }, { status: 500 })
+  }
+
   // Persistimos todos los bloques tal como fueron enviados
   const bloquesAll: BloquePlanificacion[] = Array.isArray(body.bloques) ? body.bloques.filter(isBloque) : []
   const bloques: BloquePlanificacion[] = bloquesAll
@@ -71,6 +91,45 @@ export async function POST(req: Request) {
       await logAccion('superuser_upsert_planificacion', { usuario: usuario.email, tabla_afectada: 'planificaciones', id_registro: Number((data as { id?: number })?.id || 0), snapshot })
     }
   } catch {}
+  const previousCitaIds = new Set<number>(
+    previousPlanBlocks
+      .filter((block) => block.activity === 'CITAS' && block.agenda_cita_id != null)
+      .map((block) => Number(block.agenda_cita_id))
+      .filter((value) => Number.isFinite(value) && value > 0)
+  )
+  const currentCitaIds = new Set<number>(
+    bloques
+      .filter((block) => block.activity === 'CITAS' && block.agenda_cita_id != null)
+      .map((block) => Number(block.agenda_cita_id))
+      .filter((value) => Number.isFinite(value) && value > 0)
+  )
+
+  const cancelledFromPlan: number[] = []
+  const cancellationErrors: Array<{ citaId: number; error: string }> = []
+
+  for (const citaId of previousCitaIds) {
+    if (!currentCitaIds.has(citaId)) {
+      const cancelResult = await cancelAgendaCitaCascade({
+        citaId,
+        actor: {
+          id: usuario.id ?? null,
+          id_auth: usuario.id_auth ?? null,
+          email: usuario.email ?? null,
+          rol: usuario.rol ?? null,
+          is_desarrollador: usuario.is_desarrollador ?? null
+        },
+        origin: 'planificacion',
+        motivo: null,
+        supabase
+      })
+      if (!cancelResult.success) {
+        cancellationErrors.push({ citaId, error: cancelResult.error || 'Error desconocido' })
+      } else if (!cancelResult.alreadyCancelled) {
+        cancelledFromPlan.push(citaId)
+      }
+    }
+  }
+
   // --- Trigger correo si hay 2+ citas confirmadas en un día ---
   const citasConfirmadas: Record<number, number> = {};
   for (const b of bloques) {
@@ -103,5 +162,11 @@ export async function POST(req: Request) {
     const { subject, html, text } = buildFelicitacionSemanaCitasEmail(nombreAgente, semanaLabel);
     await sendMail({ to, subject, html, text, ...(cc.length ? {cc} : {}) });
   }
-  return NextResponse.json(result)
+  return NextResponse.json({
+    ...result,
+    cancellations: {
+      cancelled: cancelledFromPlan,
+      errors: cancellationErrors
+    }
+  })
 }

@@ -50,7 +50,7 @@ export async function upsertIntegrationToken(
   }
 ): Promise<{ error: PostgrestError | null }> {
   const supabase = ensureAdminClient()
-  const { error } = await supabase.from(TABLE).upsert({
+  const payload = {
     usuario_id: usuarioId,
     proveedor,
     access_token: pack(token.accessToken),
@@ -58,7 +58,10 @@ export async function upsertIntegrationToken(
     expires_at: token.expiresAt ?? null,
     scopes: token.scopes ?? null,
     updated_at: new Date().toISOString()
-  })
+  }
+  const { error } = await supabase
+    .from(TABLE)
+    .upsert(payload, { onConflict: 'usuario_id,proveedor', ignoreDuplicates: false })
   return { error }
 }
 

@@ -42,6 +42,7 @@ export async function GET(req: Request) {
   const query = (url.searchParams.get('q') || '').trim()
   const limitParam = url.searchParams.get('limit')
   const includeConCita = url.searchParams.get('include_con_cita') === '1'
+  const includeSinCorreo = url.searchParams.get('include_sin_correo') === '1'
 
   if (usuario.rol === 'agente') {
     agenteId = String(usuario.id)
@@ -60,10 +61,12 @@ export async function GET(req: Request) {
     builder = builder.eq('agente_id', Number(agenteId))
   }
 
-  builder = builder.not('email', 'is', null)
-
   if (!includeConCita) {
     builder = builder.in('estado', ['pendiente', 'seguimiento'])
+  }
+
+  if (!includeSinCorreo) {
+    builder = builder.not('email', 'is', null)
   }
 
   if (query) {
@@ -81,15 +84,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const rows: ProspectoListRow[] = (data || []).filter((row): row is ProspectoListRow => {
-    if (!row) return false
-    return Boolean(row.email)
-  })
+  const rows: ProspectoListRow[] = (data || []).filter((row): row is ProspectoListRow => Boolean(row))
 
   const formatted = rows.map((row) => ({
     id: row.id,
     nombre: row.nombre,
-    email: row.email as string,
+    email: row.email ?? null,
     telefono: row.telefono ?? null,
     estado: row.estado,
     semana_iso: row.semana_iso ?? null,

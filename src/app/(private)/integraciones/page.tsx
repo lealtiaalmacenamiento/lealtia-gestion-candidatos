@@ -48,7 +48,8 @@ function formatExpire(expiresAt: string | null): string {
   if (Number.isNaN(date.getTime())) return 'Fecha inválida'
   return new Intl.DateTimeFormat('es-MX', {
     dateStyle: 'medium',
-    timeStyle: 'short'
+    timeStyle: 'short',
+    timeZone: 'America/Mexico_City'
   }).format(date)
 }
 

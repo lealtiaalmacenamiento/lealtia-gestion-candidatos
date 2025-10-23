@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
-import { buildCitaConfirmacionEmail, sendMail } from '@/lib/mailer'
 import { createRemoteMeeting } from '@/lib/agendaProviders'
-import type { MeetingProvider, AgendaCita, AgendaParticipant } from '@/types'
+import { getZoomManualSettings, getTeamsManualSettings } from '@/lib/zoomManual'
+import type { MeetingProvider, AgendaCita, AgendaParticipant, ManualMeetingSettings } from '@/types'
 import { syncPlanificacionCita } from './planificacionSync'
+import { sendMail } from '@/lib/mailer'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -210,7 +211,7 @@ export async function GET(req: Request) {
   return NextResponse.json({ citas: result })
 }
 
-export async function POST(req: Request) {
+async function createAgendaCitaHandler(req: Request) {
   const actor = await getUsuarioSesion()
   if (!actor) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
@@ -303,6 +304,7 @@ export async function POST(req: Request) {
   }
 
   let googleMeetAutoEnabled = true
+  let googleIntegrationRecord: { scopes: string[] | null } | null = null
   if (agente.id_auth) {
     try {
       const { data: googleToken } = await supabase
@@ -311,8 +313,11 @@ export async function POST(req: Request) {
         .eq('usuario_id', agente.id_auth)
         .eq('proveedor', 'google')
         .maybeSingle()
-      if (googleToken && Array.isArray(googleToken.scopes)) {
-        googleMeetAutoEnabled = !googleToken.scopes.includes('auto_meet_disabled')
+      if (googleToken) {
+        googleIntegrationRecord = { scopes: googleToken.scopes ?? null }
+        if (Array.isArray(googleToken.scopes)) {
+          googleMeetAutoEnabled = !googleToken.scopes.includes('auto_meet_disabled')
+        }
       }
     } catch {}
   }
@@ -346,6 +351,36 @@ export async function POST(req: Request) {
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : 'Error consultando prospecto' }, { status: 500 })
     }
+  }
+
+  let manualMeetingSettings: ManualMeetingSettings | null = null
+  let meetingIdForEmail: string | null = null
+  let meetingPasswordForEmail: string | null = null
+
+  if (provider === 'zoom' || provider === 'teams') {
+    if (!googleIntegrationRecord) {
+      return NextResponse.json({ error: 'Conecta Google Calendar en Integraciones antes de agendar sesiones de Zoom o Teams.' }, { status: 400 })
+    }
+    try {
+      const manualResult = provider === 'zoom'
+        ? await getZoomManualSettings(agente.id_auth)
+        : await getTeamsManualSettings(agente.id_auth)
+      if (manualResult.error) {
+        return NextResponse.json({ error: manualResult.error.message || 'No se pudo obtener la configuración de la sesión.' }, { status: 500 })
+      }
+      manualMeetingSettings = manualResult.settings
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'No se pudo consultar la configuración de la sesión.' }, { status: 500 })
+    }
+    if (!manualMeetingSettings || !manualMeetingSettings.meetingUrl) {
+      const message = provider === 'zoom'
+        ? 'Configura tu enlace personal de Zoom desde Integraciones antes de crear la cita.'
+        : 'Configura tu enlace de Teams desde Integraciones antes de crear la cita.'
+      return NextResponse.json({ error: message }, { status: 400 })
+    }
+    meetingUrl = manualMeetingSettings.meetingUrl
+    meetingIdForEmail = manualMeetingSettings.meetingId ?? null
+    meetingPasswordForEmail = manualMeetingSettings.meetingPassword ?? null
   }
 
   let supervisorAuthId: string | null = null
@@ -411,29 +446,31 @@ export async function POST(req: Request) {
     }
   }
 
+  const attendees = Array.from(new Set([
+    agente.email || null,
+    supervisorRecord?.email || null,
+    actor.email || null,
+    prospectoEmail || null
+  ].filter((value): value is string => Boolean(value && value.includes('@')))))
+
+  const summary = prospectoNombre ? `Cita con ${prospectoNombre}` : 'Cita agenda Lealtia'
+  const baseDescriptionParts: string[] = []
+  if (notas) {
+    baseDescriptionParts.push(notas)
+  }
+  if (prospectoNombre) {
+    baseDescriptionParts.push(`Prospecto: ${prospectoNombre}`)
+  }
+  if (actor.email) {
+    baseDescriptionParts.push(`Programada por: ${actor.email}`)
+  }
+
   if (generarEnlace) {
     if (provider === 'google_meet') {
       if (!googleMeetAutoEnabled) {
         return NextResponse.json({ error: 'La generación automática de enlaces está deshabilitada para este agente. Ingresa un enlace manual.' }, { status: 400 })
       }
-      const attendees = Array.from(new Set([
-        agente.email || null,
-        supervisorRecord?.email || null,
-        actor.email || null,
-        prospectoEmail || null
-      ].filter((value): value is string => Boolean(value && value.includes('@')))))
-
-      const summary = prospectoNombre ? `Cita con ${prospectoNombre}` : 'Cita agenda Lealtia'
-      const descriptionParts: string[] = []
-      if (notas) {
-        descriptionParts.push(notas)
-      }
-      if (prospectoNombre) {
-        descriptionParts.push(`Prospecto: ${prospectoNombre}`)
-      }
-      if (actor.email) {
-        descriptionParts.push(`Programada por: ${actor.email}`)
-      }
+      const descriptionParts = [...baseDescriptionParts]
 
       try {
         const remote = await createRemoteMeeting({
@@ -446,7 +483,7 @@ export async function POST(req: Request) {
           attendees,
           timezone: process.env.AGENDA_TZ || null
         })
-        meetingUrl = remote.meetingUrl
+  meetingUrl = remote.meetingUrl || ''
         externalEventId = remote.externalEventId
         try {
           await supabase.from('logs_integracion').insert({
@@ -481,6 +518,67 @@ export async function POST(req: Request) {
       }
     } else {
       return NextResponse.json({ error: 'La generación automática solo está disponible para Google Meet' }, { status: 400 })
+    }
+  }
+
+  if (provider === 'zoom' || provider === 'teams') {
+    const descriptionParts = [...baseDescriptionParts]
+    descriptionParts.push(`Plataforma: ${provider === 'zoom' ? 'Zoom' : 'Microsoft Teams'}`)
+    if (meetingUrl) {
+      descriptionParts.push(`Enlace: ${meetingUrl}`)
+    }
+    if (meetingIdForEmail) {
+      descriptionParts.push(`ID de sesión: ${meetingIdForEmail}`)
+    }
+    if (meetingPasswordForEmail) {
+      descriptionParts.push(`Contraseña: ${meetingPasswordForEmail}`)
+    }
+
+    try {
+      const remote = await createRemoteMeeting({
+        usuarioAuthId: agente.id_auth,
+        provider: 'google_meet',
+        start: inicioIso,
+        end: finIso,
+        summary,
+        description: descriptionParts.length ? descriptionParts.join('\n\n') : null,
+        attendees,
+        timezone: process.env.AGENDA_TZ || null,
+        conferenceMode: 'none',
+        location: meetingUrl
+      })
+      externalEventId = remote.externalEventId
+      try {
+        await supabase.from('logs_integracion').insert({
+          usuario_id: agente.id_auth,
+          proveedor: 'google_meet',
+          operacion: 'create_cita',
+          nivel: 'info',
+          detalle: {
+            inicio: inicioIso,
+            fin: finIso,
+            meeting_provider: provider,
+            external_event_id: externalEventId,
+            attendees
+          }
+        })
+      } catch {}
+    } catch (err) {
+      try {
+        await supabase.from('logs_integracion').insert({
+          usuario_id: agente.id_auth,
+          proveedor: 'google_meet',
+          operacion: 'create_cita',
+          nivel: 'error',
+          detalle: {
+            inicio: inicioIso,
+            fin: finIso,
+            meeting_provider: provider,
+            error: err instanceof Error ? err.message : String(err)
+          }
+        })
+      } catch {}
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'No se pudo registrar la sesión en Google Calendar' }, { status: 502 })
     }
   }
 
@@ -539,33 +637,93 @@ export async function POST(req: Request) {
     })
   } catch {}
 
-  if (agente.email) {
-    const ccList = [supervisorRecord?.email, actor.email].filter((value): value is string => Boolean(value && value !== agente.email))
+  let developerRecipients: string[] = []
+  if (!supervisorRecord) {
     try {
-      const { subject, html, text } = buildCitaConfirmacionEmail({
-        nombreAgente: agente.nombre || agente.email,
-        emailAgente: agente.email,
-        inicio: created.inicio,
-        fin: created.fin,
-        meetingUrl: created.meeting_url,
-        meetingProvider: created.meeting_provider,
-        nombreProspecto: prospectoNombre,
-        supervisorNombre: supervisorRecord?.nombre || null,
-        solicitante: actor.email || null,
-        timezone: process.env.AGENDA_TZ || null
-      })
-      await sendMail({ to: agente.email, subject, html, text, cc: ccList.length ? ccList : undefined })
+      const { data: developers } = await supabase
+        .from('usuarios')
+        .select('email')
+        .eq('is_desarrollador', true)
+        .eq('activo', true)
+      developerRecipients = (developers || [])
+        .map((row) => (typeof row?.email === 'string' && row.email.includes('@') ? row.email : null))
+        .filter((email): email is string => Boolean(email && email !== agente.email))
+    } catch {}
+  }
+
+  if (developerRecipients.length > 0) {
+    const toList = Array.from(new Set(developerRecipients))
+    const agenteLabel = agente.nombre || agente.email
+    const timezone = process.env.AGENDA_TZ || 'America/Mexico_City'
+    const formatDateTime = (iso: string) => {
+      try {
+        return new Intl.DateTimeFormat('es-MX', {
+          dateStyle: 'full',
+          timeStyle: 'short',
+          timeZone: timezone
+        }).format(new Date(iso))
+      } catch {
+        return iso
+      }
+    }
+    const inicioLocal = formatDateTime(created.inicio)
+    const finLocal = formatDateTime(created.fin)
+    const providerLabel = created.meeting_provider === 'zoom'
+      ? 'Zoom'
+      : created.meeting_provider === 'teams'
+        ? 'Microsoft Teams'
+        : 'Google Meet'
+    const subject = `Aviso: ${agenteLabel} agendó una cita sin supervisor`
+    const htmlSections = [
+      `<p>Hola equipo de desarrollo,</p>`,
+      `<p>${agenteLabel} (${agente.email}) agendó una cita sin supervisor. Aquí están los detalles disponibles:</p>`,
+      '<ul>',
+      `<li><strong>Prospecto:</strong> ${prospectoNombre || 'Sin nombre registrado'}</li>`,
+      `<li><strong>Correo del prospecto:</strong> ${prospectoEmail || 'Sin correo capturado'}</li>`,
+      `<li><strong>Horario:</strong> ${inicioLocal} - ${finLocal}</li>`,
+      `<li><strong>Zona horaria:</strong> ${timezone}</li>`,
+      `<li><strong>Plataforma:</strong> ${providerLabel}</li>`,
+      `<li><strong>Enlace:</strong> <a href="${created.meeting_url}">${created.meeting_url}</a></li>`,
+      meetingIdForEmail ? `<li><strong>ID de sesión:</strong> ${meetingIdForEmail}</li>` : '',
+      meetingPasswordForEmail ? `<li><strong>Contraseña:</strong> ${meetingPasswordForEmail}</li>` : '',
+      actor.email ? `<li><strong>Solicitud registrada por:</strong> ${actor.email}</li>` : '',
+      notas ? `<li><strong>Notas:</strong> ${notas}</li>` : '',
+      '</ul>',
+      '<p>Revisen si necesitan asignar supervisor o tomar alguna acción adicional.</p>',
+      '<p>Gracias.</p>'
+    ].filter(Boolean)
+    const html = htmlSections.join('\n')
+    const textLines = [
+      'Hola equipo de desarrollo,',
+      `${agenteLabel} (${agente.email}) agendó una cita sin supervisor.`,
+      '',
+      `Prospecto: ${prospectoNombre || 'Sin nombre registrado'}`,
+      `Correo del prospecto: ${prospectoEmail || 'Sin correo capturado'}`,
+      `Horario: ${inicioLocal} - ${finLocal}`,
+      `Zona horaria: ${timezone}`,
+      `Plataforma: ${providerLabel}`,
+      `Enlace: ${created.meeting_url}`,
+      meetingIdForEmail ? `ID de sesión: ${meetingIdForEmail}` : null,
+      meetingPasswordForEmail ? `Contraseña: ${meetingPasswordForEmail}` : null,
+      actor.email ? `Solicitud registrada por: ${actor.email}` : null,
+      notas ? `Notas: ${notas}` : null,
+      '',
+      'Revisen si necesitan asignar supervisor o tomar alguna acción adicional.',
+      'Gracias.'
+    ].filter(Boolean) as string[]
+    const text = textLines.join('\n')
+    try {
+      await sendMail({ to: toList.join(','), subject, html, text })
       try {
         await supabase.from('logs_integracion').insert({
           usuario_id: agente.id_auth,
           proveedor: 'mailer',
-          operacion: 'cita_confirmacion',
+          operacion: 'cita_confirmacion_desarrolladores',
           nivel: 'info',
           detalle: {
             citaId: created.id,
-            to: agente.email,
-            cc: ccList,
-            supervisor: supervisorRecord?.email || null
+            to: toList,
+            motivo: 'sin_supervisor'
           }
         })
       } catch {}
@@ -574,12 +732,13 @@ export async function POST(req: Request) {
         await supabase.from('logs_integracion').insert({
           usuario_id: agente.id_auth,
           proveedor: 'mailer',
-          operacion: 'cita_confirmacion',
+          operacion: 'cita_confirmacion_desarrolladores',
           nivel: 'error',
           detalle: {
             citaId: created.id,
-            to: agente.email,
-            error: err instanceof Error ? err.message : String(err)
+            to: developerRecipients,
+            error: err instanceof Error ? err.message : String(err),
+            motivo: 'sin_supervisor'
           }
         })
       } catch {}
@@ -632,4 +791,14 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ cita: citaResponse })
+}
+
+export async function POST(req: Request) {
+  try {
+    return await createAgendaCitaHandler(req)
+  } catch (err) {
+    console.error('[agenda][citas] Error inesperado al crear la cita:', err)
+    const message = err instanceof Error ? err.message : 'Error inesperado al crear la cita'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

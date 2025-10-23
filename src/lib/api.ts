@@ -1,8 +1,32 @@
 import { Auditoria, Candidato, CedulaA1, Efc, Usuario, ProductoParametro, AgendaDeveloper, AgendaSlotsResponse, AgendaCita, AgendaProspectoOption } from '@/types'
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Error en la solicitud')
+  const contentType = res.headers.get('content-type') || ''
+  const raw = await res.text()
+  let data: unknown = null
+
+  if (raw.length > 0) {
+    const shouldParseJson = contentType.includes('application/json')
+    try {
+      data = shouldParseJson ? JSON.parse(raw) : JSON.parse(raw)
+    } catch {
+      data = shouldParseJson ? null : raw
+    }
+  }
+
+  if (!res.ok) {
+    const message = typeof data === 'object' && data && 'error' in data
+      ? String((data as { error?: unknown }).error ?? '')
+      : typeof data === 'string'
+        ? data
+        : raw || res.statusText
+    throw new Error(message && message.trim().length > 0 ? message : 'Error en la solicitud')
+  }
+
+  if (data == null || (typeof data === 'string' && data.trim().length === 0)) {
+    return {} as T
+  }
+
   return data as T
 }
 
@@ -315,12 +339,13 @@ export async function getAgendaCitas(options?: { estado?: 'confirmada' | 'cancel
   return data.citas
 }
 
-export async function searchAgendaProspectos(options?: { agenteId?: number; query?: string; limit?: number; includeConCita?: boolean }): Promise<AgendaProspectoOption[]> {
+export async function searchAgendaProspectos(options?: { agenteId?: number; query?: string; limit?: number; includeConCita?: boolean; includeSinCorreo?: boolean }): Promise<AgendaProspectoOption[]> {
   const params = new URLSearchParams()
   if (options?.agenteId) params.set('agente_id', String(options.agenteId))
   if (options?.query) params.set('q', options.query)
   if (options?.limit) params.set('limit', String(options.limit))
   if (options?.includeConCita) params.set('include_con_cita', '1')
+  if (options?.includeSinCorreo) params.set('include_sin_correo', '1')
   const qs = params.toString()
   const res = await fetch(qs ? `/api/agenda/prospectos?${qs}` : '/api/agenda/prospectos', { cache: 'no-store' })
   const data = await handleResponse<{ prospectos: AgendaProspectoOption[] }>(res)

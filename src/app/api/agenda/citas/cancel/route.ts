@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
-import { ensureAdminClient } from '@/lib/supabaseAdmin'
-import { logAccion } from '@/lib/logger'
-import { buildCitaCancelacionEmail, sendMail } from '@/lib/mailer'
-import { cancelRemoteMeeting } from '@/lib/agendaProviders'
-import type { MeetingProvider } from '@/types'
-import { detachPlanificacionCita } from '../planificacionSync'
+import { cancelAgendaCitaCascade } from './cascade'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -28,7 +23,6 @@ export async function POST(req: Request) {
   if (!actor) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   }
-  const actorIsAgente = actor.rol === 'agente'
   if (!canCancelAgenda(actor)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   }
@@ -47,206 +41,27 @@ export async function POST(req: Request) {
 
   const motivo = payload.motivo ? String(payload.motivo).trim() : undefined
 
-  const supabase = ensureAdminClient()
-  const { data: cita, error: citaError } = await supabase
-    .from('citas')
-    .select('id,estado,prospecto_id,agente_id,supervisor_id,inicio,fin,meeting_provider,meeting_url,external_event_id')
-    .eq('id', citaId)
-    .maybeSingle()
+  const result = await cancelAgendaCitaCascade({
+    citaId,
+    motivo: motivo || null,
+    actor: {
+      id: actor.id ?? null,
+      id_auth: actor.id_auth ?? null,
+      email: actor.email ?? null,
+      rol: actor.rol ?? null,
+      is_desarrollador: actor.is_desarrollador ?? null
+    },
+    origin: 'agenda'
+  })
 
-  if (citaError) {
-    return NextResponse.json({ error: citaError.message }, { status: 500 })
-  }
-  if (!cita) {
-    return NextResponse.json({ error: 'Cita no encontrada' }, { status: 404 })
-  }
-
-  if (actorIsAgente) {
-    if (!actor.id_auth) {
-      return NextResponse.json({ error: 'Tu usuario no tiene id_auth registrado' }, { status: 400 })
-    }
-    if (cita.agente_id !== actor.id_auth) {
-      return NextResponse.json({ error: 'Solo puedes cancelar tus propias citas' }, { status: 403 })
-    }
-  }
-  if (cita.estado === 'cancelada') {
-    return NextResponse.json({ success: true, cita })
+  if (!result.success) {
+    const status = result.error === 'Cita no encontrada'
+      ? 404
+      : result.error?.includes('remota')
+        ? 502
+        : 500
+    return NextResponse.json({ error: result.error || 'No se pudo cancelar la cita' }, { status })
   }
 
-  const provider = cita.meeting_provider as MeetingProvider
-
-  if (cita.external_event_id && provider === 'google_meet') {
-    try {
-      await cancelRemoteMeeting(cita.agente_id, provider, cita.external_event_id)
-      try {
-        await supabase.from('logs_integracion').insert({
-          usuario_id: cita.agente_id,
-          proveedor: provider,
-          operacion: 'cancel_cita_remote',
-          nivel: 'info',
-          detalle: {
-            citaId,
-            external_event_id: cita.external_event_id
-          }
-        })
-      } catch {}
-    } catch (err) {
-      try {
-        await supabase.from('logs_integracion').insert({
-          usuario_id: cita.agente_id,
-          proveedor: provider,
-          operacion: 'cancel_cita_remote',
-          nivel: 'error',
-          detalle: {
-            citaId,
-            external_event_id: cita.external_event_id,
-            error: err instanceof Error ? err.message : String(err)
-          }
-        })
-      } catch {}
-      return NextResponse.json({ error: err instanceof Error ? err.message : 'No se pudo cancelar la reunión remota' }, { status: 502 })
-    }
-  }
-
-  const { error: updateError } = await supabase
-    .from('citas')
-    .update({ estado: 'cancelada', updated_at: new Date().toISOString() })
-    .eq('id', citaId)
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
-  }
-
-  if (cita.prospecto_id != null) {
-    try {
-      await supabase
-        .from('prospectos')
-        .update({ cita_creada: false, fecha_cita: null, estado: 'seguimiento' })
-        .eq('id', cita.prospecto_id)
-    } catch {}
-  }
-
-  let prospectoNombre: string | null = null
-  if (cita.prospecto_id != null) {
-    try {
-      const { data: prospecto } = await supabase
-        .from('prospectos')
-        .select('nombre')
-        .eq('id', cita.prospecto_id)
-        .maybeSingle()
-      if (prospecto?.nombre) prospectoNombre = prospecto.nombre
-    } catch {}
-  }
-
-  let agenteRecord: { id: number | null; email: string; nombre: string | null; id_auth: string | null } | null = null
-  let supervisorRecord: { id: number | null; email: string; nombre: string | null; id_auth: string | null } | null = null
-  let agenteNumericId: number | null = null
-  try {
-    const ids = [cita.agente_id, cita.supervisor_id].filter((value): value is string => Boolean(value))
-    if (ids.length === 0) {
-      throw new Error('Sin id_auth relacionados')
-    }
-    const { data: usuarios } = await supabase
-      .from('usuarios')
-      .select('id,email,nombre,id_auth')
-      .in('id_auth', ids)
-
-    for (const user of usuarios || []) {
-      if (user.id_auth === cita.agente_id) {
-        agenteRecord = { id: user.id ?? null, email: user.email, nombre: user.nombre ?? null, id_auth: user.id_auth ?? null }
-        if (typeof user.id === 'number') agenteNumericId = user.id
-      } else if (cita.supervisor_id && user.id_auth === cita.supervisor_id) {
-        supervisorRecord = { id: user.id ?? null, email: user.email, nombre: user.nombre ?? null, id_auth: user.id_auth ?? null }
-      }
-    }
-  } catch {}
-
-  if (agenteNumericId != null) {
-    try {
-      await detachPlanificacionCita({
-        supabase,
-        agenteId: agenteNumericId,
-        inicioIso: cita.inicio,
-        citaId
-      })
-    } catch {}
-  }
-
-  if (agenteRecord?.email) {
-    const ccList = [supervisorRecord?.email, actor.email].filter((value): value is string => Boolean(value && value !== agenteRecord?.email))
-    try {
-      const { subject, html, text } = buildCitaCancelacionEmail({
-        nombreAgente: agenteRecord.nombre || agenteRecord.email,
-        emailAgente: agenteRecord.email,
-        inicio: cita.inicio,
-        fin: cita.fin,
-        meetingUrl: cita.meeting_url || '',
-        meetingProvider: cita.meeting_provider,
-        motivo: motivo || null,
-        nombreProspecto: prospectoNombre,
-        supervisorNombre: supervisorRecord?.nombre || null,
-        solicitante: actor.email || null,
-        timezone: process.env.AGENDA_TZ || null
-      })
-      await sendMail({ to: agenteRecord.email, subject, html, text, cc: ccList.length ? ccList : undefined })
-      try {
-        await supabase.from('logs_integracion').insert({
-          usuario_id: agenteRecord.id_auth,
-          proveedor: 'mailer',
-          operacion: 'cita_cancelacion',
-          nivel: 'info',
-          detalle: {
-            citaId,
-            to: agenteRecord.email,
-            cc: ccList,
-            motivo: motivo || null
-          }
-        })
-      } catch {}
-    } catch (err) {
-      try {
-        await supabase.from('logs_integracion').insert({
-          usuario_id: agenteRecord.id_auth,
-          proveedor: 'mailer',
-          operacion: 'cita_cancelacion',
-          nivel: 'error',
-          detalle: {
-            citaId,
-            to: agenteRecord.email,
-            error: err instanceof Error ? err.message : String(err)
-          }
-        })
-      } catch {}
-    }
-  }
-
-  try {
-    await logAccion('cancelar_cita', {
-      usuario: actor.email,
-      tabla_afectada: 'citas',
-      id_registro: citaId,
-      snapshot: {
-        estado_anterior: cita.estado,
-        estado_nuevo: 'cancelada',
-        motivo: motivo || null
-      }
-    })
-  } catch {}
-
-  try {
-    await supabase.from('logs_integracion').insert({
-      usuario_id: actor.id_auth ?? null,
-  proveedor: cita.meeting_provider,
-      operacion: 'cancel_cita',
-      nivel: 'info',
-      detalle: {
-        citaId,
-        motivo: motivo || null,
-        external_event_id: cita.external_event_id || null,
-        remoto: Boolean(cita.external_event_id)
-      }
-    })
-  } catch {}
-
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, alreadyCancelled: result.alreadyCancelled ?? false })
 }

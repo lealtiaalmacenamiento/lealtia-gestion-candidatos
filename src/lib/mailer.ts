@@ -96,6 +96,8 @@ export function buildCitaConfirmacionEmail(opts: {
   supervisorNombre?: string | null
   solicitante?: string | null
   timezone?: string | null
+  meetingId?: string | null
+  meetingPassword?: string | null
 }) {
   const tz = opts.timezone || DEFAULT_TIMEZONE
   const { fecha, horaInicio, horaFin } = formatDateRange(opts.inicio, opts.fin, tz)
@@ -116,6 +118,8 @@ export function buildCitaConfirmacionEmail(opts: {
       ${opts.nombreProspecto ? `<p><strong>Prospecto:</strong> ${opts.nombreProspecto}</p>` : ''}
   <p><strong>Enlace:</strong> <a href="${opts.meetingUrl}" style="color:#004481">${opts.meetingUrl}</a></p>
   <p><strong>Plataforma:</strong> ${humanizeProvider(opts.meetingProvider)}</p>
+      ${opts.meetingId ? `<p><strong>ID de sesión:</strong> ${opts.meetingId}</p>` : ''}
+      ${opts.meetingPassword ? `<p><strong>Contraseña:</strong> ${opts.meetingPassword}</p>` : ''}
       ${opts.supervisorNombre ? `<p><strong>Supervisor:</strong> ${opts.supervisorNombre}</p>` : ''}
       ${opts.solicitante ? `<p>Solicitada por: ${opts.solicitante}</p>` : ''}
     </div>
@@ -131,6 +135,8 @@ export function buildCitaConfirmacionEmail(opts: {
     opts.nombreProspecto ? `Prospecto: ${opts.nombreProspecto}` : undefined,
     `Enlace: ${opts.meetingUrl}`,
   `Plataforma: ${humanizeProvider(opts.meetingProvider)}`,
+    opts.meetingId ? `ID de sesión: ${opts.meetingId}` : undefined,
+    opts.meetingPassword ? `Contraseña: ${opts.meetingPassword}` : undefined,
     opts.supervisorNombre ? `Supervisor: ${opts.supervisorNombre}` : undefined,
     opts.solicitante ? `Solicitada por: ${opts.solicitante}` : undefined,
     `© ${year} Lealtia`
@@ -150,6 +156,8 @@ export function buildCitaCancelacionEmail(opts: {
   supervisorNombre?: string | null
   solicitante?: string | null
   timezone?: string | null
+  meetingId?: string | null
+  meetingPassword?: string | null
 }) {
   const tz = opts.timezone || DEFAULT_TIMEZONE
   const { fecha, horaInicio, horaFin } = formatDateRange(opts.inicio, opts.fin, tz)
@@ -171,6 +179,8 @@ export function buildCitaCancelacionEmail(opts: {
       ${opts.nombreProspecto ? `<p><strong>Prospecto:</strong> ${opts.nombreProspecto}</p>` : ''}
   <p><strong>Enlace (referencia):</strong> ${opts.meetingUrl ? `<a href="${opts.meetingUrl}" style="color:#004481">${opts.meetingUrl}</a>` : 'No disponible'}</p>
   <p><strong>Plataforma:</strong> ${humanizeProvider(opts.meetingProvider)}</p>
+      ${opts.meetingId ? `<p><strong>ID de sesión:</strong> ${opts.meetingId}</p>` : ''}
+      ${opts.meetingPassword ? `<p><strong>Contraseña:</strong> ${opts.meetingPassword}</p>` : ''}
       ${opts.supervisorNombre ? `<p><strong>Supervisor:</strong> ${opts.supervisorNombre}</p>` : ''}
       ${opts.solicitante ? `<p>Gestionada por: ${opts.solicitante}</p>` : ''}
     </div>
@@ -187,6 +197,8 @@ export function buildCitaCancelacionEmail(opts: {
     opts.nombreProspecto ? `Prospecto: ${opts.nombreProspecto}` : undefined,
   opts.meetingUrl ? `Enlace: ${opts.meetingUrl}` : 'Enlace: No disponible',
   `Plataforma: ${humanizeProvider(opts.meetingProvider)}`,
+    opts.meetingId ? `ID de sesión: ${opts.meetingId}` : undefined,
+    opts.meetingPassword ? `Contraseña: ${opts.meetingPassword}` : undefined,
     opts.supervisorNombre ? `Supervisor: ${opts.supervisorNombre}` : undefined,
     opts.solicitante ? `Gestionada por: ${opts.solicitante}` : undefined,
     `© ${year} Lealtia`

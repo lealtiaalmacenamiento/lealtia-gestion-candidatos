@@ -18,6 +18,8 @@ export interface GoogleMeetEventInput {
   end: string
   attendees?: string[]
   timezone?: string
+  conferenceMode?: 'google' | 'none'
+  location?: string | null
 }
 
 export interface GoogleMeetEventResult {
@@ -81,18 +83,27 @@ function extractErrorMessage(payload: unknown): string | undefined {
 
 export async function googleMeetCreateEvent(accessToken: string, input: GoogleMeetEventInput): Promise<GoogleMeetEventResult> {
   const requestId = typeof randomUUID === 'function' ? randomUUID() : Math.random().toString(36).slice(2)
-  const body = {
+  const conferenceMode = input.conferenceMode ?? 'google'
+
+  const body: Record<string, unknown> = {
     summary: input.summary,
     description: input.description || undefined,
     start: { dateTime: input.start, timeZone: input.timezone },
     end: { dateTime: input.end, timeZone: input.timezone },
-    attendees: (input.attendees || []).map(email => ({ email })),
-    conferenceData: {
+    attendees: (input.attendees || []).map(email => ({ email }))
+  }
+
+  if (conferenceMode === 'google') {
+    body.conferenceData = {
       createRequest: {
         requestId,
         conferenceSolutionKey: { type: 'hangoutsMeet' }
       }
     }
+  }
+
+  if (input.location) {
+    body.location = input.location
   }
 
   const url = `${GOOGLE_CALENDAR_BASE}/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all`

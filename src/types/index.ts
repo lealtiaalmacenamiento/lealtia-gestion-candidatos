@@ -91,6 +91,16 @@ export interface AgendaDeveloper {
   googleMeetAutoEnabled?: boolean
 }
 
+export interface AgendaBusySourceDetail {
+  source: 'calendar' | 'agenda' | 'planificacion'
+  title?: string | null
+  descripcion?: string | null
+  provider?: IntegrationProviderKey | MeetingProvider | null
+  prospectoId?: number | null
+  citaId?: number | null
+  planId?: number | null
+}
+
 export interface AgendaBusySlot {
   usuarioId: number
   usuarioAuthId: string
@@ -103,6 +113,7 @@ export interface AgendaBusySlot {
   prospectoId?: number | null
   citaId?: number | null
   planId?: number | null
+  sourceDetails?: AgendaBusySourceDetail[]
 }
 
 export interface AgendaSlotsResponse {
@@ -240,7 +251,7 @@ export interface AgendaPlanificacionSummary {
 export interface AgendaProspectoOption {
   id: number
   nombre: string
-  email: string
+  email: string | null
   estado: ProspectoEstado
   telefono?: string | null
   semana_iso?: number

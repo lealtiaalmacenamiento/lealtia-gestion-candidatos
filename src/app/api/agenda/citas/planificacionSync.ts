@@ -2,14 +2,48 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { obtenerSemanaIso, semanaDesdeNumero } from '@/lib/semanaIso'
 import type { BloquePlanificacion, ProspectoEstado } from '@/types'
 
+const PLANIFICACION_TZ = process.env.AGENDA_TZ || 'America/Mexico_City'
+
+function parseTimezoneComponents(date: Date): { zonedDate: Date; hour: string } | null {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: PLANIFICACION_TZ,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+    const parts = formatter.formatToParts(date)
+    const lookup = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value
+    const year = Number(lookup('year'))
+    const month = Number(lookup('month'))
+    const day = Number(lookup('day'))
+    const hour = Number(lookup('hour'))
+    const minute = Number(lookup('minute'))
+    const second = Number(lookup('second'))
+    if ([year, month, day, hour, minute, second].some((value) => Number.isNaN(value))) {
+      return null
+    }
+    const zonedDate = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+    return { zonedDate, hour: hour.toString().padStart(2, '0') }
+  } catch {
+    return null
+  }
+}
+
 function dayAndHourFromIso(iso: string): { day: number; hour: string; anio: number; semana: number } | null {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return null
-  const { anio, semana } = obtenerSemanaIso(date)
+  const parsed = parseTimezoneComponents(date)
+  if (!parsed) return null
+  const { zonedDate, hour } = parsed
+  const { anio, semana } = obtenerSemanaIso(zonedDate)
   const semanaInfo = semanaDesdeNumero(anio, semana)
-  const diffMs = date.getTime() - semanaInfo.inicio.getTime()
+  const diffMs = zonedDate.getTime() - semanaInfo.inicio.getTime()
   const day = Math.max(0, Math.min(6, Math.floor(diffMs / 86400000)))
-  const hour = date.getUTCHours().toString().padStart(2, '0')
   return { day, hour, anio, semana }
 }
 
@@ -49,7 +83,7 @@ export async function syncPlanificacionCita(options: {
     prospecto_nombre: prospectoNombre ?? undefined,
     prospecto_estado: estado,
     notas: blockNota ?? undefined,
-    confirmada: true,
+    confirmada: false,
     agenda_cita_id: citaId
   })
 
@@ -79,7 +113,7 @@ export async function syncPlanificacionCita(options: {
         prospecto_nombre: prospectoNombre ?? raw.prospecto_nombre,
         prospecto_estado: estado,
         notas: blockNota ?? raw.notas,
-        confirmada: true,
+        confirmada: raw.confirmada ?? false,
         agenda_cita_id: citaId
       }
     }
