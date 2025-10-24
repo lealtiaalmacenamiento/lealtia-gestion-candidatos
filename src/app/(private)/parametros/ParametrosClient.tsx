@@ -489,7 +489,7 @@ export default function ParametrosClient(){
                   </div>
                   <div className="col-12 col-lg-8">
                     <div className="alert alert-info small mb-0">
-                      Marca como desarrollador a los perfiles que necesitan ver la agenda interna y generar enlaces. Cada badge indica que el usuario ya completó el flujo de conexión OAuth para ese proveedor (entrada en <code>tokens_integracion</code>).
+                      Marca como <strong>desarrolladores</strong> a los usuarios que necesites designar como acompañantes.
                     </div>
                   </div>
                 </div>
@@ -566,9 +566,7 @@ export default function ParametrosClient(){
                     </tbody>
                   </table>
                 </div>
-                <p className="small text-muted mt-3 mb-0">
-                  Si faltan badges, confirma que el usuario tenga un token vigente en la tabla <code>tokens_integracion</code> (proveedor <code>google</code> o <code>zoom</code>) y que su <code>id_auth</code> esté ligado en <code>usuarios</code>.
-                </p>
+
               </>
             )}
           </section>
