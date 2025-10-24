@@ -62,7 +62,26 @@ export async function upsertIntegrationToken(
   const { error } = await supabase
     .from(TABLE)
     .upsert(payload, { onConflict: 'usuario_id,proveedor', ignoreDuplicates: false })
-  return { error }
+  if (!error) return { error: null }
+
+  const message = error.message || ''
+  const missingScopes = /column "?scopes"?/i.test(message)
+  const missingUpdatedAt = /column "?updated_at"?/i.test(message)
+  if (!missingScopes && !missingUpdatedAt) {
+    return { error }
+  }
+
+  const legacyPayload = {
+    usuario_id: usuarioId,
+    proveedor,
+    access_token: pack(token.accessToken),
+    refresh_token: pack(token.refreshToken || null),
+    expires_at: token.expiresAt ?? null
+  }
+  const { error: legacyError } = await supabase
+    .from(TABLE)
+    .upsert(legacyPayload, { onConflict: 'usuario_id,proveedor', ignoreDuplicates: false })
+  return { error: legacyError }
 }
 
 export async function getIntegrationToken(
@@ -76,7 +95,29 @@ export async function getIntegrationToken(
     .eq('usuario_id', usuarioId)
     .eq('proveedor', proveedor)
     .maybeSingle<TokenRow>()
-  if (error) return { token: null, error }
+  if (error) {
+    const message = error.message || ''
+    if (/column "?scopes"?/i.test(message)) {
+      const { data: legacyData, error: legacyError } = await supabase
+        .from(TABLE)
+        .select('access_token, refresh_token, expires_at')
+        .eq('usuario_id', usuarioId)
+        .eq('proveedor', proveedor)
+        .maybeSingle<TokenRow>()
+      if (legacyError) return { token: null, error: legacyError }
+      if (!legacyData) return { token: null, error: null }
+      return {
+        token: {
+          accessToken: unpack(legacyData.access_token) || '',
+          refreshToken: unpack(legacyData.refresh_token),
+          expiresAt: legacyData.expires_at,
+          scopes: null
+        },
+        error: null
+      }
+    }
+    return { token: null, error }
+  }
   if (!data) return { token: null, error: null }
   return {
     token: {
