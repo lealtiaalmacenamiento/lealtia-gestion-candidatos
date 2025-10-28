@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { SESSION_COOKIE_BASE, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS, SESSION_MAX_AGE_SECONDS, parseSessionIssued } from '@/lib/sessionExpiration'
 // Middleware simplificado: evita llamadas de red a Supabase que pueden colgar el arranque.
 // Evitamos importar logger directamente para no arrastrar dependencias no compatibles con Edge.
 
@@ -14,11 +15,28 @@ export async function middleware(req: NextRequest) {
   const composite = req.cookies.get(`sb-${projectRef}-auth-token`)?.value
   // Consideramos válida la sesión si existe la cookie compuesta (nuevo flujo) O la cookie access (flujo antiguo)
   const session = (composite || access) ? { token: true } : null
+  const sessionIssuedValue = req.cookies.get(SESSION_COOKIE_NAME)?.value ?? null
+  const sessionIssuedAt = parseSessionIssued(sessionIssuedValue)
   if (session) {
     // Carga perezosa sólo en runtime server (no edge) para evitar warnings de Node APIs
     if (process.env.NEXT_RUNTIME !== 'edge') {
       import('@/lib/logger').then(m => m.logAccion('middleware_session_cookie', {})).catch(() => {})
     }
+    const now = Date.now()
+    const expired = !sessionIssuedAt || now - sessionIssuedAt > SESSION_MAX_AGE_MS
+    if (expired) {
+      const redirectUrl = new URL('/login', req.url)
+      const redirect = NextResponse.redirect(redirectUrl)
+      expireSessionCookies(redirect, req, projectRef)
+      return redirect
+    }
+    res.cookies.set(SESSION_COOKIE_NAME, String(now), {
+      ...SESSION_COOKIE_BASE,
+      maxAge: SESSION_MAX_AGE_SECONDS
+    })
+  }
+  if (!session && sessionIssuedAt != null) {
+    expireSessionCookies(res, req, projectRef)
   }
 
   const url = req.nextUrl
@@ -61,10 +79,32 @@ export async function middleware(req: NextRequest) {
   // Si hay sesión y estás en /login → redirigir a dashboard
   if (session && url.pathname === '/login') {
     const redirectUrl = new URL('/home', req.url)
-    return NextResponse.redirect(redirectUrl)
+    const redirect = NextResponse.redirect(redirectUrl)
+    redirect.cookies.set(SESSION_COOKIE_NAME, String(Date.now()), {
+      ...SESSION_COOKIE_BASE,
+      maxAge: SESSION_MAX_AGE_SECONDS
+    })
+    return redirect
   }
 
   return res
+}
+
+function expireSessionCookies(response: NextResponse, req: NextRequest, projectRef: string) {
+  const prefix = `sb-${projectRef}-auth-token`
+  const expired = { path: '/', expires: new Date(0) } as const
+  const names = new Set<string>(['sb-access-token', 'sb-refresh-token', SESSION_COOKIE_NAME])
+  for (const cookie of req.cookies.getAll()) {
+    if (cookie.name === prefix || cookie.name.startsWith(prefix + '.')) {
+      names.add(cookie.name)
+    }
+    if (cookie.name.startsWith(prefix + '-')) {
+      names.add(cookie.name)
+    }
+  }
+  for (const name of names) {
+    response.cookies.set(name, '', expired)
+  }
 }
 
 // Configuración para qué rutas aplica

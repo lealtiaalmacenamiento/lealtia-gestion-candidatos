@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { logAccion } from '@/lib/logger'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { SESSION_COOKIE_BASE, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from '@/lib/sessionExpiration'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -60,5 +61,9 @@ export async function POST(req: Request) {
   }
   await logAccion('login_ok', { usuario: usuarioBD.email })
   const res = NextResponse.json(usuarioBD, { headers: { 'Cache-Control': 'no-store' } })
+  res.cookies.set(SESSION_COOKIE_NAME, String(Date.now()), {
+    ...SESSION_COOKIE_BASE,
+    maxAge: SESSION_MAX_AGE_SECONDS
+  })
   return res
 }
