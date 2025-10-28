@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 const parsedMinutes = Number(process.env.NEXT_PUBLIC_SESSION_MAX_AGE_MINUTES)
-const DEFAULT_MINUTES = Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : 15
+const DEFAULT_MINUTES = Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : 5
 const SESSION_TTL_MS = DEFAULT_MINUTES * 60 * 1000
 const WARNING_THRESHOLD_MS = 30 * 1000
 const CHECK_INTERVAL_MS = 1000
@@ -44,6 +44,7 @@ export default function SessionTimeoutPrompt() {
       if (timeLeft <= WARNING_THRESHOLD_MS) {
         if (!warnShownRef.current) {
           warnShownRef.current = true
+          console.info('[SessionTimeoutPrompt] Mostrando aviso de expiración inminente. Tiempo restante (s):', Math.round(timeLeft / 1000))
           setVisible(true)
         }
       }

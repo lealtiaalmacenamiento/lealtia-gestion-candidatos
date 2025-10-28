@@ -1,7 +1,7 @@
 import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies'
 
 const DEFAULT_COOKIE_NAME = 'gestion-session-issued'
-const DEFAULT_MAX_AGE_MINUTES = 15 // 15 minutos por defecto
+const DEFAULT_MAX_AGE_MINUTES = 5 // Reducido a 5 minutos para pruebas locales
 
 const rawName = process.env.AUTH_SESSION_COOKIE_NAME?.trim()
 export const SESSION_COOKIE_NAME = rawName && rawName.length > 0 ? rawName : DEFAULT_COOKIE_NAME
