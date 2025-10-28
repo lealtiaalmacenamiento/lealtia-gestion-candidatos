@@ -7,6 +7,7 @@ import { useEffect } from 'react'
 import { logPageView, logClick, logFormSubmit } from '@/lib/auditClient'
 // (imports de hooks/logic eliminados tras extraer el componente de cambio de contraseña)
 import ForcePasswordChange from '@/components/ForcePasswordChange'
+import SessionTimeoutPrompt from '@/components/SessionTimeoutPrompt'
 
 
 // Eliminado banner inline; ahora se usa componente reutilizable
@@ -79,6 +80,7 @@ export default function PrivateLayout({ children }: { children: React.ReactNode 
     <div>
       {!hideGlobalHeader && <Header />}
       <ForcePasswordChange />
+      <SessionTimeoutPrompt />
       <main className="main-content">
         {mustChange ? (
           <div className="container py-4">
