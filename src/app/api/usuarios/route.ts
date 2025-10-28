@@ -69,13 +69,17 @@ export async function POST(req: Request) {
   const body = await req.json()
   const email: string = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const nombre: string | undefined = body.nombre
-  const rol: string = typeof body.rol === 'string' ? body.rol.trim().toLowerCase() : ''
+  const requestedRolRaw: string | null = typeof body.rol === 'string' ? body.rol.trim().toLowerCase() : null
+  const rol: string = requestedRolRaw ?? 'superusuario'
   const activo: boolean = body.activo === undefined ? true : !!body.activo
   let password: string | undefined = body.password
   const generarPasswordTemporal: boolean = !!body.generarPasswordTemporal
 
     if (!email || !rol) {
       return NextResponse.json({ error: 'Email y rol son obligatorios' }, { status: 400 })
+    }
+    if (rol !== 'superusuario') {
+      return NextResponse.json({ error: 'Actualmente solo puedes crear usuarios con rol Super Usuario.' }, { status: 400 })
     }
     if (!VALID_ROLES.has(rol)) {
       return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
@@ -124,7 +128,7 @@ export async function POST(req: Request) {
     // 2️⃣ Insertar en tabla usuarios (columas id_auth y must_change_password ya existen)
     const { data: inserted, error: dbError } = await adminClient
       .from('usuarios')
-      .insert([{ email, nombre, rol, activo, must_change_password: true, id_auth: authCreated?.user?.id }])
+      .insert([{ email, nombre, rol: 'superusuario', activo, must_change_password: true, id_auth: authCreated?.user?.id }])
       .select('*')
       .single()
     if (dbError || !inserted) {

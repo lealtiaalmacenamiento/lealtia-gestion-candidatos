@@ -7,9 +7,7 @@ import type { Usuario } from '@/types'
 import Notification from '@/components/ui/Notification'
 
 const ROLES: { value: string; label: string }[] = [
-  { value: 'editor', label: 'Editor' },
-  { value: 'superusuario', label: 'Super Usuario' },
-  { value: 'lector', label: 'Viewer' }
+  { value: 'superusuario', label: 'Super Usuario' }
 ]
 
 export default function NuevoUsuarioPage() {
@@ -17,7 +15,7 @@ export default function NuevoUsuarioPage() {
   const [form, setForm] = useState<Partial<Usuario> & { generarPasswordTemporal: boolean }>({
     email: '',
     nombre: '',
-    rol: 'lector',
+    rol: 'superusuario',
     generarPasswordTemporal: true
   })
   const [notif, setNotif] = useState<{ msg: string; type: 'success'|'error' } | null>(null)
@@ -64,10 +62,8 @@ export default function NuevoUsuarioPage() {
               <input className="form-control form-control-sm" type="email" name="email" value={form.email || ''} onChange={handleChange} required placeholder="usuario@dominio.com" />
             </div>
             <div>
-              <label className="form-label small mb-1">Rol</label>
-              <select className="form-select form-select-sm" name="rol" value={form.rol || ''} onChange={handleChange}>
-                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
+              <label className="form-label small mb-1">Rol asignado</label>
+              <input className="form-control form-control-sm" value={ROLES[0].label} disabled readOnly />
             </div>
             <input type="hidden" name="activo" value="true" />
             {/* Hidden flag to always generate password temporal */}
