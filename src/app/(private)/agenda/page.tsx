@@ -536,19 +536,28 @@ export default function AgendaPage() {
     try {
       const data = await getAgendaSlots(ids, { desde: rangeStartIso, hasta: rangeEndIso })
       setSlots(data)
-      const startBound = safeTimestamp(rangeStartIso)
-      const endBound = safeTimestamp(rangeEndIso)
+      const eventStartBound = safeTimestamp(inicioIso)
+      const eventEndBound = safeTimestamp(finIso ?? inicioIso)
       const conflicts = data.busy.filter((slot) => {
         const slotStart = safeTimestamp(slot.inicio)
         const slotEnd = safeTimestamp(slot.fin)
-        if (startBound != null) {
-          const effectiveStart = slotEnd ?? slotStart
-          if (effectiveStart != null && effectiveStart < startBound) return false
+        const slotRangeStart = slotStart ?? slotEnd
+        const slotRangeEnd = slotEnd ?? slotStart
+
+        if (slotRangeStart == null && slotRangeEnd == null) {
+          return false
         }
-        if (endBound != null) {
-          const effectiveEnd = slotStart ?? slotEnd
-          if (effectiveEnd != null && effectiveEnd > endBound) return false
+
+        const effectiveEventStart = eventStartBound ?? eventEndBound
+        const effectiveEventEnd = eventEndBound ?? eventStartBound
+
+        if (effectiveEventStart != null && slotRangeEnd != null && slotRangeEnd <= effectiveEventStart) {
+          return false
         }
+        if (effectiveEventEnd != null && slotRangeStart != null && slotRangeStart >= effectiveEventEnd) {
+          return false
+        }
+
         return true
       })
       const supervisorConflicts = supervisorIdNumeric == null
