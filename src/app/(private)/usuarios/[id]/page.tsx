@@ -7,6 +7,7 @@ import AppModal from '@/components/ui/AppModal'
 import Notification from '@/components/ui/Notification'
 import type { Usuario } from '@/types'
 import { useDialog } from '@/components/ui/DialogProvider'
+import { useAuth } from '@/context/AuthProvider'
 
 const ROLES = [
   { value: 'editor', label: 'Editor' },
@@ -18,10 +19,13 @@ export default function UsuarioEditPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const dialog = useDialog()
+  const { user: currentUser, setUser } = useAuth()
   const [form, setForm] = useState<Partial<Usuario>>({})
   const [resetting, setResetting] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
   const [notif, setNotif] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const isSelf = !!(currentUser?.id && form.id && currentUser.id === form.id)
 
   useEffect(() => {
     getUsuarioById(Number(params.id))
@@ -40,16 +44,35 @@ export default function UsuarioEditPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.id) return
+    setSaving(true)
+    setNotif(null)
     try {
-      await updateUsuario(form.id, { nombre: form.nombre, rol: form.rol!, activo: form.activo! })
-      router.push('/usuarios')
+      const payload: Partial<Usuario> & { email?: string } = {}
+      if (form.nombre !== undefined) payload.nombre = form.nombre
+      if (isSelf) {
+        if (typeof form.email === 'string') payload.email = form.email
+      } else {
+        if (form.rol) payload.rol = form.rol
+        if (typeof form.activo === 'boolean') payload.activo = form.activo
+      }
+      const updated = await updateUsuario(form.id, payload)
+      setForm(updated)
+      if (isSelf) {
+        setUser(updated)
+        setNotif({ msg: 'Información actualizada correctamente.', type: 'success' })
+      } else {
+        router.push('/usuarios')
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al guardar'
       setNotif({ msg: message, type: 'error' })
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDelete = async () => {
+    if (isSelf) return
     const ok = await dialog.confirm('¿Eliminar este usuario?', { icon: 'exclamation-triangle-fill', confirmText: 'Eliminar', cancelText: 'Cancelar' })
     if (!ok) return
     try {
@@ -87,7 +110,16 @@ export default function UsuarioEditPage() {
           <form onSubmit={handleSave} className="d-flex flex-column gap-3">
             <div>
               <label className="form-label small mb-1">Correo electrónico</label>
-              <input className="form-control form-control-sm" value={form.email || ''} disabled />
+              <input
+                className="form-control form-control-sm"
+                type="email"
+                name="email"
+                value={form.email || ''}
+                onChange={isSelf ? handleChange : undefined}
+                disabled={!isSelf}
+                required={isSelf}
+              />
+              {isSelf && <div className="form-text">Cambiará también tu usuario en Supabase Auth.</div>}
             </div>
             <div>
               <label className="form-label small mb-1">Nombre completo</label>
@@ -95,21 +127,21 @@ export default function UsuarioEditPage() {
             </div>
             <div>
               <label className="form-label small mb-1">Rol</label>
-              <select className="form-select form-select-sm" name="rol" value={form.rol || ''} onChange={handleChange}>
+              <select className="form-select form-select-sm" name="rol" value={form.rol || ''} onChange={handleChange} disabled={isSelf}>
                 {/* Si el usuario actual es admin, mostrar opción admin */}
                 {form.rol === 'admin' && <option value="admin">Admin</option>}
                 {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
             <div className="form-check form-switch small">
-              <input className="form-check-input" type="checkbox" name="activo" id="activoChk" checked={form.activo || false} onChange={handleChange} />
+              <input className="form-check-input" type="checkbox" name="activo" id="activoChk" checked={form.activo || false} onChange={handleChange} disabled={isSelf} />
               <label className="form-check-label" htmlFor="activoChk">Activo</label>
             </div>
             <div className="small">Debe cambiar password: <strong>{form.must_change_password? 'Sí':'No'}</strong></div>
             <div className="d-flex flex-column gap-2">
-              <button type="submit" className="btn btn-primary btn-sm w-100">Guardar cambios</button>
-              <button type="button" className="btn btn-warning btn-sm w-100" onClick={()=>setShowResetModal(true)} disabled={resetting}>Reset password</button>
-              <button type="button" className="btn btn-danger btn-sm w-100" onClick={handleDelete}>Eliminar</button>
+              <button type="submit" className="btn btn-primary btn-sm w-100" disabled={saving}>{saving ? 'Guardando...' : 'Guardar cambios'}</button>
+              <button type="button" className="btn btn-warning btn-sm w-100" onClick={()=>setShowResetModal(true)} disabled={resetting}>{resetting? '...' : 'Reset password'}</button>
+              <button type="button" className="btn btn-danger btn-sm w-100" onClick={handleDelete} disabled={isSelf}>Eliminar</button>
               <Link href="/usuarios" className="btn btn-secondary btn-sm w-100">Volver</Link>
             </div>
           </form>
