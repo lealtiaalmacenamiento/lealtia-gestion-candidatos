@@ -43,7 +43,11 @@ const PROVIDERS: Record<Provider, (origin: string) => IntegrationConfig | null> 
       clientSecret,
       authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
       tokenUrl: 'https://oauth2.googleapis.com/token',
-      scopes: ['https://www.googleapis.com/auth/calendar.events'],
+      // Need read/write events for meeting creation plus read-only busy lookup
+      scopes: [
+        'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/calendar.readonly'
+      ],
       extraAuthParams: {
         access_type: 'offline',
         prompt: 'consent'
