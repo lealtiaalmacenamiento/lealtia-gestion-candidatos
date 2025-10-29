@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 const parsedMinutes = Number(process.env.NEXT_PUBLIC_SESSION_MAX_AGE_MINUTES)
-const DEFAULT_MINUTES = Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : 5
+const DEFAULT_MINUTES = Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : 15
 const SESSION_TTL_MS = DEFAULT_MINUTES * 60 * 1000
 const WARNING_THRESHOLD_MS = 30 * 1000
 const CHECK_INTERVAL_MS = 1000
