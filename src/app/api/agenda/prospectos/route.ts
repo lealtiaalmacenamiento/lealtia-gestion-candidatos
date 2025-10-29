@@ -13,6 +13,7 @@ type ProspectoListRow = {
   semana_iso: number | null
   anio: number | null
   fecha_cita: string | null
+  updated_at: string
 }
 
 function canReadAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
@@ -51,11 +52,15 @@ export async function GET(req: Request) {
   }
 
   const supabase = ensureAdminClient()
+  const limit = Math.max(Number(limitParam) || 100, 1)
+
   let builder = supabase
     .from('prospectos')
-    .select('id,nombre,email,telefono,estado,agente_id,semana_iso,anio,fecha_cita')
+    .select('id,nombre,email,telefono,estado,agente_id,semana_iso,anio,fecha_cita,updated_at')
+    .order('anio', { ascending: false })
+    .order('semana_iso', { ascending: false })
     .order('updated_at', { ascending: false })
-    .limit(Math.max(Number(limitParam) || 25, 1))
+    .limit(limit)
 
   if (agenteId) {
     builder = builder.eq('agente_id', Number(agenteId))
