@@ -224,7 +224,18 @@ export default function AgendaPage() {
       previous: [] as AgendaProspectoOption[]
     }
     for (const option of prospectOptions) {
-      if (option.anio === currentWeekInfo.anio && option.semana_iso === currentWeekInfo.semana) {
+      const optionWeek = typeof option.semana_iso === 'string' ? Number.parseInt(option.semana_iso, 10) : option.semana_iso ?? null
+      const optionYear = typeof option.anio === 'string' ? Number.parseInt(option.anio, 10) : option.anio ?? null
+      let isCurrentWeek = false
+
+      if (Number.isFinite(optionWeek) && Number.isFinite(optionYear)) {
+        isCurrentWeek = optionYear === currentWeekInfo.anio && optionWeek === currentWeekInfo.semana
+      } else if (option.fecha_cita) {
+        const citaWeek = obtenerSemanaIso(new Date(option.fecha_cita))
+        isCurrentWeek = citaWeek.anio === currentWeekInfo.anio && citaWeek.semana === currentWeekInfo.semana
+      }
+
+      if (isCurrentWeek) {
         groups.current.push(option)
       } else {
         groups.previous.push(option)
