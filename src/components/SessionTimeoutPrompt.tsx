@@ -22,7 +22,7 @@ export default function SessionTimeoutPrompt() {
     keepAliveRef.current = Date.now()
     const markActivity = () => {
       lastActivityRef.current = Date.now()
-      warnShownRef.current = false
+      if (warnShownRef.current) return
       setVisible(false)
     }
     const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'] as const
@@ -48,30 +48,29 @@ export default function SessionTimeoutPrompt() {
           setVisible(true)
         }
       }
-      const sinceLastPing = now - keepAliveRef.current
-      if (!visible && sinceLastPing >= SESSION_TTL_MS * 0.5 && timeLeft > WARNING_THRESHOLD_MS) {
-        void requestKeepAlive()
-      }
     }, CHECK_INTERVAL_MS)
     return () => window.clearInterval(id)
   }, [visible])
 
   const requestKeepAlive = () => {
     if (keepAlivePromiseRef.current) return keepAlivePromiseRef.current
-    keepAliveRef.current = Date.now()
+    const now = Date.now()
+    keepAliveRef.current = now
+    console.info('[SessionTimeoutPrompt] Enviando keep-alive. Segundos desde última actividad:', Math.round((now - lastActivityRef.current) / 1000))
     const promise = fetch('/api/session/refresh', { method: 'POST', cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) {
           const message = await response.text()
           throw new Error(message || 'No se pudo mantener la sesión activa')
         }
-        lastActivityRef.current = Date.now()
         warnShownRef.current = false
         setVisible(false)
         setError(null)
+        console.info('[SessionTimeoutPrompt] Keep-alive exitoso.')
         return true
       })
       .catch((err) => {
+        console.warn('[SessionTimeoutPrompt] Error al ejecutar keep-alive:', err)
         setError(err instanceof Error ? err.message : 'Error al mantener la sesión activa')
         setVisible(true)
         return false
