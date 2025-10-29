@@ -12,16 +12,21 @@ export default function SessionTimeoutPrompt() {
   const [visible, setVisible] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [timeLeftMs, setTimeLeftMs] = useState(SESSION_TTL_MS)
   const warnShownRef = useRef(false)
   const lastActivityRef = useRef<number>(Date.now())
-  const keepAliveRef = useRef<number>(Date.now())
   const keepAlivePromiseRef = useRef<Promise<boolean> | null>(null)
+  const autoLogoutRef = useRef(false)
 
   useEffect(() => {
-    lastActivityRef.current = Date.now()
-    keepAliveRef.current = Date.now()
+    const now = Date.now()
+    lastActivityRef.current = now
+    setTimeLeftMs(SESSION_TTL_MS)
     const markActivity = () => {
-      lastActivityRef.current = Date.now()
+      const activityNow = Date.now()
+      lastActivityRef.current = activityNow
+      setTimeLeftMs(SESSION_TTL_MS)
+      autoLogoutRef.current = false
       if (warnShownRef.current) return
       setVisible(false)
     }
@@ -37,6 +42,7 @@ export default function SessionTimeoutPrompt() {
       const now = Date.now()
       const timeSinceActivity = now - lastActivityRef.current
       const timeLeft = SESSION_TTL_MS - timeSinceActivity
+      setTimeLeftMs(Math.max(0, timeLeft))
       if (timeLeft <= 0) {
         window.location.href = '/login?timeout=1'
         return
@@ -44,7 +50,6 @@ export default function SessionTimeoutPrompt() {
       if (timeLeft <= WARNING_THRESHOLD_MS) {
         if (!warnShownRef.current) {
           warnShownRef.current = true
-          console.info('[SessionTimeoutPrompt] Mostrando aviso de expiración inminente. Tiempo restante (s):', Math.round(timeLeft / 1000))
           setVisible(true)
         }
       }
@@ -52,25 +57,32 @@ export default function SessionTimeoutPrompt() {
     return () => window.clearInterval(id)
   }, [visible])
 
+  useEffect(() => {
+    if (!visible) return
+    if (timeLeftMs > 0) return
+    if (autoLogoutRef.current) return
+    autoLogoutRef.current = true
+    void signOutAndRedirect()
+  }, [timeLeftMs, visible])
+
   const requestKeepAlive = () => {
     if (keepAlivePromiseRef.current) return keepAlivePromiseRef.current
-    const now = Date.now()
-    keepAliveRef.current = now
-    console.info('[SessionTimeoutPrompt] Enviando keep-alive. Segundos desde última actividad:', Math.round((now - lastActivityRef.current) / 1000))
     const promise = fetch('/api/session/refresh', { method: 'POST', cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) {
           const message = await response.text()
           throw new Error(message || 'No se pudo mantener la sesión activa')
         }
+        const refreshMoment = Date.now()
+        lastActivityRef.current = refreshMoment
+        setTimeLeftMs(SESSION_TTL_MS)
         warnShownRef.current = false
+        autoLogoutRef.current = false
         setVisible(false)
         setError(null)
-        console.info('[SessionTimeoutPrompt] Keep-alive exitoso.')
         return true
       })
       .catch((err) => {
-        console.warn('[SessionTimeoutPrompt] Error al ejecutar keep-alive:', err)
         setError(err instanceof Error ? err.message : 'Error al mantener la sesión activa')
         setVisible(true)
         return false
@@ -88,11 +100,23 @@ export default function SessionTimeoutPrompt() {
     setRefreshing(false)
   }
 
+  const signOutAndRedirect = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST', cache: 'no-store' })
+    } catch {
+    } finally {
+      window.location.href = '/login?timeout=1'
+    }
+  }
+
   const handleSignOut = () => {
-    window.location.href = '/login?timeout=1'
+    autoLogoutRef.current = true
+    void signOutAndRedirect()
   }
 
   if (!visible) return null
+
+  const secondsLeft = Math.max(0, Math.ceil(timeLeftMs / 1000))
 
   return (
     <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', zIndex: 1100 }}>
@@ -100,6 +124,7 @@ export default function SessionTimeoutPrompt() {
         <div className="card-header bg-warning fw-semibold">Tu sesión está por expirar</div>
         <div className="card-body">
           <p className="mb-3">Han pasado varios minutos sin actividad. ¿Quieres mantener tu sesión activa?</p>
+          <p className="mb-3 small text-muted">Tu sesión se cerrará en aproximadamente <strong>{secondsLeft}</strong> segundos.</p>
           {error && <div className="alert alert-danger py-2 small">{error}</div>}
           <div className="d-flex justify-content-end gap-2">
             <button type="button" className="btn btn-outline-secondary" onClick={handleSignOut} disabled={refreshing}>
