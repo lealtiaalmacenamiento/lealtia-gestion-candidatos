@@ -47,6 +47,7 @@ export async function GET(req: Request) {
   // The caller can opt-out by passing include_sin_correo=0 to exclude rows
   // with null email (legacy behavior).
   const includeSinCorreo = url.searchParams.get('include_sin_correo') !== '0'
+  const debug = url.searchParams.get('debug') === '1'
 
   if (usuario.rol === 'agente') {
     agenteId = String(usuario.id)
@@ -109,6 +110,19 @@ export async function GET(req: Request) {
     anio: row.anio ?? null,
     fecha_cita: row.fecha_cita ?? null
   }))
+
+  if (debug) {
+    return NextResponse.json({
+      prospectos: formatted,
+      meta: {
+        agenteId: agenteId ?? null,
+        limit,
+        includeConCita: includeConCita ? true : false,
+        includeSinCorreo: includeSinCorreo ? true : false,
+        query: query || null
+      }
+    })
+  }
 
   return NextResponse.json({ prospectos: formatted })
 }
