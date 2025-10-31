@@ -465,6 +465,17 @@ export default function AgendaPage() {
     return () => clearTimeout(t)
   }, [prospectQuery])
 
+  // Auto-open suggestions when the debounced query changes or when results arrive.
+  useEffect(() => {
+    if (debouncedProspectQuery && debouncedProspectQuery.length > 0) {
+      setShowProspectSuggestions(true)
+      setHighlightedProspectIndex(-1)
+    } else if (!debouncedProspectQuery) {
+      // If query is empty, hide suggestions to avoid confusion
+      setShowProspectSuggestions(false)
+    }
+  }, [debouncedProspectQuery])
+
   async function loadDevelopers() {
     try {
       const data = await getAgendaDevelopers()
@@ -1006,7 +1017,6 @@ export default function AgendaPage() {
                         aria-autocomplete="list"
                         aria-controls="prospect-suggestions-list"
                         aria-busy={prospectOptionsLoading}
-                        disabled={prospectOptionsLoading}
                       />
 
                       {/* Show inline small spinner when loading so user understands to wait */}
