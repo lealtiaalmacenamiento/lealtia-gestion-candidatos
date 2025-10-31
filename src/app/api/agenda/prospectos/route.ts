@@ -43,7 +43,11 @@ export async function GET(req: Request) {
   const query = (url.searchParams.get('q') || '').trim()
   const limitParam = url.searchParams.get('limit')
   const includeConCita = url.searchParams.get('include_con_cita') === '1'
-  const includeSinCorreo = url.searchParams.get('include_sin_correo') === '1'
+  // By default include prospectos even if they don't have an email address.
+  // The caller can opt-out by passing include_sin_correo=0 to exclude rows
+  // with null email (legacy behavior).
+  const includeSinCorreo = url.searchParams.get('include_sin_correo') !== '0'
+  const debug = url.searchParams.get('debug') === '1'
 
   if (usuario.rol === 'agente') {
     agenteId = String(usuario.id)
@@ -67,7 +71,11 @@ export async function GET(req: Request) {
   }
 
   if (!includeConCita) {
-    builder = builder.in('estado', ['pendiente', 'seguimiento'])
+    // Mostrar por defecto los prospectos que NO tienen cita creada
+    // y que estén en estados relevantes para agendar (pendiente y seguimiento).
+    // Esto evita incluir prospectos ya convertidos o descartados.
+    // Para incluir prospectos con cita, pasar include_con_cita=1 en la querystring.
+    builder = builder.eq('cita_creada', false).in('estado', ['pendiente', 'seguimiento'])
   }
 
   if (!includeSinCorreo) {
@@ -79,7 +87,8 @@ export async function GET(req: Request) {
     builder = builder.or(
       [
         `nombre.ilike.%${sanitized}%`,
-        `email.ilike.%${sanitized}%`
+        `email.ilike.%${sanitized}%`,
+        `telefono.ilike.%${sanitized}%`
       ].join(',')
     )
   }
@@ -101,6 +110,19 @@ export async function GET(req: Request) {
     anio: row.anio ?? null,
     fecha_cita: row.fecha_cita ?? null
   }))
+
+  if (debug) {
+    return NextResponse.json({
+      prospectos: formatted,
+      meta: {
+        agenteId: agenteId ?? null,
+        limit,
+        includeConCita: includeConCita ? true : false,
+        includeSinCorreo: includeSinCorreo ? true : false,
+        query: query || null
+      }
+    })
+  }
 
   return NextResponse.json({ prospectos: formatted })
 }
