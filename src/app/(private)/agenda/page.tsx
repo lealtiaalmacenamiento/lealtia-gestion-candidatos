@@ -222,39 +222,8 @@ export default function AgendaPage() {
     }
     return providers
   }, [selectedAgente])
-  const prospectGroups = useMemo(() => {
-    const groups = {
-      current: [] as AgendaProspectoOption[],
-      previous: [] as AgendaProspectoOption[]
-    }
-    for (const option of prospectOptions) {
-      const optionWeek = typeof option.semana_iso === 'string' ? Number.parseInt(option.semana_iso, 10) : option.semana_iso ?? null
-      const optionYear = typeof option.anio === 'string' ? Number.parseInt(option.anio, 10) : option.anio ?? null
-      let isCurrentWeek = false
-
-      if (Number.isFinite(optionWeek) && Number.isFinite(optionYear)) {
-        isCurrentWeek = optionYear === currentWeekInfo.anio && optionWeek === currentWeekInfo.semana
-      } else if (option.fecha_cita) {
-        const citaWeek = obtenerSemanaIso(new Date(option.fecha_cita))
-        isCurrentWeek = citaWeek.anio === currentWeekInfo.anio && citaWeek.semana === currentWeekInfo.semana
-      }
-
-      if (isCurrentWeek) {
-        groups.current.push(option)
-      } else {
-        groups.previous.push(option)
-      }
-    }
-    const compare = (a: AgendaProspectoOption, b: AgendaProspectoOption) => {
-      const nameA = (a.nombre || '').toLowerCase()
-      const nameB = (b.nombre || '').toLowerCase()
-      if (nameA && nameB && nameA !== nameB) return nameA.localeCompare(nameB)
-      return a.id - b.id
-    }
-    groups.current.sort(compare)
-    groups.previous.sort(compare)
-    return groups
-  }, [prospectOptions, currentWeekInfo])
+  // `prospectOptions` is rendered as a flat list in the UI; grouping by week
+  // was computed previously but is unused. Removed to avoid lint warnings.
 
   useEffect(() => {
     if (!selectedAgente) return
@@ -648,19 +617,8 @@ export default function AgendaPage() {
     }))
   }
 
-  function handleProspectSelectChange(value: string) {
-    const trimmed = value.trim()
-    if (!trimmed) {
-      handleClearProspect()
-      return
-    }
-    const match = prospectOptions.find((option) => String(option.id) === trimmed)
-    if (match) {
-      handleSelectProspect(match)
-    } else {
-      handleClearProspect()
-    }
-  }
+  // handleProspectSelectChange removed (was unused). Selection is handled
+  // directly via `handleSelectProspect` from the suggestions list.
 
   function handleClearProspect() {
     setSelectedProspect(null)
@@ -1013,6 +971,7 @@ export default function AgendaPage() {
                       aria-expanded={showProspectSuggestions}
                       aria-haspopup="listbox"
                       aria-busy={prospectOptionsLoading}
+                      aria-controls="prospect-suggestions-list"
                     >
                       <input
                         type="text"
@@ -1058,6 +1017,19 @@ export default function AgendaPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* If loading and no options yet, show a small skeleton list to improve perceived performance */}
+                    {prospectOptionsLoading && (!prospectOptions || prospectOptions.length === 0) && (
+                      <ul className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }} aria-hidden>
+                        {[1, 2, 3].map((i) => (
+                          <li key={i} className="list-group-item">
+                            <div style={{ background: '#e9ecef', height: 12, width: '60%', borderRadius: 4 }} />
+                            <div style={{ height: 8 }} />
+                            <div style={{ background: '#f8f9fa', height: 10, width: '40%', borderRadius: 4 }} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
 
                     {showProspectSuggestions && (prospectOptions && prospectOptions.length > 0) && (
                       <ul id="prospect-suggestions-list" role="listbox" className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }}>
