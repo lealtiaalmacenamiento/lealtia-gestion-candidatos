@@ -43,7 +43,10 @@ export async function GET(req: Request) {
   const query = (url.searchParams.get('q') || '').trim()
   const limitParam = url.searchParams.get('limit')
   const includeConCita = url.searchParams.get('include_con_cita') === '1'
-  const includeSinCorreo = url.searchParams.get('include_sin_correo') === '1'
+  // By default include prospectos even if they don't have an email address.
+  // The caller can opt-out by passing include_sin_correo=0 to exclude rows
+  // with null email (legacy behavior).
+  const includeSinCorreo = url.searchParams.get('include_sin_correo') !== '0'
 
   if (usuario.rol === 'agente') {
     agenteId = String(usuario.id)
@@ -67,7 +70,11 @@ export async function GET(req: Request) {
   }
 
   if (!includeConCita) {
-    builder = builder.in('estado', ['pendiente', 'seguimiento'])
+    // Mostrar por defecto los prospectos que NO tienen cita creada
+    // y que estén en estados relevantes para agendar (pendiente y seguimiento).
+    // Esto evita incluir prospectos ya convertidos o descartados.
+    // Para incluir prospectos con cita, pasar include_con_cita=1 en la querystring.
+    builder = builder.eq('cita_creada', false).in('estado', ['pendiente', 'seguimiento'])
   }
 
   if (!includeSinCorreo) {
@@ -79,7 +86,8 @@ export async function GET(req: Request) {
     builder = builder.or(
       [
         `nombre.ilike.%${sanitized}%`,
-        `email.ilike.%${sanitized}%`
+        `email.ilike.%${sanitized}%`,
+        `telefono.ilike.%${sanitized}%`
       ].join(',')
     )
   }

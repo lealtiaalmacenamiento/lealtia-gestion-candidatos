@@ -18,6 +18,11 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Disable Turbopack in development to avoid Turbopack root resolution issues
+  // (Turbopack is experimental and may infer project root incorrectly in some setups).
+  experimental: {
+    turbopack: false
+  },
   images: {
     remotePatterns: [
       {

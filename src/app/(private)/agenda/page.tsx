@@ -195,6 +195,10 @@ export default function AgendaPage() {
   const [prospectOptions, setProspectOptions] = useState<AgendaProspectoOption[]>([])
   const [prospectOptionsLoading, setProspectOptionsLoading] = useState(false)
   const [prospectOptionsError, setProspectOptionsError] = useState<string | null>(null)
+  const [prospectQuery, setProspectQuery] = useState('')
+  const [debouncedProspectQuery, setDebouncedProspectQuery] = useState('')
+  const [showProspectSuggestions, setShowProspectSuggestions] = useState(false)
+  const [highlightedProspectIndex, setHighlightedProspectIndex] = useState(-1)
   const [selectedProspect, setSelectedProspect] = useState<AgendaProspectoOption | null>(null)
   const [showConnectModal, setShowConnectModal] = useState(false)
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false)
@@ -465,7 +469,7 @@ export default function AgendaPage() {
     }
     setProspectOptionsLoading(true)
     const agenteNumeric = Number(form.agenteId)
-    searchAgendaProspectos({ agenteId: agenteNumeric, limit: 50, includeConCita: true, includeSinCorreo: true })
+    searchAgendaProspectos({ agenteId: agenteNumeric, query: debouncedProspectQuery || undefined, limit: 50, includeConCita: true, includeSinCorreo: true })
       .then((results) => {
         if (cancelled) return
         setProspectOptions(results)
@@ -484,7 +488,13 @@ export default function AgendaPage() {
     return () => {
       cancelled = true
     }
-  }, [form.agenteId])
+  }, [form.agenteId, debouncedProspectQuery])
+
+  // Debounce the prospectQuery to avoid firing on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedProspectQuery(prospectQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [prospectQuery])
 
   async function loadDevelopers() {
     try {
@@ -970,32 +980,88 @@ export default function AgendaPage() {
                       </button>
                     )}
                   </div>
-                  <select
-                    className="form-select form-select-sm"
-                    value={form.prospectoId}
-                    onChange={(e) => handleProspectSelectChange(e.target.value)}
-                    disabled={prospectOptionsLoading || !prospectOptions.length}
-                  >
-                    <option value="">Selecciona un prospecto</option>
-                    {prospectGroups.current.length > 0 && (
-                      <optgroup label="Semana actual">
-                        {prospectGroups.current.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {(option.nombre && option.nombre.trim()) || 'Sin nombre'} · {(option.email && option.email.trim()) || 'Sin correo'}
-                          </option>
+                  <div className="mb-2">
+                    <div className="input-group input-group-sm">
+                      <input
+                        type="search"
+                        className="form-control form-control-sm"
+                        placeholder="Buscar por nombre, email o teléfono"
+                        value={prospectQuery}
+                        onChange={(e) => setProspectQuery(e.target.value)}
+                        aria-label="Buscar prospecto"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        title="Limpiar búsqueda"
+                        onClick={() => { setProspectQuery(''); setDebouncedProspectQuery('') }}
+                      >
+                        ✕
+                      </button>
+                      <span className="input-group-text">
+                        {prospectOptionsLoading ? (
+                          <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        ) : (
+                          <span className="text-muted small">&nbsp;</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div role="combobox" aria-expanded={showProspectSuggestions} aria-haspopup="listbox">
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder="Selecciona o busca un prospecto"
+                        value={selectedProspect ? selectedProspect.nombre ?? '' : prospectQuery}
+                        onChange={(e) => {
+                          setProspectQuery(e.target.value)
+                          setShowProspectSuggestions(true)
+                          setHighlightedProspectIndex(-1)
+                        }}
+                        onFocus={() => setShowProspectSuggestions(true)}
+                        onKeyDown={(e) => {
+                          const flat = prospectOptions || []
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault()
+                            setHighlightedProspectIndex((i) => Math.min(i + 1, flat.length - 1))
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault()
+                            setHighlightedProspectIndex((i) => Math.max(i - 1, 0))
+                          } else if (e.key === 'Enter') {
+                            if (highlightedProspectIndex >= 0 && highlightedProspectIndex < flat.length) {
+                              e.preventDefault()
+                              const opt = flat[highlightedProspectIndex]
+                              handleSelectProspect(opt)
+                              setShowProspectSuggestions(false)
+                            }
+                          } else if (e.key === 'Escape') {
+                            setShowProspectSuggestions(false)
+                          }
+                        }}
+                        aria-autocomplete="list"
+                        aria-controls="prospect-suggestions-list"
+                      />
+                    </div>
+
+                    {showProspectSuggestions && (prospectOptions && prospectOptions.length > 0) && (
+                      <ul id="prospect-suggestions-list" role="listbox" className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                        {prospectOptions.map((option, idx) => (
+                          <li
+                            key={option.id}
+                            role="option"
+                            aria-selected={highlightedProspectIndex === idx}
+                            className={`list-group-item list-group-item-action ${highlightedProspectIndex === idx ? 'active' : ''}`}
+                            onMouseDown={() => { handleSelectProspect(option); setShowProspectSuggestions(false) }}
+                            onMouseEnter={() => setHighlightedProspectIndex(idx)}
+                          >
+                            <div className="fw-semibold">{option.nombre || 'Sin nombre'}</div>
+                            <div className="small text-muted">{option.email || 'Sin correo'} · {option.telefono || ''}</div>
+                          </li>
                         ))}
-                      </optgroup>
+                      </ul>
                     )}
-                    {prospectGroups.previous.length > 0 && (
-                      <optgroup label="Semanas anteriores">
-                        {prospectGroups.previous.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {(option.nombre && option.nombre.trim()) || 'Sin nombre'} · {(option.email && option.email.trim()) || 'Sin correo'}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
+                  </div>
                   <div className="form-text">La lista incluye prospectos recientes y de semanas anteriores. Completa o corrige la información si hace falta.</div>
                   {prospectOptionsLoading && <div className="text-muted small mt-1">Cargando prospectos…</div>}
                   {prospectOptionsError && <div className="text-danger small mt-1">{prospectOptionsError}</div>}
