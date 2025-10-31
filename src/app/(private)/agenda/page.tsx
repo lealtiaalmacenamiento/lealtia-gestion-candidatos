@@ -1008,11 +1008,16 @@ export default function AgendaPage() {
                     </div>
                   </div>
                   <div>
-                    <div role="combobox" aria-expanded={showProspectSuggestions} aria-haspopup="listbox">
+                    <div
+                      role="combobox"
+                      aria-expanded={showProspectSuggestions}
+                      aria-haspopup="listbox"
+                      aria-busy={prospectOptionsLoading}
+                    >
                       <input
                         type="text"
                         className="form-control form-control-sm"
-                        placeholder="Selecciona o busca un prospecto"
+                        placeholder={prospectOptionsLoading ? 'Cargando prospectos…' : 'Selecciona o busca un prospecto'}
                         value={selectedProspect ? selectedProspect.nombre ?? '' : prospectQuery}
                         onChange={(e) => {
                           setProspectQuery(e.target.value)
@@ -1041,7 +1046,17 @@ export default function AgendaPage() {
                         }}
                         aria-autocomplete="list"
                         aria-controls="prospect-suggestions-list"
+                        aria-busy={prospectOptionsLoading}
+                        disabled={prospectOptionsLoading}
                       />
+
+                      {/* Show inline small spinner when loading so user understands to wait */}
+                      {prospectOptionsLoading && (
+                        <div className="small text-muted mt-1 d-flex align-items-center" aria-hidden>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                          Cargando prospectos…
+                        </div>
+                      )}
                     </div>
 
                     {showProspectSuggestions && (prospectOptions && prospectOptions.length > 0) && (
