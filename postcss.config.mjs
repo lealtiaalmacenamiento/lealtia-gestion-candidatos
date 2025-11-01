@@ -1,19 +1,5 @@
-let plugins = []
-
-// When running tests (Vitest sets VITEST env), skip PostCSS plugins to avoid
-// loading Tailwind/Vite PostCSS plugins which can fail in the test environment.
-if (!process.env.VITEST) {
-  try {
-    // Try loading the Tailwind PostCSS plugin; fall back silently if not present.
-    // We use dynamic import to keep this file ESM-compatible.
-    const mod = await import('@tailwindcss/postcss').catch(() => null)
-    if (mod && (mod.default || mod)) {
-      plugins = [mod.default || mod]
-    }
-  } catch (err) {
-    // ignore and keep plugins empty
-    plugins = []
-  }
-}
+// Export simple plugin names so Next.js' build (webpack/postcss) accepts them.
+// During tests (VITEST env) we return an empty list to avoid loading Tailwind/Vite plugins.
+const plugins = process.env.VITEST ? [] : ['tailwindcss', 'autoprefixer']
 
 export default { plugins }
