@@ -42,7 +42,8 @@
     "eslint-config-next": "15.5.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^1.2.0"
+    "vitest": "^1.2.0",
+    "autoprefixer": "^10"
   },
   "engines": {
     "node": ">=18.18.0"
