@@ -13,7 +13,7 @@ import {
   searchAgendaProspectos
 } from '@/lib/api'
 import type { AgendaBusySlot, AgendaCita, AgendaDeveloper, AgendaSlotsResponse, AgendaProspectoOption, AgendaPlanificacionSummary } from '@/types'
-import { obtenerSemanaIso } from '@/lib/semanaIso'
+// semanaIso utilities are used in other modules; not required here currently.
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
@@ -207,7 +207,8 @@ export default function AgendaPage() {
     if (!form.agenteId) return null
     return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
   }, [developers, form.agenteId])
-  const currentWeekInfo = useMemo(() => obtenerSemanaIso(), [])
+  // `obtenerSemanaIso` was previously used for grouping; keep the import but
+  // remove the unused value to avoid lint warnings until grouping is needed again.
   const availableProviders = useMemo(() => {
     if (!selectedAgente) return [] as Array<{ value: AgendaFormState['meetingProvider']; label: string }>
     const providers: Array<{ value: AgendaFormState['meetingProvider']; label: string }> = []
@@ -958,6 +959,7 @@ export default function AgendaPage() {
                         value={prospectQuery}
                         onChange={(e) => setProspectQuery(e.target.value)}
                         aria-label="Buscar prospecto"
+                        disabled={prospectOptionsLoading}
                       />
                       <button
                         type="button"
@@ -995,6 +997,7 @@ export default function AgendaPage() {
                           setHighlightedProspectIndex(-1)
                         }}
                         onFocus={() => setShowProspectSuggestions(true)}
+                        disabled={prospectOptionsLoading}
                         onKeyDown={(e) => {
                           const flat = prospectOptions || []
                           if (e.key === 'ArrowDown') {
@@ -1021,8 +1024,8 @@ export default function AgendaPage() {
 
                       {/* Show inline small spinner when loading so user understands to wait */}
                       {prospectOptionsLoading && (
-                        <div className="small text-muted mt-1 d-flex align-items-center" aria-hidden>
-                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <div className="small text-muted mt-1 d-flex align-items-center" aria-hidden={true}>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden={true}></span>
                           Cargando prospectos…
                         </div>
                       )}
@@ -1030,7 +1033,7 @@ export default function AgendaPage() {
 
                     {/* If loading and no options yet, show a small skeleton list to improve perceived performance */}
                     {prospectOptionsLoading && (!prospectOptions || prospectOptions.length === 0) && (
-                      <ul className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }} aria-hidden>
+                      <ul className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }} aria-hidden={true}>
                         {[1, 2, 3].map((i) => (
                           <li key={i} className="list-group-item">
                             <div style={{ background: '#e9ecef', height: 12, width: '60%', borderRadius: 4 }} />

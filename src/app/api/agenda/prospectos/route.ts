@@ -70,13 +70,10 @@ export async function GET(req: Request) {
     builder = builder.eq('agente_id', Number(agenteId))
   }
 
-  if (!includeConCita) {
-    // Mostrar por defecto los prospectos que NO tienen cita creada
-    // y que estén en estados relevantes para agendar (pendiente y seguimiento).
-    // Esto evita incluir prospectos ya convertidos o descartados.
-    // Para incluir prospectos con cita, pasar include_con_cita=1 en la querystring.
-    builder = builder.eq('cita_creada', false).in('estado', ['pendiente', 'seguimiento'])
-  }
+  // Note: we intentionally do NOT filter out prospectos that already have a cita
+  // or that are in 'descartado' / other estados. Consumers can opt-in to
+  // narrower results via query params if needed. This keeps the agenda
+  // search broad and allows admins to find prospectos regardless of state.
 
   if (!includeSinCorreo) {
     builder = builder.not('email', 'is', null)

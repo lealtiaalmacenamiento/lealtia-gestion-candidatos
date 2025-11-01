@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+  "test": "vitest --run",
     "typecheck": "tsc -p . --noEmit",
     "read:xlsx": "node scripts/read_xlsx.js",
     "extract:docx": "node scripts/extract_docx_comments.js docs/fase_3_lealtia.docx",
@@ -40,7 +41,8 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^1.2.0"
   },
   "engines": {
     "node": ">=18.18.0"
