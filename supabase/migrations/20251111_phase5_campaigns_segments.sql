@@ -1,4 +1,8 @@
 -- Phase 5: Segments, Campaigns, Product Types
+-- Migración base para el sistema de campañas declarativas
+-- Incluye: segments, user_segments, product_types, campaigns, campaign_rules,
+-- campaign_rewards, campaign_segments, campaign_progress
+-- Fecha: 2025-11-11
 set check_function_bodies = off;
 
 -- Ensure UUID generation helpers are available
