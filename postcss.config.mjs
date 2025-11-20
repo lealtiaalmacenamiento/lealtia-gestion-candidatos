@@ -1,1 +1,7 @@
-Ly8gRXhwb3J0IHNpbXBsZSBwbHVnaW4gbmFtZXMgc28gTmV4dC5qcycgYnVpbGQgKHdlYnBhY2svcG9zdGNzcykgYWNjZXB0cyB0aGVtLgovLyBEdXJpbmcgdGVzdHMgKFZJVEVTVCBlbnYpIHdlIHJldHVybiBhbiBlbXB0eSBsaXN0IHRvIGF2b2lkIGxvYWRpbmcgVGFpbHdpbmQvVml0ZSBwbHVnaW5zLgovLyBVc2UgdGhlIG5ldyAnQHRhaWx3aW5kY3NzL3Bvc3Rjc3MnIGFkYXB0ZXIgcGx1Z2luIGZvciBQb3N0Q1NTIHNvIE5leHQuanMgY2FuCi8vIHJlcXVpcmUgaXQgZGlyZWN0bHkgZHVyaW5nIGJ1aWxkLiBLZWVwIGF1dG9wcmVmaXhlciBhcyB3ZWxsLgpjb25zdCBwbHVnaW5zID0gcHJvY2Vzcy5lbnYuVklURVNUID8gW10gOiBbJ0B0YWlsd2luZGNzcy9wb3N0Y3NzJywgJ2F1dG9wcmVmaXhlciddCgpleHBvcnQgZGVmYXVsdCB7IHBsdWdpbnMgfQ==
+// Export simple plugin names so Next.js' build (webpack/postcss) accepts them.
+// During tests (VITEST env) we return an empty list to avoid loading Tailwind/Vite plugins.
+// Use the new '@tailwindcss/postcss' adapter plugin for PostCSS so Next.js can
+// require it directly during build. Keep autoprefixer as well.
+const plugins = process.env.VITEST ? [] : ['@tailwindcss/postcss', 'autoprefixer']
+
+export default { plugins }
