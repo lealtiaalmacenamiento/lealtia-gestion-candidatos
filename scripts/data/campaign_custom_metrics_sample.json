@@ -1,0 +1,42 @@
+[
+  {
+    "usuario_id": 3,
+    "dataset": "vida_grupo_inicial",
+    "metrics": {
+      "polizas_validas": 2,
+      "ultimas_ventas_dias": 8
+    }
+  },
+  {
+    "usuario_id": 3,
+    "dataset": "meta_comisiones",
+    "metrics": {
+      "meta_cumplida": true,
+      "avance_actual": 412000,
+      "meta_objetivo": 600000
+    }
+  },
+  {
+    "usuario_id": 4,
+    "dataset": "meta_comisiones",
+    "metrics": {
+      "meta_cumplida": false,
+      "avance_actual": 175000,
+      "meta_objetivo": 420000
+    }
+  },
+  {
+    "usuario_id": 4,
+    "dataset": "vida_grupo_inicial",
+    "metric": "polizas_validas",
+    "numeric_value": 0
+  },
+  {
+    "usuario_id": 6,
+    "dataset": "ranking_r1",
+    "metrics": {
+      "posicion": 5,
+      "puntos": 102
+    }
+  }
+]

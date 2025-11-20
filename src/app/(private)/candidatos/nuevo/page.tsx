@@ -5,6 +5,7 @@ import { calcularDerivados, parseOneDate, parseAllRangesWithAnchor, monthIndexFr
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 import { sanitizeCandidatoPayload } from '@/lib/sanitize'
+import { MONTH_OPTIONS, buildYearOptions } from '@/lib/mesConexion'
 
 interface FormState {
   pop: string;
@@ -13,6 +14,7 @@ interface FormState {
   // Nueva fecha manual: fecha de creación CT
   fecha_creacion_ct?: string;
   fecha_creacion_pop?: string;
+  mes_conexion?: string;
   email_agente: string; // correo del candidato (único) y para crear usuario agente
   mes: string;
   efc: string;
@@ -30,7 +32,7 @@ interface FormState {
   inicio_escuela_fundamental?: string;
 }
 
-const initialForm: FormState = { pop: '', ct: '', candidato: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '', fecha_creacion_pop: '' }
+const initialForm: FormState = { pop: '', ct: '', candidato: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '', fecha_creacion_pop: '', mes_conexion: '' }
 
 export default function NuevoCandidato() {
   const [meses, setMeses] = useState<CedulaA1[]>([])
@@ -42,6 +44,20 @@ export default function NuevoCandidato() {
   const [modal, setModal] = useState<{ title: string; html: React.ReactNode } | null>(null)
   const firstInputRef = useRef<HTMLInputElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
+  const [mesConexionManual, setMesConexionManual] = useState(false)
+  const [mesConexionYear, setMesConexionYear] = useState('')
+  const [mesConexionMonth, setMesConexionMonth] = useState('')
+
+  useEffect(() => {
+    const raw = form.mes_conexion || ''
+    if (/^\d{4}-\d{2}$/.test(raw)) {
+      setMesConexionYear(raw.slice(0, 4))
+      setMesConexionMonth(raw.slice(5, 7))
+    } else if (!mesConexionManual) {
+      setMesConexionYear('')
+      setMesConexionMonth('')
+    }
+  }, [form.mes_conexion, mesConexionManual])
 
   useEffect(() => {
     (async () => {
@@ -58,7 +74,44 @@ export default function NuevoCandidato() {
     })()
   }, [])
 
+  const computeMesConexion = (fechaCt?: string | null, fechaPop?: string | null): string => {
+    const pick = (raw?: string | null): string => {
+      if (!raw) return ''
+      const trimmed = raw.trim()
+      if (!trimmed) return ''
+      if (/^\d{4}-\d{2}$/.test(trimmed)) return trimmed
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed.slice(0, 7)
+      const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+      if (dmy) {
+        const [, , month, year] = dmy
+        return `${year}-${String(Number(month)).padStart(2, '0')}`
+      }
+      return ''
+    }
+    return pick(fechaCt) || pick(fechaPop)
+  }
+
   const recomputeDerived = (draft: FormState): FormState => ({ ...draft, ...calcularDerivados(draft) })
+
+  const handleMesConexionYearSelect = (year: string) => {
+    const month = mesConexionMonth
+    const hasAny = Boolean(year || month)
+    setMesConexionManual(hasAny)
+    setMesConexionYear(year)
+    const nextValue = year && month ? `${year}-${month}` : ''
+    setForm(prev => recomputeDerived({ ...prev, mes_conexion: nextValue }))
+  }
+
+  const handleMesConexionMonthSelect = (month: string) => {
+    const year = mesConexionYear
+    const hasAny = Boolean(month || year)
+    setMesConexionManual(hasAny)
+    setMesConexionMonth(month)
+    const nextValue = year && month ? `${year}-${month}` : ''
+    setForm(prev => recomputeDerived({ ...prev, mes_conexion: nextValue }))
+  }
+
+  const yearOptions = buildYearOptions(mesConexionYear)
 
     // Helpers para filtrar opciones futuras
     const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
@@ -91,9 +144,14 @@ export default function NuevoCandidato() {
   const nextVal = value
     // Convert ISO date (yyyy-mm-dd) from date input to dd/mm/aaaa for storage
     setForm(prev => {
-      const updated = { ...prev, [name]: nextVal }
-      return recomputeDerived(updated)
-    })
+        const updated = { ...prev, [name]: nextVal }
+        if ((name === 'fecha_creacion_ct' || name === 'fecha_creacion_pop') && !mesConexionManual) {
+          const nuevaCt = name === 'fecha_creacion_ct' ? nextVal : prev.fecha_creacion_ct
+          const nuevaPop = name === 'fecha_creacion_pop' ? nextVal : prev.fecha_creacion_pop
+          updated.mes_conexion = computeMesConexion(nuevaCt || '', nuevaPop || '')
+        }
+        return recomputeDerived(updated)
+      })
   // CT duplicate check
     if (name === 'ct' && value.trim()) {
       try {
@@ -287,7 +345,11 @@ export default function NuevoCandidato() {
   // Omitir campos derivados que no se guardan directamente
   // Preparar payload sin campos derivados (ni dias_desde_pop/dias_desde_ct, proceso, etc.)
   // Omitir campos derivados del submit usando sanitización
-  const payload = sanitizeCandidatoPayload(form as unknown as Record<string, unknown>)
+  const mesConexion = (form.mes_conexion && form.mes_conexion.trim())
+    ? form.mes_conexion.trim()
+    : computeMesConexion(form.fecha_creacion_ct, form.fecha_creacion_pop) || ''
+  const normalizedForm = { ...form, mes_conexion: mesConexion || undefined }
+  const payload = sanitizeCandidatoPayload(normalizedForm as unknown as Record<string, unknown>)
   if (typeof (payload as Record<string, unknown>).email_agente === 'string') {
     const normalized = ((payload as Record<string, unknown>).email_agente as string).trim().toLowerCase()
     if (normalized) {
@@ -300,6 +362,9 @@ export default function NuevoCandidato() {
       setNotif({ type: 'success', msg: 'Candidato guardado correctamente. (Se intentó crear el usuario agente en backend si no existía).' })
       // Reiniciar formulario limpio
       setForm(initialForm)
+      setMesConexionManual(false)
+      setMesConexionYear('')
+      setMesConexionMonth('')
       // Reenfocar primer campo
       setTimeout(() => firstInputRef.current?.focus(), 50)
       // Replay animación de la tarjeta
@@ -388,6 +453,49 @@ export default function NuevoCandidato() {
                   <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN POP</label>
                   <input type="date" name="fecha_creacion_pop" className="form-control" value={form.fecha_creacion_pop || ''} onChange={handleChange} />
                   <div className="form-text small">Selecciona la fecha en que se creó el POP.</div>
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1">MES DE CONEXIÓN</label>
+                  <div className="row g-2 align-items-end">
+                    <div className="col-6 col-sm-4 col-md-3">
+                      <select
+                        className="form-select"
+                        value={mesConexionMonth}
+                        onChange={event => handleMesConexionMonthSelect(event.target.value)}
+                      >
+                        <option value="">Mes</option>
+                        {MONTH_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-6 col-sm-4 col-md-3">
+                      <select
+                        className="form-select"
+                        value={mesConexionYear}
+                        onChange={event => handleMesConexionYearSelect(event.target.value)}
+                      >
+                        <option value="">Año</option>
+                        {yearOptions.map(year => (
+                          <option key={year} value={year}>{year}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <input
+                        className="form-control bg-light"
+                        style={{ cursor: 'not-allowed' }}
+                        value={form.mes_conexion || ''}
+                        readOnly
+                        tabIndex={-1}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <div className="form-text small">
+                        Se calcula automáticamente con las fechas de CT/POP. Selecciona mes y año para ajustarlo manualmente.
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {/* Días desde CT y Proceso ocultos en registro */}
                 <div className="col-12">

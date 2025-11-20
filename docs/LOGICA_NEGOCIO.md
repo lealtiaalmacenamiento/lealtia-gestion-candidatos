@@ -5,10 +5,10 @@ Este documento consolida la lógica de negocio vigente en la aplicación (UI + A
 ## Autenticación y roles
 - Obtención de sesión vía Supabase SSR (`getUsuarioSesion`).
 - Tras autenticación, se busca en tabla `usuarios` (email); si no existe se devuelve rol null/activo=false.
-- Roles válidos: `admin`, `editor`, `superusuario`, `lector`, `agente` (fase 2).
+- Roles válidos: `admin`, `supervisor`, `viewer`, `agente` (fase 2).
 - Restricciones clave:
   - `agente` sólo puede operar sobre sus datos (prospectos/planificación), y su `agente_id` se fuerza desde sesión.
-  - Superusuario/Admin pueden listar/seleccionar agentes y operar sobre terceros.
+  - Supervisor/Admin pueden listar/seleccionar agentes y operar sobre terceros.
 
 ## Auditoría
 - `logAccion(accion, {usuario, tabla_afectada, id_registro, snapshot})` inserta en `RegistroAcciones` y fallback `registro_acciones`.
@@ -73,7 +73,7 @@ Este documento consolida la lógica de negocio vigente en la aplicación (UI + A
 
 ## Planificación semanal
 - Vista editable por semana ISO (1–53) y año. Modo "Todo el año" es informativo.
-- Roles: agente edita su plan; superusuario selecciona agente.
+- Roles: agente edita su plan; supervisor selecciona agente.
 - Bloques por celda (day 0–6, hour 'HH'): `PROSPECCION`, `CITAS`, `SMNYL`.
   - Notas obligatorias en `PROSPECCION` y `SMNYL`.
   - `CITAS`: puede vincular prospecto (opcional). Si no hay prospecto, notas obligatorias.

@@ -20,7 +20,7 @@ CREATE POLICY sel_historial_costos_poliza_super ON historial_costos_poliza
   USING (
     -- permitir si usuario tiene rol superior
     EXISTS (
-      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('superusuario','super_usuario','supervisor','admin')
+      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('supervisor','admin')
     )
   );
 
@@ -30,6 +30,6 @@ CREATE POLICY ins_historial_costos_poliza_super ON historial_costos_poliza
   TO authenticated
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('superusuario','super_usuario','supervisor','admin')
+      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('supervisor','admin')
     )
   );

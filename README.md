@@ -40,9 +40,6 @@ Durante build sin variables, el código usa proxys placeholder para evitar fallo
 ## Endpoints debug
 `/api/efc/debug/[id]` es sólo diagnóstico. Elimínalo antes de producción final si no se requiere.
 
-## Mejoras pendientes
-
-Actualizado automáticamente.
 ## Fase 3: Productos parametrizados
 
 - Columnas visibles en la tabla: Producto, Tipo, Moneda, Duración (años), Suma Asegurada (SA), AÑO 1–10, AÑO 11+.
@@ -51,11 +48,44 @@ Actualizado automáticamente.
 	- Por edad: "> 45 años", "<= 65 años", "> 45 años y <= 65 años".
 	- El campo de entrada acepta ejemplos como: ">= 500,000" | "< 1,500,000" | "<=45 años" | ">65 años".
 - Reglas de permisos (centralizado en `src/lib/roles.ts` y aplicado en API `producto_parametros`):
-	- Lectura: admin, superusuario/super_usuario, supervisor, editor, lector.
-	- Alta/Edición: admin, superusuario/super_usuario, supervisor, editor.
-	- Borrado: admin, superusuario/super_usuario, supervisor.
+	- Lectura: admin, supervisor, viewer, agente.
+	- Alta/Edición: admin, supervisor.
+	- Borrado: admin, supervisor.
 
-\n+## Marca de despliegue
-Redeploy marker: sprint6-roles-fix 2025-09-09T00:00:00Z
-\n+## Marca de despliegue
-Commit forzado para redeploy: ajuste timestamp ${(new Date()).toISOString()}.
+## Fase 5: Campaigns & Segments
+
+Sistema modular de campañas y segmentación de usuarios para gestión dinámica de objetivos y métricas personalizadas.
+
+### Características principales
+- **Segmentos**: Definir grupos de usuarios por criterios (equipos, regiones, productos).
+- **Campañas**: Asociar múltiples segmentos con fechas de vigencia y estados (`draft`, `active`, `completed`, `cancelled`).
+- **Product Types**: Catálogo de tipos de productos (`vida`, `autos`, `diversos`, etc.) con configuración de cuota mensual.
+- **Métricas personalizadas**: Datasets y columnas dinámicas por campaña con fórmulas de agregación.
+- **Evaluador**: Motor que determina elegibilidad de usuario en campaña según segmentos y fechas.
+
+### APIs principales
+- `GET /api/campaigns` - Lista campañas activas con elegibilidad del usuario
+- `GET /api/campaigns/[slug]` - Detalle de campaña individual
+- `GET /api/admin/segments` - CRUD de segmentos (requiere rol supervisor/admin)
+- `GET /api/admin/campaigns` - CRUD de campañas (requiere rol supervisor/admin)
+- `GET /api/admin/product-types` - CRUD de tipos de producto (requiere rol supervisor/admin)
+
+### Permisos
+- **Lectura pública**: `/api/campaigns` (usuarios autenticados)
+- **Administración**: `/api/admin/*` (sólo admin y supervisor)
+- **RLS**: Políticas documentadas en `docs/SECURITY_RLS.md`
+
+### Documentación adicional
+- Especificación completa: `FASE5.md`
+- Guía de formato e i18n: `docs/FORMAT_I18N_GUIDE.md`
+- Políticas de seguridad: `docs/SECURITY_RLS.md`
+
+## Scripts de calidad
+
+Antes de hacer merge a `main`, ejecuta:
+```bash
+npm run typecheck  # Verifica tipos TypeScript
+npm run lint       # Verifica estilo de código
+npm run test       # Ejecuta suite de tests (64 tests)
+npm run build      # Compila para producción
+```

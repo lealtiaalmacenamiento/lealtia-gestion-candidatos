@@ -10,9 +10,9 @@ import { useDialog } from '@/components/ui/DialogProvider'
 import { useAuth } from '@/context/AuthProvider'
 
 const ROLES = [
-  { value: 'editor', label: 'Editor' },
-  { value: 'superusuario', label: 'Super Usuario' },
-  { value: 'lector', label: 'Viewer' }
+  { value: 'supervisor', label: 'Supervisor' },
+  { value: 'agente', label: 'Agente' },
+  { value: 'viewer', label: 'Viewer' }
 ]
 
 export default function UsuarioEditPage() {

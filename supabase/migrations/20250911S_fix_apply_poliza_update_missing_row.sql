@@ -19,7 +19,7 @@ DECLARE
   v_periodicidad_txt text;
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   -- Leer la solicitud SIN FOR UPDATE (parece causar que no se devuelva fila en RLS)

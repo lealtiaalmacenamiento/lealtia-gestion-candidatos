@@ -12,8 +12,11 @@ const allowedFields = new Set([
   'condicion_sa_tipo','sa_min','sa_max','condicion_edad_tipo','edad_min','edad_max',
   'anio_1_percent','anio_2_percent','anio_3_percent','anio_4_percent','anio_5_percent',
   'anio_6_percent','anio_7_percent','anio_8_percent','anio_9_percent','anio_10_percent','anio_11_plus_percent',
-  'puntos_multiplicador','activo'
+  'puntos_multiplicador','activo','product_type_id'
 ])
+
+const PRODUCT_TYPE_SELECT = 'id,code,name,description,active,created_at,updated_at'
+const PRODUCTO_PARAMETRO_SELECT = `*, product_type:product_types(${PRODUCT_TYPE_SELECT})`
 
 export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
@@ -52,7 +55,12 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     const debug = url.searchParams.get('debug') === '1'
     return NextResponse.json({ error: 'Sin cambios', ...(debug ? { provided_keys: Object.keys(body) } : {}) }, { status: 400 })
   }
-  const { data, error } = await supabase.from('producto_parametros').update(cleaned).eq('id', id).select().single()
+  const { data, error } = await supabase
+    .from('producto_parametros')
+    .update(cleaned)
+    .eq('id', id)
+    .select(PRODUCTO_PARAMETRO_SELECT)
+    .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await logAccion('edicion_producto_parametro', { usuario: usuario.email, tabla_afectada: 'producto_parametros', id_registro: data?.id ?? 0, snapshot: existente.data })
@@ -90,7 +98,7 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
     .from('producto_parametros')
     .update({ activo: false })
     .eq('id', id)
-    .select()
+    .select(PRODUCTO_PARAMETRO_SELECT)
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

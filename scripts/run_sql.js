@@ -3,10 +3,25 @@
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
+const dotenv = require('dotenv');
+
+const ENV_CANDIDATES = [
+  process.env.SQL_ENV_PATH,
+  '.env.local',
+  '.env'
+];
+
+for (const candidate of ENV_CANDIDATES) {
+  if (!candidate) continue;
+  if (fs.existsSync(candidate)) {
+    dotenv.config({ path: candidate });
+    break;
+  }
+}
 
 async function main() {
   const filePath = process.argv[2];
-  const dbUrl = process.env.DB_URL;
+  const dbUrl = process.env.DB_URL || process.env.DevDATABASE_URL || process.env.DATABASE_URL;
 
   if (!filePath) {
     console.error('Usage: node scripts/run_sql.js <path-to-sql-file>');
@@ -26,8 +41,13 @@ async function main() {
   });
   try {
     await client.connect();
-    await client.query(sql);
-    console.log('SQL executed successfully.');
+    const result = await client.query(sql);
+    if (result.rows && result.rows.length > 0) {
+      console.log('Results:');
+      console.table(result.rows);
+    } else {
+      console.log('SQL executed successfully. No rows returned.');
+    }
   } finally {
     await client.end();
   }

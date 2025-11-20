@@ -64,7 +64,7 @@ export async function POST(req: Request) {
     const { data: supers } = await supa
       .from('usuarios')
       .select('email, rol, activo')
-      .in('rol', ['superusuario','super_usuario','supervisor'])
+      .in('rol', ['supervisor'])
       .eq('activo', true)
     const emails = Array.from(new Set((supers || []).map(u => (u.email || '').trim()).filter(e => /.+@.+\..+/.test(e))))
     const subject = `Nueva solicitud de cambio de cliente ${body.cliente_id}`

@@ -1,5 +1,5 @@
 interface UsuarioMini { id:number; id_auth?: string | null; nombre?:string|null; email:string; rol:string; activo:boolean; clientes_count?: number }
-type MetaRow = { usuario_id: number; fecha_conexion_text: string | null; objetivo: number | null }
+type MetaRow = { usuario_id: number; objetivo: number | null }
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
@@ -9,7 +9,7 @@ const supabase = getServiceClient()
 export async function GET() {
   const usuario = await getUsuarioSesion()
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-  const superuser = usuario.rol === 'superusuario' || usuario.rol === 'admin'
+  const superuser = usuario.rol === 'supervisor' || usuario.rol === 'admin'
   // Requisito: considerar como "agente" también a cualquier usuario activo cuyo email aparezca en candidatos.email_agente
   if (!superuser) {
     // Usuario normal (agente u otro rol no privilegiado): mantener comportamiento previo (retorna sólo su propio registro si es agente)
@@ -18,10 +18,17 @@ export async function GET() {
     if (selfErr) return NextResponse.json({ error: selfErr.message }, { status: 500 })
     if (!self) return NextResponse.json([])
     // Si rol no es agente y NO está referenciado en candidatos, ocultarlo
+    let candidato_info: { mes_conexion?: string | null } | null = null
     if (self.rol !== 'agente') {
-      const ref = await supabase.from('candidatos').select('id_candidato').eq('email_agente', self.email).limit(1)
-      if (ref.error) return NextResponse.json({ error: ref.error.message }, { status: 500 })
-      if (!ref.data || ref.data.length === 0) return NextResponse.json([])
+      const ref = await supabase.from('candidatos').select('id_candidato, mes_conexion').eq('email_agente', self.email).limit(1).maybeSingle()
+      if (ref.error && ref.error.code !== 'PGRST116') return NextResponse.json({ error: ref.error.message }, { status: 500 })
+      if (!ref.data) return NextResponse.json([])
+      candidato_info = ref.data
+    } else {
+      // Si es agente, obtener también su mes_conexion
+      const ref = await supabase.from('candidatos').select('mes_conexion').eq('email_agente', self.email).limit(1).maybeSingle()
+      if (ref.error && ref.error.code !== 'PGRST116') return NextResponse.json({ error: ref.error.message }, { status: 500 })
+      candidato_info = ref.data
     }
     // Enriquecer con badges y conteos para el propio usuario
     let clientes_count = 0
@@ -48,18 +55,26 @@ export async function GET() {
         }
       }
     }
-    const meta = await supabase.from('agente_meta').select('usuario_id, fecha_conexion_text, objetivo').eq('usuario_id', self.id).maybeSingle()
+    const meta = await supabase.from('agente_meta').select('usuario_id, objetivo').eq('usuario_id', self.id).maybeSingle()
     if (meta.error && meta.error.code !== 'PGRST116') { // ignore no rows
       return NextResponse.json({ error: meta.error.message }, { status: 500 })
     }
-    const m = (meta.data as MetaRow | null) || { usuario_id: self.id, fecha_conexion_text: null, objetivo: null }
+    const m = (meta.data as { usuario_id: number; objetivo: number | null } | null) || { usuario_id: self.id, objetivo: null }
     const mesesGraduacion = (() => {
-      const t = (m.fecha_conexion_text || '').trim()
-      if (!t) return null
-      const parts = t.split('/')
-      if (parts.length !== 3) return null
-      const d = Number(parts[0]); const mo = Number(parts[1]); const y = Number(parts[2])
-      if (!isFinite(d) || !isFinite(mo) || !isFinite(y)) return null
+      const mesConexion = candidato_info?.mes_conexion || ''
+      if (!mesConexion) return null
+      // Esperamos formato "MM/YYYY" o "YYYY-MM"
+      let mo: number, y: number
+      if (mesConexion.includes('/')) {
+        const parts = mesConexion.split('/')
+        if (parts.length !== 2) return null
+        mo = Number(parts[0]); y = Number(parts[1])
+      } else if (mesConexion.includes('-')) {
+        const parts = mesConexion.split('-')
+        if (parts.length !== 2) return null
+        y = Number(parts[0]); mo = Number(parts[1])
+      } else return null
+      if (!isFinite(mo) || !isFinite(y)) return null
       const mesActual = new Date()
       const diff = (mesActual.getFullYear() * 12 + mesActual.getMonth() + 1) - (y * 12 + mo)
       return 12 - diff
@@ -71,7 +86,7 @@ export async function GET() {
       clientes_count,
       badges: {
         polizas_en_conteo: puntos,
-        conexion: m.fecha_conexion_text || null,
+        conexion: candidato_info?.mes_conexion || null,
         meses_para_graduacion: mesesGraduacion,
         polizas_para_graduacion: polizasParaGraduacion,
         necesita_mensualmente: necesitaMensual,
@@ -82,9 +97,9 @@ export async function GET() {
     return NextResponse.json([enriched])
   }
 
-  // Superusuario/admin: construir conjunto ampliado
+  // supervisor/admin: construir conjunto ampliado
   const agentesRolPromise = supabase.from('usuarios').select('id,id_auth,nombre,email,rol,activo').eq('rol','agente').eq('activo', true)
-  const emailsCandidatosPromise = supabase.from('candidatos').select('email_agente').not('email_agente','is', null)
+  const emailsCandidatosPromise = supabase.from('candidatos').select('email_agente, mes_conexion').not('email_agente','is', null)
   // Precalcular conteo de clientes por asesor_id (id_auth) sin usar group() para evitar incompatibilidades de tipos
   const clientesCountPromise = supabase
     .from('clientes')
@@ -97,7 +112,7 @@ export async function GET() {
     .select('id, estatus, puntos_actuales, poliza_puntos_cache(base_factor,prima_anual_snapshot), clientes!inner(asesor_id,activo)')
     .eq('clientes.activo', true)
 
-  const metaPromise = supabase.from('agente_meta').select('usuario_id, fecha_conexion_text, objetivo')
+  const metaPromise = supabase.from('agente_meta').select('usuario_id, objetivo')
   const [agentesRol, emailsCand, clientesCount, puntosJoin, metaRes] = await Promise.all([agentesRolPromise, emailsCandidatosPromise, clientesCountPromise, puntosJoinPromise, metaPromise])
   if (agentesRol.error) return NextResponse.json({ error: agentesRol.error.message }, { status: 500 })
   if (emailsCand.error) return NextResponse.json({ error: emailsCand.error.message }, { status: 500 })
@@ -106,9 +121,14 @@ export async function GET() {
   if (metaRes.error) return NextResponse.json({ error: metaRes.error.message }, { status: 500 })
 
   const emailSet = new Set<string>()
-  for (const r of emailsCand.data as { email_agente: string | null }[]) {
+  const conexionMap = new Map<string, string>()
+  for (const r of emailsCand.data as { email_agente: string | null; mes_conexion?: string | null }[]) {
     const e = r.email_agente
-    if (e) emailSet.add(e.toLowerCase())
+    if (e) {
+      const emailLower = e.toLowerCase()
+      emailSet.add(emailLower)
+      if (r.mes_conexion) conexionMap.set(emailLower, r.mes_conexion)
+    }
   }
   // Filtrar emails ya cubiertos por rol agente para reducir consulta extra
   for (const u of agentesRol.data) emailSet.delete(u.email.toLowerCase())
@@ -157,20 +177,26 @@ export async function GET() {
   const merged = Array.from(mergedMap.values()).map(a => {
     const puntos = a.id_auth ? (puntosMap.get(a.id_auth) || 0) : 0
   const comisiones = a.id_auth ? (comisionesMap.get(a.id_auth) || 0) : 0
-    const meta = metaMap.get(a.id) || { usuario_id: a.id, fecha_conexion_text: null, objetivo: null }
+    const meta = metaMap.get(a.id) || { usuario_id: a.id, objetivo: null }
+    const mesConexion = conexionMap.get(a.email.toLowerCase()) || ''
     // Derivados: meses_graduacion y polizas_para_graduacion
     const mesesGraduacion = (() => {
-      // conexión en formato D/M/YYYY
-      const t = (meta.fecha_conexion_text || '').trim()
-      if (!t) return null
-      const m = t.split('/')
-      if (m.length !== 3) return null
-      const d = Number(m[0]); const mo = Number(m[1]); const y = Number(m[2])
-      if (!isFinite(d) || !isFinite(mo) || !isFinite(y)) return null
+      if (!mesConexion) return null
+      // Esperamos formato "MM/YYYY" o "YYYY-MM"
+      let mo: number, y: number
+      if (mesConexion.includes('/')) {
+        const parts = mesConexion.split('/')
+        if (parts.length !== 2) return null
+        mo = Number(parts[0]); y = Number(parts[1])
+      } else if (mesConexion.includes('-')) {
+        const parts = mesConexion.split('-')
+        if (parts.length !== 2) return null
+        y = Number(parts[0]); mo = Number(parts[1])
+      } else return null
+      if (!isFinite(mo) || !isFinite(y)) return null
       const mesActual = new Date()
-      const diff = (mesActual.getFullYear() * 12 + mesActual.getMonth() + 1) - (y * 12 + mo) // meses transcurridos desde conexión (mes 1-12)
-      const val = 12 - diff
-      return val
+      const diff = (mesActual.getFullYear() * 12 + mesActual.getMonth() + 1) - (y * 12 + mo)
+      return 12 - diff
     })()
   const polizasParaGraduacion = Math.max(0, 36 - puntos)
   const necesitaMensual = (mesesGraduacion && mesesGraduacion > 0) ? Math.ceil(polizasParaGraduacion / mesesGraduacion) : null
@@ -179,7 +205,7 @@ export async function GET() {
       clientes_count: a.clientes_count,
       badges: {
         polizas_en_conteo: puntos,
-        conexion: meta.fecha_conexion_text || null,
+        conexion: mesConexion || null,
         meses_para_graduacion: mesesGraduacion,
         polizas_para_graduacion: polizasParaGraduacion,
         necesita_mensualmente: necesitaMensual,

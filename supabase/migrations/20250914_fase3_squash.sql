@@ -355,8 +355,8 @@ BEGIN
     SELECT 1 FROM usuarios
     WHERE id_auth = auth.uid()
       AND activo IS TRUE
-      AND lower(rol) IN ('superusuario','super_usuario','supervisor','admin')
-  ) OR jwt_role() IN ('superusuario','super_usuario','supervisor','admin');
+      AND lower(rol) IN ('supervisor','admin')
+  ) OR jwt_role() IN ('supervisor','admin');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -908,7 +908,7 @@ DECLARE
   r_new clientes%ROWTYPE;
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   SELECT cliente_id, payload_propuesto
@@ -957,7 +957,7 @@ RETURNS void
 AS $$
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   UPDATE cliente_update_requests
@@ -1010,7 +1010,7 @@ DECLARE
   v_periodicidad_txt text;
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   SELECT poliza_id, payload_propuesto, estado
@@ -1079,7 +1079,7 @@ RETURNS void
 AS $$
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   UPDATE poliza_update_requests
@@ -1237,14 +1237,14 @@ CREATE POLICY sel_historial_costos_poliza_super ON historial_costos_poliza
   FOR SELECT TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('superusuario','super_usuario','supervisor','admin')
+      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('supervisor','admin')
     )
   );
 CREATE POLICY ins_historial_costos_poliza_super ON historial_costos_poliza
   FOR INSERT TO authenticated
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('superusuario','super_usuario','supervisor','admin')
+      SELECT 1 FROM usuarios u WHERE u.id_auth = auth.uid() AND lower(u.rol) IN ('supervisor','admin')
     )
   );
 

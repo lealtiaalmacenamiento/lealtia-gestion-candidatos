@@ -14,6 +14,41 @@ export const runtime = 'nodejs'
 
 const supabase = getServiceClient()
 
+function normalizeMesConexion(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+function extractMesFromDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^\d{4}-\d{2}$/.test(trimmed)) return trimmed
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed.slice(0, 7)
+  const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    const [, , month, year] = dmy
+    return `${year}-${String(Number(month)).padStart(2, '0')}`
+  }
+  const parsed = new Date(trimmed)
+  if (!Number.isNaN(parsed.getTime())) {
+    const month = String(parsed.getUTCMonth() + 1).padStart(2, '0')
+    return `${parsed.getUTCFullYear()}-${month}`
+  }
+  return null
+}
+
+function resolveMesConexion(mesConexion: unknown, fechaCt: unknown, fechaPop: unknown): string | null {
+  const normalized = normalizeMesConexion(mesConexion)
+  if (normalized) return normalized
+  const fromCt = extractMesFromDate(fechaCt)
+  if (fromCt) return fromCt
+  const fromPop = extractMesFromDate(fechaPop)
+  if (fromPop) return fromPop
+  return null
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const verEliminados = url.searchParams.get('eliminados') === '1'
@@ -61,6 +96,7 @@ export async function POST(req: Request) {
 
   const raw = await req.json()
   const body = sanitizeCandidatoPayload(raw)
+  body.mes_conexion = normalizeMesConexion(raw?.mes_conexion ?? body?.mes_conexion)
   const emailAgenteRaw: unknown = body.email_agente
   const emailAgente = typeof emailAgenteRaw === 'string' ? emailAgenteRaw.trim().toLowerCase() : ''
   // email_agente se conserva para insertar en columna (asegúrate de haber agregado la columna en BD)
@@ -155,6 +191,7 @@ export async function POST(req: Request) {
 
   // 2) Insertar candidato
   normalizeDateFields(body)
+  body.mes_conexion = resolveMesConexion(body.mes_conexion, body.fecha_creacion_ct, body.fecha_creacion_pop)
   // aseguramos que email_agente se guarde normalizado
   if (emailAgente) {
     body.email_agente = emailAgente

@@ -15,7 +15,7 @@ DECLARE
   v_periodicidad_enum periodicidad_pago;
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   SELECT poliza_id, payload_propuesto

@@ -4,7 +4,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 
 const supabase = getServiceClient()
-const VALID_ROLES = new Set(['admin','editor','superusuario','lector','agente'])
+const VALID_ROLES = new Set(['admin','supervisor','viewer','agente'])
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function GET(req: Request) {
@@ -30,7 +30,7 @@ export async function PUT(req: Request) {
   const actorActivo = !!actor?.activo
   const actorId = actor?.id ?? null
   const isSelf = actorActivo && actorId === targetId
-  const canManageOthers = actorActivo && ['admin','superusuario'].includes(actorRol)
+  const canManageOthers = actorActivo && ['admin','supervisor'].includes(actorRol)
 
   if (!isSelf && !canManageOthers) {
     return NextResponse.json({ error: 'Sin permiso' }, { status: 403 })
@@ -182,7 +182,7 @@ export async function DELETE(req: Request) {
   const segments = url.pathname.split('/')
   const idStr = segments[segments.length - 1]
   const usuario = await getUsuarioSesion()
-  if (!usuario?.activo || !['admin','superusuario'].includes(usuario.rol))
+  if (!usuario?.activo || !['admin','supervisor'].includes(usuario.rol))
     return NextResponse.json({ error: 'Sin permiso' }, { status: 403 })
 
   let body: { transferTo?: number } = {}

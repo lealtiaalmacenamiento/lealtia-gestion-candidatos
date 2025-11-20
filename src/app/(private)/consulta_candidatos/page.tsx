@@ -13,7 +13,7 @@ import { useAuth } from '@/context/AuthProvider';
 import { exportCandidatoPDF, exportCandidatosExcel } from '@/lib/exporters'
 
 // Tipos
-type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct' | 'fecha_creacion_pop'>;
+type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'mes_conexion' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct' | 'fecha_creacion_pop'>;
 type AnyColKey = keyof Candidato;
 
 export default function ConsultaCandidatosPage() {
@@ -210,6 +210,7 @@ function ConsultaCandidatosInner() {
     { key: 'candidato', label: 'Candidato', sortable: true },
     { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
+  { key: 'mes_conexion', label: 'Mes conexión', sortable: true },
   { key: 'fecha_creacion_pop' as unknown as keyof Candidato, label: 'Fecha creación POP' },
   { key: 'dias_desde_pop' as unknown as keyof Candidato, label: 'Días desde POP' },
   { key: 'proceso', label: 'Proceso' },
@@ -375,7 +376,7 @@ useEffect(() => {
             <tbody>
               {Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i} className="placeholder-glow">
-                  {Array.from({length:19}).map((__,c)=>(<td key={c}><span className="placeholder col-8" /></td>))}
+                  {Array.from({ length: columns.length + (readOnly ? 0 : 1) }).map((__, c) => (<td key={c}><span className="placeholder col-8" /></td>))}
                 </tr>
               ))}
             </tbody>
@@ -438,9 +439,11 @@ useEffect(() => {
                           ? (formatDate(c.fecha_tentativa_de_examen) || '-')
                           : (col.key === 'fecha_creacion_ct'
                             ? (formatDate(c.fecha_creacion_ct) || '-')
-                             : (col.key === 'proceso'
-                               ? (isAgente ? 'Agente' : (etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''))
-                              : value))));
+                            : (col.key === 'mes_conexion'
+                              ? (formatMesConexion(c.mes_conexion) || '-')
+                              : (col.key === 'proceso'
+                                ? (isAgente ? 'Agente' : (etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''))
+                                : value)))));
                     const etapaKeys = new Set([
                       'periodo_para_registro_y_envio_de_documentos',
                       'capacitacion_cedula_a1',
@@ -637,6 +640,15 @@ function Th({ label, k, sortKey, sortDir, onSort, sortable, width, className, st
       {label} {active && (<i className={`bi bi-caret-${sortDir === 'asc' ? 'up' : 'down'}-fill text-secondary ms-1`}></i>)}
     </th>
   );
+}
+
+function formatMesConexion(v?: string | null) {
+  if (!v) return ''
+  if (/^\d{4}-\d{2}$/.test(v)) {
+    const [y, m] = v.split('-')
+    return `${m}/${y}`
+  }
+  return formatDate(v) || v
 }
 
 function formatDate(v?: string) {

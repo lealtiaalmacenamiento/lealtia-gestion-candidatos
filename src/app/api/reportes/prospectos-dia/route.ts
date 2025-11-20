@@ -5,8 +5,9 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 import { getUsuarioSesion } from '@/lib/auth'
 import type { UsuarioSesion } from '@/lib/auth'
 import { sendMail } from '@/lib/mailer'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { logAccion } from '@/lib/logger'
+import { normalizeRole } from '@/lib/roles'
 
 // Forzar runtime Node para uso de nodemailer/xlsx
 export const runtime = 'nodejs'
@@ -86,7 +87,8 @@ export async function POST(req: Request) {
       const cookieNames = debug ? (await cookies()).getAll().map(c => c.name) : undefined
       return NextResponse.json({ error: 'No autenticado', cookieNames }, { status: 401 })
     }
-    if (!(usuario.rol === 'admin' || usuario.rol === 'superusuario')) {
+    const normalizedRole = normalizeRole(usuario.rol)
+    if (!(normalizedRole === 'admin' || normalizedRole === 'supervisor')) {
       const info = debug ? { rol: usuario.rol, email: usuario.email } : undefined
       return NextResponse.json({ error: 'No autorizado', info }, { status: 403 })
     }
@@ -148,14 +150,17 @@ export async function POST(req: Request) {
     }
   }
 
-  // Obtener superusuarios
+  // Obtener supervisores
   const { data: superusers, error: suErr } = await supabase
     .from('usuarios')
-    .select('email')
-    .eq('rol', 'superusuario')
+    .select('email, rol')
+    .in('rol', ['supervisor', 'admin'])
     .eq('activo', true)
   if (suErr) return NextResponse.json({ error: suErr.message }, { status: 500 })
-  const recipients = (superusers||[]).map(u => u.email).filter(Boolean)
+  const recipients = (superusers||[])
+    .filter(u => normalizeRole(u.rol) === 'supervisor')
+    .map(u => u.email)
+    .filter((email): email is string => Boolean(email))
   if (recipients.length === 0) {
     return NextResponse.json({ success: true, sent: 0, detalle: 'no recipients' })
   }
@@ -199,25 +204,34 @@ export async function POST(req: Request) {
   if (skipIfEmpty && (historial||[]).length === 0) {
     return NextResponse.json({ success: true, sent: 0, detalle: 'skipIfEmpty: no hay eventos en el rango' })
   }
-  // Generar adjunto XLSX con las mismas columnas mostradas en el correo
-  const aoa: Array<Array<string>> = []
-  aoa.push(['Fecha','Prospecto','Pertenece a','Usuario (modificó)','De','A','Nota agregada'])
+  // Generar adjunto XLSX con las mismas columnas mostradas en el correo usando ExcelJS
+  const workbook = new ExcelJS.Workbook()
+  const cambiosSheet = workbook.addWorksheet('Cambios')
+  cambiosSheet.columns = [
+    { header: 'Fecha', key: 'fecha', width: 22 },
+    { header: 'Prospecto', key: 'prospecto', width: 30 },
+    { header: 'Pertenece a', key: 'pertenece', width: 32 },
+    { header: 'Usuario (modificó)', key: 'usuario', width: 32 },
+    { header: 'De', key: 'de', width: 14 },
+    { header: 'A', key: 'a', width: 14 },
+    { header: 'Nota agregada', key: 'nota', width: 16 }
+  ]
   for (const h of (historial || [])) {
     const pInfo = mapPros[h.prospecto_id as number]
     const pName = (pInfo?.nombre || '').toString()
     const owner = mapUsers[h.agente_id as number]
-    const ownerLabel = owner?.nombre ? `${owner.nombre} <${owner.email||''}>` : (owner?.email || '')
+    const ownerLabel = owner?.nombre ? `${owner.nombre} <${owner.email || ''}>` : (owner?.email || '')
     const modInfo = h.usuario_email ? mapEmails[h.usuario_email] : undefined
-    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email||''}>` : (h.usuario_email||'')
+    const modLabel = modInfo?.nombre ? `${modInfo.nombre} <${modInfo.email || ''}>` : (h.usuario_email || '')
     const fecha = new Date(h.created_at).toLocaleString('es-MX', { hour12: false })
     const de = h.estado_anterior || ''
     const a = h.estado_nuevo || ''
     const nota = h.nota_agregada ? 'Sí' : 'No'
-    aoa.push([fecha, pName, ownerLabel, modLabel, de, a, nota])
+    cambiosSheet.addRow({ fecha, prospecto: pName, pertenece: ownerLabel, usuario: modLabel, de, a, nota })
   }
-  const ws = XLSX.utils.aoa_to_sheet(aoa)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Cambios')
+  if (cambiosSheet.rowCount > 0) {
+    cambiosSheet.getRow(1).font = { bold: true }
+  }
 
   // Agregar segunda hoja: última conexión de cada usuario (vía Auth last_sign_in_at)
   type UsuarioRow = { email: string; nombre?: string | null }
@@ -238,8 +252,12 @@ export async function POST(req: Request) {
   } catch {
     // Si falla (falta service role), generamos adjunto vacío para no romper el flujo
   }
-  const usersAoa: Array<Array<string>> = []
-  usersAoa.push(['Email','Nombre','Última conexión (CDMX)'])
+  const usuariosSheet = workbook.addWorksheet('Usuarios - Última conexión')
+  usuariosSheet.columns = [
+    { header: 'Email', key: 'email', width: 34 },
+    { header: 'Nombre', key: 'nombre', width: 28 },
+    { header: 'Última conexión (CDMX)', key: 'ultimaConexion', width: 30 }
+  ]
   let usersRowsHtml = ''
   if (usersTable) {
     for (const u of usersTable as UsuarioRow[]) {
@@ -247,7 +265,7 @@ export async function POST(req: Request) {
       const raw = authMap.get(key)
       let display = ''
       if (raw) display = new Date(raw).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', hour12: false })
-      usersAoa.push([u.email, u.nombre || '', display])
+      usuariosSheet.addRow({ email: u.email, nombre: u.nombre || '', ultimaConexion: display })
       usersRowsHtml += `<tr>
         <td>${u.email}</td>
         <td>${u.nombre || ''}</td>
@@ -255,8 +273,9 @@ export async function POST(req: Request) {
       </tr>`
     }
   }
-  const wsU = XLSX.utils.aoa_to_sheet(usersAoa)
-  XLSX.utils.book_append_sheet(wb, wsU, 'Usuarios - Última conexión')
+  if (usuariosSheet.rowCount > 0) {
+    usuariosSheet.getRow(1).font = { bold: true }
+  }
   // Construir HTML final con sección de cambios y sección de última conexión
   const html = `
   <div style="font-family:Arial,sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
@@ -300,7 +319,8 @@ export async function POST(req: Request) {
     </div>
   </div>`
   // Escribir el workbook final con ambas hojas (Cambios y UltimaConexion)
-  const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+  const xlsxArrayBuffer = await workbook.xlsx.writeBuffer()
+  const xlsxBuffer = Buffer.isBuffer(xlsxArrayBuffer) ? xlsxArrayBuffer : Buffer.from(xlsxArrayBuffer)
   const attachment = { filename: `reporte_prospectos_${dateLabel}.xlsx`, content: xlsxBuffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
 
   // Enviar a todos en un solo correo (BCC sería ideal; aquí simple to: join)

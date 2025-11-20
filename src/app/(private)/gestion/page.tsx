@@ -43,7 +43,7 @@ export default function GestionPage() {
   const { user } = useAuth()
   const dialog = useDialog()
   const role = (user?.rol || '').toLowerCase()
-  const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+  const isSuper = ['supervisor','super_usuario','supervisor','admin'].includes(role)
   const agentDisplayName = (user?.nombre && user.nombre.trim()) ? user.nombre.trim() : (user?.email || 'tu asesor')
 
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -79,7 +79,7 @@ export default function GestionPage() {
   const [savingPoliza, setSavingPoliza] = useState<boolean>(false)
   const [savingMeta, setSavingMeta] = useState(false)
   // Meta header inputs
-  const [metaSelf, setMetaSelf] = useState<{ conexion: string; objetivo: string }>({ conexion: '', objetivo: '' })
+  const [metaSelf, setMetaSelf] = useState<{ objetivo: string }>({ objetivo: '' })
 
   useEffect(() => {
     if (!addingPoliza) return
@@ -105,7 +105,7 @@ export default function GestionPage() {
           const rm = await fetch('/api/agentes/meta', { cache: 'no-store' })
           if (rm.ok) {
             const m = await rm.json()
-            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: ((m?.objetivo ?? 36)).toString() })
+            setMetaSelf({ objetivo: ((m?.objetivo ?? 36)).toString() })
           }
         } catch {}
       } else {
@@ -116,12 +116,12 @@ export default function GestionPage() {
   const rc = await fetch(urlClientes.toString())
         const jc = await rc.json()
         setClientes(jc.items || [])
-        // cargar meta propia (conexión/objetivo)
+        // cargar meta propia (objetivo)
         try {
           const rm = await fetch('/api/agentes/meta', { cache: 'no-store' })
           if (rm.ok) {
             const m = await rm.json()
-            setMetaSelf({ conexion: toISODateFromDMY(m?.fecha_conexion_text || ''), objetivo: ((m?.objetivo ?? 36)).toString() })
+            setMetaSelf({ objetivo: ((m?.objetivo ?? 36)).toString() })
           }
         } catch {}
         // cargar badges propios
@@ -412,7 +412,7 @@ export default function GestionPage() {
               <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Agentes</h2>
                 <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
-                  {/* Buscador global de clientes (superusuario) */}
+                  {/* Buscador global de clientes (supervisor) */}
                   <div className="d-flex flex-column" style={{width: 260}}>
                     <label className="form-label small mb-1">Buscar clientes</label>
                     <input
@@ -426,10 +426,6 @@ export default function GestionPage() {
                   {/* Meta rápida también para super si es agente */}
                   {user && agentes.some(a=>a.id===user.id) && (
                     <>
-                      <div className="d-flex flex-column" style={{width:180}}>
-                        <label className="form-label small mb-1">Conexión</label>
-                        <input className="form-control form-control-sm" type="date" value={metaSelf.conexion} onChange={e=> setMetaSelf({ ...metaSelf, conexion: e.target.value })} />
-                      </div>
                       <div className="d-flex flex-column" style={{width:140}}>
                         <label className="form-label small mb-1">Objetivo</label>
                         <input className="form-control form-control-sm" type="number" value={metaSelf.objetivo} onChange={e=> setMetaSelf({ ...metaSelf, objetivo: e.target.value })} />
@@ -437,19 +433,18 @@ export default function GestionPage() {
                       <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
                         try {
                           setSavingMeta(true)
-                          const body: { fecha_conexion_text: string | null; objetivo: number | null } = {
-                            fecha_conexion_text: metaSelf.conexion ? toDMYFromISO(metaSelf.conexion) : null,
-                            objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
+                          const body: { objetivo: number | null } = {
+                            objetivo: metaSelf.objetivo ? Number(metaSelf.objetivo) : null
                           }
                           const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
-                          const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar conexión/objetivo'); return }
+                          const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar objetivo'); return }
                           await load()
                         } finally { setSavingMeta(false) }
-                      }}>Guardar conexión y objetivo</button>
+                      }}>Guardar objetivo</button>
                     </>
                   )}
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
-                  {/* Total comisiones (superusuario) */}
+                  {/* Total comisiones (supervisor) */}
                   {agentes.length > 0 && (
                     <span className="badge text-bg-primary">
                       Total comisiones: {
@@ -629,10 +624,6 @@ export default function GestionPage() {
                   <input className="border px-2 py-1 text-sm" placeholder="Buscar…" value={qClientes} onChange={e=>setQClientes(e.target.value)} />
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=>load()}>Buscar</button>
                   {/* Meta rápida del asesor */}
-                  <div className="d-flex flex-column" style={{width:180}}>
-                    <label className="form-label small mb-1">Conexión</label>
-                    <input className="form-control form-control-sm" type="date" value={metaSelf.conexion} onChange={e=> setMetaSelf({ ...metaSelf, conexion: e.target.value })} />
-                  </div>
                   <div className="d-flex flex-column" style={{width:140}}>
                     <label className="form-label small mb-1">Objetivo</label>
                     <input className="form-control form-control-sm" type="number" value={metaSelf.objetivo} onChange={e=> setMetaSelf({ ...metaSelf, objetivo: e.target.value })} />
@@ -640,15 +631,14 @@ export default function GestionPage() {
                   <button className="btn btn-sm btn-success" disabled={savingMeta} onClick={async()=>{
                     try {
                       setSavingMeta(true)
-                      const body: { fecha_conexion_text: string | null; objetivo: number | null } = {
-                        fecha_conexion_text: metaSelf.conexion ? toDMYFromISO(metaSelf.conexion) : null,
-                        objetivo: metaSelf.objetivo? Number(metaSelf.objetivo): null
+                      const body: { objetivo: number | null } = {
+                        objetivo: metaSelf.objetivo ? Number(metaSelf.objetivo) : null
                       }
                       const r=await fetch('/api/agentes/meta',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
-                      const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar conexión/objetivo'); return }
+                      const j=await r.json(); if (!r.ok) { await dialog.alert(j.error || 'Error al guardar objetivo'); return }
                       await load()
                     } finally { setSavingMeta(false) }
-                  }}>Guardar conexión y objetivo</button>
+                  }}>Guardar objetivo</button>
                   {/* Badges del asesor */}
                   {selfBadges && (
                     <div className="d-flex align-items-center gap-2 flex-wrap">

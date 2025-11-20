@@ -44,7 +44,7 @@ async function getSSR() {
 
 function canRecalc(role?: string | null) {
   const r = normalizeRole(role)
-  return r === 'admin' || r === 'supervisor' || r === 'superusuario' || r === 'super_usuario'
+  return r === 'admin' || r === 'supervisor'
 }
 
 export async function POST(req: Request) {

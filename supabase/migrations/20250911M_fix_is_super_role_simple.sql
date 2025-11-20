@@ -8,7 +8,7 @@ BEGIN
     SELECT 1 FROM usuarios
     WHERE id_auth = auth.uid()
       AND activo IS TRUE
-      AND lower(rol) IN ('superusuario','super_usuario','supervisor','admin')
-  ) OR jwt_role() IN ('superusuario','super_usuario','supervisor','admin');
+      AND lower(rol) IN ('supervisor','admin')
+  ) OR jwt_role() IN ('supervisor','admin');
 END;
 $$ LANGUAGE plpgsql;

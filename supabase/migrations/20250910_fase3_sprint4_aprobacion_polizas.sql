@@ -30,7 +30,7 @@ CREATE OR REPLACE FUNCTION is_super_role()
 RETURNS boolean
 AS $$
 BEGIN
-  RETURN jwt_role() IN ('super_usuario','supervisor','admin');
+  RETURN jwt_role() IN ('supervisor','admin');
 END;
 $$ LANGUAGE plpgsql STABLE;
 
@@ -67,7 +67,7 @@ DECLARE
   v_new_prima numeric(14,2);
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   SELECT poliza_id, payload_propuesto
@@ -124,7 +124,7 @@ RETURNS void
 AS $$
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   UPDATE poliza_update_requests

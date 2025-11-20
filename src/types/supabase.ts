@@ -38,9 +38,36 @@ export interface Database {
         Relationships: [];
       };
       candidatos: {
-        Row: { id_candidato: number; candidato: string; ct: string | null; mes: string | null; efc: string | null; eliminado: boolean; usuario_creador: string };
-        Insert: { id_candidato?: number; candidato: string; ct?: string | null; mes?: string | null; efc?: string | null; eliminado?: boolean; usuario_creador: string };
-        Update: { id_candidato?: number; candidato?: string; ct?: string | null; mes?: string | null; efc?: string | null; eliminado?: boolean; usuario_creador?: string };
+        Row: {
+          id_candidato: number
+          candidato: string
+          ct: string | null
+          mes: string | null
+          efc: string | null
+          eliminado: boolean
+          usuario_creador: string
+          mes_conexion: string | null
+        };
+        Insert: {
+          id_candidato?: number
+          candidato: string
+          ct?: string | null
+          mes?: string | null
+          efc?: string | null
+          eliminado?: boolean
+          usuario_creador: string
+          mes_conexion?: string | null
+        };
+        Update: {
+          id_candidato?: number
+          candidato?: string
+          ct?: string | null
+          mes?: string | null
+          efc?: string | null
+          eliminado?: boolean
+          usuario_creador?: string
+          mes_conexion?: string | null
+        };
         Relationships: [];
       };
       tokens_integracion: {
