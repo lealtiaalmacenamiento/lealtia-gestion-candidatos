@@ -8,7 +8,7 @@ const supabase = getServiceClient()
 
 function canWriteMarket(role?: string | null) {
   const r = normalizeRole(role)
-  return r === 'admin' || r === 'supervisor' || r === 'superusuario' || r === 'super_usuario'
+  return r === 'admin' || r === 'supervisor'
 }
 
 export async function GET(req: Request) {

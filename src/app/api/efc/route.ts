@@ -15,7 +15,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const usuario = await getUsuarioSesion()
   const rol = usuario?.rol ? String(usuario.rol).trim().toLowerCase() : undefined
-  const allowed = ['admin','superusuario']
+  const allowed = ['admin','supervisor']
   if (!usuario?.activo || !rol || !allowed.includes(rol)) {
     const url = new URL(req.url)
     const debug = url.searchParams.get('debug') === '1'

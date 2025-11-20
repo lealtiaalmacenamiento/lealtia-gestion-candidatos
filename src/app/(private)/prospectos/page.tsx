@@ -16,6 +16,7 @@ import autoTable from 'jspdf-autotable'
 import { computeExtendedMetrics, computePreviousWeekDelta } from '@/lib/prospectosMetrics'
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib/semanaIso'
+import { normalizeRole } from '@/lib/roles'
 // Modal creación rápida de cliente al convertir prospecto a 'ya_es_cliente'
 
 interface NuevoClienteDraft {
@@ -32,6 +33,7 @@ interface Aggregate { total:number; por_estado: Record<string,number>; cumplimie
  
 export default function ProspectosPage(){
   const { user } = useAuth()
+  const normalizedRole = normalizeRole(user?.rol)
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
   // Semana puede ser número ISO o 'ALL' para todo el año
@@ -93,7 +95,7 @@ export default function ProspectosPage(){
   interface BloqueLite { day:number; hour:string; activity:string; origin?:string }
   interface PlanLite { bloques?: BloqueLite[] }
   const [conflicto,setConflicto]=useState<null|{prospecto:Prospecto; fechaLocal:string; horaLocal:string; semana:number; anio:number; day:number; plan:PlanLite; bloque:BloqueLite}> (null)
-  const superuser = user?.rol==='superusuario' || user?.rol==='admin'
+  const superuser = normalizedRole === 'supervisor' || normalizedRole === 'admin'
 
   const applyEstadoFiltro = (estado: ProspectoEstado | '') => {
     setEstadoFiltro(prev => prev === estado ? '' : estado)
@@ -212,7 +214,7 @@ export default function ProspectosPage(){
     const normalizedEmail = form.email.trim().toLowerCase()
     const body: Record<string,unknown>={ nombre:form.nombre, telefono:form.telefono, notas:form.notas, estado:form.estado };
     if (normalizedEmail) body.email = normalizedEmail
-    // Si superusuario/admin y se eligió agente en el selector superior, enviar agente_id para asignación
+    // Si supervisor/admin y se eligió agente en el selector superior, enviar agente_id para asignación
     if (superuser && agenteId) body.agente_id = Number(agenteId)
     // Ya no se agenda cita durante el registro
     try {
@@ -754,11 +756,17 @@ export default function ProspectosPage(){
     const logoW = 32;
     const logoH = 16;
     const logo = await pngToBase64('/Logolealtiaruedablanca.png');
+    const resolvedAgenteId = (superuser && agenteId) ? Number(agenteId) : user?.id
+    if (resolvedAgenteId === undefined) {
+      window.alert('No se pudo determinar el agente para generar el PDF.')
+      return
+    }
+
     await exportProspectosPDFAgente(
       doc,
       allAgentProspects,
       {
-        agenteId: (superuser && agenteId) ? Number(agenteId) : user?.id,
+        agenteId: resolvedAgenteId,
         agentesMap,
         perAgentPrevCounts,
         filename,

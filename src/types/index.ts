@@ -21,6 +21,8 @@ export interface Candidato {
   fecha_creacion_ct?: string
   // Nueva fecha manual definida por el usuario (fecha de creación de POP)
   fecha_creacion_pop?: string
+  // Mes de conexión (YYYY-MM) asociado al candidato
+  mes_conexion?: string | null
   // Contador derivado días desde POP (no necesariamente persistido)
   dias_desde_pop?: number
   // Campo derivado (no necesariamente persistido). Si se persiste agregar columna BD.
@@ -260,12 +262,24 @@ export interface AgendaProspectoOption {
 }
 
 /* ===== Fase 3: Productos parametrizados ===== */
-export type TipoProducto = 'VI' | 'GMM'
+export type TipoProducto = string
 export type MonedaPoliza = 'MXN' | 'USD' | 'UDI'
+export interface ProductType {
+  id: string
+  code: string
+  name: string
+  description?: string | null
+  active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export interface ProductoParametro {
   id: string
   nombre_comercial: string
-  tipo_producto: TipoProducto
+  tipo_producto?: TipoProducto | null
+  product_type_id?: string | null
+  product_type?: ProductType | null
   moneda?: MonedaPoliza | null
   duracion_anios?: number | null
   condicion_sa_tipo?: string | null
@@ -289,4 +303,233 @@ export interface ProductoParametro {
   activo: boolean
   creado_por?: string | null
   creado_at?: string
+}
+
+export interface Segment {
+  id: string
+  name: string
+  description?: string | null
+  active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface UserSegmentAssignment {
+  usuario_id: number
+  segment_id: string
+  assigned_at: string | null
+  assigned_by: number | null
+  segment?: Segment | null
+}
+
+export type CampaignStatus = 'draft' | 'active' | 'paused' | 'archived'
+export type CampaignProgressStatus = 'not_eligible' | 'eligible' | 'completed'
+
+export interface Campaign {
+  id: string
+  slug: string
+  name: string
+  summary?: string | null
+  description?: string | null
+  status: CampaignStatus
+  active_range: string
+  primary_segment_id?: string | null
+  notes?: string | null
+  created_by?: number | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CampaignCreateInput {
+  slug: string
+  name: string
+  summary?: string | null
+  description?: string | null
+  status?: CampaignStatus
+  active_range: string
+  primary_segment_id?: string | null
+  notes?: string | null
+  created_by?: number | null
+}
+
+export type CampaignRuleScope = 'eligibility' | 'goal'
+export type CampaignRuleKind =
+  | 'ROLE'
+  | 'SEGMENT'
+  | 'COUNT_POLICIES'
+  | 'TOTAL_PREMIUM'
+  | 'RC_COUNT'
+  | 'INDEX_THRESHOLD'
+  | 'TENURE_MONTHS'
+  | 'METRIC_CONDITION'
+  | 'CUSTOM_SQL'
+
+export interface CampaignRule {
+  id: string
+  campaign_id: string
+  scope: CampaignRuleScope
+  rule_kind: CampaignRuleKind
+  config: Record<string, unknown>
+  priority: number
+  description?: string | null
+  logical_group?: number // Groups rules that are evaluated together with AND
+  logical_operator?: 'AND' | 'OR' // Operator to combine with next rule (OR separates groups)
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CampaignRuleEvaluationResult {
+  id: string
+  passed: boolean
+  scope: CampaignRuleScope
+  kind: CampaignRuleKind
+  description?: string | null
+  weight?: number | null
+  details?: Record<string, unknown> | null
+}
+
+export interface CampaignReward {
+  id: string
+  campaign_id: string
+  title: string
+  description?: string | null
+  is_accumulative: boolean
+  sort_order: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CampaignSegmentLink {
+  campaign_id: string
+  segment_id: string
+  sort_order: number
+}
+
+export interface CampaignSegmentsMeta {
+  primary: Segment | null
+  additional: Segment[]
+}
+
+export interface CampaignCacheMeta {
+  fromCache: boolean
+  snapshotEvaluatedAt: string | null
+}
+
+export interface UserCampaignListItem {
+  campaign: Campaign
+  segments: CampaignSegmentsMeta
+  evaluation: CampaignEvaluationResult
+  cache: CampaignCacheMeta
+}
+
+export interface UserCampaignDetail extends UserCampaignListItem {
+  rewards: CampaignReward[]
+}
+
+export interface CampaignProgressSnapshot {
+  id: string
+  campaign_id: string
+  usuario_id: number
+  eligible: boolean
+  progress: number
+  status: CampaignProgressStatus
+  metrics?: Record<string, unknown> | null
+  evaluated_at: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CampaignProgressCounts {
+  total: number
+  eligibleTotal: number
+  completed: number
+  active: number
+  blocked: number
+  notEligible: number
+  [status: string]: number
+}
+
+export interface CampaignProgressSummary {
+  campaignId: string
+  total: number
+  eligibleTotal: number
+  completedTotal: number
+  statusCounts: Record<string, number>
+  progressCounts: CampaignProgressCounts
+}
+
+export interface CampaignEvaluationMetrics {
+  polizas?: {
+    total?: number
+    vigentes?: number
+    anuladas?: number
+    prima_total_mxn?: number
+    prima_vigente_mxn?: number
+    prima_promedio_mxn?: number
+    comision_base_mxn?: number
+    ingresos_mxn?: number
+    puntos_totales?: number
+    momentum_vita?: number
+    ultima_emision?: string | null
+    ultima_cancelacion?: string | null
+    ultima_actualizacion?: string | null
+  }
+  cancelaciones?: {
+    indice_limra?: number | null
+    indice_igc?: number | null
+    momentum_neto?: number | null
+  }
+  rc?: {
+    prospectos_total?: number
+    reclutas_calidad?: number
+    prospectos_con_cita?: number
+    prospectos_seguimiento?: number
+    prospectos_descartados?: number
+    polizas_total?: number
+    polizas_vigentes?: number
+    polizas_anuladas?: number
+    rc_vigencia?: number | null
+    permanencia?: number | null
+    reclutas_calidad_ratio?: number | null
+  }
+  candidatos?: {
+    total?: number
+    activos?: number
+    eliminados?: number
+    ultimo_mes_conexion?: string | null
+  }
+  planificacion?: {
+    planes_total?: number
+    ultima_semana?: string | null
+    ultima_actualizacion?: string | null
+    prima_promedio?: number | null
+    porcentaje_comision?: number | null
+  }
+  clientes?: {
+    total?: number
+    nuevos_30_dias?: number
+    nuevos_90_dias?: number
+    ultima_alta?: string | null
+  }
+  tenure_meses?: number | null
+  datasets?: Record<string, Record<string, unknown>>
+  meta?: {
+    fingerprint?: string
+    cached_at?: string
+    ruleResults?: CampaignRuleEvaluationResult[]
+  }
+}
+
+export interface CampaignEvaluationResult {
+  eligible: boolean
+  progress: number
+  status: CampaignProgressStatus
+  metrics: CampaignEvaluationMetrics
+  ruleResults: CampaignRuleEvaluationResult[]
+}
+
+export interface CampaignEvaluationContext {
+  usuarioRol?: string | null
+  segmentIds?: string[]
+  segmentSlugs?: string[]
 }

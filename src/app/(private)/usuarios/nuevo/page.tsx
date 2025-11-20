@@ -7,7 +7,7 @@ import type { Usuario } from '@/types'
 import Notification from '@/components/ui/Notification'
 
 const ROLES: { value: string; label: string }[] = [
-  { value: 'superusuario', label: 'Super Usuario' }
+  { value: 'supervisor', label: 'Supervisor' }
 ]
 
 export default function NuevoUsuarioPage() {
@@ -15,7 +15,7 @@ export default function NuevoUsuarioPage() {
   const [form, setForm] = useState<Partial<Usuario> & { generarPasswordTemporal: boolean }>({
     email: '',
     nombre: '',
-    rol: 'superusuario',
+    rol: 'supervisor',
     generarPasswordTemporal: true
   })
   const [notif, setNotif] = useState<{ msg: string; type: 'success'|'error' } | null>(null)

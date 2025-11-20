@@ -5,6 +5,7 @@ import { getCandidatoById, updateCandidato, getCedulaA1, getEfc, getCandidatoByC
 import { calcularDerivados, etiquetaProceso, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
+import { MONTH_OPTIONS, buildYearOptions } from '@/lib/mesConexion'
 // Modal de eliminación y lógica removidos según solicitud
 
 interface FormState {
@@ -32,6 +33,7 @@ interface FormState {
   // Campos POP
   pop?: string;
   fecha_creacion_pop?: string;
+  mes_conexion?: string;
   dias_desde_pop?: number; // derivado
 }
 
@@ -49,6 +51,20 @@ export default function EditarCandidato() {
   const [modal, setModal] = useState<{ title: string; html: React.ReactNode } | null>(null)
   const firstInputRef = useRef<HTMLInputElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
+  const [mesConexionManual, setMesConexionManual] = useState(false)
+  const [mesConexionYear, setMesConexionYear] = useState('')
+  const [mesConexionMonth, setMesConexionMonth] = useState('')
+
+  useEffect(() => {
+    const raw = form.mes_conexion || ''
+    if (/^\d{4}-\d{2}$/.test(raw)) {
+      setMesConexionYear(raw.slice(0, 4))
+      setMesConexionMonth(raw.slice(5, 7))
+    } else if (!mesConexionManual) {
+      setMesConexionYear('')
+      setMesConexionMonth('')
+    }
+  }, [form.mes_conexion, mesConexionManual])
 
   // Cargar catálogos + candidato
   useEffect(() => {
@@ -60,10 +76,15 @@ export default function EditarCandidato() {
           getCedulaA1(),
           getEfc()
         ])
-        setMeses(m)
-        setEfcs(e)
-  // Normalizar datos existentes + derivados
-  setForm(prev => ({ ...prev, ...calcularDerivados(cand), ...cand }))
+          setMeses(m)
+          setEfcs(e)
+          const mesConexionDb = (cand as unknown as { mes_conexion?: string | null }).mes_conexion || ''
+          const mesConexionAuto = computeMesConexion(cand.fecha_creacion_ct, cand.fecha_creacion_pop)
+          const mesConexion = mesConexionDb || mesConexionAuto || ''
+          const candConMes = { ...cand, mes_conexion: mesConexion }
+          // Normalizar datos existentes + derivados
+          setForm(prev => ({ ...prev, ...calcularDerivados(candConMes), ...candConMes }))
+          setMesConexionManual(Boolean(mesConexionDb))
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error cargando datos'
         setNotif({ type: 'danger', msg: message })
@@ -93,7 +114,44 @@ export default function EditarCandidato() {
     })
   }
 
+  const computeMesConexion = (fechaCt?: string | null, fechaPop?: string | null): string => {
+    const pick = (raw?: string | null): string => {
+      if (!raw) return ''
+      const trimmed = raw.trim()
+      if (!trimmed) return ''
+      if (/^\d{4}-\d{2}$/.test(trimmed)) return trimmed
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed.slice(0, 7)
+      const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+      if (dmy) {
+        const [, , month, year] = dmy
+        return `${year}-${String(Number(month)).padStart(2, '0')}`
+      }
+      return ''
+    }
+    return pick(fechaCt) || pick(fechaPop)
+  }
+
   const recomputeDerived = (draft: FormState): FormState => ({ ...draft, ...calcularDerivados(draft) })
+
+  const handleMesConexionYearSelect = (year: string) => {
+    const month = mesConexionMonth
+    const hasAny = Boolean(year || month)
+    setMesConexionManual(hasAny)
+    setMesConexionYear(year)
+    const nextValue = year && month ? `${year}-${month}` : ''
+    setForm(prev => recomputeDerived({ ...prev, mes_conexion: nextValue }))
+  }
+
+  const handleMesConexionMonthSelect = (month: string) => {
+    const year = mesConexionYear
+    const hasAny = Boolean(month || year)
+    setMesConexionManual(hasAny)
+    setMesConexionMonth(month)
+    const nextValue = year && month ? `${year}-${month}` : ''
+    setForm(prev => recomputeDerived({ ...prev, mes_conexion: nextValue }))
+  }
+
+  const yearOptions = buildYearOptions(mesConexionYear)
 
   // Helpers para filtrar opciones futuras (misma lógica que en alta)
   const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
@@ -123,7 +181,15 @@ export default function EditarCandidato() {
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
   const nextVal: string = value
-  setForm(prev => recomputeDerived({ ...prev, [name]: nextVal }))
+  setForm(prev => {
+    const updated = { ...prev, [name]: nextVal }
+    if ((name === 'fecha_creacion_ct' || name === 'fecha_creacion_pop') && !mesConexionManual) {
+      const nuevaCt = name === 'fecha_creacion_ct' ? nextVal : prev.fecha_creacion_ct
+      const nuevaPop = name === 'fecha_creacion_pop' ? nextVal : prev.fecha_creacion_pop
+      updated.mes_conexion = computeMesConexion(nuevaCt || '', nuevaPop || '')
+    }
+    return recomputeDerived(updated)
+  })
     // CT duplicate check (evita alertar si es el mismo registro)
     if (name === 'ct' && value.trim()) {
       try {
@@ -270,6 +336,14 @@ export default function EditarCandidato() {
       (normalizedPayload as Record<string, unknown>).email_agente = null
     }
   }
+  const manualMesConexion = (form.mes_conexion || '').trim()
+  const autoMesConexion = computeMesConexion(form.fecha_creacion_ct, form.fecha_creacion_pop)
+  const mesConexion = mesConexionManual ? manualMesConexion : (manualMesConexion || autoMesConexion || '')
+  if (mesConexion) {
+    normalizedPayload.mes_conexion = mesConexion
+  } else if (typeof normalizedPayload.mes_conexion !== 'undefined' || (form.fecha_creacion_ct || form.fecha_creacion_pop)) {
+    normalizedPayload.mes_conexion = null
+  }
   await updateCandidato(Number(params.id), normalizedPayload)
   router.push('/consulta_candidatos')
     } catch (err) {
@@ -337,6 +411,7 @@ export default function EditarCandidato() {
               {form.fecha_creacion_ct && <span><strong>Días desde CT:</strong> {diasCT ?? '—'}</span>}
               {form.fecha_creacion_pop && <span><strong>Fecha creación POP:</strong> {form.fecha_creacion_pop}</span>}
               {form.fecha_creacion_pop && <span><strong>Días desde POP:</strong> {form.dias_desde_pop ?? '—'}</span>}
+              {form.mes_conexion && <span><strong>Mes de conexión:</strong> {form.mes_conexion}</span>}
             </div>
             <form onSubmit={handleSubmit} className="row g-3" noValidate>
               <div className="col-12">
@@ -362,6 +437,49 @@ export default function EditarCandidato() {
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN POP</label>
                 <input type="date" name="fecha_creacion_pop" className="form-control" value={form.fecha_creacion_pop || ''} onChange={handleChange} />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">MES DE CONEXIÓN</label>
+                <div className="row g-2 align-items-end">
+                  <div className="col-6 col-sm-4 col-md-3">
+                    <select
+                      className="form-select"
+                      value={mesConexionMonth}
+                      onChange={event => handleMesConexionMonthSelect(event.target.value)}
+                    >
+                      <option value="">Mes</option>
+                      {MONTH_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-6 col-sm-4 col-md-3">
+                    <select
+                      className="form-select"
+                      value={mesConexionYear}
+                      onChange={event => handleMesConexionYearSelect(event.target.value)}
+                    >
+                      <option value="">Año</option>
+                      {yearOptions.map(year => (
+                        <option key={year} value={year}>{year}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-12 col-md-4">
+                    <input
+                      className="form-control bg-light"
+                      style={{ cursor: 'not-allowed' }}
+                      value={form.mes_conexion || ''}
+                      readOnly
+                      tabIndex={-1}
+                    />
+                  </div>
+                  <div className="col-12">
+                    <div className="form-text small">
+                      Se calcula automáticamente con las fechas de CT/POP. Selecciona mes y año para ajustarlo manualmente.
+                    </div>
+                  </div>
+                </div>
               </div>
               {/* Días desde CT y Proceso ocultos en edición; se muestran arriba como info */}
               <div className="col-12">

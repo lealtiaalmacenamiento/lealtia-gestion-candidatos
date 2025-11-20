@@ -12,13 +12,13 @@ BEGIN
   FROM usuarios
   WHERE (id_auth = auth.uid() OR id = auth.uid())
     AND activo IS TRUE
-    AND lower(rol) IN ('superusuario','super_usuario','supervisor','admin')
+    AND lower(rol) IN ('supervisor','admin')
   LIMIT 1;
 
   IF v_is_super THEN
     RETURN TRUE;
   END IF;
 
-  RETURN jwt_role() IN ('superusuario','super_usuario','supervisor','admin');
+  RETURN jwt_role() IN ('supervisor','admin');
 END;
 $$;

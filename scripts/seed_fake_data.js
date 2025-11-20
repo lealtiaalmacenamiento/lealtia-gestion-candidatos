@@ -41,7 +41,7 @@ function buildNombre() {
 async function fetchAgentes() {
   const { data, error } = await supabase.from('usuarios').select('id, id_auth, rol, activo')
   if (error) throw error
-  const agentes = (data || []).filter(u => u.activo && ['agente','superusuario','admin','supervisor','super_usuario'].includes((u.rol||'').toLowerCase()))
+  const agentes = (data || []).filter(u => u.activo && ['agente','supervisor','admin'].includes((u.rol||'').toLowerCase()))
   if (!agentes.length) throw new Error('No hay usuarios activos para asignar (agentes/supers)')
   return agentes
 }

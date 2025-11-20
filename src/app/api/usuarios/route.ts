@@ -3,8 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { logAccion } from '@/lib/logger'
 import { buildAltaUsuarioEmail, sendMail } from '@/lib/mailer'
 
-// Añadimos rol 'agente' para Fase 2 (prospectos / planificación)
-const VALID_ROLES = new Set(['admin','editor','superusuario','lector','agente'])
+const VALID_ROLES = new Set(['admin','supervisor','viewer','agente'])
 
 // Cliente admin (service role) sin dependencia de cookies para evitar errores Next 15
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -70,7 +69,7 @@ export async function POST(req: Request) {
   const email: string = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const nombre: string | undefined = body.nombre
   const requestedRolRaw: string | null = typeof body.rol === 'string' ? body.rol.trim().toLowerCase() : null
-  const rol: string = requestedRolRaw ?? 'superusuario'
+  const rol: string = requestedRolRaw ?? 'supervisor'
   const activo: boolean = body.activo === undefined ? true : !!body.activo
   let password: string | undefined = body.password
   const generarPasswordTemporal: boolean = !!body.generarPasswordTemporal
@@ -78,8 +77,8 @@ export async function POST(req: Request) {
     if (!email || !rol) {
       return NextResponse.json({ error: 'Email y rol son obligatorios' }, { status: 400 })
     }
-    if (rol !== 'superusuario') {
-      return NextResponse.json({ error: 'Actualmente solo puedes crear usuarios con rol Super Usuario.' }, { status: 400 })
+    if (rol !== 'supervisor') {
+      return NextResponse.json({ error: 'Actualmente solo puedes crear usuarios con rol Supervisor.' }, { status: 400 })
     }
     if (!VALID_ROLES.has(rol)) {
       return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
@@ -128,7 +127,7 @@ export async function POST(req: Request) {
     // 2️⃣ Insertar en tabla usuarios (columas id_auth y must_change_password ya existen)
     const { data: inserted, error: dbError } = await adminClient
       .from('usuarios')
-      .insert([{ email, nombre, rol: 'superusuario', activo, must_change_password: true, id_auth: authCreated?.user?.id }])
+      .insert([{ email, nombre, rol: 'supervisor', activo, must_change_password: true, id_auth: authCreated?.user?.id }])
       .select('*')
       .single()
     if (dbError || !inserted) {

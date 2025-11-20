@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const anio = Number(url.searchParams.get('anio')) || undefined
   let agenteId = Number(url.searchParams.get('agente_id')) || undefined
   if (usuario.rol === 'agente') agenteId = usuario.id
-  if (!agenteId) return NextResponse.json({ error: 'agente_id requerido (solo superusuario puede especificarlo)' }, { status: 400 })
+  if (!agenteId) return NextResponse.json({ error: 'agente_id requerido (solo supervisor puede especificarlo)' }, { status: 400 })
   const w = obtenerSemanaIso(new Date())
   const semanaQ = semana || w.semana
   const anioQ = anio || w.anio

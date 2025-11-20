@@ -8,6 +8,7 @@ import { obtenerSemanaIso, formatearRangoSemana, semanaDesdeNumero } from '@/lib
 import { fetchFase2Metas } from '@/lib/fase2Params'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { cancelAgendaCita } from '@/lib/api'
+import { normalizeRole } from '@/lib/roles'
 
 interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:number; anio:number; bloques:BloquePlanificacion[]; prima_anual_promedio:number; porcentaje_comision:number }
 
@@ -20,7 +21,8 @@ const HORAS_BASE = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2,
 export default function PlanificacionPage(){
   const { user } = useAuth()
   const dialog = useDialog()
-  const superuser = user?.rol==='superusuario' || user?.rol==='admin'
+  const normalizedRole = normalizeRole(user?.rol)
+  const superuser = normalizedRole === 'supervisor' || normalizedRole === 'admin'
   const semanaActual = useMemo(()=>obtenerSemanaIso(new Date()),[])
   const [anio,setAnio]=useState(semanaActual.anio)
   const [semana,setSemana]=useState<number|"ALL">(semanaActual.semana)
@@ -224,7 +226,7 @@ export default function PlanificacionPage(){
   const guardar = async()=>{
     if(!data) return 
     if(semana==='ALL') return
-    // Confirmación explícita si un superusuario está actuando sobre otro agente
+    // Confirmación explícita si un supervisor está actuando sobre otro agente
     if (superuser) {
       const targetId = agenteId ? Number(agenteId) : null
       if (!targetId) { await dialog.alert('Seleccione un agente antes de guardar.'); return }

@@ -40,7 +40,7 @@ export async function GET() {
     usuario_row: usuarioRow,
     is_super_role: isSuperWrapper,
     hints: {
-      needs_usuario_row: !usuarioRow ? 'Crear fila en usuarios con id_auth = auth_uid y rol=supervisor (o superusuario) y activo=true' : null,
+      needs_usuario_row: !usuarioRow ? 'Crear fila en usuarios con id_auth = auth_uid y rol=supervisor (o supervisor) y activo=true' : null,
       inactive: usuarioRow && usuarioRow.activo === false ? 'Marcar activo=true' : null,
       role_value: usuarioRow ? `rol actual: ${usuarioRow.rol}` : null
     }

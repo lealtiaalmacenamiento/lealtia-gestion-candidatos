@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
-
-const SUPER_ROLES = new Set(['superusuario', 'super_usuario', 'supervisor', 'admin', 'root'])
+import { normalizeRole } from '@/lib/roles'
 
 export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
@@ -27,7 +26,8 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
   }
 
   const role = (usuario.rol || '').toString().toLowerCase()
-  const isSuper = SUPER_ROLES.has(role)
+  const normalizedRole = normalizeRole(usuario.rol)
+  const isSuper = normalizedRole === 'admin' || normalizedRole === 'supervisor' || role === 'root'
   const actorAuth = (usuario as { id_auth?: string | null }).id_auth || null
   const isOwner = actorAuth && cliente.asesor_id && actorAuth === cliente.asesor_id
   if (!isSuper && !isOwner) {

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { getUsuarios, deleteUsuario, resetPasswordUsuario } from '@/lib/api';
 import BasePage from '@/components/BasePage';
 import Link from 'next/link';
+import { normalizeRole } from '@/lib/roles';
 
 type Usuario = {
   id: number;
@@ -49,10 +50,14 @@ export default function UsuariosPage() {
                 <tbody>
                   {usuarios.length === 0 ? (
                     <tr><td colSpan={5} className="text-center">No hay usuarios registrados.</td></tr>
-                  ) : usuarios.map(u => (
+                  ) : usuarios.map(u => {
+                    const normalizedRol = normalizeRole(u.rol);
+                    const displayRol = normalizedRol ?? u.rol;
+                    const protectedRole = normalizedRol === 'admin' || normalizedRol === 'supervisor';
+                    return (
                     <tr key={u.id}>
                       <td>{u.email}</td>
-                      <td>{u.rol}</td>
+                      <td>{displayRol}</td>
                       <td>{u.activo ? 'Sí' : 'No'}</td>
                       <td>{u.must_change_password ? 'Sí' : 'No'}</td>
                       <td className="p-1">
@@ -60,8 +65,8 @@ export default function UsuariosPage() {
                           <Link href={`/usuarios/${u.id}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>
                           <button
                             onClick={async () => {
-                              if (u.rol === 'admin' || u.rol === 'superusuario' || deletingId) return;
-                              if (u.rol === 'agente') {
+                              if (protectedRole || deletingId) return;
+                              if (normalizedRol === 'agente') {
                                 setNotif(null);
                                 setTransferDialog({ usuario: u, transferTo: null, loading: false, error: null, stats: null })
                                 return
@@ -82,8 +87,8 @@ export default function UsuariosPage() {
                               }
                             }}
                             className="btn btn-danger btn-sm flex-fill d-flex align-items-center justify-content-center gap-1"
-                            disabled={u.rol === 'admin' || u.rol === 'superusuario' || (!!deletingId && deletingId!==u.id)}
-                            title={(u.rol === 'admin' || u.rol === 'superusuario') ? 'No se puede eliminar usuarios admin o superusuario' : ''}
+                            disabled={protectedRole || (!!deletingId && deletingId!==u.id)}
+                            title={protectedRole ? 'No se puede eliminar usuarios admin o supervisor' : ''}
                           >
                             {deletingId === u.id && <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>}
                             {deletingId === u.id ? 'Eliminando...' : 'Eliminar'}
@@ -96,7 +101,7 @@ export default function UsuariosPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    )})}
                 </tbody>
               </table>
             </div>

@@ -14,6 +14,41 @@ type CandidatoParcial = Partial<Candidato>
 
 const supabase = getServiceClient()
 
+function normalizeMesConexion(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+function extractMesFromDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^\d{4}-\d{2}$/.test(trimmed)) return trimmed
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed.slice(0, 7)
+  const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    const [, , month, year] = dmy
+    return `${year}-${String(Number(month)).padStart(2, '0')}`
+  }
+  const parsed = new Date(trimmed)
+  if (!Number.isNaN(parsed.getTime())) {
+    const month = String(parsed.getUTCMonth() + 1).padStart(2, '0')
+    return `${parsed.getUTCFullYear()}-${month}`
+  }
+  return null
+}
+
+function resolveMesConexion(mesConexion: unknown, fechaCt: unknown, fechaPop: unknown): string | null {
+  const normalized = normalizeMesConexion(mesConexion)
+  if (normalized) return normalized
+  const fromCt = extractMesFromDate(fechaCt)
+  if (fromCt) return fromCt
+  const fromPop = extractMesFromDate(fechaPop)
+  if (fromPop) return fromPop
+  return null
+}
+
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
   const { data, error } = await supabase.from('candidatos').select('*').eq('id_candidato', id).single()
@@ -30,6 +65,9 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
 
   const body: CandidatoParcial = sanitizeCandidatoPayload(await req.json() as CandidatoParcial)
+  if ('mes_conexion' in body) {
+    ;(body as any).mes_conexion = normalizeMesConexion((body as any).mes_conexion)
+  }
   // Normalizar email_agente (correo candidato) si viene
   if (typeof (body as any).email_agente === 'string') {
     const trimmed = String((body as any).email_agente || '').trim().toLowerCase()
@@ -153,6 +191,14 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   body.proceso = calcularDerivados(snap).proceso
   // fecha_creacion_ct y fecha_tentativa_de_examen: si vienen en body se guardan tal cual (yyyy-mm-dd)
   normalizeDateFields(body)
+  const mesConexion = resolveMesConexion(
+    (body as any).mes_conexion ?? (existenteData as any).mes_conexion,
+    body.fecha_creacion_ct ?? existenteData.fecha_creacion_ct,
+    (body as any).fecha_creacion_pop ?? (existenteData as any).fecha_creacion_pop
+  )
+  if (typeof mesConexion !== 'undefined') {
+    ;(body as any).mes_conexion = mesConexion
+  }
   // Remover campos meta de cliente que no existen en la tabla antes de actualizar
   const _uncheckMeta = (body as any)._etapa_uncheck
   if (typeof (body as any)._etapa_uncheck !== 'undefined') {

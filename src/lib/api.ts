@@ -1,4 +1,27 @@
-import { Auditoria, Candidato, CedulaA1, Efc, Usuario, ProductoParametro, AgendaDeveloper, AgendaSlotsResponse, AgendaCita, AgendaProspectoOption } from '@/types'
+import {
+  Auditoria,
+  Candidato,
+  CedulaA1,
+  Efc,
+  Usuario,
+  ProductoParametro,
+  AgendaDeveloper,
+  AgendaSlotsResponse,
+  AgendaCita,
+  AgendaProspectoOption,
+  Segment,
+  UserSegmentAssignment,
+  Campaign,
+  CampaignStatus,
+  CampaignProgressSummary,
+  CampaignRule,
+  CampaignReward,
+  CampaignSegmentLink,
+  UserCampaignListItem,
+  UserCampaignDetail,
+  ProductType
+} from '@/types'
+import type { CampaignRewardInput, CampaignRuleInput, CampaignSegmentInput } from '@/lib/campaigns'
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const contentType = res.headers.get('content-type') || ''
@@ -259,6 +282,103 @@ export async function deleteProductoParametro(id: string): Promise<{ success: bo
   return handleResponse<{ success: boolean; data?: ProductoParametro }>(res)
 }
 
+/* ========= SEGMENTOS (Fase 4) ========= */
+
+export interface SegmentInput {
+  name: string
+  description?: string | null
+  active?: boolean
+}
+
+export async function getAdminSegments(options?: { includeInactive?: boolean }): Promise<Segment[]> {
+  const params = new URLSearchParams()
+  if (options?.includeInactive) params.set('includeInactive', '1')
+  const qs = params.toString()
+  const res = await fetch(qs ? `/api/admin/segments?${qs}` : '/api/admin/segments', { cache: 'no-store' })
+  const data = await handleResponse<{ segments: Segment[] }>(res)
+  return data.segments
+}
+
+export async function createAdminSegment(payload: SegmentInput): Promise<Segment> {
+  const res = await fetch('/api/admin/segments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  const data = await handleResponse<{ segment: Segment }>(res)
+  return data.segment
+}
+
+export async function updateAdminSegment(id: string, payload: Partial<SegmentInput>): Promise<Segment> {
+  const res = await fetch('/api/admin/segments', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...payload })
+  })
+  const data = await handleResponse<{ segment: Segment }>(res)
+  return data.segment
+}
+
+export async function getSegmentAssignments(segmentId: string): Promise<UserSegmentAssignment[]> {
+  const encoded = encodeURIComponent(segmentId)
+  const res = await fetch(`/api/admin/segments/${encoded}/assignments`, { cache: 'no-store' })
+  const data = await handleResponse<{ assignments: UserSegmentAssignment[] }>(res)
+  return data.assignments
+}
+
+export async function updateSegmentAssignments(segmentId: string, usuarioIds: number[]): Promise<UserSegmentAssignment[]> {
+  const encoded = encodeURIComponent(segmentId)
+  const res = await fetch(`/api/admin/segments/${encoded}/assignments`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuarioIds })
+  })
+  const data = await handleResponse<{ assignments: UserSegmentAssignment[] }>(res)
+  return data.assignments
+}
+
+/* ========= TIPOS DE PÓLIZA (Fase 5) ========= */
+
+export interface ProductTypeAdmin extends ProductType {
+  usageCount: number
+}
+
+export interface ProductTypeInput {
+  code: string
+  name: string
+  description?: string | null
+  active?: boolean
+}
+
+export async function getAdminProductTypes(options?: { includeInactive?: boolean }): Promise<ProductTypeAdmin[]> {
+  const params = new URLSearchParams()
+  if (options?.includeInactive) params.set('includeInactive', '1')
+  const qs = params.toString()
+  const res = await fetch(qs ? `/api/admin/product-types?${qs}` : '/api/admin/product-types', { cache: 'no-store' })
+  const data = await handleResponse<{ productTypes: ProductTypeAdmin[] }>(res)
+  return data.productTypes
+}
+
+export async function createAdminProductType(payload: ProductTypeInput): Promise<ProductTypeAdmin> {
+  const res = await fetch('/api/admin/product-types', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  const data = await handleResponse<{ productType: ProductTypeAdmin }>(res)
+  return data.productType
+}
+
+export async function updateAdminProductType(id: string, payload: Partial<ProductTypeInput>): Promise<ProductTypeAdmin> {
+  const res = await fetch('/api/admin/product-types', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...payload })
+  })
+  const data = await handleResponse<{ productType: ProductTypeAdmin }>(res)
+  return data.productType
+}
+
 /* ========= AGENDA (Fase 4) ========= */
 
 export async function getAgendaDevelopers(options?: { soloDesarrolladores?: boolean; soloActivos?: boolean }): Promise<AgendaDeveloper[]> {
@@ -350,4 +470,160 @@ export async function searchAgendaProspectos(options?: { agenteId?: number; quer
   const res = await fetch(qs ? `/api/agenda/prospectos?${qs}` : '/api/agenda/prospectos', { cache: 'no-store' })
   const data = await handleResponse<{ prospectos: AgendaProspectoOption[] }>(res)
   return data.prospectos
+}
+
+/* ========= CAMPAÑAS (Fase 4) ========= */
+
+export interface GetAdminCampaignsOptions {
+  status?: CampaignStatus | CampaignStatus[]
+  includeArchived?: boolean
+}
+
+export async function getAdminCampaigns(options?: GetAdminCampaignsOptions): Promise<Campaign[]> {
+  const params = new URLSearchParams()
+  if (options?.status) {
+    const values = Array.isArray(options.status) ? options.status : [options.status]
+    if (values.length > 0) params.set('status', values.join(','))
+  }
+  if (options?.includeArchived) params.set('includeArchived', '1')
+  const qs = params.toString()
+  const res = await fetch(qs ? `/api/admin/campaigns?${qs}` : '/api/admin/campaigns', { cache: 'no-store' })
+  const data = await handleResponse<{ campaigns: Campaign[] }>(res)
+  return data.campaigns
+}
+
+export interface AdminCampaignDetail {
+  campaign: Campaign
+  segments: CampaignSegmentLink[]
+  rules: CampaignRule[]
+  rewards: CampaignReward[]
+}
+
+export async function getAdminCampaignDetail(campaignId: string): Promise<AdminCampaignDetail> {
+  const encoded = encodeURIComponent(campaignId)
+  const res = await fetch(`/api/admin/campaigns/${encoded}`, { cache: 'no-store' })
+  return handleResponse<AdminCampaignDetail>(res)
+}
+
+export interface CreateAdminCampaignInput {
+  slug: string
+  name: string
+  summary?: string
+  description?: string
+  status?: CampaignStatus
+  active_range?: string
+  activeRangeStart?: string
+  activeRangeEnd?: string
+  primary_segment_id?: string | null
+  notes?: string
+}
+
+export async function createAdminCampaign(payload: CreateAdminCampaignInput): Promise<Campaign> {
+  const res = await fetch('/api/admin/campaigns', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  const data = await handleResponse<{ campaign: Campaign }>(res)
+  return data.campaign
+}
+
+export interface UpdateAdminCampaignPayload {
+  slug?: string
+  name?: string
+  summary?: string | null
+  description?: string | null
+  status?: CampaignStatus
+  active_range?: string | null
+  activeRangeStart?: string | null
+  activeRangeEnd?: string | null
+  primary_segment_id?: string | null
+  notes?: string | null
+  segments?: CampaignSegmentInput[] | null
+  rules?: CampaignRuleInput[] | null
+  rewards?: CampaignRewardInput[] | null
+}
+
+export async function updateAdminCampaign(
+  campaignId: string,
+  payload: UpdateAdminCampaignPayload
+): Promise<{
+  campaign: Campaign
+  segments: CampaignSegmentLink[]
+  rules: CampaignRule[]
+  rewards: CampaignReward[]
+}> {
+  const encoded = encodeURIComponent(campaignId)
+  const res = await fetch(`/api/admin/campaigns/${encoded}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  return handleResponse<{
+    campaign: Campaign
+    segments: CampaignSegmentLink[]
+    rules: CampaignRule[]
+    rewards: CampaignReward[]
+  }>(res)
+}
+
+export async function updateAdminCampaignStatus(campaignId: string, status: CampaignStatus): Promise<Campaign> {
+  const encoded = encodeURIComponent(campaignId)
+  const res = await fetch(`/api/admin/campaigns/${encoded}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  })
+  const data = await handleResponse<{ campaign: Campaign }>(res)
+  return data.campaign
+}
+
+export async function deleteAdminCampaign(campaignId: string): Promise<{ ok: boolean }> {
+  const encoded = encodeURIComponent(campaignId)
+  const res = await fetch(`/api/admin/campaigns/${encoded}`, { method: 'DELETE' })
+  return handleResponse<{ ok: boolean }>(res)
+}
+
+export async function getAdminCampaignProgressSummary(campaignId: string): Promise<CampaignProgressSummary> {
+  const encoded = encodeURIComponent(campaignId)
+  const res = await fetch(`/api/admin/campaigns/${encoded}/progress`, { cache: 'no-store' })
+  const data = await handleResponse<{ summary: CampaignProgressSummary }>(res)
+  return data.summary
+}
+
+/* ========= CAMPAÑAS (Agentes) ========= */
+
+export interface UserCampaignListOptions {
+  includeUpcoming?: boolean
+  ttlSeconds?: number
+}
+
+function buildCampaignQuery(options?: { includeUpcoming?: boolean; ttlSeconds?: number }): string {
+  const params = new URLSearchParams()
+  if (options?.includeUpcoming) params.set('includeUpcoming', '1')
+  if (options?.ttlSeconds && options.ttlSeconds > 0) params.set('ttl', String(Math.floor(options.ttlSeconds)))
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export async function getUserCampaigns(options?: UserCampaignListOptions): Promise<UserCampaignListItem[]> {
+  const qs = buildCampaignQuery(options)
+  const res = await fetch(`/api/campaigns${qs}`, { cache: 'no-store' })
+  const data = await handleResponse<{ campaigns: UserCampaignListItem[] }>(res)
+  return Array.isArray(data.campaigns) ? data.campaigns : []
+}
+
+export interface UserCampaignDetailOptions {
+  includeUpcoming?: boolean
+  ttlSeconds?: number
+}
+
+export async function getUserCampaignDetail(slug: string, options?: UserCampaignDetailOptions): Promise<UserCampaignDetail> {
+  if (!slug || typeof slug !== 'string') {
+    throw new Error('Slug de campaña inválido')
+  }
+  const qs = buildCampaignQuery(options)
+  const encoded = encodeURIComponent(slug)
+  const res = await fetch(`/api/campaigns/${encoded}${qs}`, { cache: 'no-store' })
+  return handleResponse<UserCampaignDetail>(res)
 }

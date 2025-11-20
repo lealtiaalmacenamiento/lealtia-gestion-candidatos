@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   const { data: { user: sessionUser }, error: sessionErr } = await supabase.auth.getUser()
   if (sessionErr || !sessionUser?.email) return NextResponse.json({ error: 'No autenticado' }, { status:401 })
   const { data: currentUser } = await supabase.from('usuarios').select('rol').eq('email', sessionUser.email).maybeSingle()
-  const allowedRoles = new Set(['admin','superusuario'])
+  const allowedRoles = new Set(['admin','supervisor'])
   if (!currentUser || !allowedRoles.has((currentUser.rol||'').toLowerCase())) return NextResponse.json({ error: 'No autorizado' }, { status:403 })
 
   const { data: userRow, error: userErr } = await supabase.from('usuarios').select('*').eq('email', email.toLowerCase()).single()

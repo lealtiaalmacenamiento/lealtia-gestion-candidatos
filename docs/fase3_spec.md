@@ -9,7 +9,7 @@ Definir reglas de negocio inmutables y modelo de datos base antes de crear migra
 ## 2. Roles y Accesos (Conceptual)
 - asesor (vista “Asesor” = Agentes): Lee sus clientes y pólizas; propone cambios de datos cliente (solicitud). No modifica directamente.
 - supervisor (promotoría): Ve todos los clientes/pólizas de su ámbito; aprueba/rechaza solicitudes.
-- super_usuario (vista “Promotoría”): Parametriza productos (nuevas variantes), actualiza tabla días/mes, carga manual UDI / FX (solo si fallback), puede revertir aprobaciones (excepción).
+- supervisor (vista “Promotoría”): Parametriza productos (nuevas variantes), actualiza tabla días/mes, carga manual UDI / FX (solo si fallback), puede revertir aprobaciones (excepción).
 
 RLS (más adelante): SELECT filtrado por propietario/ámbito; INSERT limitado según rol; UPDATE casi siempre vía funciones seguras.
 
@@ -228,9 +228,9 @@ Los porcentajes (anio_X_percent) NO alteran los puntos directamente; representan
   - idx_polizas_producto (producto_parametro_id)
 
   RLS (conceptual):
-  - SELECT: asesor sólo sus clientes, supervisor/super_usuario global.
+  - SELECT: asesor sólo sus clientes, supervisor global.
   - UPDATE: sólo vía funciones seguras para campos sensibles.
-  - INSERT: roles permitidos (asesor / supervisor / super_usuario según política).
+  - INSERT: roles permitidos (asesor / supervisor según política).
 
   Notas:
   - producto_parametro_id se fija al crear; si cambia lógica comercial se puede recalcular y actualizar (guardando histórico sólo en cache, no se versiona poliza).
@@ -262,7 +262,7 @@ Función planificada: get_current_udi(fecha) -> valor (fallback al más reciente
 
 ## 9. Sprint 4 – Aprobación de cambios (Clientes y Pólizas) y Historial de Solicitudes
 
-Objetivo: que todo cambio sensible pase por aprobación de un supervisor/super_usuario y quede trazabilidad.
+Objetivo: que todo cambio sensible pase por aprobación de un supervisor y quede trazabilidad.
 
 ### 9.1 Flujo Clientes
 
@@ -291,7 +291,7 @@ Objetivo: que todo cambio sensible pase por aprobación de un supervisor/super_u
 
 ### 9.3 Roles
 
-Funciones `jwt_role()` e `is_super_role()` leen el claim `role` del JWT para autorizar aplicar/rechazar. Asegurar que sesiones de supervisor/super_usuario incluyan dicho claim.
+Funciones `jwt_role()` e `is_super_role()` leen el claim `role` del JWT para autorizar aplicar/rechazar. Asegurar que sesiones de supervisor incluyan dicho claim.
 
 ### 9.4 Endpoints Next.js
 
@@ -365,7 +365,7 @@ Se aplican automáticamente antes de pasar a PENDIENTE, o convierten en RECHAZAD
 ## 13. Seguridad de Datos
 - RLS en clientes, polizas, cliente_update_requests, historial_costos_poliza.
 - Políticas (ejemplo conceptual):
-  - SELECT clientes: asesor WHERE clientes.asesor_id = auth.uid(); supervisor/super_usuario sin filtro.
+  - SELECT clientes: asesor WHERE clientes.asesor_id = auth.uid(); supervisor sin filtro.
   - INSERT cliente_update_requests: asesor dueño del cliente.
   - UPDATE clientes: solo vía función SECURITY DEFINER (aprobación).
 
@@ -513,7 +513,7 @@ Este anexo resume el alcance funcional y las reglas/validaciones clave definidas
 - UDI/FX
   - `udi_values` y `fx_values` con funciones `get_current_udi` y `get_fx_usd` y fallback al último valor ≤ fecha.
 - Seguridad/RLS
-  - Asesor ve sus clientes/pólizas; supervisor y super_usuario sin filtro.
+  - Asesor ve sus clientes/pólizas; supervisor sin filtro.
   - UPDATE sensible sólo vía funciones SECURITY DEFINER; triggers para normalización/derivados.
 - Reportes
   - Diario de prospectos (HTML + un solo XLSX con 2 hojas: “Cambios” y “Usuarios – Última conexión (CDMX)”) desde Auth.
@@ -539,10 +539,10 @@ Entregables implementados:
 - Endpoints admin de mercado:
   - GET/POST `/api/market/udi` (listar y upsert por fecha)
   - GET/POST `/api/market/fx` (listar y upsert por fecha)
-  - Permisos POST restringidos a `admin | supervisor | super_usuario | superusuario`.
+  - Permisos POST restringidos a `admin | supervisor`.
 
 RLS:
-- Políticas aplicadas: lectura para `authenticated`; escritura sólo para roles superiores (admin/supervisor/superusuario). Ver migración `20250909_fase3_sprint2_rls_policies.sql`.
+- Políticas aplicadas: lectura para `authenticated`; escritura sólo para roles superiores (admin/supervisor). Ver migración `20250909_fase3_sprint2_rls_policies.sql`.
 
 Operación (post-merge / despliegue):
 - Configurar Cron en la plataforma (p.ej. Vercel) apuntando a `/api/market/sync` con header `x-cron-secret: $MARKET_SYNC_SECRET` y definir variables `MARKET_SYNC_SECRET` y `BANXICO_TOKEN` en el entorno.

@@ -1,5 +1,5 @@
 -- Fecha: 2025-09-10
--- Objetivo: Alinear is_super_role() con el frontend y permitir 'superusuario' y 'admin'.
+-- Objetivo: Alinear is_super_role() con el frontend y permitir 'supervisor' y 'admin'.
 -- Además, resolver casos donde el JWT no incluya 'role' usando lookup en tabla usuarios por auth.uid().
 
 CREATE OR REPLACE FUNCTION is_super_role()
@@ -17,7 +17,7 @@ BEGIN
   FROM usuarios
   WHERE id_auth = auth.uid()
     AND activo IS TRUE
-    AND lower(rol) IN ('superusuario','super_usuario','supervisor','admin')
+    AND lower(rol) IN ('supervisor','admin')
   LIMIT 1;
 
   IF v_is_super THEN
@@ -25,6 +25,6 @@ BEGIN
   END IF;
 
   -- 2) Fallback a claim del JWT si existe
-  RETURN jwt_role() IN ('superusuario','super_usuario','supervisor','admin');
+  RETURN jwt_role() IN ('supervisor','admin');
 END;
 $$;

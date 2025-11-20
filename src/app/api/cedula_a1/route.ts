@@ -13,7 +13,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const usuario = await getUsuarioSesion()
-  if (!usuario?.activo || !['admin','superusuario'].includes(usuario.rol))
+  if (!usuario?.activo || !['admin','supervisor'].includes(usuario.rol))
     return NextResponse.json({ error: 'Sin permiso' }, { status: 403 })
 
   const body = await req.json()

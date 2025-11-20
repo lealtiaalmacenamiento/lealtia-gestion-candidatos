@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION is_super_role()
 RETURNS boolean
 AS $$
 BEGIN
-  RETURN jwt_role() IN ('super_usuario','supervisor','admin');
+  RETURN jwt_role() IN ('supervisor','admin');
 END;
 $$ LANGUAGE plpgsql STABLE;
 
@@ -40,7 +40,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Aplicar aprobación (supervisor/super_usuario)
+-- Aplicar aprobación (supervisor)
 CREATE OR REPLACE FUNCTION apply_cliente_update(p_request_id uuid)
 RETURNS void
 AS $$
@@ -51,7 +51,7 @@ DECLARE
   r_new clientes%ROWTYPE;
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   SELECT cliente_id, payload_propuesto
@@ -97,13 +97,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Rechazar solicitud (supervisor/super_usuario)
+-- Rechazar solicitud (supervisor)
 CREATE OR REPLACE FUNCTION reject_cliente_update(p_request_id uuid, p_motivo text)
 RETURNS void
 AS $$
 BEGIN
   IF NOT is_super_role() THEN
-    RAISE EXCEPTION 'permiso denegado (se requiere supervisor/super_usuario)';
+    RAISE EXCEPTION 'permiso denegado (se requiere supervisor)';
   END IF;
 
   UPDATE cliente_update_requests

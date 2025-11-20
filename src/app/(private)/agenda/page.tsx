@@ -13,7 +13,6 @@ import {
   searchAgendaProspectos
 } from '@/lib/api'
 import type { AgendaBusySlot, AgendaCita, AgendaDeveloper, AgendaSlotsResponse, AgendaProspectoOption, AgendaPlanificacionSummary } from '@/types'
-import { obtenerSemanaIso } from '@/lib/semanaIso'
 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
@@ -175,7 +174,7 @@ export default function AgendaPage() {
   const { user } = useAuth()
   const role = (user?.rol || '').toLowerCase()
   const isAgente = role === 'agente'
-  const isAgendaManager = role === 'superusuario' || role === 'admin' || Boolean(user?.is_desarrollador)
+  const isAgendaManager = role === 'supervisor' || role === 'admin' || Boolean(user?.is_desarrollador)
   const authorized = isAgente || isAgendaManager
   const actorId = typeof user?.id === 'number' ? user.id : null
   const [developers, setDevelopers] = useState<AgendaDeveloper[]>([])
@@ -207,7 +206,6 @@ export default function AgendaPage() {
     if (!form.agenteId) return null
     return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
   }, [developers, form.agenteId])
-  const currentWeekInfo = useMemo(() => obtenerSemanaIso(), [])
   const availableProviders = useMemo(() => {
     if (!selectedAgente) return [] as Array<{ value: AgendaFormState['meetingProvider']; label: string }>
     const providers: Array<{ value: AgendaFormState['meetingProvider']; label: string }> = []
@@ -816,6 +814,7 @@ export default function AgendaPage() {
                 <div className="col-md-6">
                   <label className="form-label small">Agente *</label>
                   <select
+                    data-testid="agenda-form-agent"
                     className="form-select form-select-sm"
                     value={form.agenteId}
                     onChange={(e) => setForm((prev) => ({ ...prev, agenteId: e.target.value }))}
@@ -832,7 +831,7 @@ export default function AgendaPage() {
                 </div>
                 <div className="col-md-6">
                   <label className="form-label small">Supervisor (opcional)</label>
-                  <select className="form-select form-select-sm" value={form.supervisorId} onChange={(e) => setForm((prev) => ({ ...prev, supervisorId: e.target.value }))}>
+                  <select data-testid="agenda-form-supervisor" className="form-select form-select-sm" value={form.supervisorId} onChange={(e) => setForm((prev) => ({ ...prev, supervisorId: e.target.value }))}>
                     <option value="">Sin acompañante</option>
                     {developers
                       .filter((dev) => dev.is_desarrollador && dev.activo)
@@ -847,6 +846,7 @@ export default function AgendaPage() {
                 <div className="col-md-6">
                   <label className="form-label small">Inicio *</label>
                   <input
+                    data-testid="agenda-form-start"
                     type="datetime-local"
                     className="form-control form-control-sm"
                     value={form.inicio}
@@ -856,6 +856,7 @@ export default function AgendaPage() {
                 <div className="col-md-6">
                   <label className="form-label small">Fin *</label>
                   <input
+                    data-testid="agenda-form-end"
                     type="datetime-local"
                     className="form-control form-control-sm"
                     value={form.fin}
@@ -866,6 +867,7 @@ export default function AgendaPage() {
                 <div className="col-md-6">
                   <label className="form-label small">Proveedor *</label>
                   <select
+                    data-testid="agenda-form-provider"
                     className="form-select form-select-sm"
                     value={form.meetingProvider}
                     onChange={(e) => setForm((prev) => ({ ...prev, meetingProvider: e.target.value as AgendaFormState['meetingProvider'] }))}
@@ -952,6 +954,7 @@ export default function AgendaPage() {
                   <div className="mb-2">
                     <div className="input-group input-group-sm">
                       <input
+                        data-testid="agenda-prospect-search"
                         type="search"
                         className="form-control form-control-sm"
                         placeholder="Buscar por nombre, email o teléfono"
@@ -960,6 +963,7 @@ export default function AgendaPage() {
                         aria-label="Buscar prospecto"
                       />
                       <button
+                        data-testid="agenda-prospect-clear"
                         type="button"
                         className="btn btn-outline-secondary"
                         title="Limpiar búsqueda"
@@ -985,6 +989,7 @@ export default function AgendaPage() {
                       aria-controls="prospect-suggestions-list"
                     >
                       <input
+                        data-testid="agenda-prospect-combobox"
                         type="text"
                         className="form-control form-control-sm"
                         placeholder={prospectOptionsLoading ? 'Cargando prospectos…' : 'Selecciona o busca un prospecto'}
@@ -1042,10 +1047,12 @@ export default function AgendaPage() {
                     )}
 
                     {showProspectSuggestions && (prospectOptions && prospectOptions.length > 0) && (
-                      <ul id="prospect-suggestions-list" role="listbox" className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      <ul data-testid="agenda-prospect-options" id="prospect-suggestions-list" role="listbox" className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }}>
                         {prospectOptions.map((option, idx) => (
                           <li
                             key={option.id}
+                            data-testid="agenda-prospect-option"
+                            data-prospect-id={option.id}
                             role="option"
                             aria-selected={highlightedProspectIndex === idx}
                             className={`list-group-item list-group-item-action ${highlightedProspectIndex === idx ? 'active' : ''}`}
@@ -1081,6 +1088,7 @@ export default function AgendaPage() {
                 <div className="col-md-6">
                   <label className="form-label small">Nombre del prospecto *</label>
                   <input
+                    data-testid="agenda-prospect-name"
                     className="form-control form-control-sm"
                     value={form.prospectoNombre}
                     readOnly
@@ -1091,6 +1099,7 @@ export default function AgendaPage() {
                 <div className="col-md-6">
                   <label className="form-label small">Correo del prospecto *</label>
                   <input
+                    data-testid="agenda-prospect-email"
                     className="form-control form-control-sm"
                     value={form.prospectoEmail}
                     onChange={(e) => setForm((prev) => ({ ...prev, prospectoEmail: e.target.value }))}
@@ -1113,6 +1122,7 @@ export default function AgendaPage() {
                 <div className="col-12">
                   <label className="form-label small">Notas internas</label>
                   <textarea
+                    data-testid="agenda-notes"
                     className="form-control form-control-sm"
                     rows={2}
                     value={form.notas}
@@ -1122,10 +1132,10 @@ export default function AgendaPage() {
                 </div>
 
                 <div className="col-12 d-flex flex-wrap gap-2 align-items-center">
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={creating || !hasCheckedAvailability}>
+                  <button data-testid="agenda-create-button" type="submit" className="btn btn-primary btn-sm" disabled={creating || !hasCheckedAvailability}>
                     {creating ? 'Creando cita…' : 'Crear cita'}
                   </button>
-                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleCheckAvailability} disabled={slotsLoading}>
+                  <button data-testid="agenda-availability-button" type="button" className="btn btn-outline-secondary btn-sm" onClick={handleCheckAvailability} disabled={slotsLoading}>
                     {slotsLoading ? 'Consultando…' : 'Ver disponibilidad'}
                   </button>
                   {!hasCheckedAvailability && (
@@ -1141,7 +1151,7 @@ export default function AgendaPage() {
                   {availabilityRangeLabel && <div className="text-muted small mb-2">{availabilityRangeLabel}</div>}
                   {busySlotsInRange.length === 0 && <div className="text-muted small">No se encontraron conflictos en el rango seleccionado.</div>}
                   {busySlotsInRange.length > 0 && (
-                    <ul className="list-group list-group-flush small">
+                    <ul data-testid="agenda-busy-list" className="list-group list-group-flush small">
                       {busySlotsInRange.map((slot) => {
                         const owner = developerMap.get(slot.usuarioId)
                         const sourceDetails = slot.sourceDetails && slot.sourceDetails.length > 0
@@ -1238,7 +1248,15 @@ export default function AgendaPage() {
 
                         const key = `${slot.usuarioId}-${slot.inicio}-${slot.fin}`
                         return (
-                          <li key={key} className="list-group-item px-0">
+                          <li
+                            key={key}
+                            data-testid="agenda-busy-item"
+                            data-usuario-id={slot.usuarioId}
+                            data-source-agenda={slotHasSource(slot, 'agenda') ? 'true' : 'false'}
+                            data-source-calendar={slotHasSource(slot, 'calendar') ? 'true' : 'false'}
+                            data-source-planificacion={slotHasSource(slot, 'planificacion') ? 'true' : 'false'}
+                            className="list-group-item px-0"
+                          >
                             <div className="d-flex justify-content-between align-items-start gap-3">
                               <div>
                                 <div className="fw-semibold">{owner?.nombre || owner?.email || `Usuario #${slot.usuarioId}`}</div>
@@ -1266,7 +1284,7 @@ export default function AgendaPage() {
                     <div className="mt-3">
                       <h6 className="small text-uppercase text-muted mb-2">Planificación semanal (CITAS)</h6>
                       <div className="table-responsive">
-                        <table className="table table-sm align-middle mb-0">
+                        <table data-testid="agenda-planificacion-table" className="table table-sm align-middle mb-0">
                           <thead>
                             <tr>
                               <th>Fecha</th>
@@ -1278,7 +1296,13 @@ export default function AgendaPage() {
                           </thead>
                           <tbody>
                             {planRows.map(({ plan, block }, idx) => (
-                              <tr key={`${plan.agenteId}-${plan.semanaIso}-${idx}-${block.fecha || block.hour}`}> 
+                              <tr
+                                key={`${plan.agenteId}-${plan.semanaIso}-${idx}-${block.fecha || block.hour}`}
+                                data-testid="agenda-planificacion-row"
+                                data-plan-id={plan.planId ?? ''}
+                                data-block-day={block.day ?? ''}
+                                data-block-hour={block.hour ?? ''}
+                              > 
                                 <td className="small">
                                   {block.fecha ? formatDateTime(block.fecha) : ISO_WEEK_DAYS[block.day] || `Día ${block.day}`}
                                 </td>
@@ -1324,9 +1348,9 @@ export default function AgendaPage() {
               {loadingCitas && <div className="text-muted small">Cargando citas…</div>}
               {!loadingCitas && citas.length === 0 && <div className="text-muted small">No hay citas programadas a futuro.</div>}
               {!loadingCitas && citas.length > 0 && (
-                <div className="list-group list-group-flush">
+                <div data-testid="agenda-citas-list" className="list-group list-group-flush">
                   {citas.map((cita) => (
-                    <div key={cita.id} className="list-group-item px-0">
+                    <div key={cita.id} data-testid="agenda-cita-item" data-cita-id={cita.id} className="list-group-item px-0">
                       <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                           <div className="fw-semibold">{formatDateTime(cita.inicio)} · {providerLabels[cita.meetingProvider] || cita.meetingProvider}</div>
@@ -1345,6 +1369,7 @@ export default function AgendaPage() {
                           {cita.prospectoEmail && <div className="small text-muted">Correo prospecto: {cita.prospectoEmail}</div>}
                         </div>
                         <button
+                          data-testid="agenda-cita-cancel"
                           type="button"
                           className="btn btn-sm btn-outline-danger"
                           onClick={() => handleCancelCita(cita)}

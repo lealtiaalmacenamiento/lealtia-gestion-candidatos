@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { normalizeRole } from '@/lib/roles'
 
 export async function GET(req: Request) {
   const usuario = await getUsuarioSesion()
   const role = (usuario?.rol || '').toString().toLowerCase()
-  const isSuper = ['superusuario','super_usuario','supervisor','admin','root'].includes(role)
+  const normalizedRole = normalizeRole(usuario?.rol)
+  const isSuper = normalizedRole === 'admin' || normalizedRole === 'supervisor' || role === 'root'
   if (!isSuper) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const url = new URL(req.url)

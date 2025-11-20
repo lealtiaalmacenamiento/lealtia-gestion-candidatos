@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import { useDialog } from '@/components/ui/DialogProvider'
+import { normalizeRole } from '@/lib/roles'
 
 type ReqItem = {
   id: string
@@ -19,7 +20,8 @@ export default function PolizaUpdatesPage() {
   const { user } = useAuth()
   const dialog = useDialog()
   const role = (user?.rol || '').toLowerCase()
-  const isSuper = ['superusuario','super_usuario','supervisor','admin'].includes(role)
+  const normalizedRole = normalizeRole(role)
+  const isSuper = normalizedRole === 'admin' || normalizedRole === 'supervisor'
   const [items, setItems] = useState<ReqItem[]>([])
   const [scope, setScope] = useState<'mine' | 'pending' | 'all'>('pending')
   const [polizaId, setPolizaId] = useState('')
@@ -71,7 +73,7 @@ export default function PolizaUpdatesPage() {
           <option value="pending">Pendientes</option>
           <option value="all">Todas</option>
         </select>
-        {loading && <span className="text-sm text-gray-500">Cargando…</span>}
+        {loading && <span className="text-sm text-gray-500">Cargandoâ€¦</span>}
       </div>
       <div className="border rounded p-3 mb-6">
         <h2 className="font-medium mb-2">Enviar nueva solicitud</h2>
@@ -108,7 +110,7 @@ export default function PolizaUpdatesPage() {
                     <button onClick={() => reject(it.id)} className="bg-red-600 text-white px-2 py-1 rounded">Rechazar</button>
                   </div>
                 ) : (
-                  <span className="text-gray-500 text-xs">—</span>
+                  <span className="text-gray-500 text-xs">â€”</span>
                 )}
               </td>
             </tr>
@@ -118,3 +120,5 @@ export default function PolizaUpdatesPage() {
     </div>
   )
 }
+
+

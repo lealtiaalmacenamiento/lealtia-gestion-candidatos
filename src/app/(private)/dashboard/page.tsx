@@ -3,16 +3,17 @@ import React from 'react';
 import { useAuth } from '@/context/AuthProvider';
 import Link from 'next/link';
 import FullScreenLoader from '@/components/ui/FullScreenLoader';
+import { normalizeRole } from '@/lib/roles';
 
 // Definimos roles en minúsculas para comparación uniforme
 const modules = [
-  { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['editor', 'superusuario', 'admin'], color: 'primary' },
-  { key: 'consulta_candidatos', title: 'Consulta de candidatos', desc: 'Listado y seguimiento', icon: 'card-list', roles: ['viewer', 'lector', 'editor', 'superusuario', 'admin'], color: 'success' },
-  { key: 'usuarios', title: 'Usuarios', desc: 'Gestión de cuentas', icon: 'people', roles: ['superusuario', 'admin'], color: 'secondary' },
-  { key: 'asesor', title: 'Vista Asesor', desc: 'Clientes y pólizas (solo lectura)', icon: 'eyeglasses', roles: ['viewer', 'lector', 'editor', 'superusuario', 'admin'], color: 'info' },
-  { key: 'parametros', title: 'Parámetros', desc: 'Catálogos y configuración', icon: 'gear', roles: ['superusuario', 'admin'], color: 'warning' },
-  { key: 'auditoria', title: 'Registro de acciones', desc: 'Trazabilidad del sistema', icon: 'clock-history', roles: ['superusuario', 'admin'], color: 'info' },
-  { key: 'eliminarcandidatos', title: 'Candidatos Eliminados', desc: 'Historial de bajas lógicas', icon: 'archive', roles: ['superusuario', 'admin'], color: 'dark' },
+  { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['supervisor', 'admin'], color: 'primary' },
+  { key: 'consulta_candidatos', title: 'Consulta de candidatos', desc: 'Listado y seguimiento', icon: 'card-list', roles: ['viewer', 'supervisor', 'admin'], color: 'success' },
+  { key: 'usuarios', title: 'Usuarios', desc: 'Gestión de cuentas', icon: 'people', roles: ['supervisor', 'admin'], color: 'secondary' },
+  { key: 'asesor', title: 'Vista Asesor', desc: 'Clientes y pólizas (solo lectura)', icon: 'eyeglasses', roles: ['viewer', 'supervisor', 'admin'], color: 'info' },
+  { key: 'parametros', title: 'Parámetros', desc: 'Catálogos y configuración', icon: 'gear', roles: ['supervisor', 'admin'], color: 'warning' },
+  { key: 'auditoria', title: 'Registro de acciones', desc: 'Trazabilidad del sistema', icon: 'clock-history', roles: ['supervisor', 'admin'], color: 'info' },
+  { key: 'eliminarcandidatos', title: 'Candidatos Eliminados', desc: 'Historial de bajas lógicas', icon: 'archive', roles: ['supervisor', 'admin'], color: 'dark' },
 ];
 
 export default function DashboardPage() {
@@ -23,7 +24,9 @@ export default function DashboardPage() {
   if (!user) return <FullScreenLoader text="Redirigiendo a inicio de sesión..." />;
 
   let role = (user?.rol || '').toLowerCase();
-  if (role === 'lector') role = 'viewer';
+  const normalizedRole = normalizeRole(user?.rol);
+  if (normalizedRole) role = normalizedRole;
+  else if (role === 'lector') role = 'viewer';
   const username = user?.nombre || user?.email || '—';
 
   const handleLogout = async () => {

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+﻿import { randomUUID } from 'crypto'
 
 export class GoogleMeetApiError extends Error {
   status: number
@@ -178,3 +178,4 @@ export async function googleMeetRefreshAccessToken(refreshToken: string, clientI
     scope: successPayload?.scope
   }
 }
+

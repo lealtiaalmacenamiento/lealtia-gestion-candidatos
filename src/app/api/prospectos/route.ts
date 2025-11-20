@@ -153,9 +153,9 @@ export async function POST(req: Request) {
 
   const { anio, semana } = obtenerSemanaIso(new Date())
 
-  // Permitir a admin/superusuario asignar a un agente explícito; si no, por defecto al usuario actual
+  // Permitir a admin/supervisor asignar a un agente explícito; si no, por defecto al usuario actual
   let agenteAsignado = usuario.id
-  if (usuario.rol === 'admin' || usuario.rol === 'superusuario') {
+  if (usuario.rol === 'admin' || usuario.rol === 'supervisor') {
     const aId = Number(body.agente_id)
     if (aId && Number.isFinite(aId)) {
       const { data: agUsr, error: agErr } = await supabase.from('usuarios').select('id,activo').eq('id', aId).maybeSingle()

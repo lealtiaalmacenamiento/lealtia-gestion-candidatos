@@ -307,7 +307,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, dry: true, sent: false, would_send, count, window: { start: startISO, end: endISO, mode: selectedMode }, recipients: emails, attachment_name: attachment.filename, sample: { first: histRows[0]?.created_at, last: histRows[histRows.length - 1]?.created_at } })
   }
   if (!emails.length) {
-    return NextResponse.json({ ok: true, sent: false, reason: 'No hay superusuarios/admin activos con email válido' })
+    return NextResponse.json({ ok: true, sent: false, reason: 'No hay supervisores/admin activos con email válido' })
   }
   await sendMail({ to: emails.join(','), subject: title, html, attachments: [attachment] })
   return NextResponse.json({ ok: true, sent: true, count })

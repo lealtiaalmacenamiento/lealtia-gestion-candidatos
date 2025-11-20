@@ -4,7 +4,7 @@ import { cancelAgendaCitaCascade } from './cascade'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
-  if (usuario.rol === 'admin' || usuario.rol === 'superusuario') return true
+  if (usuario.rol === 'admin' || usuario.rol === 'supervisor') return true
   return Boolean(usuario.is_desarrollador)
 }
 

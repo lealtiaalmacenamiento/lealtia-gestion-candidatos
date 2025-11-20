@@ -3,27 +3,30 @@ import React, { useEffect } from 'react';
 import { useAuth } from '@/context/AuthProvider';
 import Link from 'next/link';
 import FullScreenLoader from '@/components/ui/FullScreenLoader';
+import { normalizeRole } from '@/lib/roles';
 
 const modules = [
-  { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['editor', 'superusuario', 'admin'], color: 'primary' },
-  { key: 'consulta_candidatos', title: 'Consulta de candidatos', desc: 'Listado y seguimiento', icon: 'card-list', roles: ['viewer', 'lector', 'editor', 'superusuario', 'admin'], color: 'success' },
-  { key: 'usuarios', title: 'Usuarios', desc: 'Gestión de cuentas', icon: 'people', roles: ['superusuario', 'admin'], color: 'secondary' },
-  { key: 'parametros', title: 'Parámetros', desc: 'Catálogos y configuración', icon: 'gear', roles: ['superusuario', 'admin'], color: 'warning' },
-  { key: 'integraciones', title: 'Integraciones', desc: 'Conecta Google o Zoom', icon: 'plug', roles: ['viewer','lector','editor','superusuario','admin','agente'], color: 'secondary' },
-  { key: 'auditoria', title: 'Registro de acciones', desc: 'Trazabilidad del sistema', icon: 'clock-history', roles: ['superusuario', 'admin'], color: 'info' },
-  { key: 'eliminarcandidatos', title: 'Candidatos Eliminados', desc: 'Historial de bajas lógicas', icon: 'archive', roles: ['superusuario', 'admin'], color: 'dark' },
+  { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['supervisor', 'admin'], color: 'primary' },
+  { key: 'consulta_candidatos', title: 'Consulta de candidatos', desc: 'Listado y seguimiento', icon: 'card-list', roles: ['viewer', 'supervisor', 'admin'], color: 'success' },
+  { key: 'usuarios', title: 'Usuarios', desc: 'Gestión de cuentas', icon: 'people', roles: ['supervisor', 'admin'], color: 'secondary' },
+  { key: 'parametros', title: 'Parámetros', desc: 'Catálogos y configuración', icon: 'gear', roles: ['supervisor', 'admin'], color: 'warning' },
+  { key: 'integraciones', title: 'Integraciones', desc: 'Conecta Google o Zoom', icon: 'plug', roles: ['viewer','supervisor','admin','agente'], color: 'secondary' },
+  { key: 'auditoria', title: 'Registro de acciones', desc: 'Trazabilidad del sistema', icon: 'clock-history', roles: ['supervisor', 'admin'], color: 'info' },
+  { key: 'eliminarcandidatos', title: 'Candidatos Eliminados', desc: 'Historial de bajas lógicas', icon: 'archive', roles: ['supervisor', 'admin'], color: 'dark' },
   // Fase 2
-  { key: 'prospectos', title: 'Prospectos', desc: 'Gestión semanal de prospectos', icon: 'people-fill', roles: ['agente','superusuario','admin'], color: 'info' },
-  { key: 'planificacion', title: 'Planificación', desc: 'Bloques de actividades y citas', icon: 'calendar-week', roles: ['agente','superusuario','admin'], color: 'primary' },
-  { key: 'agenda', title: 'Agenda interna', desc: 'Agendar citas y gestionar desarrolladores', icon: 'calendar-event', roles: ['superusuario','admin','agente'], color: 'secondary' },
+  { key: 'prospectos', title: 'Prospectos', desc: 'Gestión semanal de prospectos', icon: 'people-fill', roles: ['agente','supervisor','admin'], color: 'info' },
+  { key: 'planificacion', title: 'Planificación', desc: 'Bloques de actividades y citas', icon: 'calendar-week', roles: ['agente','supervisor','admin'], color: 'primary' },
+  { key: 'agenda', title: 'Agenda interna', desc: 'Agendar citas y gestionar desarrolladores', icon: 'calendar-event', roles: ['supervisor','admin','agente'], color: 'secondary' },
   // Gestión unificada (CRUD + dispara solicitudes)
-  { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['editor','superusuario','admin','agente'], color: 'primary' },
+  { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['supervisor','admin','agente'], color: 'primary' },
+  // Fase 5: Campañas
+  { key: 'campanias', title: 'Campañas', desc: 'Campañas promocionales y progreso', icon: 'trophy', roles: ['supervisor','admin','agente','promotor'], color: 'success' },
   // Pendientes de aprobación (cliente / póliza)
-  { key: 'pendientes', title: 'Cambios pendientes', desc: 'Aprobar solicitudes de cliente y póliza', icon: 'inboxes', roles: ['superusuario','super_usuario','admin','supervisor'], color: 'danger' },
+  { key: 'pendientes', title: 'Cambios pendientes', desc: 'Aprobar solicitudes de cliente y póliza', icon: 'inboxes', roles: ['supervisor','admin'], color: 'danger' },
   // Módulos especializados (opcionalmente ocultables si usas solo la vista unificada)
-  // { key: 'clientes/updates', title: 'Cambios de cliente', desc: 'Enviar y aprobar cambios de datos', icon: 'person-gear', roles: ['editor','superusuario','admin'], color: 'primary' },
-  // { key: 'polizas/updates', title: 'Cambios de póliza', desc: 'Aprobación de cambios de póliza', icon: 'file-earmark-check', roles: ['editor','superusuario','admin'], color: 'secondary' },
-  { key: 'historial', title: 'Historial de cambios', desc: 'Historial de cambios en Cliente y póliza', icon: 'journal-text', roles: ['superusuario','admin'], color: 'dark' },
+  // { key: 'clientes/updates', title: 'Cambios de cliente', desc: 'Enviar y aprobar cambios de datos', icon: 'person-gear', roles: ['editor','supervisor','admin'], color: 'primary' },
+  // { key: 'polizas/updates', title: 'Cambios de póliza', desc: 'Aprobación de cambios de póliza', icon: 'file-earmark-check', roles: ['editor','supervisor','admin'], color: 'secondary' },
+  { key: 'historial', title: 'Historial de cambios', desc: 'Historial de cambios en Cliente y póliza', icon: 'journal-text', roles: ['supervisor','admin'], color: 'dark' },
 ];
 
 export default function HomeDashboard() {
@@ -42,7 +45,9 @@ export default function HomeDashboard() {
   if (!user) return <FullScreenLoader text="Redirigiendo a inicio de sesión..." />;
 
   let role = (user?.rol || '').toLowerCase();
-  if (role === 'lector') role = 'viewer';
+  const normalizedRole = normalizeRole(user?.rol);
+  if (normalizedRole) role = normalizedRole;
+  else if (role === 'lector') role = 'viewer';
   const username = user?.nombre || user?.email || '—';
 
   const handleLogout = async () => {

@@ -1,0 +1,1448 @@
+[
+  {
+    "slug": "reto-5000",
+    "name": "Reto 5000",
+    "summary": "Reto de pólizas Vida Grupo con prima mínima de $25,000 MXN",
+    "description": "Participan asesores PF (mes ≥25) y promotores con mes de conexión registrado. Se contabilizan pólizas iniciales Vida Grupo nuevas, sin historial en los 12 meses previos, con prima mínima de $25,000 MXN y vigencia de al menos 12 meses.",
+    "notes": "Pago dos meses después del cierre; confirmar alcance para PF y definición de mes de conexión.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-04-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores", "Promotores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "TENURE_MONTHS",
+        "config": {"min_months": 25, "role": "asesor"},
+        "priority": 0,
+        "description": "Asesores PF = profesionales/consolidados con al menos 25 meses desde su conexión."
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "candidatos",
+          "field": "ultimo_mes_conexion",
+          "operator": "neq",
+          "value": "",
+          "valueType": "text"
+        },
+        "priority": 1,
+        "description": "Promotor debe tener mes de conexión registrado."
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_prima_minima",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1,
+          "prima_minima_mxn": 25000
+        },
+        "priority": 2,
+        "description": "Al menos una póliza con prima mínima de $25,000 MXN",
+        "logical_group": 1,
+        "logical_operator": "AND"
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_recientes",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1,
+          "dias_ventana": 365
+        },
+        "priority": 3,
+        "description": "Póliza emitida recientemente (sin historial previo en 12 meses)",
+        "logical_group": 1,
+        "logical_operator": "AND"
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"product": "vida_grupo", "min": 1},
+        "priority": 0,
+        "description": "Al menos una póliza Vida Grupo emitida y pagada dentro de la vigencia."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "$5,000 MXN",
+        "description": "Por cada póliza Vida Grupo emitida y pagada que cumpla los criterios.",
+        "is_accumulative": true,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "grupo-colectivo-da-plus",
+    "name": "Grupo & Colectivo DA+",
+    "summary": "Bonos y premios por primeras pólizas Vida Grupo y Accidentes",
+    "description": "Participan asesores nuevos, reactivados y activos. La primera póliza genera bono en efectivo diferenciado; de la segunda en adelante se entregan premios en especie. Se exige prima mínima de $25,000 para Vida Grupo y $50,000 para Accidentes.",
+    "notes": "Premios en especie no acumulables.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-04-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "clasificacion_asesor",
+          "field": "permitido",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "clasificacion_asesor",
+          "permitidos": ["nuevo", "reactivado", "activo"]
+        },
+        "priority": 0,
+        "description": "Restringe la participación a asesores nuevos, reactivados o activos."
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "primera_poliza_bonus",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "primera_poliza_bonus",
+          "primera_poliza": true,
+          "min_prima_vida": 25000,
+          "min_prima_accidentes": 50000
+        },
+        "priority": 1,
+        "description": "Primera póliza válida por perfil con prima mínima según producto."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 2, "products": ["vida_grupo", "accidentes"]},
+        "priority": 0,
+        "description": "Para premios en especie se contabilizan 2+ pólizas con primas mínimas requeridas."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Bono primera póliza",
+        "description": "$6,000 MXN para reclutas, $3,000 MXN para asesores activos/reactivados.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "AirPods",
+        "description": "Entrega al emitir dos pólizas válidas.",
+        "is_accumulative": false,
+        "sort_order": 2
+      },
+      {
+        "title": "Apple Watch",
+        "description": "Entrega al emitir tres pólizas válidas.",
+        "is_accumulative": false,
+        "sort_order": 3
+      },
+      {
+        "title": "iPad Air",
+        "description": "Entrega al emitir cuatro o más pólizas válidas.",
+        "is_accumulative": false,
+        "sort_order": 4
+      }
+    ]
+  },
+  {
+    "slug": "grupo-0-asesores",
+    "name": "Grupo 0 Asesores",
+    "summary": "Competencia de máximos productores Vida Individual y GMMI",
+    "description": "Participan asesores profesionales y nuevos profesionales. Se reconoce a Top 10 en Vida Individual con prima meta de $2.5 MDP y a Top 3 en GMMI con prima inicial de $1.1 MDP, con bonos del Grupo 1.",
+    "notes": "Premios no transferibles; confirmar alcance para profesionales y nuevos profesionales.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-02-01)",
+  "primary_segment": "Asesores",
+  "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "SEGMENT",
+        "config": {"include": ["asesor_profesional", "nuevo_profesional"]},
+        "priority": 0,
+        "description": "Solo asesores profesionales y nuevos profesionales."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"product": "vi", "threshold": 2500000, "ranking": "top10"},
+        "priority": 0,
+        "description": "Top 10 Vida Individual con prima meta de $2.5 MDP."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"product": "gmmi", "threshold": 1100000, "ranking": "top3"},
+        "priority": 1,
+        "description": "Top 3 GMMI con prima inicial de $1.1 MDP."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "bono_grupo_1",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "bono_grupo_1",
+          "meses_requeridos": ["2025-12", "2026-01"]
+        },
+        "priority": 2,
+        "description": "Debe cumplir el Bono Grupo 1 en diciembre 2025 y enero 2026."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje Los Cabos",
+        "description": "Experiencia para máximos productores Grupo 0.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Bono $30,000 MXN",
+        "description": "Bono económico adicional para ganadores Grupo 1.",
+        "is_accumulative": false,
+        "sort_order": 2
+      },
+      {
+        "title": "Cena SIMPOSIO",
+        "description": "Reconocimiento en cena especial del SIMPOSIO.",
+        "is_accumulative": false,
+        "sort_order": 3
+      }
+    ]
+  },
+  {
+    "slug": "camino-a-la-cumbre",
+    "name": "Camino a la Cumbre",
+    "summary": "Meta escalonada de pólizas para asesores recientes",
+    "description": "Dirigida a asesores con hasta 18 meses desde su conexión. Premia de 12 a 72 pólizas emitidas dentro de la vigencia con recompensas según nivel.",
+    "notes": "A partir de la fecha de conexión del asesor.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Asesores",
+  "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "TENURE_MONTHS",
+        "config": {"max_months": 18},
+        "priority": 0,
+        "description": "Solo asesores con hasta 18 meses desde su conexión."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 12, "tiers": [{"min": 12, "max": 23}, {"min": 24, "max": 35}, {"min": 36, "max": 47}, {"min": 48, "max": 72}]},
+        "priority": 0,
+        "description": "Meta escalonada de 12 a 72 pólizas emitidas."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Puntos Rewards",
+        "description": "Puntos variables según nivel alcanzado.",
+        "is_accumulative": true,
+        "sort_order": 1
+      },
+      {
+        "title": "Bonos $5,000 MXN y $25,000 MXN",
+        "description": "Bonos económicos asociados a niveles intermedios y máximos.",
+        "is_accumulative": false,
+        "sort_order": 2
+      }
+    ]
+  },
+  {
+    "slug": "graduacion-asesores",
+    "name": "Graduación (Asesores)",
+    "summary": "Graduación de asesores con metas de pólizas y comisiones",
+    "description": "Dirigida a asesores con hasta 12 meses. Exige alcanzar 36 pólizas emitidas y $114,000 MXN en comisiones durante la vigencia.",
+    "notes": "Condición doble obligatoria: 36 pólizas y $114,000 MXN.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Asesores",
+  "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "TENURE_MONTHS",
+        "config": {"max_months": 12},
+        "priority": 0,
+        "description": "Solo asesores con hasta 12 meses desde conexión."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 36},
+        "priority": 0,
+        "description": "Obligatorio alcanzar 36 pólizas emitidas."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"metric": "commissions", "threshold": 114000},
+        "priority": 1,
+        "description": "Obligatorio acumular $114,000 MXN en comisiones."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Evento de graduación",
+        "description": "Ceremonia y reconocimiento para asesores graduados.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "legion-centurion-asesores",
+    "name": "Legión Centurión (Asesores)",
+    "summary": "Reconocimiento por niveles de producción de pólizas",
+    "description": "Aplica a asesores con producción de 24 a 120 pólizas. Define niveles Bronce, Plata, Oro y Platino con metas semestrales/anuales.",
+    "notes": "Reconocimientos escalonados por nivel. Rangos finales por confirmar; permitir ajuste en requisitos.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {
+          "tiers": [
+            {"name": "Bronce", "min": 24, "max": 47},
+            {"name": "Plata", "min": 48, "max": 71},
+            {"name": "Oro", "min": 72, "max": 95},
+            {"name": "Platino", "min": 96, "max": 120}
+          ]
+        },
+        "priority": 0,
+        "description": "Clasificación por número de pólizas emitidas."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Reconocimiento por nivel",
+        "description": "Insignias y beneficios asociados a cada nivel.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Evento especial",
+        "description": "Evento para los integrantes de la Legión Centurión.",
+        "is_accumulative": false,
+        "sort_order": 2
+      }
+    ]
+  },
+  {
+    "slug": "convenciones-asesores",
+    "name": "Convenciones (Asesores)",
+    "summary": "Clasificación a convenciones por pólizas y comisiones",
+    "description": "Requiere 30 pólizas emitidas y $588,500 MXN en comisiones entre julio 2025 y junio 2026. Conteo único consolidado para evitar duplicidades en reportes.",
+    "notes": "Condiciones idénticas en hoja maestra; evitar duplicidad.",
+    "status": "draft",
+    "active_range": "[2025-07-01,2026-07-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 30},
+        "priority": 0,
+        "description": "Al menos 30 pólizas emitidas."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"metric": "commissions", "threshold": 588500},
+        "priority": 1,
+        "description": "Comisiones mínimas de $588,500 MXN."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje de convención",
+        "description": "Acceso a la convención anual para asesores calificados.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "mdrt",
+    "name": "MDRT",
+    "summary": "Certificación MDRT por metas de prima, comisiones e ingresos",
+    "description": "Exige prima de $1.7M MXN, comisiones de $849K MXN e ingresos de $1.47M MXN durante 2025. Al menos 50% del negocio debe ser Vida.",
+    "notes": "Confirmar criterio de porcentaje mínimo Vida (≥ 50%).",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"metric": "premium", "threshold": 1700000},
+        "priority": 0,
+        "description": "Prima mínima de $1.7M MXN."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"metric": "commissions", "threshold": 849000},
+        "priority": 1,
+        "description": "Comisiones mínimas de $849K MXN."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"metric": "income", "threshold": 1470000},
+        "priority": 2,
+        "description": "Ingresos mínimos de $1.47M MXN."
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "mix_vida",
+          "field": "ratio",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 0.5,
+          "definition": "mix_vida",
+          "min_ratio": 0.5
+        },
+        "priority": 3,
+        "description": "Al menos 50% del negocio debe ser Vida."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Membresía MDRT",
+        "description": "Acceso a la membresía MDRT para asesores que cumplen los estándares.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "85-anos-asesores",
+    "name": "85 años (Asesores)",
+    "summary": "Campaña aniversario con metas de pólizas e índices LIMRA/IGC",
+    "description": "Requiere 85 pólizas emitidas durante 2025 y cumplir índices mínimos de cancelación LIMRA e IGC.",
+    "notes": "IMRA = índice de cancelación primer año; IGC = cancelación después del primer año. Umbrales LIMRA/IGC pendientes de confirmación; parametrizar en requisitos.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 85},
+        "priority": 0,
+        "description": "Debe emitir al menos 85 pólizas."
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "INDEX_THRESHOLD",
+        "config": {
+          "indices": [
+            {"name": "LIMRA", "field": "indice_limra", "source": "cancelaciones", "max": 0.1},
+            {"name": "IGC", "field": "indice_igc", "source": "cancelaciones", "max": 0.15}
+          ]
+        },
+        "priority": 1,
+        "description": "Cumplir índices LIMRA e IGC dentro de parámetros."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje a Perú",
+        "description": "Reconocimiento especial por el 85 aniversario.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "ola-de-productividad-asesores",
+    "name": "Ola de Productividad (Asesores)",
+    "summary": "Impulso comercial con metas de pólizas, comisiones y prima mínima",
+    "description": "Exige entre 8 y 14 pólizas emitidas, comisiones acumuladas de al menos $48,000 MXN y prima mínima de $17,000 por póliza durante la vigencia agosto-noviembre 2025.",
+    "notes": "Todas las pólizas deben superar prima mínima $17,000 MXN; validar tabla de comisiones en flyer si cambia. Umbrales por nivel de comisión (24K/30K/48K) se ajustan en UI.",
+    "status": "draft",
+    "active_range": "[2025-08-01,2025-12-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 8, "max": 14},
+        "priority": 0,
+        "description": "Emitir de 8 a 14 pólizas dentro del periodo."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"metric": "commissions", "threshold": 48000},
+        "priority": 1,
+        "description": "Comisiones acumuladas mínimas de $48,000 MXN durante la campaña."
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "prima_minima",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "prima_minima",
+          "min_prima": 17000
+        },
+        "priority": 2,
+        "description": "Cada póliza debe tener prima mínima de $17,000 MXN."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje Cancún",
+        "description": "Premio principal para niveles más altos.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Gift cards $10K–$20K",
+        "description": "Gift cards escalonadas según desempeño.",
+        "is_accumulative": false,
+        "sort_order": 2
+      }
+    ]
+  },
+  {
+    "slug": "msi-inicial",
+    "name": "MSI Inicial",
+    "summary": "Facilidades MSI para pólizas iniciales VI/GMMI/AP",
+    "description": "Aplica a pólizas iniciales de Vida Individual, GMMI y Accidentes Personales emitidas y pagadas. Ofrece meses sin intereses conforme a reglas vigentes.",
+    "notes": "AP = Accidentes Personales; GMMI = Gastos Médicos Mayores Individual; VI = Vida Individual.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-01-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_por_producto",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1
+        },
+        "priority": 0,
+        "description": "Al menos una póliza de VI, GMMI o AP emitida y pagada"
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_recientes",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1,
+          "dias_ventana": 30
+        },
+        "priority": 1,
+        "description": "Póliza inicial (emitida recientemente, primera del cliente)"
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Facilidades MSI",
+        "description": "Ofrece meses sin intereses sobre las pólizas iniciales elegibles.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "msi-renovacion-gmm",
+    "name": "MSI Renovación GMM",
+    "summary": "MSI para renovaciones GMMI al corriente",
+    "description": "Aplica a renovaciones GMMI con recibos vigentes (al corriente). Otorga pago en mensualidades sin intereses sobre la prima de renovación.",
+    "notes": "Recibos vigentes = al corriente (pendiente lógica).",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-01-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_por_producto",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1
+        },
+        "priority": 0,
+        "description": "Al menos una póliza GMMI (producto específico)"
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas",
+          "field": "polizas_vigentes",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1
+        },
+        "priority": 1,
+        "description": "Póliza vigente (al corriente en pagos) para renovación"
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Pago MSI",
+        "description": "Pago en mensualidades sin intereses sobre la prima de renovación.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "convenciones-al-doble",
+    "name": "Convenciones al Doble",
+    "summary": "Conteo doble de comisiones en octubre 2025",
+    "description": "Durante octubre 2025 las comisiones iniciales cuentan al doble para la campaña de convenciones.",
+    "notes": "Aplicable solo para comisiones generadas en octubre 2025.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2025-11-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "comisiones_dobles",
+          "field": "activo",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "comisiones_dobles",
+          "period": "2025-10"
+        },
+        "priority": 0,
+        "description": "Duplica el puntaje de comisiones iniciales en octubre."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Conteo doble",
+        "description": "Comisiones iniciales contabilizan al doble para la ruta de convenciones.",
+        "is_accumulative": true,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "tcp-tipo-cambio-preferencial",
+    "name": "TCP (Tipo de Cambio Preferencial)",
+    "summary": "Tipo de cambio preferencial para pólizas Vida en dólares",
+    "description": "Aplica a pólizas de Vida Individual en dólares con prima equivalente a ≥ $100,000 MXN. Otorga tipo de cambio preferencial $16.99.",
+    "notes": "Prima emitida en USD debe equivaler al menos a $100,000 MXN.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2025-11-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_por_producto",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1
+        },
+        "priority": 0,
+        "description": "Al menos una póliza de Vida Individual"
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas",
+          "field": "prima_total_mxn",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 100000
+        },
+        "priority": 1,
+        "description": "Prima equivalente mínima de $100,000 MXN (tipo de cambio $16.99)"
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Tipo de cambio $16.99",
+        "description": "Acceso a tipo de cambio preferencial para primas emitidas válidas.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "proactiva-tech-2-0",
+    "name": "Proactiva Tech 2.0",
+    "summary": "Campaña de gadgets para asesores consolidados",
+    "description": "Para asesores consolidados (más de 24 meses desde conexión). Requiere entre 6 y 15 pólizas VI/GMMI durante oct-nov 2025.",
+    "notes": "Definir criterio de asesor consolidado (>24 meses conexión).",
+    "status": "draft",
+    "active_range": "[2025-10-01,2025-12-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "TENURE_MONTHS",
+        "config": {"min_months": 24},
+        "priority": 0,
+        "description": "Solo asesores consolidados (≥ 24 meses)."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 6, "max": 15, "products": ["vi", "gmmi"]},
+        "priority": 1,
+        "description": "Emitir entre 6 y 15 pólizas VI/GMMI."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "iPhone 17",
+        "description": "Premio para nivel superior de producción.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Apple Watch",
+        "description": "Premio intermedio para asesores consolidados.",
+        "is_accumulative": false,
+        "sort_order": 2
+      },
+      {
+        "title": "AirPods",
+        "description": "Premio inicial para metas alcanzadas.",
+        "is_accumulative": false,
+        "sort_order": 3
+      }
+    ]
+  },
+  {
+    "slug": "regalos-momentum",
+    "name": "Regalos Momentum",
+    "summary": "Premios en especie por pólizas Momentum",
+    "description": "Requiere pólizas Momentum con prima mínima de $50,000 MXN durante oct-nov 2025.",
+    "notes": "Prima mínima por póliza Momentum: $50,000 MXN.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2025-12-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_por_producto",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1
+        },
+        "priority": 0,
+        "description": "Al menos una póliza Momentum (producto específico)"
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas_prima_minima",
+          "field": "cantidad",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 1,
+          "prima_minima_mxn": 50000
+        },
+        "priority": 1,
+        "description": "Prima mínima de $50,000 MXN por póliza"
+      }
+    ],
+    "rewards": [
+      {
+        "title": "iPad 11”",
+        "description": "Premio por pólizas Momentum elegibles.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Pantalla 55”",
+        "description": "Premio alternativo para la campaña Momentum.",
+        "is_accumulative": false,
+        "sort_order": 2
+      }
+    ]
+  },
+  {
+    "slug": "cierra-con-exito-momentum",
+    "name": "Cierra con Éxito (Momentum)",
+    "summary": "Campaña exclusiva DCN con meta de 4 pólizas Momentum",
+    "description": "Exclusiva para Dirección Comercial Norte (DCN). Exige cuatro pólizas Momentum emitidas y pagadas entre oct-dic 2025.",
+    "notes": "Exclusiva DCN (Monterrey).",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-01-01)",
+    "primary_segment": "Asesores",
+  "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "SEGMENT",
+        "config": {"include": ["dcn"]},
+        "priority": 0,
+        "description": "Solo asesores DCN."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 4, "product": "momentum", "paid_required": true},
+        "priority": 1,
+        "description": "Emitir y pagar 4 pólizas Momentum."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "AirPods Max",
+        "description": "Premio por cumplir la meta de 4 pólizas.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "iPad Air",
+        "description": "Premio alternativo para ganadores.",
+        "is_accumulative": false,
+        "sort_order": 2
+      },
+      {
+        "title": "TV Sony 65”",
+        "description": "Premio premium por desempeño Momentum.",
+        "is_accumulative": false,
+        "sort_order": 3
+      }
+    ]
+  },
+  {
+    "slug": "avalancha-gmm",
+    "name": "Avalancha GMM",
+    "summary": "Campaña GMM para asesores 12m y consolidados",
+    "description": "Dirigida a asesores con 12 meses y consolidados. Exige entre 4 y 12 pólizas GMM y comisiones iniciales mínimas, exclusiva DCN.",
+    "notes": "Agente = asesor; desarrollador capacita; promotores = supervisores; exclusiva DCN. Umbral exacto de comisiones iniciales se confirma en UI.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-01-01)",
+    "primary_segment": "Asesores",
+    "segments": ["Asesores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "clasificacion_asesor",
+          "field": "permitido",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "clasificacion_asesor",
+          "permitidos": ["12m", "consolidado"]
+        },
+        "priority": 0,
+        "description": "Solo asesores con al menos 12 meses o consolidados pueden participar."
+      },
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "region_dcn",
+          "field": "es_dcn",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "region_dcn",
+          "requiere_dcn": true
+        },
+        "priority": 1,
+        "description": "Campaña exclusiva para Dirección Comercial Norte (DCN)."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "COUNT_POLICIES",
+        "config": {"min": 4, "max": 12, "product": "gmmi"},
+        "priority": 2,
+        "description": "Emitir entre 4 y 12 pólizas GMM."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "TOTAL_PREMIUM",
+        "config": {"metric": "commissions", "threshold": 30000},
+        "priority": 3,
+        "description": "Comisiones iniciales mínimas requeridas (referencia 30K MXN)."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Gadgets",
+        "description": "Premios tecnológicos por niveles.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Viaje Querétaro",
+        "description": "Experiencia para top performers DCN.",
+        "is_accumulative": false,
+        "sort_order": 2
+      }
+    ]
+  },
+  {
+    "slug": "nuevo-horizonte",
+    "name": "Nuevo Horizonte",
+    "summary": "Evento Las Vegas para promotores nuevos",
+    "description": "Promotores nuevos deben alcanzar metas de reclutas de calidad (RC) y comisiones entre julio y noviembre 2025 para asistir al evento en Las Vegas febrero 2026.",
+    "notes": "Evento programado para febrero 2026.",
+    "status": "draft",
+    "active_range": "[2025-07-01,2025-12-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "TENURE_MONTHS",
+        "config": {"max_months": 12, "role": "promotor"},
+        "priority": 0,
+        "description": "Solo promotores con hasta 12 meses desde su conexión (nuevos)."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "RC_COUNT",
+        "config": {"min": 1, "polizas_vida_mensuales": 3, "prima_min_mxn": 17000},
+        "priority": 1,
+        "description": "Cumplir metas de recluta de calidad (RC = 3 pólizas Vida/mes con prima anual ≥ $17,000)."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas",
+          "field": "comision_base_mxn",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 50000
+        },
+        "priority": 2,
+        "description": "Acumular comisiones mínimas para la campaña (ajustar threshold según campaña)"
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Evento Las Vegas 2026",
+        "description": "Viaje y evento especial para promotores calificados.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "promotor-360",
+    "name": "Promotor 360°",
+    "summary": "Evaluación integral de promotores por RC y desempeño",
+    "description": "Mide RC, altas, proactivos y graduados entre enero y noviembre 2025. Premia con trofeo y viaje nacional.",
+    "notes": "Ranking por puntuación global. Confirmar fórmula final vs 2.0; parámetros editables desde UI.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2025-12-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "promotor_360_index",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "promotor_360_index",
+          "ponderacion": {"rc": 0.3, "altas": 0.2, "proactivos": 0.25, "graduados": 0.25}
+        },
+        "priority": 0,
+        "description": "Indicador compuesto RC + desempeño."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Trofeo",
+        "description": "Reconocimiento físico a promotores destacados.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Viaje nacional",
+        "description": "Experiencia para promotores mejor evaluados.",
+        "is_accumulative": false,
+        "sort_order": 2
+      }
+    ]
+  },
+  {
+    "slug": "promotor-360-dcn",
+    "name": "Promotor 360° 2.0 (DCN)",
+    "summary": "Sistema de puntos ponderados para promotores DCN",
+    "description": "Evaluación DCN con ponderación: Recluta 30%, Retención 15%, Bono TA mes 4 20%, Graduación 15%, Proactivos 20%. Requiere mínimo 12 asesores reclutados (6 Current + 6 1a Clase).",
+    "notes": "Premios en cena de fin de año; impuestos a cargo; sin claves temporales ni Pre-PAR/PAR.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2025-12-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "SEGMENT",
+        "config": {"include": ["dcn"]},
+        "priority": 0,
+        "description": "Solo promotores DCN."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "RC_COUNT",
+        "config": {
+          "min": 12,
+          "detalles": {"min_current": 6, "min_primera": 6},
+          "polizas_vida_mensuales": 3,
+          "prima_min_mxn": 17000
+        },
+        "priority": 1,
+        "description": "Mínimo 12 asesores reclutados válidos (6 Current + 6 1ª Clase)."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "promotor_360_dcn_index",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "promotor_360_dcn_index",
+          "ponderacion": {"recluta": 0.3, "retencion": 0.15, "bono_ta": 0.2, "graduacion": 0.15, "proactivos": 0.2}
+        },
+        "priority": 2,
+        "description": "Sistema de puntos ponderados DCN."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje nacional 3D/2N",
+        "description": "Premio para Top 3 promotores y mejor novato.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Reconocimientos Campeón Recluta/Retención",
+        "description": "Premios individuales en la cena de fin de año.",
+        "is_accumulative": false,
+        "sort_order": 2
+      }
+    ]
+  },
+  {
+    "slug": "graduacion-promotores",
+    "name": "Graduación (Promotores)",
+    "summary": "Reconocimiento por asesores graduados por generación",
+    "description": "Debe reportar al menos dos asesores graduados por generación en periodos Nov 2025 – May 2026 y Jun – Nov 2026, siguiendo reglas del Encuentro Nacional de Graduación.",
+    "notes": "Cubre dos cortes anuales de graduación.",
+    "status": "draft",
+    "active_range": "[2025-11-01,2026-12-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "graduados_por_generacion",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "graduados_por_generacion",
+          "min_por_generacion": 2
+        },
+        "priority": 0,
+        "description": "Al menos 2 asesores graduados por generación (2 cortes)."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Evento y reconocimiento",
+        "description": "Distinción en el Encuentro Nacional de Graduación.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "ola-de-productividad-promotores",
+    "name": "Ola de Productividad (Promotores)",
+    "summary": "Viaje Cancún para promotores con RC y asesores ganadores",
+    "description": "Requiere cumplir metas de recluta de calidad y tener asesores ganadores en la campaña objetivo durante agosto-noviembre 2025.",
+    "notes": "Validar definición de RC.",
+    "status": "draft",
+    "active_range": "[2025-08-01,2025-12-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "RC_COUNT",
+        "config": {"min": 1, "polizas_vida_mensuales": 3, "prima_min_mxn": 17000},
+        "priority": 0,
+        "description": "Cumplir metas de recluta de calidad (RC = 3 pólizas Vida/mes ≥ $17,000 prima)."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "asesores_ganadores",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "asesores_ganadores",
+          "campana": "ola_productividad"
+        },
+        "priority": 1,
+        "description": "Tener asesores ganadores en la campaña objetivo."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje Cancún",
+        "description": "Viaje de incentivo para promotores calificados.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "creciendo-contigo",
+    "name": "Creciendo Contigo",
+    "summary": "Premios semestrales para promotores por desempeño",
+    "description": "Se evalúa en dos semestres (Ene-Jun y Jul-Dic 2025). Considera % de asesores ganadores de bono base y reclutas de calidad.",
+    "notes": "Premios por semestre según desempeño.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "creciendo_contigo_score",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "creciendo_contigo_score",
+          "metricas": {"porcentaje_ganadores": 0.6, "reclutas_calidad": 0.4}
+        },
+        "priority": 0,
+        "description": "Índice semestral de desempeño (ganadores vs reclutas)."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Pantalla",
+        "description": "Premio para top semestrales.",
+        "is_accumulative": false,
+        "sort_order": 1
+      },
+      {
+        "title": "Bocina",
+        "description": "Premio complementario por desempeño.",
+        "is_accumulative": false,
+        "sort_order": 2
+      },
+      {
+        "title": "Audífonos",
+        "description": "Premio adicional para rankings destacados.",
+        "is_accumulative": false,
+        "sort_order": 3
+      }
+    ]
+  },
+  {
+    "slug": "85-anos-promotores",
+    "name": "85 años (Promotores)",
+    "summary": "Reconocimiento por índices de cartera y RC",
+    "description": "Exige cumplimiento de índices de cancelación de cartera y metas de recluta de calidad durante 2025 para acceder al viaje a Perú.",
+    "notes": "Enfocado en desempeño de cartera y recluta. Umbrales LIMRA/IGC por confirmar; ajustar en requisitos UI.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "INDEX_THRESHOLD",
+        "config": {
+          "indices": [
+            {"name": "cancelacion_primer_ano", "field": "indice_limra", "source": "cancelaciones", "max": 0.1},
+            {"name": "cancelacion_posterior", "field": "indice_igc", "source": "cancelaciones", "max": 0.15}
+          ]
+        },
+        "priority": 0,
+        "description": "Cumplir índices de cancelación establecidos."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "RC_COUNT",
+        "config": {"min": 1, "polizas_vida_mensuales": 3, "prima_min_mxn": 17000},
+        "priority": 1,
+        "description": "Lograr metas de recluta de calidad."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje a Perú",
+        "description": "Reconocimiento para promotores que cumplen metas de aniversario.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "legion-centurion-promotores",
+    "name": "Legión Centurión (Promotores)",
+    "summary": "Reconoce a promotores por asesores ganadores",
+    "description": "Premia a promotores según cantidad de asesores que ganan campañas (Bronce, Plata, Oro, Platino).",
+    "notes": "Niveles basados en cantidad de asesores ganadores. Definir rangos finales en UI según lineamientos vigentes.",
+    "status": "draft",
+    "active_range": "[2025-01-01,2026-01-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "promotores_asesores_ganadores",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "promotores_asesores_ganadores",
+          "tiers": [
+            {"name": "Bronce", "min": 3},
+            {"name": "Plata", "min": 5},
+            {"name": "Oro", "min": 8},
+            {"name": "Platino", "min": 12}
+          ]
+        },
+        "priority": 0,
+        "description": "Clasificación por cantidad de asesores ganadores."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Evento y beneficios",
+        "description": "Beneficios exclusivos por nivel de la Legión Centurión.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "convenciones-promotores",
+    "name": "Convenciones (Promotores)",
+    "summary": "Ruta de convenciones para promotores",
+    "description": "Requiere alcanzar comisiones mínimas del camino de convenciones entre julio 2025 y junio 2026. Entrada duplicada normalizada para conteo único.",
+    "notes": "Condiciones idénticas; evitar duplicidad en matriz.",
+    "status": "draft",
+    "active_range": "[2025-07-01,2026-07-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "polizas",
+          "field": "comision_base_mxn",
+          "operator": "gte",
+          "valueType": "number",
+          "value": 588500
+        },
+        "priority": 0,
+        "description": "Comisiones mínimas acumuladas para clasificar a convenciones"
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Convención",
+        "description": "Acceso al evento de convención para promotores calificados.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "sociedad-norte",
+    "name": "Sociedad Norte",
+    "summary": "Grupo exclusivo para promotores con RC y proactivos",
+    "description": "Requiere 15 reclutas de calidad y 15 asesores proactivos al cierre de diciembre 2025.",
+    "notes": "Acceso al grupo Sociedad Norte.",
+    "status": "draft",
+    "active_range": "[2025-12-01,2026-01-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "RC_COUNT",
+        "config": {"min": 15, "polizas_vida_mensuales": 3, "prima_min_mxn": 17000},
+        "priority": 0,
+        "description": "15 reclutas de calidad (RC = 3 pólizas Vida/mes ≥ $17,000 prima)."
+      },
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "asesores_proactivos",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "asesores_proactivos",
+          "min": 15
+        },
+        "priority": 1,
+        "description": "15 asesores proactivos al cierre."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Pertenencia Grupo SN",
+        "description": "Ingreso al grupo Sociedad Norte con beneficios exclusivos.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "capitanes-al-mando",
+    "name": "Capitanes al Mando",
+    "summary": "Incentivo para promotores con asesores conectados",
+    "description": "Debe mantener 10-12 asesores conectados activos entre octubre 2025 y febrero 2026 con comisiones iniciales mínimas en VI/GMMI.",
+    "notes": "Viaje Xcaret Arte o Los Cabos.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-03-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "goal",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "asesores_conectados",
+          "field": "en_rango",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "asesores_conectados",
+          "min": 10,
+          "max": 12,
+          "metricas": {"comisiones_vi_gmmi": true}
+        },
+        "priority": 0,
+        "description": "Mantener 10-12 asesores conectados con comisiones mínimas."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Viaje Xcaret Arte o Los Cabos",
+        "description": "Viaje de incentivo para promotores que mantienen la base activa.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "slug": "msi-promotor",
+    "name": "MSI Promotor",
+    "summary": "Compensación por costos MSI cuando se cumplen condiciones",
+    "description": "Compensa costos bancarios de MSI cuando el promotor cumple condiciones sobre Vida inicial y GMM (inicial o renovación).",
+    "notes": "Definir condiciones específicas MSI cada año.",
+    "status": "draft",
+    "active_range": "[2025-10-01,2026-01-01)",
+    "primary_segment": "Promotores",
+    "segments": ["Promotores"],
+    "rules": [
+      {
+        "scope": "eligibility",
+        "rule_kind": "METRIC_CONDITION",
+        "config": {
+          "dataset": "msi_promotor_condiciones",
+          "field": "cumple",
+          "operator": "eq",
+          "valueType": "text",
+          "value": "true",
+          "definition": "msi_promotor_condiciones",
+          "aplica": ["vida_inicial", "gmmi_inicial", "gmmi_renovacion"]
+        },
+        "priority": 0,
+        "description": "Validar cumplimiento de condiciones MSI."
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Compensación MSI",
+        "description": "Compensación por costos bancarios de MSI cuando se cumplen condiciones.",
+        "is_accumulative": false,
+        "sort_order": 1
+      }
+    ]
+  }
+]
