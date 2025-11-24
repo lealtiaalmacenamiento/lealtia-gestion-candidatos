@@ -560,7 +560,7 @@ async function upsertCampaign(
 
   const activeRange = buildActiveRangeString(payload.activeRange, payload.activeRangeStart, payload.activeRangeEnd)
   if (!activeRange) {
-    warnings.push('Campaña sin rango de vigencia; se omite active_range')
+    throw new Error(`Campaña ${payload.slug} requiere active_range o [activeRangeStart, activeRangeEnd]`)
   }
 
   let primarySegmentId = payload.primarySegmentId
@@ -579,8 +579,8 @@ async function upsertCampaign(
     name: payload.name,
     summary: payload.summary,
     description: payload.description,
-  status: payload.status,
-  active_range: activeRange ?? null,
+    status: payload.status,
+    active_range: activeRange,
     primary_segment_id: primarySegmentId,
     notes: payload.notes,
     created_by: payload.created_by ?? undefined
@@ -597,6 +597,7 @@ async function upsertCampaign(
   }
 
   const campaignId = existing.data?.id
+  console.log(`[DEBUG] Campaña ${payload.slug}: existing=${!!existing.data}, campaignId=${campaignId}`)
 
   if (!campaignId && options.dryRun) {
     return { action: 'created', slug: payload.slug, warnings }
@@ -612,13 +613,19 @@ async function upsertCampaign(
     if (options.dryRun) {
       resolvedCampaignId = 'dry-run'
     } else {
+      console.log(`[DEBUG] Insertando campaña ${payload.slug} con active_range:`, activeRange)
       const insert = await supabase
         .from('campaigns')
         .insert(base)
         .select('id')
         .single()
-      if (insert.error || !insert.data?.id) {
-        throw insert.error ?? new Error(`No se pudo crear campaña ${payload.slug}`)
+      if (insert.error) {
+        console.error(`[ERROR] Insert falló para ${payload.slug}:`, insert.error)
+        throw insert.error
+      }
+      if (!insert.data?.id) {
+        console.error(`[ERROR] Insert sin id para ${payload.slug}:`, insert.data)
+        throw new Error(`No se pudo crear campaña ${payload.slug}`)
       }
       resolvedCampaignId = insert.data.id
     }

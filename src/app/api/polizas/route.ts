@@ -278,7 +278,7 @@ export async function POST(req: Request) {
   if (body.producto_parametro_id) {
     try {
       const admin = getServiceClient()
-      const { data: prod } = await admin.from('producto_parametros').select('id, moneda, sa_min, sa_max').eq('id', body.producto_parametro_id).maybeSingle()
+      const { data: prod } = await admin.from('producto_parametros').select('id, moneda, sa_min, sa_max').eq('id', String(body.producto_parametro_id)).maybeSingle()
       if (prod) {
         prima_moneda = (prod.moneda || '').trim() || null
         sa_moneda = prima_moneda
@@ -289,7 +289,7 @@ export async function POST(req: Request) {
 
   const insertPayload: Record<string, unknown> = {
     cliente_id,
-  producto_parametro_id: producto_parametro_id || null,
+  producto_parametro_id: producto_parametro_id ? String(producto_parametro_id) : null,
     numero_poliza,
     fecha_emision,
   fecha_renovacion: fecha_renovacion || null,
@@ -319,6 +319,14 @@ export async function POST(req: Request) {
     }
   const { data, error } = await admin.from('polizas').insert(insertPayload).select('*').maybeSingle()
     if (error) {
+      // Log detallado del error para debugging
+      console.error('[POST /api/polizas] Error al insertar:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        insertPayload: JSON.stringify(insertPayload, null, 2)
+      })
       // Atrapamos la restricción única global por numero_poliza
       if (/uq_polizas_numero|unique/i.test(error.message)) {
         return NextResponse.json({ error: 'El número de póliza ya existe en el sistema. Verifica que no esté registrada con otro cliente.' }, { status: 409 })
