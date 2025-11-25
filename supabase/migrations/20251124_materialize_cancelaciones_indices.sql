@@ -144,28 +144,35 @@ CREATE INDEX idx_vw_cancelaciones_usuario_periodo ON public.vw_cancelaciones_ind
 CREATE INDEX idx_vw_cancelaciones_asesor_id ON public.vw_cancelaciones_indices(asesor_id);
 
 -- Función para refrescar la vista materializada
+-- SET statement_timeout = 0 permite que la operación tome el tiempo necesario
 CREATE OR REPLACE FUNCTION refresh_vw_cancelaciones_indices()
 RETURNS void
 LANGUAGE plpgsql
+SET statement_timeout = 0
 AS $$
 BEGIN
-  REFRESH MATERIALIZED VIEW CONCURRENTLY public.vw_cancelaciones_indices;
-  RAISE NOTICE 'Vista materializada vw_cancelaciones_indices refrescada';
-EXCEPTION
-  WHEN OTHERS THEN
-    -- Si falla CONCURRENTLY (requiere índice único), intentar sin CONCURRENTLY
-    REFRESH MATERIALIZED VIEW public.vw_cancelaciones_indices;
-    RAISE NOTICE 'Vista materializada vw_cancelaciones_indices refrescada (sin CONCURRENTLY)';
+  BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY public.vw_cancelaciones_indices;
+    RAISE NOTICE 'Vista materializada vw_cancelaciones_indices refrescada (CONCURRENTLY)';
+  EXCEPTION
+    WHEN OTHERS THEN
+      -- Si falla CONCURRENTLY (requiere índice único), intentar sin CONCURRENTLY
+      REFRESH MATERIALIZED VIEW public.vw_cancelaciones_indices;
+      RAISE NOTICE 'Vista materializada vw_cancelaciones_indices refrescada (sin CONCURRENTLY)';
+  END;
 END;
 $$;
 
 COMMENT ON FUNCTION refresh_vw_cancelaciones_indices IS 'Refresca la vista materializada vw_cancelaciones_indices. Usar con pg_cron cada 5-10 minutos.';
 
--- Nota: Para programar refresco automático con pg_cron (requiere plan Pro):
+-- Nota: Para programar refresco automático con pg_cron:
+-- IMPORTANTE: El comando del cron job debe incluir SET statement_timeout = 0
+-- para evitar timeouts en bases de datos con timeout configurado (ej. 2min en producción)
+-- 
 -- SELECT cron.schedule(
 --   'refresh-cancelaciones-indices',
 --   '*/10 * * * *',  -- cada 10 minutos
---   $$SELECT refresh_vw_cancelaciones_indices();$$
+--   $$SET statement_timeout = 0; SELECT refresh_vw_cancelaciones_indices();$$
 -- );
 
 -- Refrescar inmediatamente después de crear
