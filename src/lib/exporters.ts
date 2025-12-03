@@ -4,6 +4,10 @@ import type { Candidato, Prospecto, BloquePlanificacion } from '@/types'
 interface CandidatoPOP extends Candidato { pop?: string; fecha_creacion_pop?: string; dias_desde_pop?: number }
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
+import { extractCandidateEvents, PHASE_CALENDAR_THEME } from '@/lib/candidatePhases'
+import { generateCalendarsForEvents } from '@/lib/calendarUtils'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 // Lazy dynamic imports para no inflar el bundle inicial
 import * as ExcelJS from 'exceljs'
@@ -242,6 +246,196 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
   const procesoLabel = U(isAgentePdf ? 'Agente' : (etiquetaProceso(proceso) || ''))
   const { headerHeight, contentStartY } = drawHeader({ procesoLabel })
   doc.setFontSize(10)
+  
+  // ===== CALENDARIO DE ETAPAS (PRIMERA PÁGINA) =====
+  let calendarEndY = contentStartY
+  try {
+    const events = extractCandidateEvents(c)
+    if (events.length > 0) {
+      const calendars = generateCalendarsForEvents(events)
+      
+      // Título del calendario
+      const calendarStartY = contentStartY
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(31, 41, 55)
+      doc.text(U('Calendario de Etapas del Proceso'), 14, calendarStartY)
+      
+      let currentY = calendarStartY + 8
+      const calendarWidth = 90
+      const calendarHeight = 65
+      const gap = 8
+      const leftMargin = 14
+      const calendarsPerRow = 2
+      
+      // Obtener fases únicas para la leyenda
+      const uniquePhases = new Set(events.map(e => e.phase))
+      
+      // Calcular cuántos calendarios caben en la primera página
+      const maxRowsFirstPage = Math.floor((280 - currentY - 30) / (calendarHeight + gap))
+      const maxCalendarsFirstPage = maxRowsFirstPage * calendarsPerRow
+      
+      calendars.slice(0, maxCalendarsFirstPage).forEach((month, idx) => {
+        const col = idx % calendarsPerRow
+        const row = Math.floor(idx / calendarsPerRow)
+        const x = leftMargin + col * (calendarWidth + gap)
+        const y = currentY + row * (calendarHeight + gap)
+        
+        // Dibujar borde del mes
+        doc.setDrawColor(229, 231, 235)
+        doc.setLineWidth(0.5)
+        doc.rect(x, y, calendarWidth, calendarHeight)
+        
+        // Título del mes
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(55, 65, 81)
+        doc.text(month.monthLabel, x + calendarWidth / 2, y + 5, { align: 'center' })
+        
+        // Días de la semana
+        const weekdays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+        const cellWidth = calendarWidth / 7
+        const headerY = y + 10
+        
+        doc.setFontSize(7)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(107, 114, 128)
+        weekdays.forEach((day, i) => {
+          doc.text(day, x + i * cellWidth + cellWidth / 2, headerY, { align: 'center' })
+        })
+        
+        // Línea separadora
+        doc.setDrawColor(229, 231, 235)
+        doc.line(x, headerY + 2, x + calendarWidth, headerY + 2)
+        
+        // Dibujar semanas y días
+        const cellHeight = 7.5
+        const weeksStartY = headerY + 4
+        
+        month.weeks.forEach((week, weekIdx) => {
+          const weekY = weeksStartY + weekIdx * cellHeight
+          
+          week.days.forEach((day, dayIdx) => {
+            const cellX = x + dayIdx * cellWidth
+            
+            if (day.isCurrentMonth && day.date) {
+              // Número del día
+              doc.setFontSize(7)
+              doc.setFont('helvetica', 'normal')
+              doc.setTextColor(55, 65, 81)
+              doc.text(String(day.day), cellX + cellWidth / 2, weekY + 3.5, { align: 'center' })
+              
+              // Marcadores de eventos (múltiples si hay varios eventos)
+              if (day.events.length > 0) {
+                const hexToRgb = (hex: string) => {
+                  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+                  return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                  } : { r: 0, g: 0, b: 0 }
+                }
+                
+                // Mostrar hasta 3 círculos por día
+                const maxCircles = Math.min(day.events.length, 3)
+                const circleSize = 1.2
+                const spacing = circleSize * 2 + 0.5
+                const totalWidth = maxCircles * spacing - 0.5
+                const startX = cellX + cellWidth / 2 - totalWidth / 2
+                const markerY = weekY + 5.5
+                
+                for (let i = 0; i < maxCircles; i++) {
+                  const event = day.events[i]
+                  const theme = PHASE_CALENDAR_THEME[event.phase]
+                  const rgb = hexToRgb(theme.color)
+                  const markerX = startX + (i * spacing)
+                  
+                  doc.setFillColor(rgb.r, rgb.g, rgb.b)
+                  doc.circle(markerX, markerY, circleSize, 'F')
+                }
+              }
+            }
+          })
+        })
+      })
+      
+      // Calcular posición después de calendarios
+      const calendarRows = Math.min(maxRowsFirstPage, Math.ceil(calendars.length / calendarsPerRow))
+      calendarEndY = currentY + calendarRows * (calendarHeight + gap) + 4
+      
+      // Leyenda con múltiples filas si es necesario
+      if (uniquePhases.size > 0 && calendarEndY < 250) {
+        const legendY = calendarEndY
+        const maxWidth = 182
+        const itemsPerRow = 3 // Máximo 3 items por fila
+        const phases = Array.from(uniquePhases)
+        const totalRows = Math.ceil(phases.length / itemsPerRow)
+        const legendHeight = 10 + (totalRows * 8)
+        
+        // Fondo de leyenda
+        doc.setFillColor(249, 250, 251)
+        doc.roundedRect(leftMargin, legendY, maxWidth, legendHeight, 2, 2, 'F')
+        
+        // Título de leyenda
+        doc.setFontSize(8)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(55, 65, 81)
+        doc.text(U('Leyenda'), leftMargin + 3, legendY + 6)
+        
+        // Items de leyenda en cuadrícula
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        
+        const hexToRgb = (hex: string) => {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+          return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+          } : { r: 0, g: 0, b: 0 }
+        }
+        
+        phases.forEach((phase, idx) => {
+          const theme = PHASE_CALENDAR_THEME[phase]
+          const row = Math.floor(idx / itemsPerRow)
+          const col = idx % itemsPerRow
+          const itemWidth = maxWidth / itemsPerRow
+          
+          const itemX = leftMargin + 3 + (col * itemWidth)
+          const itemY = legendY + 10 + (row * 8)
+          
+          const rgb = hexToRgb(theme.color)
+          
+          // Círculo de color
+          doc.setFillColor(rgb.r, rgb.g, rgb.b)
+          doc.circle(itemX + 2, itemY + 1, 1.5, 'F')
+          
+          // Etiqueta (truncar si es muy larga)
+          doc.setTextColor(75, 85, 99)
+          const maxLabelWidth = itemWidth - 10
+          let label = theme.label
+          if (doc.getTextWidth(label) > maxLabelWidth) {
+            // Truncar texto si es necesario
+            while (doc.getTextWidth(label + '...') > maxLabelWidth && label.length > 3) {
+              label = label.slice(0, -1)
+            }
+            label += '...'
+          }
+          doc.text(label, itemX + 6, itemY + 2)
+        })
+        
+        calendarEndY = legendY + legendHeight + 2
+      }
+    }
+  } catch (err) {
+    console.error('[PDF] Error al generar calendario:', err)
+  }
+  
+  // Nueva página para datos del candidato
+  doc.addPage()
+  drawHeader({ procesoLabel })
+  doc.setTextColor(0, 0, 0)
+  
   // Tabla Datos de candidato (orden y etiquetas solicitadas)
   const rows: Array<[string, string, string]> = [];
   // Mapeo exacto de claves para ficha de candidato (debe coincidir con el select y la BD)
