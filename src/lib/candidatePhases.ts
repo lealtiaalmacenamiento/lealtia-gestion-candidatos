@@ -42,12 +42,12 @@ export const PHASE_CALENDAR_THEME: Record<PhaseKey, PhaseTheme> = {
   },
   examen: {
     label: 'Examen',
-    color: '#f50b0bff', // rojo
+    color: '#EF4444', // Rojo brillante
     icon: '📋'
   },
   folio_ov: {
     label: 'Folio Oficina Virtual',
-    color: '#d48206ff', // Cian
+    color: '#F59E0B', // Naranja/Ámbar
     icon: '🏢'
   },
   playbook: {
@@ -57,17 +57,17 @@ export const PHASE_CALENDAR_THEME: Record<PhaseKey, PhaseTheme> = {
   },
   pre_escuela: {
     label: 'Pre-escuela',
-    color: '#000000ff', // negro
+    color: '#8B5CF6', // Púrpura
     icon: '🎓'
   },
   curricula_cdp: {
     label: 'Currícula CDP',
-    color: '#7e6331ff', // dorado
+    color: '#14B8A6', // Turquesa/Teal
     icon: '📄'
   },
   escuela_fundamental: {
     label: 'Escuela Fundamental',
-    color: '#3af700ff', // cambioooos
+    color: '#84CC16', // Verde lima
     icon: '🎯'
   }
 }
