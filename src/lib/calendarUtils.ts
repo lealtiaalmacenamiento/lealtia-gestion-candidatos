@@ -3,7 +3,7 @@
  * Usado para visualizar etapas de candidatos en formato calendario
  */
 
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addDays } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { CandidateEvent } from './candidatePhases'
 

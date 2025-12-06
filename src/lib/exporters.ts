@@ -6,8 +6,6 @@ import { calcularDerivados, etiquetaProceso } from '@/lib/proceso'
 import { obtenerSemanaIso } from '@/lib/semanaIso'
 import { extractCandidateEvents, PHASE_CALENDAR_THEME } from '@/lib/candidatePhases'
 import { generateCalendarsForEvents } from '@/lib/calendarUtils'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 
 // Lazy dynamic imports para no inflar el bundle inicial
 import * as ExcelJS from 'exceljs'
@@ -261,7 +259,7 @@ export async function exportCandidatoPDF(c: Candidato, mensajesPorCampo?: Record
       doc.setTextColor(31, 41, 55)
       doc.text(U('Calendario de Etapas del Proceso'), 14, calendarStartY)
       
-      let currentY = calendarStartY + 8
+      const currentY = calendarStartY + 8
       const calendarWidth = 90
       const calendarHeight = 65
       const gap = 8
