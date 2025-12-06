@@ -37,7 +37,7 @@ export const PHASE_CALENDAR_THEME: Record<PhaseKey, PhaseTheme> = {
   },
   capacitacion_a1: {
     label: 'Capacitación A1',
-    color: '#06B6D4', // Cyan brillante
+    color: '#10B981', // Verde
     icon: '📚'
   },
   examen: {
@@ -62,7 +62,7 @@ export const PHASE_CALENDAR_THEME: Record<PhaseKey, PhaseTheme> = {
   },
   curricula_cdp: {
     label: 'Currícula CDP',
-    color: '#14B8A6', // Turquesa/Teal
+    color: '#000000ff', // Turquesa/Teal
     icon: '📄'
   },
   escuela_fundamental: {
