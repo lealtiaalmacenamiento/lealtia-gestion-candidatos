@@ -37,7 +37,7 @@ export const PHASE_CALENDAR_THEME: Record<PhaseKey, PhaseTheme> = {
   },
   capacitacion_a1: {
     label: 'Capacitación A1',
-    color: '#10B981', // Verde
+    color: '#06B6D4', // Cyan brillante
     icon: '📚'
   },
   examen: {
