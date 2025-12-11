@@ -10,6 +10,7 @@ import { normalizeRole } from '@/lib/roles';
 type Usuario = {
   id: number;
   email: string;
+  nombre?: string;
   rol: string;
   activo: boolean;
   must_change_password?: boolean;
@@ -41,6 +42,7 @@ export default function UsuariosPage() {
                 <thead className="table-light">
                   <tr>
                     <th>Email</th>
+                    <th>Nombre</th>
                     <th>Rol</th>
                     <th>Activo</th>
                     <th>Debe cambiar password</th>
@@ -49,7 +51,7 @@ export default function UsuariosPage() {
                 </thead>
                 <tbody>
                   {usuarios.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center">No hay usuarios registrados.</td></tr>
+                    <tr><td colSpan={6} className="text-center">No hay usuarios registrados.</td></tr>
                   ) : usuarios.map(u => {
                     const normalizedRol = normalizeRole(u.rol);
                     const displayRol = normalizedRol ?? u.rol;
@@ -57,6 +59,7 @@ export default function UsuariosPage() {
                     return (
                     <tr key={u.id}>
                       <td>{u.email}</td>
+                      <td>{u.nombre || '—'}</td>
                       <td>{displayRol}</td>
                       <td>{u.activo ? 'Sí' : 'No'}</td>
                       <td>{u.must_change_password ? 'Sí' : 'No'}</td>

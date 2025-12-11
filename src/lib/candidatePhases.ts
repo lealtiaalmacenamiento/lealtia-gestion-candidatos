@@ -1,6 +1,6 @@
 /**
  * Constantes y utilidades para fases del proceso de candidatos
- * Usadas para el calendario visual en la ficha PDF
+ * Usadas para el calendario visual en la ficha PDF y embudo de candidatos
  */
 
 export type PhaseKey =
@@ -13,6 +13,7 @@ export type PhaseKey =
   | 'pre_escuela'
   | 'curricula_cdp'
   | 'escuela_fundamental'
+  | 'agente'
 
 export interface PhaseTheme {
   label: string
@@ -69,6 +70,11 @@ export const PHASE_CALENDAR_THEME: Record<PhaseKey, PhaseTheme> = {
     label: 'Escuela Fundamental',
     color: '#84CC16', // Verde lima
     icon: '🎯'
+  },
+  agente: {
+    label: 'Agente',
+    color: '#22C55E', // Verde éxito
+    icon: '✅'
   }
 }
 

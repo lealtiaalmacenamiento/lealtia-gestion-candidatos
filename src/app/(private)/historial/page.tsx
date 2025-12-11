@@ -5,6 +5,8 @@ type Item = {
   id: string
   tipo: 'cliente' | 'poliza'
   ref_id: string
+  ref_nombre?: string | null
+  ref_numero_poliza?: string | null
   solicitante_id: string
   solicitante_email?: string | null
   solicitante_nombre?: string | null
@@ -62,7 +64,6 @@ export default function HistorialPage() {
           <thead className="table-dark">
             <tr>
               <th>Tipo</th>
-              <th>ID Solicitud</th>
               <th>Referencia</th>
               <th>Estado</th>
               <th>Solicitante</th>
@@ -75,8 +76,9 @@ export default function HistorialPage() {
             {view.map(r => (
               <tr key={r.id}>
                 <td className="small">{r.tipo}</td>
-                <td className="small font-mono">{r.id}</td>
-                <td className="small font-mono">{r.ref_id}</td>
+                <td className="small">
+                  {r.tipo === 'cliente' ? (r.ref_nombre || r.ref_id) : (r.ref_numero_poliza || r.ref_id)}
+                </td>
                 <td className="small">{r.estado}{r.motivo_rechazo ? ` – ${r.motivo_rechazo}`: ''}</td>
                 <td className="small">{r.solicitante_nombre || r.solicitante_email || r.solicitante_id}</td>
                 <td className="small">{new Date(r.creado_at).toLocaleString()}</td>

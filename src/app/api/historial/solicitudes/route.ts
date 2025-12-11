@@ -22,6 +22,8 @@ type Item = {
   id: string
   tipo: 'cliente' | 'poliza'
   ref_id: string
+  ref_nombre?: string | null
+  ref_numero_poliza?: string | null
   solicitante_id: string
   solicitante_email?: string | null
   solicitante_nombre?: string | null
@@ -70,9 +72,9 @@ export async function GET() {
   const ids = Array.from(new Set(items.flatMap(i => [i.solicitante_id, i.resuelto_por]).filter(Boolean))) as string[]
   if (ids.length) {
     try {
-  type UserRow = { id: string, email?: string|null, nombre?: string|null }
-  const { data: users } = await supa.from('usuarios').select('id, email, nombre').in('id', ids)
-  const map = new Map<string, { email?: string|null, nombre?: string|null }>((users as UserRow[] || []).map((u) => [u.id, { email: u.email ?? null, nombre: u.nombre ?? null }]))
+  type UserRow = { id_auth?: string|null, email?: string|null, nombre?: string|null }
+  const { data: users } = await supa.from('usuarios').select('id_auth, email, nombre').in('id_auth', ids)
+  const map = new Map<string, { email?: string|null, nombre?: string|null }>((users as UserRow[] || []).map((u) => [u.id_auth ?? '', { email: u.email ?? null, nombre: u.nombre ?? null }]))
       for (const it of items) {
         const s = map.get(it.solicitante_id)
         if (s) { it.solicitante_email = s.email ?? null; it.solicitante_nombre = s.nombre ?? null }
@@ -82,6 +84,35 @@ export async function GET() {
         }
       }
     } catch { /* noop: si falla RLS o permisos, omitimos enriquecimiento */ }
+  }
+
+  // Enriquecer con datos de clientes y pólizas
+  const clienteIds = items.filter(i => i.tipo === 'cliente').map(i => i.ref_id)
+  const polizaIds = items.filter(i => i.tipo === 'poliza').map(i => i.ref_id)
+  
+  if (clienteIds.length) {
+    try {
+      type ClienteRow = { id: string, primer_nombre?: string|null, primer_apellido?: string|null, segundo_apellido?: string|null }
+      const { data: clientes } = await supa.from('clientes').select('id, primer_nombre, primer_apellido, segundo_apellido').in('id', clienteIds)
+      const clienteMap = new Map<string, string>((clientes as ClienteRow[] || []).map((c) => {
+        const nombre = [c.primer_nombre, c.primer_apellido, c.segundo_apellido].filter(Boolean).join(' ').trim()
+        return [c.id, nombre || '']
+      }))
+      for (const it of items.filter(i => i.tipo === 'cliente')) {
+        it.ref_nombre = clienteMap.get(it.ref_id) ?? null
+      }
+    } catch { /* noop */ }
+  }
+  
+  if (polizaIds.length) {
+    try {
+      type PolizaRow = { id: string, numero_poliza?: string|null }
+      const { data: polizas } = await supa.from('polizas').select('id, numero_poliza').in('id', polizaIds)
+      const polizaMap = new Map<string, string>((polizas as PolizaRow[] || []).map((p) => [p.id, p.numero_poliza ?? '']))
+      for (const it of items.filter(i => i.tipo === 'poliza')) {
+        it.ref_numero_poliza = polizaMap.get(it.ref_id) ?? null
+      }
+    } catch { /* noop */ }
   }
 
   // Ordenar por creado_at desc combinando ambas
