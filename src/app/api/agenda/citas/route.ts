@@ -635,7 +635,25 @@ async function createAgendaCitaHandler(req: Request) {
       citaId: created.id,
       notas
     })
-  } catch {}
+  } catch (err) {
+    // Log error para debugging pero no fallar la creación de la cita
+    console.error('[agenda][citas] Error sincronizando planificación:', err)
+    try {
+      await supabase.from('logs_integracion').insert({
+        usuario_id: agente.id_auth,
+        proveedor: 'planificacion',
+        operacion: 'sync_cita_to_plan',
+        nivel: 'error',
+        detalle: {
+          citaId: created.id,
+          agenteId,
+          inicioIso,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : null
+        }
+      })
+    } catch {}
+  }
 
   let developerRecipients: string[] = []
   if (!supervisorRecord) {

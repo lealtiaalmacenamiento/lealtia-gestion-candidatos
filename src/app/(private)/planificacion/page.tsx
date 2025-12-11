@@ -295,7 +295,7 @@ export default function PlanificacionPage(){
           <table className="table table-sm mb-0 align-middle text-center" style={{minWidth:900}}>
             <thead className="table-light"><tr><th style={{width:70}}>Hora</th>{['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map((d,i)=> { const base=semanaDesdeNumero(anio, semana as number).inicio; const date=new Date(base); date.setUTCDate(base.getUTCDate()+i); const dia=date.getUTCDate().toString().padStart(2,'0'); const mes=(date.getUTCMonth()+1).toString().padStart(2,'0'); return <th key={d}>{d}<div className="small text-muted">{dia}/{mes}</div></th>})}</tr></thead>
             <tbody>
-              {horasPlan.map(h=> <tr key={h}> <th className="bg-light fw-normal">{h}:00</th>
+              {horasPlan.map(h=> <tr key={h}><th className="bg-light fw-normal">{h}:00</th>
                 {Array.from({length:7},(_,day)=>{
                   const blk = data.bloques.find(b=>b.day===day && b.hour===h)
                   const base=semanaDesdeNumero(anio, semana as number).inicio
