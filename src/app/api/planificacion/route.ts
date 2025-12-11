@@ -19,8 +19,20 @@ export async function GET(req: Request) {
   const semana = Number(url.searchParams.get('semana')) || undefined
   const anio = Number(url.searchParams.get('anio')) || undefined
   let agenteId = Number(url.searchParams.get('agente_id')) || undefined
-  if (usuario.rol === 'agente') agenteId = usuario.id
-  if (!agenteId) return NextResponse.json({ error: 'agente_id requerido (solo supervisor puede especificarlo)' }, { status: 400 })
+  
+  // Si es agente, forzar su propio ID
+  if (usuario.rol === 'agente') {
+    if (!usuario.id || !Number.isFinite(usuario.id)) {
+      console.error('[planificacion][GET] Agente sin ID válido', { usuario: usuario.email, usuarioId: usuario.id })
+      return NextResponse.json({ error: 'Tu usuario no tiene un ID válido. Contacta al administrador.' }, { status: 400 })
+    }
+    agenteId = usuario.id
+  }
+  
+  if (!agenteId) {
+    console.error('[planificacion][GET] agente_id requerido', { usuarioId: usuario.id, rol: usuario.rol, queryAgenteId: url.searchParams.get('agente_id') })
+    return NextResponse.json({ error: 'agente_id requerido (solo supervisor puede especificarlo)' }, { status: 400 })
+  }
   const w = obtenerSemanaIso(new Date())
   const semanaQ = semana || w.semana
   const anioQ = anio || w.anio
@@ -43,7 +55,16 @@ export async function POST(req: Request) {
   if (!usuario) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   const body = await req.json()
   let agente_id: number = body.agente_id
-  if (usuario.rol === 'agente') agente_id = usuario.id
+  
+  // Si es agente, forzar su propio ID
+  if (usuario.rol === 'agente') {
+    if (!usuario.id || !Number.isFinite(usuario.id)) {
+      console.error('[planificacion][POST] Agente sin ID válido', { usuario: usuario.email, usuarioId: usuario.id })
+      return NextResponse.json({ error: 'Tu usuario no tiene un ID válido. Contacta al administrador.' }, { status: 400 })
+    }
+    agente_id = usuario.id
+  }
+  
   if (!agente_id) return NextResponse.json({ error: 'agente_id requerido' }, { status: 400 })
   const semana_iso: number = body.semana_iso
   const anio: number = body.anio
