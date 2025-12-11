@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Aplica fix de prospectos policies search_path a BD DEV
+ * Aplica fix completo de todas las funciones con usuarios a BD DEV
  */
 require('dotenv').config({ path: '.env.local' })
 const { Pool } = require('pg')
@@ -21,25 +21,36 @@ async function applyMigration() {
   try {
     console.log('🔄 Conectando a DEV database...\n')
     
-    const prospectosPath = path.join(__dirname, '../supabase/migrations/20251211_fix_prospectos_policies_search_path.sql')
-    const prospectosSql = fs.readFileSync(prospectosPath, 'utf8')
+    const functionsPath = path.join(__dirname, '../supabase/migrations/20251211_fix_all_usuarios_functions.sql')
+    const functionsSql = fs.readFileSync(functionsPath, 'utf8')
     
-    console.log('📝 Ejecutando migración de políticas prospectos...')
-    await pool.query(prospectosSql)
-    console.log('✅ Políticas de prospectos actualizadas\n')
+    console.log('📝 Ejecutando migración de 6 funciones...')
+    await pool.query(functionsSql)
+    console.log('✅ Todas las funciones actualizadas\n')
     
-    // Verify the policies
-    console.log('🧪 Verificando políticas...')
+    // Verify
+    console.log('🧪 Verificando funciones corregidas...')
     const result = await pool.query(`
-      SELECT schemaname, tablename, policyname 
-      FROM pg_policies 
-      WHERE tablename = 'prospectos' 
-      ORDER BY policyname
+      SELECT proname
+      FROM pg_proc p
+      JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE n.nspname = 'public'
+        AND p.prokind = 'f'
+        AND pg_get_functiondef(p.oid) ILIKE '%public.usuarios%'
+        AND proname IN (
+          'calculate_campaign_datasets_for_user',
+          'evaluate_all_campaigns',
+          'transfer_reassign_usuario',
+          'trigger_invalidate_cache_on_candidatos',
+          'trigger_invalidate_cache_on_clientes',
+          'trigger_invalidate_cache_on_prospectos'
+        )
+      ORDER BY proname
     `)
     
-    console.log('✅ Políticas activas en prospectos:')
+    console.log(`✅ ${result.rows.length}/6 funciones con schema explícito:`)
     result.rows.forEach(row => {
-      console.log(`   - ${row.policyname}`)
+      console.log(`   - ${row.proname}`)
     })
     
   } catch (error) {
