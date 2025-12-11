@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Aplica fix de is_super_role search_path a BD DEV
+ * Aplica fix de prospectos policies search_path a BD DEV
  */
 require('dotenv').config({ path: '.env.local' })
 const { Pool } = require('pg')
@@ -21,22 +21,26 @@ async function applyMigration() {
   try {
     console.log('🔄 Conectando a DEV database...\n')
     
-    const migrationPath = path.join(__dirname, '../supabase/migrations/20251211_fix_is_super_role_search_path.sql')
-    const sql = fs.readFileSync(migrationPath, 'utf8')
+    const prospectosPath = path.join(__dirname, '../supabase/migrations/20251211_fix_prospectos_policies_search_path.sql')
+    const prospectosSql = fs.readFileSync(prospectosPath, 'utf8')
     
-    console.log('📝 Ejecutando migración...')
-    await pool.query(sql)
+    console.log('📝 Ejecutando migración de políticas prospectos...')
+    await pool.query(prospectosSql)
+    console.log('✅ Políticas de prospectos actualizadas\n')
     
-    console.log('✅ Migración aplicada exitosamente a DEV\n')
+    // Verify the policies
+    console.log('🧪 Verificando políticas...')
+    const result = await pool.query(`
+      SELECT schemaname, tablename, policyname 
+      FROM pg_policies 
+      WHERE tablename = 'prospectos' 
+      ORDER BY policyname
+    `)
     
-    // Test the function
-    console.log('🧪 Verificando función is_super_role...')
-    const result = await pool.query("SELECT proname, prosrc FROM pg_proc WHERE proname = 'is_super_role'")
-    
-    if (result.rows.length > 0) {
-      console.log('✅ Función is_super_role actualizada correctamente')
-      console.log(`   Configuración: ${result.rows[0].prosrc.includes('public.usuarios') ? 'Schema explícito ✓' : 'Schema NO explícito ✗'}`)
-    }
+    console.log('✅ Políticas activas en prospectos:')
+    result.rows.forEach(row => {
+      console.log(`   - ${row.policyname}`)
+    })
     
   } catch (error) {
     console.error('❌ Error:', error.message)
