@@ -98,6 +98,10 @@ export function getCurrentPhase(candidato: Candidato): PhaseKey | null {
   
   const etapasCompletadas = candidato.etapas_completadas as Record<string, { completed: boolean }> | undefined
   
+  // Primero verificar si ya es agente (todas las etapas completadas)
+  const isAgent = requiredEtapas.every(k => !!etapasCompletadas?.[k as string]?.completed)
+  if (isAgent) return 'agente'
+  
   for (const phase of PHASE_ORDER) {
     const fieldKey = PHASE_FIELD_MAP[phase]
     
@@ -131,15 +135,11 @@ export function getCurrentPhase(candidato: Candidato): PhaseKey | null {
     }
   }
   
-  // Si todas están completadas, está en la última fase
-  // Si llegó aquí, verificar si es agente
-  const isAgent = requiredEtapas.every(k => !!etapasCompletadas?.[k as string]?.completed)
-  if (isAgent) return 'agente'
-  
+  // Si llegó aquí, está en escuela fundamental por defecto
   return 'escuela_fundamental'
 }
 
-// Claves de etapas requeridas para ser agente
+// Claves de etapas requeridas para ser agente (moverlas antes de getCurrentPhase)
 const requiredEtapas: (keyof Candidato)[] = [
   'periodo_para_registro_y_envio_de_documentos',
   'capacitacion_cedula_a1',
