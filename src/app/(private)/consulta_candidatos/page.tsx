@@ -513,7 +513,7 @@ useEffect(() => {
                             color: '#084298', 
                             fontWeight: '600',
                             borderLeft: col.key === 'id_candidato' ? '4px solid #0d6efd' : undefined,
-                            borderRight: col.key === (columns[columns.length - 1].key as any) ? '4px solid #0d6efd' : undefined
+                            borderRight: col.key === (columns[columns.length - 1]?.key ?? '') ? '4px solid #0d6efd' : undefined
                           } : undefined}
                         >
                           <div className="d-flex flex-column gap-1" style={isHighlighted ? { color: '#084298' } : undefined}>

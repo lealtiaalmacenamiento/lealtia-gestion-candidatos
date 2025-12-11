@@ -14,7 +14,7 @@ import { calculateFunnelData, PHASE_ORDER } from '@/lib/candidateFunnelUtils'
 interface CandidateFunnelProps {
   candidatos: Candidato[]
   selectedPhase: PhaseKey | null
-  onPhaseClick: (phase: PhaseKey) => void
+  onPhaseClick: (phase: PhaseKey | null) => void
 }
 
 export default function CandidateFunnel({ candidatos, selectedPhase, onPhaseClick }: CandidateFunnelProps) {
@@ -109,7 +109,7 @@ export default function CandidateFunnel({ candidatos, selectedPhase, onPhaseClic
           <div className="mt-3">
             <button
               type="button"
-              onClick={() => onPhaseClick(null as any)}
+              onClick={() => onPhaseClick(null)}
               className="btn btn-sm btn-outline-secondary w-100"
             >
               ✕ Limpiar filtro
