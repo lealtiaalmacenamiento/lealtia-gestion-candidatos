@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // Tipos para confirmación (export implícito dentro del archivo)
 type Diff = { campo: string; antes: string; despues: string }
@@ -14,7 +14,7 @@ const buildDiffs = (orig: unknown, edited: unknown): Diff[] => {
     .map(k => ({ campo: k, antes: String(o[k] ?? ''), despues: String(e[k] ?? '') }))
 }
 import BasePage from '@/components/BasePage';
-import type { AgendaDeveloper, CedulaA1, Efc, IntegrationProviderKey, ProductoParametro, TipoProducto, MonedaPoliza, Parametro } from '@/types';
+import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza, Parametro } from '@/types';
 import SegmentsSection from './SegmentsSection';
 import ProductTypesSection from './ProductTypesSection';
 import CampaignsSection from './CampaignsSection';
@@ -43,13 +43,8 @@ const FICHA_CAMPOS = [
   'FECHA DE CREACION DE CANDIDATO',
   'ULTIMA ACTUALIZACIÓN DE CANDIDATO',
 ];
-import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro, getAgendaDevelopers, updateAgendaDevelopers } from '@/lib/api';
+import { getCedulaA1, updateCedulaA1, getEfc, updateEfc, getProductoParametros, createProductoParametro, updateProductoParametro, deleteProductoParametro } from '@/lib/api';
 
-const INTEGRATION_LABELS: Record<IntegrationProviderKey, string> = {
-  google: 'Google Meet',
-  zoom: 'Zoom personal',
-  teams: 'Microsoft Teams'
-};
 import AppModal from '@/components/ui/AppModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
@@ -153,7 +148,6 @@ export default function ParametrosClient(){
   
   useEffect(() => {
     void loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onChangeEditMes = (e:React.ChangeEvent<HTMLInputElement>)=> setEditMesRow(r=> r? {...r,[e.target.name]:e.target.value}:r);

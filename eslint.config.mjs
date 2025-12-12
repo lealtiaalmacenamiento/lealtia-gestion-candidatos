@@ -21,6 +21,20 @@ const eslintConfig = [
   "README.md",
     ],
   },
+  {
+    files: ["scripts/**/*.{js,ts}", "scripts/**/*.mjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: "off",
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-var-requires": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

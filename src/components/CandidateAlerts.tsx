@@ -66,7 +66,7 @@ export default function CandidateAlerts({ candidatos }: CandidateAlertsProps) {
           </div>
         ) : (
           <div className="d-flex flex-column gap-3" style={{ maxHeight: '500px', overflowY: 'auto' }}>
-            {topAlerts.map((alert, idx) => {
+            {topAlerts.map((alert) => {
               const style = URGENCY_STYLES[alert.urgency]
               
               return (

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const startTime = Date.now();
     
     // Llamar a la función que refresca la vista materializada
-    const { data, error } = await supabase.rpc('refresh_vw_cancelaciones_indices');
+    const { error } = await supabase.rpc('refresh_vw_cancelaciones_indices');
 
     if (error) {
       console.error('[refresh-cancelaciones] Error:', error);

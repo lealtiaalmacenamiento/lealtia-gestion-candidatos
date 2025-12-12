@@ -3,5 +3,6 @@
 // Use the new '@tailwindcss/postcss' adapter plugin for PostCSS so Next.js can
 // require it directly during build. Autoprefixer is included in @tailwindcss/postcss.
 const plugins = process.env.VITEST ? [] : ['@tailwindcss/postcss']
+const config = { plugins }
 
-export default { plugins }
+export default config

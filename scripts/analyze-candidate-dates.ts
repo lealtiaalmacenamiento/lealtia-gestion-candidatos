@@ -94,7 +94,8 @@ async function analyzeDates() {
       alerts.total++
 
       // Verificar si está completada
-      const etapasCompletadas = candidato.etapas_completadas as any
+      type EtapasCompletadas = Record<string, { completed?: boolean } | undefined> | null
+      const etapasCompletadas = candidato.etapas_completadas as EtapasCompletadas
       const isCompleted = etapasCompletadas?.[phase.key]?.completed === true
       
       if (!isCompleted) {

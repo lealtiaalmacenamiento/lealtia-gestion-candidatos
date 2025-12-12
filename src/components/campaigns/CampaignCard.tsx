@@ -1,4 +1,3 @@
-import CampaignProgressBar from './CampaignProgressBar'
 import type { Campaign, CampaignProgressStatus, CampaignProgressSummary } from '@/types'
 
 interface CampaignCardProps {
@@ -44,30 +43,14 @@ function formatDate(date: Date | null): string | null {
   return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(date)
 }
 
-export default function CampaignCard({ campaign, progress, progressSummary, onViewDetail, onEdit, onDuplicate, disabled }: CampaignCardProps) {
+export default function CampaignCard({ campaign, progress: _progress, progressSummary, onViewDetail, onEdit, onDuplicate, disabled }: CampaignCardProps) {
+  void _progress
+  void progressSummary
   const range = parseRange(campaign.active_range)
   const startLabel = formatDate(range.start)
   const endLabel = formatDate(range.end)
   const badgeClass = statusBadgeClass[campaign.status] || 'bg-secondary'
   const badgeLabel = statusLabel[campaign.status] || campaign.status
-
-  const derivedCompleted = progressSummary?.completedTotal ?? null
-  const derivedEligible = progressSummary?.eligibleTotal ?? null
-  const derivedTotal = progressSummary?.total ?? null
-
-  const completedValue = derivedCompleted ?? progress?.value ?? 0
-  const eligibleTarget = derivedEligible ?? progress?.target ?? 100
-
-  let progressStatus: CampaignProgressStatus = progress?.status ?? 'eligible'
-  if (progressSummary) {
-    if (derivedEligible && derivedCompleted != null && derivedEligible > 0 && derivedCompleted >= derivedEligible) {
-      progressStatus = 'completed'
-    } else if (derivedEligible && derivedEligible > 0) {
-      progressStatus = 'eligible'
-    } else {
-      progressStatus = 'not_eligible'
-    }
-  }
 
   return (
     <div className="card shadow-sm h-100">

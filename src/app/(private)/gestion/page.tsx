@@ -1169,28 +1169,6 @@ function shortMonthHeader(key: string) {
   return `${m}/${y.slice(2)}`
 }
 
-// Helpers: convert between D/M/YYYY (API text) and YYYY-MM-DD (input type=date)
-function toISODateFromDMY(text: string): string {
-  if (!text) return ''
-  const parts = text.split('/')
-  if (parts.length !== 3) return ''
-  const [d, m, y] = parts.map(p=>p.trim())
-  const day = String(Number(d)).padStart(2, '0')
-  const mon = String(Number(m)).padStart(2, '0')
-  if (!y || day === 'NaN' || mon === 'NaN') return ''
-  return `${y}-${mon}-${day}`
-}
-function toDMYFromISO(iso: string): string {
-  if (!iso) return ''
-  const parts = iso.split('-')
-  if (parts.length !== 3) return ''
-  const [y, m, d] = parts
-  const day = String(Number(d)).replace(/^0+/, '') || '0'
-  const mon = String(Number(m)).replace(/^0+/, '') || '0'
-  if (!y || day === 'NaN' || mon === 'NaN') return ''
-  return `${day}/${mon}/${y}`
-}
-
 // Helpers para hipervínculos
 function normalizePhoneMx(raw: string): string {
   // Quitar todo excepto dígitos

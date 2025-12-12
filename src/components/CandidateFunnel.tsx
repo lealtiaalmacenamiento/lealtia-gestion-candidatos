@@ -9,7 +9,7 @@ import { useMemo } from 'react'
 import type { Candidato } from '@/types'
 import type { PhaseKey } from '@/lib/candidatePhases'
 import { PHASE_CALENDAR_THEME } from '@/lib/candidatePhases'
-import { calculateFunnelData, PHASE_ORDER } from '@/lib/candidateFunnelUtils'
+import { calculateFunnelData } from '@/lib/candidateFunnelUtils'
 
 interface CandidateFunnelProps {
   candidatos: Candidato[]
