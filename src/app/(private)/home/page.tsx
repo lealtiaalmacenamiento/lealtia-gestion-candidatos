@@ -32,6 +32,7 @@ const modules = [
 export default function HomeDashboard() {
   const { user, setUser, loadingUser } = useAuth();
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [pendingCount, setPendingCount] = React.useState<number | null>(null);
 
   // Redirect effect similar al dashboard
   useEffect(() => {
@@ -40,6 +41,21 @@ export default function HomeDashboard() {
       return () => clearTimeout(t);
     }
   }, [loadingUser, user]);
+
+  // Cargar contador de pendientes
+  useEffect(() => {
+    if (!user) return;
+    const role = normalizeRole(user?.rol) || (user?.rol || '').toLowerCase();
+    if (role === 'supervisor' || role === 'admin') {
+      fetch('/api/historial/pendientes')
+        .then(r => r.json())
+        .then(data => {
+          const items = data.items || [];
+          setPendingCount(items.length);
+        })
+        .catch(() => setPendingCount(null));
+    }
+  }, [user]);
 
   if (loadingUser) return <FullScreenLoader text="Cargando sesión..." />;
   if (!user) return <FullScreenLoader text="Redirigiendo a inicio de sesión..." />;
@@ -93,7 +109,12 @@ export default function HomeDashboard() {
                     <div className="card-body d-flex flex-column">
                       <div className="d-flex align-items-start mb-2 gap-2">
                         <span className={`dash-ico text-${m.color}`}><i className={`bi bi-${m.icon}`}></i></span>
-                        <h6 className="card-title mb-0 fw-semibold flex-grow-1">{m.title}</h6>
+                        <h6 className="card-title mb-0 fw-semibold flex-grow-1">
+                          {m.title}
+                          {m.key === 'pendientes' && pendingCount !== null && pendingCount > 0 && (
+                            <span className="badge bg-danger ms-2">{pendingCount}</span>
+                          )}
+                        </h6>
                       </div>
                       <p className="text-muted small mb-3 flex-grow-1">{m.desc}</p>
                       <div className="mt-auto d-flex justify-content-between align-items-center">

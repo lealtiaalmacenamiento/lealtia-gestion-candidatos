@@ -115,29 +115,45 @@ export default function NuevoCandidato() {
 
     // Helpers para filtrar opciones futuras
     const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
-    const isFutureCedula = (m: CedulaA1) => {
+    const getYearForCedula = (m: CedulaA1): number | null => {
       const t = todayUTC()
       const anchorMonth = monthIndexFromText(m.mes) || new Date().getUTCMonth()+1
-      const anchorYear = new Date().getUTCFullYear()
-      const regRanges = parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear })
-      const validReg = regRanges.some(r => r.end.getTime() >= t)
-      return validReg
+      const currentYear = new Date().getUTCFullYear()
+      // Verificar año actual
+      const regRangesCurrent = parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear })
+      const validRegCurrent = regRangesCurrent.some(r => r.end.getTime() >= t)
+      if (validRegCurrent) return currentYear
+      // Verificar año siguiente
+      const regRangesNext = parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear + 1 })
+      const validRegNext = regRangesNext.some(r => r.end.getTime() >= t)
+      if (validRegNext) return currentYear + 1
+      return null
     }
-    const isFutureEfc = (e: Efc) => {
+    const isFutureCedula = (m: CedulaA1) => getYearForCedula(m) !== null
+    const getYearForEfc = (e: Efc): number | null => {
       const t = todayUTC()
       const anchorMonth = monthIndexFromText(e.efc) || monthIndexFromText(form.mes) || new Date().getUTCMonth()+1
-      const anchorYear = new Date().getUTCFullYear()
-      const ovRanges = parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear })
-      const playbookRanges = parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear })
-      const preEscuelaRanges = parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear })
-      const cdpRanges = parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear })
-      const validOV = ovRanges.some(r => r.end.getTime() >= t)
-      const validPlay = playbookRanges.some(r => r.end.getTime() >= t)
-      const validPre = preEscuelaRanges.some(r => r.end.getTime() >= t)
-      const validCDP = cdpRanges.some(r => r.end.getTime() >= t)
-      // visibilidad: basta con que alguno de los periodos de preparación esté vigente; ignoramos "inicio_escuela_fundamental"
-      return (validOV || validPlay || validPre || validCDP)
+      const currentYear = new Date().getUTCFullYear()
+      
+      const checkYear = (year: number) => {
+        const ovRanges = parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear: year })
+        const playbookRanges = parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear: year })
+        const preEscuelaRanges = parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear: year })
+        const cdpRanges = parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear: year })
+        const validOV = ovRanges.some(r => r.end.getTime() >= t)
+        const validPlay = playbookRanges.some(r => r.end.getTime() >= t)
+        const validPre = preEscuelaRanges.some(r => r.end.getTime() >= t)
+        const validCDP = cdpRanges.some(r => r.end.getTime() >= t)
+        return (validOV || validPlay || validPre || validCDP)
+      }
+      
+      // Verificar año actual primero
+      if (checkYear(currentYear)) return currentYear
+      // Verificar año siguiente
+      if (checkYear(currentYear + 1)) return currentYear + 1
+      return null
     }
+    const isFutureEfc = (e: Efc) => getYearForEfc(e) !== null
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -502,7 +518,10 @@ export default function NuevoCandidato() {
                   <label className="form-label fw-semibold small mb-1">CÉDULA A1 <span className="text-danger">*</span></label>
                   <select name="mes" className="form-select" value={form.mes} onChange={handleChange} required>
                     <option value="">Selecciona una opción</option>
-                    {meses.filter(isFutureCedula).map(m => <option key={m.id} value={m.mes}>{m.mes}</option>)}
+                    {meses.filter(isFutureCedula).map(m => {
+                      const year = getYearForCedula(m)
+                      return <option key={m.id} value={m.mes}>{m.mes} {year}</option>
+                    })}
                   </select>
                   <div className="form-text small">Al seleccionar el mes se llenarán automáticamente varias fechas.</div>
                 </div>
@@ -535,7 +554,10 @@ export default function NuevoCandidato() {
                   <label className="form-label fw-semibold small mb-1">EFC <span className="text-danger">*</span></label>
                   <select name="efc" className="form-select" value={form.efc} onChange={handleChange} required>
                     <option value="">Selecciona una opción</option>
-                    {efcs.filter(isFutureEfc).map(e => <option key={e.id} value={e.efc}>{e.efc}</option>)}
+                    {efcs.filter(isFutureEfc).map(e => {
+                      const year = getYearForEfc(e)
+                      return <option key={e.id} value={e.efc}>{e.efc} {year}</option>
+                    })}
                   </select>
                   <div className="form-text small">Al seleccionar la EFC se agregan más fechas.</div>
                 </div>

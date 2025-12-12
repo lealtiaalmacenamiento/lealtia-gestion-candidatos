@@ -4,6 +4,10 @@ import { useSearchParams } from 'next/navigation';
 import type { Candidato } from '@/types';
 import type { Parametro } from '@/types';
 import { calcularDerivados, etiquetaProceso } from '@/lib/proceso';
+import type { PhaseKey } from '@/lib/candidatePhases';
+import { getCurrentPhase } from '@/lib/candidateFunnelUtils';
+import CandidateFunnel from '@/components/CandidateFunnel';
+import CandidateAlerts from '@/components/CandidateAlerts';
 
 interface EtapaMeta { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
 interface CandidatoExt extends Candidato { fecha_creacion_ct?: string; proceso?: string; etapas_completadas?: Record<string, EtapaMeta> }
@@ -43,6 +47,10 @@ function ConsultaCandidatosInner() {
   const [unchecking, setUnchecking] = useState(false)
   // Búsqueda por nombre de candidato
   const [nameQuery, setNameQuery] = useState('')
+  // Filtro por fase del embudo
+  const [selectedPhase, setSelectedPhase] = useState<PhaseKey | null>(null)
+  // ID del candidato a resaltar (desde query param)
+  const highlightId = search?.get('highlight') ? Number(search.get('highlight')) : null
   // Sticky eliminado completamente; tabla estándar scrollable horizontal
   // (Sticky y hint eliminados)
 
@@ -174,9 +182,17 @@ function ConsultaCandidatosInner() {
       .replace(/\p{Diacritic}/gu, '')
       .toLocaleLowerCase('es')
     const q = norm(nameQuery.trim())
-    const base = q
+    
+    // Aplicar filtro por nombre
+    let base = q
       ? data.filter(c => norm(String(c.candidato || ''))?.includes(q))
       : data
+    
+    // Aplicar filtro por fase del embudo
+    if (selectedPhase) {
+      base = base.filter(c => getCurrentPhase(c) === selectedPhase)
+    }
+    
     return [...base].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
@@ -192,7 +208,7 @@ function ConsultaCandidatosInner() {
       else comp = String(av).localeCompare(String(bv), 'es', { numeric: true, sensitivity: 'base' });
       return comp * (sortDir === 'asc' ? 1 : -1);
     });
-  }, [data, sortKey, sortDir, nameQuery]);
+  }, [data, sortKey, sortDir, nameQuery, selectedPhase]);
 
   // Scroll sync refs (definidos después de conocer filtered, aunque no dependan de él)
   const topScrollRef = useRef<HTMLDivElement|null>(null)
@@ -352,6 +368,23 @@ useEffect(() => {
           <a href="/consulta_candidatos" className="btn-close" aria-label="Cerrar" title="Cerrar"></a>
         </div>
       )}
+      
+      {/* Embudo y alertas - solo para superusuarios y supervisores */}
+      {!loading && !error && (role === 'superusuario' || role === 'supervisor' || role === 'admin') && (
+        <div className="row g-3 mb-4">
+          <div className="col-lg-8">
+            <CandidateFunnel 
+              candidatos={data}
+              selectedPhase={selectedPhase}
+              onPhaseClick={(phase) => setSelectedPhase(phase === selectedPhase ? null : phase)}
+            />
+          </div>
+          <div className="col-lg-4">
+            <CandidateAlerts candidatos={data} />
+          </div>
+        </div>
+      )}
+      
       <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
         <div></div>
         <div className="d-flex align-items-center gap-2">
@@ -423,8 +456,17 @@ useEffect(() => {
               </tr>
             </thead>
             <tbody>
-                  {filtered.map((c, idx) => (
-                <tr key={c.id_candidato} className={`dash-anim stagger-${(idx % 6)+1}`}> 
+                  {filtered.map((c, idx) => {
+                    const isHighlighted = highlightId && c.id_candidato === highlightId
+                    return (
+                <tr 
+                  key={c.id_candidato} 
+                  className={`dash-anim stagger-${(idx % 6)+1} ${isHighlighted ? 'highlight-row' : ''}`}
+                  style={isHighlighted ? { 
+                    scrollMarginTop: '100px'
+                  } : undefined}
+                  ref={isHighlighted ? (el) => el?.scrollIntoView({ behavior: 'smooth', block: 'center' }) : undefined}
+                > 
                   {columns.map((col) => {
                     const key = col.key as keyof Candidato;
                     const value = c[key];
@@ -445,6 +487,7 @@ useEffect(() => {
                                 ? (isAgente ? 'Agente' : (etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''))
                                 : value)))));
                     const etapaKeys = new Set([
+                      'fecha_tentativa_de_examen',
                       'periodo_para_registro_y_envio_de_documentos',
                       'capacitacion_cedula_a1',
                       'periodo_para_ingresar_folio_oficina_virtual',
@@ -462,8 +505,18 @@ useEffect(() => {
                     const tdClass = cls
                     return (
                       <React.Fragment key={String(col.key)}>
-                        <td className={tdClass} title={col.key==='proceso' ? rawProceso : undefined}>
-                          <div className="d-flex flex-column gap-1">
+                        <td 
+                          className={tdClass} 
+                          title={col.key==='proceso' ? rawProceso : undefined}
+                          style={isHighlighted ? { 
+                            backgroundColor: '#cfe2ff', 
+                            color: '#084298', 
+                            fontWeight: '600',
+                            borderLeft: col.key === 'id_candidato' ? '4px solid #0d6efd' : undefined,
+                            borderRight: col.key === (columns[columns.length - 1]?.key ?? '') ? '4px solid #0d6efd' : undefined
+                          } : undefined}
+                        >
+                          <div className="d-flex flex-column gap-1" style={isHighlighted ? { color: '#084298' } : undefined}>
                             <Cell v={display} />
                             {isEtapa && (
                               <label className="small d-flex align-items-center gap-2">
@@ -516,7 +569,8 @@ useEffect(() => {
                     )
                   })}
                 </tr>
-              ))}
+              )
+            })}
             </tbody>
           </table>
           </div>
@@ -671,4 +725,35 @@ interface CellProps { v: unknown }
 function Cell({ v }: CellProps) {
   const text = oneLine(v);
   return <span title={text} style={{ display: 'inline-block', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{text}</span>;
+}
+
+// Estilos para highlight
+const styles = `
+  .highlight-row {
+    position: relative;
+    z-index: 10;
+  }
+  .highlight-row td {
+    background-color: #cfe2ff !important;
+    color: #084298 !important;
+    border-top: 2px solid #0d6efd !important;
+    border-bottom: 2px solid #0d6efd !important;
+    font-weight: 600 !important;
+  }
+  .highlight-row td:first-child {
+    border-left: 4px solid #0d6efd !important;
+  }
+  .highlight-row td:last-child {
+    border-right: 4px solid #0d6efd !important;
+  }
+  .highlight-row td span {
+    color: #084298 !important;
+  }
+`
+
+if (typeof document !== 'undefined' && !document.getElementById('highlight-styles')) {
+  const styleSheet = document.createElement('style')
+  styleSheet.id = 'highlight-styles'
+  styleSheet.textContent = styles
+  document.head.appendChild(styleSheet)
 }

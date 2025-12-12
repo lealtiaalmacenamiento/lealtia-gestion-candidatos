@@ -54,6 +54,7 @@ export async function GET(req: Request) {
   const verEliminados = url.searchParams.get('eliminados') === '1'
   const ct = url.searchParams.get('ct')
   const emailCand = url.searchParams.get('email_agente')
+  
   if (ct) {
     // Búsqueda rápida por CT (no eliminado)
     const { data, error } = await supabase
@@ -64,8 +65,13 @@ export async function GET(req: Request) {
       .limit(1)
       .maybeSingle()
     if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data || null)
+    if (!data) return NextResponse.json(null)
+    
+    // Enriquecer con conteo de pólizas
+    const enriched = await enrichCandidatoWithPolizas(data)
+    return NextResponse.json(enriched)
   }
+  
   if (emailCand) {
     // Búsqueda por email (normalizado a minúsculas) en no eliminados
     const email = emailCand.trim().toLowerCase()
@@ -77,8 +83,13 @@ export async function GET(req: Request) {
       .limit(1)
       .maybeSingle()
     if (error && error.code !== 'PGRST116') return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data || null)
+    if (!data) return NextResponse.json(null)
+    
+    // Enriquecer con conteo de pólizas
+    const enriched = await enrichCandidatoWithPolizas(data)
+    return NextResponse.json(enriched)
   }
+  
   const query = supabase
     .from('candidatos')
     .select('*')
@@ -86,7 +97,139 @@ export async function GET(req: Request) {
     .order('id_candidato', { ascending: true })
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  
+  // Enriquecer todos los candidatos con conteo de pólizas
+  const enriched = await enrichCandidatosWithPolizas(data || [])
+  return NextResponse.json(enriched)
+}
+
+/**
+ * Enriquece un candidato con los conteos de pólizas GMM y VI desde la base de datos
+ */
+async function enrichCandidatoWithPolizas(candidato: any): Promise<any> {
+  if (!candidato.email_agente) {
+    // Si no tiene email_agente, retornar sin modificar
+    return candidato
+  }
+  
+  const email = candidato.email_agente.toLowerCase()
+  
+  // Buscar usuario por email para obtener id_auth
+  const { data: usuario } = await supabase
+    .from('usuarios')
+    .select('id_auth')
+    .eq('email', email)
+    .eq('activo', true)
+    .maybeSingle()
+  
+  if (!usuario?.id_auth) {
+    // Usuario no existe o no tiene id_auth, retornar sin modificar
+    return candidato
+  }
+  
+  // Obtener pólizas del agente agrupadas por tipo de producto
+  const { data: polizas } = await supabase
+    .from('polizas')
+    .select('puntos_actuales, producto_parametros!inner(product_types!inner(code)), clientes!inner(asesor_id, activo)')
+    .eq('clientes.asesor_id', usuario.id_auth)
+    .eq('clientes.activo', true)
+    .eq('estatus', 'EN_VIGOR')
+  
+  let seg_gmm = 0
+  let seg_vida = 0
+  
+  for (const poliza of polizas || []) {
+    const puntos = typeof poliza.puntos_actuales === 'number' ? poliza.puntos_actuales : 0
+    const productCode = (poliza as any)?.producto_parametros?.product_types?.code?.toUpperCase() || ''
+    
+    if (productCode === 'GMM') {
+      seg_gmm += puntos
+    } else if (productCode === 'VI') {
+      seg_vida += puntos
+    }
+  }
+  
+  // Retornar candidato enriquecido
+  // Los valores calculados se prefieren sobre los almacenados, pero se permiten overrides manuales
+  // Si el usuario editó manualmente, esos valores prevalecen (verificado en el PUT)
+  return {
+    ...candidato,
+    seg_gmm: Number(seg_gmm.toFixed(1)), // GMM permite 0.5
+    seg_vida: Math.round(seg_vida) // VI solo enteros
+  }
+}
+
+/**
+ * Enriquece múltiples candidatos con los conteos de pólizas de forma eficiente
+ */
+async function enrichCandidatosWithPolizas(candidatos: any[]): Promise<any[]> {
+  if (!candidatos.length) return candidatos
+  
+  // Obtener todos los emails de agentes únicos
+  const emails = [...new Set(candidatos.map(c => c.email_agente).filter(Boolean).map(e => e.toLowerCase()))]
+  if (!emails.length) return candidatos
+  
+  // Buscar usuarios por emails
+  const { data: usuarios } = await supabase
+    .from('usuarios')
+    .select('id_auth, email')
+    .in('email', emails)
+    .eq('activo', true)
+  
+  if (!usuarios?.length) return candidatos
+  
+  const emailToIdAuth = new Map(usuarios.map(u => [u.email.toLowerCase(), u.id_auth]))
+  const idAuthList = usuarios.map(u => u.id_auth).filter(Boolean)
+  
+  if (!idAuthList.length) return candidatos
+  
+  // Obtener todas las pólizas de estos agentes
+  const { data: polizas } = await supabase
+    .from('polizas')
+    .select('puntos_actuales, producto_parametros!inner(product_types!inner(code)), clientes!inner(asesor_id, activo)')
+    .in('clientes.asesor_id', idAuthList)
+    .eq('clientes.activo', true)
+    .eq('estatus', 'EN_VIGOR')
+  
+  // Agrupar puntos por id_auth y tipo de producto
+  const puntosMap = new Map<string, { gmm: number; vi: number }>()
+  
+  for (const poliza of polizas || []) {
+    const asesorId = (poliza as any)?.clientes?.asesor_id
+    if (!asesorId) continue
+    
+    const puntos = typeof poliza.puntos_actuales === 'number' ? poliza.puntos_actuales : 0
+    const productCode = (poliza as any)?.producto_parametros?.product_types?.code?.toUpperCase() || ''
+    
+    if (!puntosMap.has(asesorId)) {
+      puntosMap.set(asesorId, { gmm: 0, vi: 0 })
+    }
+    
+    const current = puntosMap.get(asesorId)!
+    if (productCode === 'GMM') {
+      current.gmm += puntos
+    } else if (productCode === 'VI') {
+      current.vi += puntos
+    }
+  }
+  
+  // Enriquecer candidatos
+  return candidatos.map(candidato => {
+    if (!candidato.email_agente) return candidato
+    
+    const email = candidato.email_agente.toLowerCase()
+    const idAuth = emailToIdAuth.get(email)
+    
+    if (!idAuth) return candidato
+    
+    const puntos = puntosMap.get(idAuth) || { gmm: 0, vi: 0 }
+    
+    return {
+      ...candidato,
+      seg_gmm: Number(puntos.gmm.toFixed(1)),
+      seg_vida: Math.round(puntos.vi)
+    }
+  })
 }
 
 export async function POST(req: Request) {

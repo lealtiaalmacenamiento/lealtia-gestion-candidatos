@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import { useDialog } from '@/components/ui/DialogProvider'
 
@@ -131,8 +131,8 @@ export default function PendientesPage() {
           </thead>
           <tbody>
             {view.map((r) => (
-              <>
-              <tr key={r.id}>
+              <React.Fragment key={r.id}>
+              <tr>
                 <td className="small">{r.tipo}</td>
                 <td className="small">{r.tipo==='poliza' ? (r.poliza_numero || '—') : (r.cliente_code || r.cliente_id || r.ref_label || '—')}</td>
                 <td className="small">{r.cliente_nombre || r.ref_label || '—'}</td>
@@ -150,7 +150,7 @@ export default function PendientesPage() {
                 </td>
               </tr>
         {['cliente','poliza'].includes(r.tipo) && Array.isArray(r.changes) && r.changes.length>0 && (
-                <tr key={`${r.id}-details`}>
+                <tr>
                   <td colSpan={6} className="bg-light">
                     <div className="p-2 small">
           <strong>Cambios propuestos {r.tipo==='poliza' ? 'de póliza' : 'de cliente'}</strong>
@@ -174,7 +174,7 @@ export default function PendientesPage() {
                   </td>
                 </tr>
               )}
-              </>
+              </React.Fragment>
             ))}
             {view.length===0 && (<tr><td colSpan={6} className="text-center text-muted small py-3">Sin pendientes</td></tr>)}
           </tbody>

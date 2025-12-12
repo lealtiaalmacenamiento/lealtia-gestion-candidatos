@@ -173,6 +173,17 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
 
   // Ya no se valida unicidad de fecha_tentativa_de_examen; múltiples candidatos pueden compartirla.
 
+  // Permitir override manual de seg_gmm y seg_vida si vienen en el payload
+  // Si no vienen, se mantendrán los valores existentes (que pueden ser calculados o manuales)
+  if (typeof (body as any).seg_gmm === 'number') {
+    // Validar que sea un número válido para GMM (permite 0.5)
+    ;(body as any).seg_gmm = Math.max(0, Number(((body as any).seg_gmm).toFixed(1)))
+  }
+  if (typeof (body as any).seg_vida === 'number') {
+    // Validar que sea un entero válido para VI
+    ;(body as any).seg_vida = Math.max(0, Math.round((body as any).seg_vida))
+  }
+
   // Si no existe trigger en BD que actualice ultima_actualizacion, lo hacemos aquí
   body.ultima_actualizacion = new Date().toISOString()
   // Recalcular proceso ignorando lo que venga del cliente
