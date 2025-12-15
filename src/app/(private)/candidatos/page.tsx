@@ -10,10 +10,8 @@ import BasePage from '@/components/BasePage';
 import Link from 'next/link';
 
 export default function CandidatosPage() {
-  // ...existing code...
   const [fichaMensajes, setFichaMensajes] = useState<Record<string, string>>({});
   const [mensajesCargados, setMensajesCargados] = useState(false);
-  // DEBUG: Mostrar el valor de fichaMensajes en pantalla
   const debugFichaMensajes = JSON.stringify(fichaMensajes);
   const [candidatos, setCandidatos] = useState<Candidato[]>([]);
   const [notif, setNotif] = useState<string | null>(null);
@@ -188,14 +186,12 @@ export default function CandidatosPage() {
                                 const mensajes = fichaMensajes && typeof fichaMensajes === 'object' ? fichaMensajes : {};
                                 console.debug('[DEBUG][PAGE] fichaMensajes justo antes de exportar:', mensajes);
                                 if (!mensajes || Object.keys(mensajes).length === 0) {
-                                  console.error('[ERROR][PAGE] fichaMensajes está vacío o undefined. No se puede exportar PDF.');
-                                  alert('No se puede exportar el PDF porque los mensajes parametrizados no están cargados.');
-                                  return;
+                                  console.warn('[WARN][PAGE] fichaMensajes vacío; se exportará PDF sin mensajes parametrizados.');
                                 }
                                 exportCandidatoPDF({ ...c, proceso }, mensajes);
                               }}
                               className="btn btn-outline-secondary btn-sm flex-fill"
-                              disabled={!mensajesCargados || !fichaMensajes || Object.keys(fichaMensajes).length === 0}
+                              disabled={!mensajesCargados}
                             >
                               PDF
                             </button>
