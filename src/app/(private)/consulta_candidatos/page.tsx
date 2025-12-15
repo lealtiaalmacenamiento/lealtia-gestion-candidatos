@@ -548,14 +548,13 @@ useEffect(() => {
                                   alert('Los mensajes aún no están cargados. Intenta de nuevo en unos segundos.');
                                   return;
                                 }
-                                if (!fichaMensajes || Object.keys(fichaMensajes).length === 0) {
-                                  console.error('[ERROR][CONSULTA] fichaMensajes está vacío o undefined. No se puede exportar PDF.');
-                                  alert('No se puede exportar el PDF porque los mensajes parametrizados no están cargados.');
-                                  return;
+                                const mensajes = (fichaMensajes && typeof fichaMensajes === 'object') ? fichaMensajes : {};
+                                if (!mensajes || Object.keys(mensajes).length === 0) {
+                                  console.warn('[WARN][CONSULTA] fichaMensajes vacío; se exportará PDF sin mensajes parametrizados.');
                                 }
-                                exportCandidatoPDF(c, fichaMensajes);
+                                exportCandidatoPDF(c, mensajes);
                               }}
-                              disabled={!mensajesCargados || !fichaMensajes || Object.keys(fichaMensajes).length === 0}
+                              disabled={!mensajesCargados}
                             >PDF</button>
                             {!c.email_agente && <button className="btn btn-sm btn-outline-success me-1" onClick={()=>openAgenteModal(c)} title="Asignar email agente">Asignar agente</button>}
                             <button
