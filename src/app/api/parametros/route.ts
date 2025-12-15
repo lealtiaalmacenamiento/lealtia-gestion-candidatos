@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabaseClient'
+import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import type { Parametro } from '@/types'
 import { logAccion } from '@/lib/logger'
 
@@ -7,6 +7,8 @@ import { logAccion } from '@/lib/logger'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const tipo = searchParams.get('tipo')
+
+  const supabase = ensureAdminClient()
 
   let query = supabase.from('Parametros').select('*')
   if (tipo) {
@@ -29,6 +31,7 @@ export async function GET(request: Request) {
 // Actualizar parámetro
 export async function PUT(request: Request) {
   try {
+    const supabase = ensureAdminClient()
     const raw: Partial<Parametro> & { solicitante?: string } = await request.json()
     const { id, valor, descripcion } = raw
     if (!id) {
@@ -64,6 +67,7 @@ export async function PUT(request: Request) {
 // Crear parámetro (utilizado para seeds faltantes en runtime)
 export async function POST(request: Request) {
   try {
+    const supabase = ensureAdminClient()
     const raw: Partial<Parametro> & { solicitante?: string } = await request.json()
     if (!raw.tipo || !raw.clave) {
       return NextResponse.json({ success: false, message: 'Faltan campos requeridos (tipo, clave)' }, { status: 400 })
