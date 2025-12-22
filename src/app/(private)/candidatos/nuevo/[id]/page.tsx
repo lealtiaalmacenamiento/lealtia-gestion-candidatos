@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { getCandidatoById, updateCandidato, getCedulaA1, getEfc, getCandidatoByCT, getCandidatoByEmail } from '@/lib/api'
-import { calcularDerivados, etiquetaProceso, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText } from '@/lib/proceso'
+import { calcularDerivados, etiquetaProceso, parseOneDate, parseAllRangesWithAnchor, monthIndexFromText, type Range } from '@/lib/proceso'
 import type { CedulaA1, Efc, Candidato } from '@/types'
 import BasePage from '@/components/BasePage'
 import { MONTH_OPTIONS, buildYearOptions } from '@/lib/mesConexion'
@@ -155,45 +155,47 @@ export default function EditarCandidato() {
 
   // Helpers para filtrar opciones futuras (misma lógica que en alta)
   const todayUTC = () => { const n = new Date(); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())).getTime() }
-  const getYearForCedula = (m: CedulaA1): number | null => {
+  const pickYearFromRanges = (ranges: Range[], now: number): number | null => {
+    const future = ranges.filter(r => r.end.getTime() >= now)
+    if (!future.length) return null
+    return Math.min(...future.map(r => r.start.getUTCFullYear()))
+  }
+  const normalizeYear = (year: number | null): number | null => {
+    if (year === null) return null
+    const currentYear = new Date().getUTCFullYear()
+    return Math.max(year, currentYear)
+  }
+  const getRawYearForCedula = (m: CedulaA1): number | null => {
     const t = todayUTC()
     const anchorMonth = monthIndexFromText(m.mes) || new Date().getUTCMonth()+1
     const currentYear = new Date().getUTCFullYear()
-    // Verificar año actual
-    const regRangesCurrent = parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear })
-    const validRegCurrent = regRangesCurrent.some(r => r.end.getTime() >= t)
-    if (validRegCurrent) return currentYear
-    // Verificar año siguiente
-    const regRangesNext = parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear + 1 })
-    const validRegNext = regRangesNext.some(r => r.end.getTime() >= t)
-    if (validRegNext) return currentYear + 1
-    return null
+    const ranges = [
+      ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear }),
+      ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear + 1 })
+    ]
+    return pickYearFromRanges(ranges, t)
   }
-  const isFutureCedula = (m: CedulaA1) => getYearForCedula(m) !== null
-  const getYearForEfc = (e: Efc): number | null => {
+  const getYearForCedula = (m: CedulaA1): number | null => {
+    return normalizeYear(getRawYearForCedula(m))
+  }
+  const isFutureCedula = (m: CedulaA1) => getRawYearForCedula(m) !== null
+  const getRawYearForEfc = (e: Efc): number | null => {
     const t = todayUTC()
     const anchorMonth = monthIndexFromText(e.efc) || monthIndexFromText(form.mes as string) || new Date().getUTCMonth()+1
     const currentYear = new Date().getUTCFullYear()
-    
-    const checkYear = (year: number) => {
-      const ovRanges = parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear: year })
-      const playbookRanges = parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear: year })
-      const preEscuelaRanges = parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear: year })
-      const cdpRanges = parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear: year })
-      const validOV = ovRanges.some(r => r.end.getTime() >= t)
-      const validPlay = playbookRanges.some(r => r.end.getTime() >= t)
-      const validPre = preEscuelaRanges.some(r => r.end.getTime() >= t)
-      const validCDP = cdpRanges.some(r => r.end.getTime() >= t)
-      return (validOV || validPlay || validPre || validCDP)
-    }
-    
-    // Verificar año actual primero
-    if (checkYear(currentYear)) return currentYear
-    // Verificar año siguiente
-    if (checkYear(currentYear + 1)) return currentYear + 1
-    return null
+    const collect = (year: number) => ([
+      ...parseAllRangesWithAnchor(e.periodo_para_ingresar_folio_oficina_virtual, { anchorMonth, anchorYear: year }),
+      ...parseAllRangesWithAnchor(e.periodo_para_playbook, { anchorMonth, anchorYear: year }),
+      ...parseAllRangesWithAnchor(e.pre_escuela_sesion_unica_de_arranque, { anchorMonth, anchorYear: year }),
+      ...parseAllRangesWithAnchor(e.fecha_limite_para_presentar_curricula_cdp, { anchorMonth, anchorYear: year })
+    ])
+    const ranges = [...collect(currentYear), ...collect(currentYear + 1)]
+    return pickYearFromRanges(ranges, t)
   }
-  const isFutureEfc = (e: Efc) => getYearForEfc(e) !== null
+  const getYearForEfc = (e: Efc): number | null => {
+    return normalizeYear(getRawYearForEfc(e))
+  }
+  const isFutureEfc = (e: Efc) => getRawYearForEfc(e) !== null
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target

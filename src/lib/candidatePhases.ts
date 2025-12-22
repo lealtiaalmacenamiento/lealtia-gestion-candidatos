@@ -2,6 +2,7 @@
  * Constantes y utilidades para fases del proceso de candidatos
  * Usadas para el calendario visual en la ficha PDF y embudo de candidatos
  */
+import { monthIndexFromText, parseOneDateWithAnchor, parseRangeWithAnchor, type Anchor } from './proceso'
 
 export type PhaseKey =
   | 'prospeccion'
@@ -105,46 +106,52 @@ export function extractCandidateEvents(candidato: {
 }): CandidateEvent[] {
   const events: CandidateEvent[] = []
 
-  // Mapa de meses en español
-  const mesesMap: Record<string, number> = {
-    'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3,
-    'mayo': 4, 'junio': 5, 'julio': 6, 'agosto': 7,
-    'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11
+  const deriveAnchor = (): Anchor => {
+    const tryAnchorDate = (raw?: string | null): Date | null => {
+      if (!raw) return null
+      const trimmed = raw.trim()
+      if (!trimmed) return null
+      const isoMonth = trimmed.match(/^(\d{4})-(\d{2})$/)
+      if (isoMonth) {
+        const [, y, m] = isoMonth
+        return new Date(Date.UTC(Number(y), Number(m) - 1, 1))
+      }
+      const isoDay = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+      if (isoDay) {
+        const [, y, m, d] = isoDay
+        return new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
+      }
+      const monthIdx = monthIndexFromText(trimmed)
+      if (monthIdx) {
+        const yearMatch = trimmed.match(/(\d{4})/)
+        const year = yearMatch ? Number(yearMatch[1]) : new Date().getUTCFullYear()
+        return new Date(Date.UTC(year, monthIdx - 1, 1))
+      }
+      const parsed = new Date(trimmed)
+      return Number.isNaN(parsed.getTime()) ? null : parsed
+    }
+
+    const anchorDate =
+      tryAnchorDate((candidato as any).mes_conexion) ||
+      tryAnchorDate((candidato as any).mes) ||
+      tryAnchorDate((candidato as any).efc) ||
+      tryAnchorDate(candidato.fecha_tentativa_de_examen) ||
+      tryAnchorDate(candidato.fecha_creacion_ct) ||
+      tryAnchorDate(candidato.fecha_creacion_pop) ||
+      new Date()
+
+    return {
+      anchorMonth: anchorDate.getUTCMonth() + 1,
+      anchorYear: anchorDate.getUTCFullYear()
+    }
   }
 
-  // Helper para parsear fechas en múltiples formatos
+  const anchor = deriveAnchor()
+
+  // Helper para parsear fechas en múltiples formatos con anclaje (MES/EFC)
   const parseDate = (dateStr?: string): Date | null => {
     if (!dateStr) return null
-    
-    // Formato ISO (2025-10-21)
-    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-      const parsed = new Date(dateStr)
-      return isNaN(parsed.getTime()) ? null : parsed
-    }
-    
-    // Formato rango ISO (2025-01-06 a 2025-01-17)
-    if (dateStr.includes(' a ') && /^\d{4}/.test(dateStr)) {
-      const firstDate = dateStr.split(' a ')[0].trim()
-      const parsed = new Date(firstDate)
-      return isNaN(parsed.getTime()) ? null : parsed
-    }
-    
-    // Formato español: "4 al 8 agosto", "18 al 29 agosto", "29 de agosto", "1 al 5 septiembre"
-    const currentYear = new Date().getFullYear()
-    
-    // Patrón: "DD [al DD] [de] NOMBRE_MES"
-    const match = dateStr.match(/(\d{1,2})(?:\s+al\s+\d{1,2})?\s+(?:de\s+)?(\w+)/i)
-    if (match) {
-      const day = parseInt(match[1], 10)
-      const monthName = match[2].toLowerCase()
-      const monthIndex = mesesMap[monthName]
-      
-      if (monthIndex !== undefined && day >= 1 && day <= 31) {
-        return new Date(currentYear, monthIndex, day)
-      }
-    }
-    
-    return null
+    return parseOneDateWithAnchor(dateStr, anchor)
   }
   
   // Debug: log de datos recibidos
@@ -177,43 +184,32 @@ export function extractCandidateEvents(candidato: {
   // Helper para extraer rango de fechas y generar evento por cada día
   const addEventRange = (dateStr: string | undefined, phase: PhaseKey, label: string, etapaKey?: string) => {
     if (!dateStr) return
-    
+
+    const completedInfo = etapaKey ? candidato.etapas_completadas?.[etapaKey] : undefined
+
+    const range = parseRangeWithAnchor(dateStr, anchor)
+    if (range) {
+      const oneDay = 24 * 60 * 60 * 1000
+      for (let ts = range.start.getTime(), i = 0; ts <= range.end.getTime(); ts += oneDay, i++) {
+        events.push({
+          phase,
+          date: new Date(ts),
+          completed: !!completedInfo?.completed,
+          label: `${label} (día ${i + 1})`
+        })
+      }
+      return
+    }
+
     const firstDate = parseDate(dateStr)
     if (!firstDate) return
-    
-    const completedInfo = etapaKey ? candidato.etapas_completadas?.[etapaKey] : undefined
-    
-    // Detectar si es un rango
-    const rangeMatch = dateStr.match(/(\d{1,2})\s+al\s+(\d{1,2})\s+(?:de\s+)?(\w+)/i)
-    
-    if (rangeMatch) {
-      // Es un rango: "4 al 8 agosto"
-      const startDay = parseInt(rangeMatch[1], 10)
-      const endDay = parseInt(rangeMatch[2], 10)
-      const monthName = rangeMatch[3].toLowerCase()
-      const monthIndex = mesesMap[monthName]
-      const currentYear = new Date().getFullYear()
-      
-      if (monthIndex !== undefined) {
-        // Agregar evento para cada día del rango
-        for (let day = startDay; day <= endDay; day++) {
-          events.push({
-            phase,
-            date: new Date(currentYear, monthIndex, day),
-            completed: !!completedInfo?.completed,
-            label: `${label} (día ${day - startDay + 1})`
-          })
-        }
-      }
-    } else {
-      // Es una fecha simple
-      events.push({
-        phase,
-        date: firstDate,
-        completed: !!completedInfo?.completed,
-        label
-      })
-    }
+
+    events.push({
+      phase,
+      date: firstDate,
+      completed: !!completedInfo?.completed,
+      label
+    })
   }
 
   // 2. Registro y envío de documentos
