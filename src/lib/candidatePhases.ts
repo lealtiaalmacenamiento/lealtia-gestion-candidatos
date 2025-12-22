@@ -92,6 +92,9 @@ export interface CandidateEvent {
 export function extractCandidateEvents(candidato: {
   fecha_creacion_pop?: string
   fecha_creacion_ct?: string
+  mes_conexion?: string | null | undefined
+  mes?: string | null | undefined
+  efc?: string | null | undefined
   periodo_para_registro_y_envio_de_documentos?: string
   capacitacion_cedula_a1?: string
   fecha_tentativa_de_examen?: string
@@ -132,9 +135,9 @@ export function extractCandidateEvents(candidato: {
     }
 
     const anchorDate =
-      tryAnchorDate((candidato as any).mes_conexion) ||
-      tryAnchorDate((candidato as any).mes) ||
-      tryAnchorDate((candidato as any).efc) ||
+      tryAnchorDate(candidato.mes_conexion) ||
+      tryAnchorDate(candidato.mes) ||
+      tryAnchorDate(candidato.efc) ||
       tryAnchorDate(candidato.fecha_tentativa_de_examen) ||
       tryAnchorDate(candidato.fecha_creacion_ct) ||
       tryAnchorDate(candidato.fecha_creacion_pop) ||
