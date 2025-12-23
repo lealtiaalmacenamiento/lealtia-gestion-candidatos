@@ -120,11 +120,7 @@ export default function NuevoCandidato() {
     if (!future.length) return null
     return Math.min(...future.map(r => r.start.getUTCFullYear()))
   }
-  const normalizeYear = (year: number | null): number | null => {
-    if (year === null) return null
-    const currentYear = new Date().getUTCFullYear()
-    return Math.max(year, currentYear)
-  }
+  const normalizeYear = (year: number | null): number | null => year
   const getRawYearForCedula = (m: CedulaA1): number | null => {
     const t = todayUTC()
     const anchorMonth = monthIndexFromText(m.mes) || new Date().getUTCMonth()+1
