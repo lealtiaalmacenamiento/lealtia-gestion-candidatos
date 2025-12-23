@@ -199,6 +199,27 @@ export function parseOneDateWithAnchor(raw?: string, anchor?: Anchor): Date | nu
 export function parseRangeWithAnchor(raw?: string, anchor?: Anchor): Range | null {
   if (!raw) return null
   const t = raw.trim()
+  // Caso con dos meses distintos en un mismo rango: "31 marzo al 02 abril 2026".
+  // Usamos el año explícito si viene al final; si falta, anclamos al año de referencia
+  // y ajustamos año+1 si el segundo mes es anterior al primero (cruce de año).
+  const twoMonths = t.match(/^(\d{1,2})\s+([a-zA-Záéíóúñ]+)\s+al\s+(\d{1,2})\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{4}))?$/i)
+  if (twoMonths) {
+    const [, d1Str, m1Str, d2Str, m2Str, yRaw] = twoMonths
+    const m1 = MESES[m1Str.toLowerCase()]
+    const m2 = MESES[m2Str.toLowerCase()]
+    if (m1 && m2) {
+      const baseYear = yRaw ? Number(yRaw) : (anchor ? anchor.anchorYear : new Date().getUTCFullYear())
+      const year1 = baseYear
+      const year2 = m2 < m1 ? baseYear + 1 : baseYear
+      const d1 = Number(d1Str)
+      const d2 = Number(d2Str)
+      if (d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31) {
+        const start = new Date(Date.UTC(year1, m1 - 1, d1))
+        const end = new Date(Date.UTC(year2, m2 - 1, d2))
+        return { start, end }
+      }
+    }
+  }
   // Rango "1-5 sep (año?)"
   const rg = t.match(/^(\d{1,2})\s*(?:-|al)\s*(\d{1,2})\s+([a-zA-Záéíóúñ]+)(?:\s+(\d{4}))?$/i)
   if (rg) {
