@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthProvider';
 import Link from 'next/link';
 import FullScreenLoader from '@/components/ui/FullScreenLoader';
 import { normalizeRole } from '@/lib/roles';
+import AlertasPagos from '@/components/dashboard/AlertasPagos';
 
 const modules = [
   { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['supervisor', 'admin'], color: 'primary' },
@@ -21,6 +22,8 @@ const modules = [
   { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['supervisor','admin','agente'], color: 'primary' },
   // Fase 5: Campañas
   { key: 'campanias', title: 'Campañas', desc: 'Campañas promocionales y progreso', icon: 'trophy', roles: ['supervisor','admin','agente','promotor'], color: 'success' },
+  // Fase 6: Comisiones
+  { key: 'dashboard/comisiones', title: 'Comisiones', desc: 'Dashboard de comisiones y pagos', icon: 'cash-coin', roles: ['supervisor','admin','agente'], color: 'success' },
   // Pendientes de aprobación (cliente / póliza)
   { key: 'pendientes', title: 'Cambios pendientes', desc: 'Aprobar solicitudes de cliente y póliza', icon: 'inboxes', roles: ['supervisor','admin'], color: 'danger' },
   // Módulos especializados (opcionalmente ocultables si usas solo la vista unificada)
@@ -130,7 +133,14 @@ export default function HomeDashboard() {
                 <div className="col-12">
                   <div className="alert alert-warning">No tienes un rol válido para ver el menú.</div>
                 </div>
-              )}
+              )}  
+        </div>
+        
+        {/* Widget de Alertas de Pagos */}
+        <div className="row mt-4">
+          <div className="col-lg-6">
+            <AlertasPagos />
+          </div>
         </div>
       </div>
     </>

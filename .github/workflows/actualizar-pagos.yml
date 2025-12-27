@@ -1,0 +1,45 @@
+name: Actualizar pagos vencidos (Fase 6)
+
+on:
+  schedule:
+    # Ejecutar diariamente a las 2:00 AM CST (8:00 AM UTC)
+    # CST = UTC-6, entonces 2 AM CST = 8 AM UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    # Permitir ejecución manual desde GitHub UI
+
+jobs:
+  actualizar-pagos:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Llamar Edge Function
+        env:
+          SUPABASE_URL: https://wqutrjnxvcgmyyiyjmsd.supabase.co
+        run: |
+          echo "🔄 Ejecutando actualización de pagos vencidos..."
+          
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.REPORTES_CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            ${SUPABASE_URL}/functions/v1/actualizar-pagos-vencidos)
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+          
+          echo "📊 HTTP Status: $http_code"
+          echo "📋 Response: $body"
+          
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Error: Failed to update payments"
+            echo "$body"
+            exit 1
+          fi
+          
+          echo "✅ Pagos actualizados exitosamente"
+
+      - name: Notificar resultado (opcional)
+        if: failure()
+        run: |
+          echo "⚠️ La actualización de pagos falló. Revisar logs."
+          # TODO: Aquí podrías agregar notificación por email o Slack si es necesario
