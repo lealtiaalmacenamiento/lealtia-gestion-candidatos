@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     const { data: cand, error: candErr } = await supabase
       .from('candidatos')
       .select('id_candidato')
-      .eq('email_agente', emailLower)
+      .ilike('email_agente', emailLower) // tolera mayúsculas/minúsculas en el correo almacenado
       .eq('eliminado', false)
       .limit(1)
       .maybeSingle()
