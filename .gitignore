@@ -30,6 +30,25 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# temp data/migrations/scripts (no commitear)
+query-temp.js
+_tmp_query.js
+recalc_puntos_poliza_def.txt
+recalc_puntos_poliza_fixed.sql
+temp_recalc_fix.sql
+scripts/crear-datos-*.js
+scripts/crear-datos-*.sql
+scripts/datos-*.sql
+scripts/ejecutar-datos-usuarios.js
+scripts/fix-encoding-notificaciones.sql
+scripts/insert-pagos-prueba-fase6.sql
+scripts/test-polizas-fase6.sql
+scripts/tmp_check_*.js
+supabase/tmp_fix_fn_generar.sql
+supabase/migrations/20251227_fix_all_search_path_issues.sql
+docs/FASE6_DATOS_PRUEBA_CREADOS.md
+docs/FASE6_VALIDACION.md
+
 # env files (can opt-in for committing if needed)
 .env*
 
