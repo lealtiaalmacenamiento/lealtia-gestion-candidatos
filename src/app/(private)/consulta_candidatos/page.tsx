@@ -72,6 +72,7 @@ function ConsultaCandidatosInner() {
   const toggleEtapa = async (c: CandidatoExt, etapaKey: keyof Candidato) => {
     // Mapear etiqueta de etapa a clave de etapas_completadas
     const map: Record<string, string> = {
+      fecha_tentativa_de_examen: 'fecha_tentativa_de_examen',
       periodo_para_registro_y_envio_de_documentos: 'periodo_para_registro_y_envio_de_documentos',
       capacitacion_cedula_a1: 'capacitacion_cedula_a1',
       periodo_para_ingresar_folio_oficina_virtual: 'periodo_para_ingresar_folio_oficina_virtual',
@@ -107,6 +108,7 @@ function ConsultaCandidatosInner() {
     if (!pendingUncheck) return
     const { c, key: etapaKey } = pendingUncheck
     const map: Record<string, string> = {
+      fecha_tentativa_de_examen: 'fecha_tentativa_de_examen',
       periodo_para_registro_y_envio_de_documentos: 'periodo_para_registro_y_envio_de_documentos',
       capacitacion_cedula_a1: 'capacitacion_cedula_a1',
       periodo_para_ingresar_folio_oficina_virtual: 'periodo_para_ingresar_folio_oficina_virtual',
