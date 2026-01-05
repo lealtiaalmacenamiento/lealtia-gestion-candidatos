@@ -112,15 +112,29 @@ export async function POST(req: Request) {
   try {
     const { data: reqRow } = await supa
       .from('poliza_update_requests')
-      .select('solicitante_id, poliza_id')
+      .select('solicitante_id, poliza_id, payload_propuesto')
       .eq('id', body.request_id)
       .maybeSingle()
     polizaId = reqRow?.poliza_id || null
+
     if (polizaId) {
+      // Fijar explícitamente fecha_limite_pago si vino en el payload (fallback en caso de que la RPC no la persista)
+      try {
+        const proposed = (reqRow?.payload_propuesto as { fecha_limite_pago?: string | null } | null)?.fecha_limite_pago
+        if (proposed !== undefined) {
+          const admin = getServiceClient()
+          await admin
+            .from('polizas')
+            .update({ fecha_limite_pago: proposed || null })
+            .eq('id', polizaId)
+        }
+      } catch (err) {
+        if (debugOn) console.debug('[apply_poliza_update][debug] fallback fecha_limite_pago update err', err)
+      }
+
       // Forzar recálculo inmediato (fallback en caso de que el trigger o la RPC no actualicen el cache por RLS)
       try {
         const admin = getServiceClient()
-        // Intentar RPC directa primero
         await admin.rpc('recalc_puntos_poliza', { p_poliza_id: polizaId })
       } catch (e) {
         if (debugOn) console.debug('[apply_poliza_update][debug] recalc_puntos_poliza via service client failed/ignored', e)
@@ -131,23 +145,173 @@ export async function POST(req: Request) {
         .select('id, prima_input, prima_moneda, poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot,puntos_total,clasificacion)')
         .eq('id', polizaId)
         .maybeSingle()
-  if (pRow) {
-    const puntos_cache = (pRow as { poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null; puntos_total?: number|null; clasificacion?: string|null }|null }).poliza_puntos_cache ?? null
-    const pct = puntos_cache?.base_factor ?? null
-    const primaMXN = puntos_cache?.prima_anual_snapshot ?? null
-    const comision_mxn = (pct!=null && primaMXN!=null) ? Number(((primaMXN * pct) / 100).toFixed(2)) : null
-    updatedPoliza = {
-      id: (pRow as { id: string }).id,
-      prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null,
-      prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null,
-      puntos_cache,
-      comision_mxn
+
+      // Regenerar calendario de pagos cuando se actualiza la póliza (sin depender del cliente)
+      try {
+        const admin = getServiceClient()
+        const { data: poliza } = await admin
+          .from('polizas')
+          .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check')
+          .eq('id', polizaId)
+          .single()
+
+        if (poliza && poliza.estatus !== 'CANCELADA' && poliza.periodicidad_pago && poliza.fecha_emision) {
+          const map = {
+            mensual: { divisor: 12, step: 1 },
+            trimestral: { divisor: 4, step: 3 },
+            semestral: { divisor: 2, step: 6 },
+            anual: { divisor: 1, step: 12 }
+          } as const
+          const cfg = map[poliza.periodicidad_pago as keyof typeof map]
+
+          if (cfg) {
+            await admin
+              .from('poliza_pagos_mensuales')
+              .delete()
+              .eq('poliza_id', polizaId)
+              .neq('estado', 'pagado')
+
+            const emision = new Date(poliza.fecha_emision)
+            const startYear = emision.getUTCFullYear()
+            const startMonth = emision.getUTCMonth()
+            const diaPago = poliza.dia_pago ?? 1
+
+            const baseFechaPrimerPago = new Date(Date.UTC(startYear, startMonth, 1))
+            baseFechaPrimerPago.setUTCDate(diaPago)
+
+            const baseDiaLimite = (() => {
+              if (poliza.fecha_limite_pago) {
+                const d = new Date(poliza.fecha_limite_pago)
+                if (!Number.isNaN(d.valueOf())) return d.getUTCDate()
+              }
+              return diaPago
+            })()
+            const baseFechaLimite = new Date(Date.UTC(startYear, startMonth, 1))
+            baseFechaLimite.setUTCDate(baseDiaLimite)
+
+            const montoPeriodo = Number((Number(poliza.prima_mxn || 0) / cfg.divisor).toFixed(2))
+            const pagosToInsert: Array<{ poliza_id: string; periodo_mes: string; fecha_programada: string; fecha_limite: string; monto_programado: number; estado: string; created_by?: string | null }> = []
+
+            for (let i = 0; i < cfg.divisor; i++) {
+              const offsetMonths = i * cfg.step
+              const periodo = new Date(Date.UTC(startYear, startMonth + offsetMonths, 1))
+              const fechaProg = new Date(baseFechaPrimerPago)
+              fechaProg.setUTCMonth(fechaProg.getUTCMonth() + offsetMonths)
+              const fechaLimCandidate = new Date(baseFechaLimite)
+              fechaLimCandidate.setUTCMonth(fechaLimCandidate.getUTCMonth() + offsetMonths)
+              const lastDayOfTargetMonth = new Date(Date.UTC(fechaLimCandidate.getUTCFullYear(), fechaLimCandidate.getUTCMonth() + 1, 0))
+              const fechaLim = fechaLimCandidate.getUTCDate() === baseDiaLimite ? fechaLimCandidate : lastDayOfTargetMonth
+
+              pagosToInsert.push({
+                poliza_id: polizaId,
+                periodo_mes: periodo.toISOString().slice(0, 10),
+                fecha_programada: fechaProg.toISOString(),
+                fecha_limite: fechaLim.toISOString().slice(0, 10),
+                monto_programado: montoPeriodo,
+                estado: 'pendiente',
+                created_by: null
+              })
+            }
+
+            await admin
+              .from('poliza_pagos_mensuales')
+              .upsert(pagosToInsert, { onConflict: 'poliza_id,periodo_mes' })
+
+            const mesesCheck = (poliza as { meses_check?: Record<string, boolean> }).meses_check || {}
+            const mesesMontosRaw = (reqRow?.payload_propuesto as { meses_montos?: Record<string, number | string | null> } | null)?.meses_montos || {}
+
+            const parseMonthKey = (key: string): string | null => {
+              if (key.includes('-')) {
+                const [y, m] = key.split('-').map(Number)
+                if (!Number.isFinite(y) || !Number.isFinite(m)) return null
+                const d = new Date(Date.UTC(y, (m || 1) - 1, 1))
+                return d.toISOString().slice(0, 10)
+              }
+              if (key.includes('/')) {
+                const [mStr, yStr] = key.split('/')
+                const m = Number(mStr)
+                const y = Number(yStr.length === 2 ? `20${yStr}` : yStr)
+                if (!Number.isFinite(y) || !Number.isFinite(m)) return null
+                const d = new Date(Date.UTC(y, (m || 1) - 1, 1))
+                return d.toISOString().slice(0, 10)
+              }
+              return null
+            }
+
+            const mesesPagados = Object.entries(mesesCheck)
+              .filter(([, v]) => !!v)
+              .map(([k]) => parseMonthKey(k))
+              .filter(Boolean) as string[]
+
+            const montoPorMesIso: Record<string, number> = {}
+            for (const [k, v] of Object.entries(mesesMontosRaw)) {
+              const iso = parseMonthKey(k)
+              const num = typeof v === 'string' ? Number(v) : Number(v)
+              if (iso && Number.isFinite(num) && num >= 0) montoPorMesIso[iso] = num
+            }
+
+            if (mesesPagados.length > 0) {
+              for (const iso of mesesPagados) {
+                const monto = montoPorMesIso[iso]
+                if (!Number.isFinite(monto)) {
+                  if (debugOn) console.debug('[apply_poliza_update][debug] monto faltante para periodo', iso)
+                  continue
+                }
+                await admin
+                  .from('poliza_pagos_mensuales')
+                  .update({ estado: 'pagado', monto_pagado: Number(monto) })
+                  .eq('poliza_id', polizaId)
+                  .eq('periodo_mes', iso)
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (debugOn) console.debug('[apply_poliza_update][debug] fallo al regenerar pagos', err)
+      }
+
+      // Disparar Edge Function de actualización de pagos vencidos
+      try {
+        const fnUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/actualizar-pagos-vencidos` : null
+        const secret = process.env.REPORTES_CRON_SECRET
+        if (fnUrl && secret) {
+          const res = await fetch(fnUrl, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${secret}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ source: 'apply_poliza_update' })
+          })
+          if (!res.ok && debugOn) {
+            console.debug('[apply_poliza_update][debug] edge actualizar-pagos-vencidos fallo', res.status, await res.text())
+          }
+        } else if (debugOn) {
+          console.debug('[apply_poliza_update][debug] edge actualizar-pagos-vencidos omitido: faltan envs')
+        }
+      } catch (err) {
+        if (debugOn) console.debug('[apply_poliza_update][debug] edge actualizar-pagos-vencidos error', err)
+      }
+
+      if (pRow) {
+        const puntos_cache = (pRow as { poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null; puntos_total?: number|null; clasificacion?: string|null }|null }).poliza_puntos_cache ?? null
+        const pct = puntos_cache?.base_factor ?? null
+        const primaMXN = puntos_cache?.prima_anual_snapshot ?? null
+        const comision_mxn = (pct!=null && primaMXN!=null) ? Number(((primaMXN * pct) / 100).toFixed(2)) : null
+        updatedPoliza = {
+          id: (pRow as { id: string }).id,
+          prima_input: (pRow as { prima_input?: number|null }).prima_input ?? null,
+          prima_moneda: (pRow as { prima_moneda?: string|null }).prima_moneda ?? null,
+          puntos_cache,
+          comision_mxn
+        }
+      }
+
+      if (body?.debug) {
+        console.debug('[apply_poliza_update][debug] updated poliza snapshot', updatedPoliza)
+      }
     }
-  }
-  if (body?.debug) {
-    console.debug('[apply_poliza_update][debug] updated poliza snapshot', updatedPoliza)
-  }
-    }
+
     if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
       if (user?.email) {

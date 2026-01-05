@@ -143,9 +143,11 @@ DECLARE
   v_meses_entre_pagos integer;
   v_fecha_primer_pago date;
   v_fecha_limite date;
+  v_idx integer;
+  v_offset interval;
   v_periodo date;
-  v_contador integer := 0;
-  v_max_periodos integer := 12; -- Máximo periodos a generar (1 año)
+  v_fecha_prog timestamp;
+  v_fecha_limite_calc date;
 BEGIN
   -- Solo generar si tiene periodicidad y prima
   IF NEW.periodicidad_pago IS NULL OR NEW.prima_mxn IS NULL OR NEW.prima_mxn <= 0 THEN
@@ -177,7 +179,7 @@ BEGIN
   v_fecha_primer_pago := DATE_TRUNC('month', NEW.fecha_emision)::date 
     + INTERVAL '1 month' * (CASE WHEN NEW.dia_pago IS NOT NULL THEN NEW.dia_pago - 1 ELSE 0 END);
 
-  -- Fecha límite: usar fecha_limite_pago de póliza o último día del mes
+  -- Fecha límite base: usar fecha_limite_pago de póliza o último día del mes
   v_fecha_limite := COALESCE(
     NEW.fecha_limite_pago,
     (DATE_TRUNC('month', v_fecha_primer_pago) + INTERVAL '1 month - 1 day')::date
@@ -188,11 +190,13 @@ BEGIN
   WHERE poliza_id = NEW.id 
     AND estado = 'pendiente';
 
-  -- Generar periodos
-  v_periodo := DATE_TRUNC('month', v_fecha_primer_pago)::date;
-  
-  WHILE v_contador < v_max_periodos LOOP
-    -- Insertar pago programado
+  -- Generar periodos de forma segura (evita insertar siempre el mismo periodo)
+  FOR v_idx IN 0..(v_divisor - 1) LOOP
+    v_offset := (v_idx * v_meses_entre_pagos || ' months')::interval;
+    v_periodo := (DATE_TRUNC('month', v_fecha_primer_pago) + v_offset)::date;
+    v_fecha_prog := v_fecha_primer_pago + v_offset;
+    v_fecha_limite_calc := (v_fecha_limite + v_offset)::date;
+
     INSERT INTO poliza_pagos_mensuales (
       poliza_id,
       periodo_mes,
@@ -204,18 +208,13 @@ BEGIN
     ) VALUES (
       NEW.id,
       v_periodo,
-      v_fecha_primer_pago + (v_contador * v_meses_entre_pagos || ' months')::interval,
-      v_fecha_limite + (v_contador * v_meses_entre_pagos || ' months')::interval,
+      v_fecha_prog,
+      v_fecha_limite_calc,
       v_monto_periodo,
       'pendiente',
       NEW.creado_por
     )
-    ON CONFLICT (poliza_id, periodo_mes) DO NOTHING; -- Por si ya existe
-
-    v_contador := v_contador + 1;
-    
-    -- Avanzar periodo según periodicidad
-    EXIT WHEN v_contador >= v_divisor; -- Solo generar los periodos según periodicidad
+    ON CONFLICT (poliza_id, periodo_mes) DO NOTHING;
   END LOOP;
 
   RETURN NEW;

@@ -22,6 +22,11 @@ const eslintConfig = [
     ],
   },
   {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
     files: ["scripts/**/*.{js,ts}", "scripts/**/*.mjs"],
     languageOptions: {
       sourceType: "commonjs",

@@ -1,3 +1,18 @@
+type ComisionRow = {
+  total_polizas?: number | null
+  total_prima?: number | null
+  prima_mes_1?: number | null
+  prima_mes_2?: number | null
+  prima_mes_3?: number | null
+  prima_mes_4_plus?: number | null
+  comision_vigente?: number | null
+  periodo?: string | null
+  polizas_mes_1?: number | null
+  polizas_mes_2?: number | null
+  polizas_mes_3?: number | null
+  polizas_mes_4_plus?: number | null
+}
+
 // GET /api/agentes/[id]/comisiones
 // Resumen de comisiones para un agente específico
 
@@ -62,10 +77,13 @@ export async function GET(
         rol: agente.rol,
         mes_conexion: agente.mes_conexion
       },
-      total_polizas: comisiones?.reduce((sum: number, c: any) => sum + (c.total_polizas || 0), 0) || 0,
-      total_prima: comisiones?.reduce((sum: number, c: any) => sum + (c.total_prima || c.prima_mes_1 + c.prima_mes_2 + c.prima_mes_3 + c.prima_mes_4_plus || 0), 0) || 0,
-      total_comision: comisiones?.reduce((sum: number, c: any) => sum + (c.comision_vigente || 0), 0) || 0,
-      periodos_activos: [...new Set(comisiones?.map((c: any) => c.periodo) || [])].length
+      total_polizas: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.total_polizas ?? 0), 0),
+      total_prima: (comisiones || []).reduce((sum, c: ComisionRow) => {
+        const primaMeses = Number(c.prima_mes_1 ?? 0) + Number(c.prima_mes_2 ?? 0) + Number(c.prima_mes_3 ?? 0) + Number(c.prima_mes_4_plus ?? 0)
+        return sum + Number(c.total_prima ?? primaMeses)
+      }, 0),
+      total_comision: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.comision_vigente ?? 0), 0),
+      periodos_activos: new Set((comisiones || []).map((c: ComisionRow) => c.periodo).filter(Boolean)).size
     }
 
     // Si tiene mes_conexion, agregar desglose por mes
@@ -73,20 +91,20 @@ export async function GET(
       Object.assign(resumen, {
         desglose_meses: {
           mes_1: {
-            polizas: comisiones?.reduce((sum: number, c: any) => sum + (c.polizas_mes_1 || 0), 0) || 0,
-            prima: comisiones?.reduce((sum: number, c: any) => sum + (c.prima_mes_1 || 0), 0) || 0
+            polizas: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.polizas_mes_1 ?? 0), 0),
+            prima: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.prima_mes_1 ?? 0), 0)
           },
           mes_2: {
-            polizas: comisiones?.reduce((sum: number, c: any) => sum + (c.polizas_mes_2 || 0), 0) || 0,
-            prima: comisiones?.reduce((sum: number, c: any) => sum + (c.prima_mes_2 || 0), 0) || 0
+            polizas: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.polizas_mes_2 ?? 0), 0),
+            prima: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.prima_mes_2 ?? 0), 0)
           },
           mes_3: {
-            polizas: comisiones?.reduce((sum: number, c: any) => sum + (c.polizas_mes_3 || 0), 0) || 0,
-            prima: comisiones?.reduce((sum: number, c: any) => sum + (c.prima_mes_3 || 0), 0) || 0
+            polizas: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.polizas_mes_3 ?? 0), 0),
+            prima: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.prima_mes_3 ?? 0), 0)
           },
           mes_4_plus: {
-            polizas: comisiones?.reduce((sum: number, c: any) => sum + (c.polizas_mes_4_plus || 0), 0) || 0,
-            prima: comisiones?.reduce((sum: number, c: any) => sum + (c.prima_mes_4_plus || 0), 0) || 0
+            polizas: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.polizas_mes_4_plus ?? 0), 0),
+            prima: (comisiones || []).reduce((sum, c: ComisionRow) => sum + Number(c.prima_mes_4_plus ?? 0), 0)
           }
         }
       })

@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       const admin = getServiceClient()
       let sel = admin
     .from('polizas')
-  .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(id,activo)')
+  .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, fecha_limite_pago, tipo_pago, dia_pago, meses_check, fecha_alta_sistema, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(id,activo)')
         .order('fecha_alta_sistema', { ascending: false })
         .limit(100)
   if (!includeClientesInactivos) sel = sel.eq('clientes.activo', true)
@@ -64,7 +64,7 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // map join + computed fields
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null; clientes?: { activo?: boolean | null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; fecha_limite_pago?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null; clientes?: { activo?: boolean | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
@@ -95,6 +95,7 @@ export async function GET(req: Request) {
       sa_moneda: r.sa_moneda,
       fecha_emision,
         fecha_renovacion,
+        fecha_limite_pago: r.fecha_limite_pago ?? null,
         tipo_pago: r.tipo_pago ?? null,
         dia_pago: r.dia_pago ?? null,
         meses_check: r.meses_check ?? {},
@@ -120,7 +121,7 @@ export async function GET(req: Request) {
   const admin = getServiceClient()
   let sel = admin
     .from('polizas')
-    .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(asesor_id,activo)')
+    .select('id, cliente_id, numero_poliza, estatus, forma_pago, periodicidad_pago, prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, fecha_renovacion, fecha_limite_pago, tipo_pago, dia_pago, meses_check, producto_parametros:producto_parametro_id(nombre_comercial, tipo_producto), poliza_puntos_cache(base_factor,year_factor,prima_anual_snapshot), clientes!inner(asesor_id,activo)')
     .order('fecha_alta_sistema', { ascending: false })
     .limit(100)
   if (q) sel = sel.or(`numero_poliza.ilike.%${q}%,producto_parametros.nombre_comercial.ilike.%${q}%`)
@@ -138,7 +139,7 @@ export async function GET(req: Request) {
   const { data, error } = await sel
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   // quitar campo join anidado
-  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null; clientes?: { activo?: boolean | null } | null }
+  type Row = { id: string; cliente_id: string; numero_poliza: string; estatus: string; forma_pago: string; periodicidad_pago?: string|null; prima_input: number; prima_moneda: string; sa_input: number | null; sa_moneda: string | null; fecha_emision?: string | null; fecha_renovacion?: string | null; fecha_limite_pago?: string | null; tipo_pago?: string | null; dia_pago?: number | null; meses_check?: Record<string, boolean>|null; producto_parametros?: { nombre_comercial?: string | null; tipo_producto?: string | null } | null; poliza_puntos_cache?: { base_factor?: number|null; year_factor?: number|null; prima_anual_snapshot?: number|null } | null; clientes?: { activo?: boolean | null } | null }
   const items = ((data || []) as Row[]).map((r) => {
     const producto_nombre = r.producto_parametros?.nombre_comercial ?? null
     const tipo_producto = r.producto_parametros?.tipo_producto ?? null
@@ -169,6 +170,7 @@ export async function GET(req: Request) {
       sa_moneda: r.sa_moneda,
       fecha_emision,
         fecha_renovacion,
+        fecha_limite_pago: r.fecha_limite_pago ?? null,
         tipo_pago: r.tipo_pago ?? null,
         dia_pago: r.dia_pago ?? null,
         meses_check: r.meses_check ?? {},
@@ -219,6 +221,7 @@ export async function POST(req: Request) {
     numero_poliza?: string
     fecha_emision?: string
   fecha_renovacion?: string
+  fecha_limite_pago?: string | null
   forma_pago?: string
   periodicidad_pago?: string
   tipo_pago?: string
@@ -237,6 +240,7 @@ export async function POST(req: Request) {
   const numero_poliza = (body.numero_poliza || '').trim()
   const fecha_emision = (body.fecha_emision || '').trim() // YYYY-MM-DD
   const fecha_renovacion = (body.fecha_renovacion || '').trim()
+  const fecha_limite_pago = (body as { fecha_limite_pago?: string|null|undefined }).fecha_limite_pago ? String((body as { fecha_limite_pago?: string|null }).fecha_limite_pago).trim() : ''
   const forma_pago_raw = (body.forma_pago || '').trim()
   const periodicidad_pago = (body.periodicidad_pago || '').trim()
   // If front-end sent legacy A/S/T/M in forma_pago, interpret it as periodicidad and require a method in tipo_pago or default MODO_DIRECTO
@@ -251,8 +255,8 @@ export async function POST(req: Request) {
   const meses_check = body.meses_check && typeof body.meses_check === 'object' ? body.meses_check : null
   const prima_input = typeof body.prima_input === 'number' ? body.prima_input : Number.NaN
   const producto_parametro_id = (body.producto_parametro_id || '').trim()
-  if (!cliente_id || !producto_parametro_id || !numero_poliza || !fecha_emision || !forma_pago || !isFinite(prima_input)) {
-    return NextResponse.json({ error: 'Faltan campos requeridos: cliente_id, producto_parametro_id, numero_poliza, fecha_emision, forma_pago, prima_input' }, { status: 400 })
+  if (!cliente_id || !producto_parametro_id || !numero_poliza || !fecha_emision || !forma_pago || !isFinite(prima_input) || !fecha_limite_pago) {
+    return NextResponse.json({ error: 'Faltan campos requeridos: cliente_id, producto_parametro_id, numero_poliza, fecha_emision, fecha_limite_pago, forma_pago, prima_input' }, { status: 400 })
   }
 
   // Si no es super, validar que el cliente pertenece al asesor (RLS también lo reforzará en SELECTs)
@@ -287,14 +291,31 @@ export async function POST(req: Request) {
     } catch {}
   }
 
+  // Mapear periodicidad de abreviatura a valor completo del enum
+  let periodicidad_final: string | null = null
+  if (isFreq) {
+    const map: Record<string, string> = { 'M': 'mensual', 'T': 'trimestral', 'S': 'semestral', 'A': 'anual' }
+    periodicidad_final = map[forma_pago_raw] || null
+  } else if (periodicidad_pago) {
+    const upper = periodicidad_pago.toUpperCase()
+    const map: Record<string, string> = { 
+      'M': 'mensual', 'MENSUAL': 'mensual', 'MES': 'mensual',
+      'T': 'trimestral', 'TRIMESTRAL': 'trimestral', 'TRIMESTRE': 'trimestral',
+      'S': 'semestral', 'SEMESTRAL': 'semestral', 'SEMESTRA': 'semestral',
+      'A': 'anual', 'ANUAL': 'anual', 'ANUALIDAD': 'anual'
+    }
+    periodicidad_final = map[upper] || periodicidad_pago.toLowerCase()
+  }
+
   const insertPayload: Record<string, unknown> = {
     cliente_id,
   producto_parametro_id: producto_parametro_id ? String(producto_parametro_id) : null,
     numero_poliza,
     fecha_emision,
   fecha_renovacion: fecha_renovacion || null,
+    fecha_limite_pago: fecha_limite_pago || null,
     forma_pago,
-    periodicidad_pago: isFreq ? forma_pago_raw : (periodicidad_pago || null),
+    periodicidad_pago: periodicidad_final,
   tipo_pago: tipo_pago || null,
   dia_pago: dia_pago,
   meses_check: meses_check || {},

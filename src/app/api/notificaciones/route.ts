@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const usuario_id = searchParams.get('usuario_id') // Requerido
 
+    console.log('[GET /api/notificaciones] usuario_id:', usuario_id)
+
     if (!usuario_id) {
       return NextResponse.json({ error: 'Falta usuario_id' }, { status: 400 })
     }
@@ -31,6 +33,8 @@ export async function GET(req: NextRequest) {
 
     const { data: notificaciones, error } = await query
 
+    console.log('[GET /api/notificaciones] query result:', { count: notificaciones?.length, error })
+
     if (error) {
       console.error('Error consultando notificaciones:', error)
       return NextResponse.json({ error: 'Error al consultar notificaciones' }, { status: 500 })
@@ -42,6 +46,8 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('usuario_id', usuario_id)
       .eq('leida', false)
+
+    console.log('[GET /api/notificaciones] no_leidas:', noLeidas)
 
     return NextResponse.json({
       notificaciones: notificaciones || [],

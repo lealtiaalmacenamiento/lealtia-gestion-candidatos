@@ -4,30 +4,35 @@ import { getServiceClient } from '@/lib/supabaseAdmin'
 export const dynamic = 'force-dynamic'
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id: polizaIdStr } = await params
-  const polizaId = parseInt(polizaIdStr)
-  if (isNaN(polizaId)) {
-    return NextResponse.json({ error: 'ID de póliza inválido' }, { status: 400 })
-  }
+  const { id: polizaId } = await params
 
   try {
     const supabase = getServiceClient()
     
+    const { data: pagosPagados } = await supabase
+      .from('poliza_pagos_mensuales')
+      .select('periodo_mes')
+      .eq('poliza_id', polizaId)
+      .eq('estado', 'pagado')
+    const pagadosSet = new Set((pagosPagados || []).map(p => p.periodo_mes))
+
     // Verificar que la póliza existe y tiene periodicidad configurada
     const { data: poliza, error: polizaError } = await supabase
       .from('polizas')
-      .select('id, numero, periodicidad_pago, fecha_emision, vigencia_anos, prima_anual, estado')
+      .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check')
       .eq('id', polizaId)
       .single()
+
+    console.info('[pagos_generar] polizaId', polizaId, 'polizaError', polizaError, 'poliza', poliza)
 
     if (polizaError || !poliza) {
       return NextResponse.json({ error: 'Póliza no encontrada' }, { status: 404 })
     }
 
-    if (poliza.estado === 'cancelada') {
+    if (poliza.estatus === 'CANCELADA') {
       return NextResponse.json({ 
         error: 'No se pueden generar pagos para pólizas canceladas' 
       }, { status: 400 })
@@ -39,12 +44,12 @@ export async function POST(
       }, { status: 400 })
     }
 
-    // Eliminar pagos existentes que estén pendientes
+    // Eliminar pagos existentes que no estén pagados
     const { error: deleteError } = await supabase
       .from('poliza_pagos_mensuales')
       .delete()
       .eq('poliza_id', polizaId)
-      .eq('estado', 'pendiente')
+      .neq('estado', 'pagado')
 
     if (deleteError) {
       console.error('Error eliminando pagos pendientes:', deleteError)
@@ -53,20 +58,115 @@ export async function POST(
       }, { status: 500 })
     }
 
-    // Llamar a la función que genera los pagos programados
-    // Nota: Esta función debería ser disparada automáticamente por trigger,
-    // pero la llamamos manualmente aquí para regenerar
-    const { data: result, error: genError } = await supabase
-      .rpc('fn_generar_pagos_programados', {
-        p_poliza_id: polizaId
-      })
+    const map = {
+      mensual: { divisor: 12, step: 1 },
+      trimestral: { divisor: 4, step: 3 },
+      semestral: { divisor: 2, step: 6 },
+      anual: { divisor: 1, step: 12 }
+    } as const
 
-    if (genError) {
-      console.error('Error generando pagos:', genError)
+    const cfg = poliza.periodicidad_pago && map[poliza.periodicidad_pago as keyof typeof map]
+    if (!cfg) {
+      return NextResponse.json({ error: 'Periodicidad desconocida' }, { status: 400 })
+    }
+
+    const montoPeriodo = Number((Number(poliza.prima_mxn || 0) / cfg.divisor).toFixed(2))
+    const emision = poliza.fecha_emision ? new Date(poliza.fecha_emision) : null
+    if (!emision || Number.isNaN(emision.valueOf())) {
+      return NextResponse.json({ error: 'Fecha de emisión inválida' }, { status: 400 })
+    }
+
+    const startYear = emision.getUTCFullYear()
+    const startMonth = emision.getUTCMonth()
+    const diaPago = poliza.dia_pago ?? 1
+
+    const baseFechaPrimerPago = new Date(Date.UTC(startYear, startMonth, 1))
+    baseFechaPrimerPago.setUTCDate(diaPago)
+
+    // Tomar sólo el día de fecha_limite_pago para repetirlo cada periodo; si falta, usar dia_pago; fallback último día del mes si no existe ese día.
+    const baseDiaLimite = (() => {
+      if (poliza.fecha_limite_pago) {
+        const d = new Date(poliza.fecha_limite_pago)
+        if (!Number.isNaN(d.valueOf())) return d.getUTCDate()
+      }
+      return diaPago
+    })()
+    const baseFechaLimite = new Date(Date.UTC(startYear, startMonth, 1))
+    baseFechaLimite.setUTCDate(baseDiaLimite)
+
+    const pagosToInsert = [] as Array<{ poliza_id: string; periodo_mes: string; fecha_programada: string; fecha_limite: string; monto_programado: number; estado: string; created_by?: string | null }>
+
+    for (let i = 0; i < cfg.divisor; i++) {
+      const offsetMonths = i * cfg.step
+      const periodo = new Date(Date.UTC(startYear, startMonth + offsetMonths, 1))
+      const fechaProg = new Date(baseFechaPrimerPago)
+      fechaProg.setUTCMonth(fechaProg.getUTCMonth() + offsetMonths)
+      const fechaLimCandidate = new Date(baseFechaLimite)
+      fechaLimCandidate.setUTCMonth(fechaLimCandidate.getUTCMonth() + offsetMonths)
+      // Clamp al último día del mes si el día no existe (p.ej. 31 en febrero)
+      const lastDayOfTargetMonth = new Date(Date.UTC(fechaLimCandidate.getUTCFullYear(), fechaLimCandidate.getUTCMonth() + 1, 0))
+      const fechaLim = fechaLimCandidate.getUTCDate() === baseDiaLimite
+        ? fechaLimCandidate
+        : lastDayOfTargetMonth
+
+      if (pagadosSet.has(periodo.toISOString().slice(0, 10))) {
+        continue
+      }
+      pagosToInsert.push({
+        poliza_id: polizaId,
+        periodo_mes: periodo.toISOString().slice(0, 10),
+        fecha_programada: fechaProg.toISOString(),
+        fecha_limite: fechaLim.toISOString().slice(0, 10),
+        monto_programado: montoPeriodo,
+        estado: 'pendiente',
+        created_by: null
+      })
+    }
+
+    const { error: insertError } = await supabase
+      .from('poliza_pagos_mensuales')
+      .upsert(pagosToInsert, { onConflict: 'poliza_id,periodo_mes' })
+
+    if (insertError) {
+      console.error('Error generando pagos:', insertError)
       return NextResponse.json({ 
         error: 'Error al generar calendario de pagos',
-        details: genError.message 
+        details: insertError.message 
       }, { status: 500 })
+    }
+
+    // Marcar como pagados los periodos indicados en meses_check de la póliza
+    const mesesCheck = poliza.meses_check || {}
+    const mesesPagados = Object.entries(mesesCheck)
+      .filter(([, v]) => !!v)
+      .map(([k]) => {
+        // Soportar formatos YYYY-MM y MM/YY
+        if (k.includes('-')) {
+          const [y, m] = k.split('-').map(Number)
+          const d = new Date(Date.UTC(y, (m || 1) - 1, 1))
+          return d.toISOString().slice(0, 10)
+        }
+        if (k.includes('/')) {
+          const [mStr, yStr] = k.split('/')
+          const m = Number(mStr)
+          const y = Number(yStr.length === 2 ? `20${yStr}` : yStr)
+          const d = new Date(Date.UTC(y, (m || 1) - 1, 1))
+          return d.toISOString().slice(0, 10)
+        }
+        return null
+      })
+      .filter(Boolean)
+
+    if (mesesPagados.length > 0) {
+      const { error: markPaidError } = await supabase
+        .from('poliza_pagos_mensuales')
+        .update({ estado: 'pagado' })
+        .eq('poliza_id', polizaId)
+        .in('periodo_mes', mesesPagados)
+
+      if (markPaidError) {
+        console.error('Error marcando pagos pagados:', markPaidError)
+      }
     }
 
     // Consultar los pagos generados

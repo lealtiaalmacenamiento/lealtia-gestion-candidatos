@@ -510,7 +510,6 @@ export async function exportProspectosPDFAgente(
   } catch { /* ignore glossary render errors */ }
 
   // --- Footer con paginación ---
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pageCount: number = (docTyped.internal as any).getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     docTyped.setPage(i);

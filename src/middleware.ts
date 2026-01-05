@@ -40,6 +40,7 @@ export async function middleware(req: NextRequest) {
   }
 
   const url = req.nextUrl
+  const isApi = url.pathname.startsWith('/api/')
 
   // Rutas públicas
   const publicPaths = new Set([
@@ -72,6 +73,9 @@ export async function middleware(req: NextRequest) {
 
   // Si no hay sesión y la ruta no es pública → redirigir a login
   if (!session && !isPublic) {
+    if (isApi) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
     const redirectUrl = new URL('/login', req.url)
     return NextResponse.redirect(redirectUrl)
   }

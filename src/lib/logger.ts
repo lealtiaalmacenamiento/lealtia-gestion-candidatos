@@ -1,7 +1,6 @@
 // Evitar que importaciones en edge (middleware) arrastren supabase realtime y Node APIs.
 // Cargamos supabase dinámicamente sólo cuando realmente se invoca logAccion desde un entorno server Node.
 // Cache interno de supabase (tipo laxo para evitar arrastrar tipos pesados en edge)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _supabase: any | null = null
 async function getSupabaseLazy() {
   if (_supabase) return _supabase
@@ -37,7 +36,6 @@ export async function logAccion(accion: string, opts: LogOptions = {}) {
   }
   // Evitar ejecuciones en edge runtime: no hay necesidad crítica de registrar allí
   // Detect edge runtime (NEXT_RUNTIME injected by Next.js)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (typeof process !== 'undefined' && (process as any).env && process.env.NEXT_RUNTIME === 'edge') {
     return
   }

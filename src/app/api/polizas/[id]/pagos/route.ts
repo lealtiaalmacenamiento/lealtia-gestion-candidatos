@@ -2,12 +2,33 @@
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 
+type PagoRow = {
+  id: number
+  poliza_id: string
+  periodo_mes: string
+  fecha_limite: string
+  estado: 'pendiente' | 'pagado' | 'vencido' | 'omitido'
+  fecha_pago_real?: string | null
+  monto_pagado?: number | null
+  monto_programado?: number | null
+  polizas?: {
+    numero_poliza?: string | null
+    prima_mxn?: number | null
+    periodicidad_pago?: string | null
+    clientes?: {
+      asesor_id?: string | null
+      primer_nombre?: string | null
+      primer_apellido?: string | null
+    } | null
+  } | null
+}
+
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+    { params }: { params: Promise<{ id: string }> }
 ) {
-  const resolvedParams = await params
-  const polizaId = resolvedParams.id
+    const { id } = await params
+  const polizaId = id
   
   try {
     const supabase = getServiceClient()
@@ -41,7 +62,7 @@ export async function GET(
     const en7Dias = new Date()
     en7Dias.setDate(en7Dias.getDate() + 7)
 
-    const pagosConAlertas = (pagos || []).map((pago: any) => {
+    const pagosConAlertas = (pagos || []).map((pago: PagoRow) => {
       const fechaLimite = new Date(pago.fecha_limite)
       const isOverdue = pago.estado === 'vencido' || (pago.estado === 'pendiente' && fechaLimite < hoy)
       const isDueSoon = pago.estado === 'pendiente' && fechaLimite >= hoy && fechaLimite <= en7Dias
@@ -61,14 +82,15 @@ export async function GET(
       pagos: pagosConAlertas,
       resumen: {
         total: pagosConAlertas.length,
-        pendientes: pagosConAlertas.filter((p: any) => p.estado === 'pendiente').length,
-        pagados: pagosConAlertas.filter((p: any) => p.estado === 'pagado').length,
-        vencidos: pagosConAlertas.filter((p: any) => p.estado === 'vencido').length,
-        proximos: pagosConAlertas.filter((p: any) => p.isDueSoon).length
+        pendientes: pagosConAlertas.filter((p) => p.estado === 'pendiente').length,
+        pagados: pagosConAlertas.filter((p) => p.estado === 'pagado').length,
+        vencidos: pagosConAlertas.filter((p) => p.estado === 'vencido').length,
+        proximos: pagosConAlertas.filter((p) => p.isDueSoon).length
       }
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error en GET /api/polizas/[id]/pagos:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Error desconocido'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -2,6 +2,16 @@
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 
+export const dynamic = 'force-dynamic'
+
+type ComisionSinConexionRow = {
+  periodo?: string | null
+  agente_nombre?: string | null
+  total_polizas?: number | null
+  prima_total?: number | null
+  comision_vigente?: number | null
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = getServiceClient()
@@ -32,21 +42,21 @@ export async function GET(request: Request) {
     // Calcular resumen
     const resumen = {
       total_registros: data?.length || 0,
-      total_polizas: data?.reduce((sum: number, r: any) => sum + (Number(r.total_polizas) || 0), 0) || 0,
-      total_prima: data?.reduce((sum: number, r: any) => sum + (Number(r.prima_total) || 0), 0) || 0,
-      total_comision: data?.reduce((sum: number, r: any) => sum + (Number(r.comision_vigente) || 0), 0) || 0,
-      periodos: [...new Set(data?.map((r: any) => r.periodo))]
+      total_polizas: (data || []).reduce((sum, r: ComisionSinConexionRow) => sum + Number(r.total_polizas ?? 0), 0),
+      total_prima: (data || []).reduce((sum, r: ComisionSinConexionRow) => sum + Number(r.prima_total ?? 0), 0),
+      total_comision: (data || []).reduce((sum, r: ComisionSinConexionRow) => sum + Number(r.comision_vigente ?? 0), 0),
+      periodos: [...new Set((data || []).map((r: ComisionSinConexionRow) => r.periodo).filter(Boolean))]
     }
 
     return NextResponse.json({
       data: data || [],
       resumen
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error en GET /api/comisiones/sin-conexion:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Error desconocido'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
-// Configurar revalidación ISR (cada hora)
-export const revalidate = 3600
+// Route uses request.url search params; force dynamic rendering

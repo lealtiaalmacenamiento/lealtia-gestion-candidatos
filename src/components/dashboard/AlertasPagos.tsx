@@ -3,18 +3,51 @@
 
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/format'
-import Link from 'next/link'
+import { useAuth } from '@/context/AuthProvider'
+
+function formatYmd(dateStr?: string | null) {
+  if (!dateStr) return '—'
+  const parts = dateStr.split('-').map(Number)
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return dateStr
+  const [y, m, d] = parts
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`
+}
+
+function formatMonth(dateStr?: string | null) {
+  if (!dateStr) return '—'
+  const parts = dateStr.split('-').map(Number)
+  if (parts.length < 2 || parts.some((n) => Number.isNaN(n))) return dateStr
+  const [y, m] = parts
+  // Usar UTC para evitar desfaces de huso horario
+  const d = new Date(Date.UTC(y, (m || 1) - 1, 1))
+  return d.toLocaleDateString('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
 
 interface PagoAlerta {
   id: number
-  poliza_id: number
-  poliza_numero: string
-  cliente_nombre: string
+  poliza_id: string
   periodo_mes: string
   fecha_limite: string
   monto_programado: number
   estado: string
-  diasRestantes: number | null
+  diasVencidos?: number
+  diasRestantes?: number
+  polizas: {
+    numero_poliza: string
+    prima_mxn: number
+    periodicidad_pago: string
+    clientes: {
+      id: string
+      asesor_id: string
+      primer_nombre: string
+      primer_apellido: string
+      usuarios?: {
+        id_auth: string
+        nombre: string
+        email: string
+      }
+    }
+  }
 }
 
 interface AlertasResponse {
@@ -22,26 +55,42 @@ interface AlertasResponse {
   proximos: PagoAlerta[]
 }
 
-export default function AlertasPagos() {
+interface AlertasPagosProps {
+  onEditPoliza?: (polizaId: string) => void
+}
+
+export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
+  const { user, loadingUser } = useAuth()
   const [alertas, setAlertas] = useState<AlertasResponse>({ vencidos: [], proximos: [] })
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState<'vencidos' | 'proximos'>('vencidos')
 
   useEffect(() => {
-    fetchAlertas()
-    
-    // Refrescar cada 5 minutos
-    const interval = setInterval(fetchAlertas, 5 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [])
+    if (user?.id_auth && !loadingUser) {
+      fetchAlertas()
+      // Refrescar cada 5 minutos
+      const interval = setInterval(fetchAlertas, 5 * 60 * 1000)
+      return () => clearInterval(interval)
+    } else if (!loadingUser) {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loadingUser])
 
   const fetchAlertas = async () => {
+    if (!user?.id_auth) return
+
+    // Determinar scope según el rol
+    const scope = user.rol === 'supervisor' || user.rol === 'admin' ? 'supervisor' : 'asesor'
+    
     try {
-      const res = await fetch('/api/pagos/alertas')
+      const res = await fetch(`/api/pagos/alertas?usuario_id=${user.id_auth}&scope=${scope}`)
       const json = await res.json()
-      
+
       if (res.ok) {
         setAlertas(json)
+      } else {
+        console.error('Error al cargar alertas:', json)
       }
     } catch (error) {
       console.error('Error fetching alertas:', error)
@@ -120,28 +169,35 @@ export default function AlertasPagos() {
               </div>
             ) : (
               alertas.vencidos.map((pago) => (
-                <Link
+                <div
                   key={pago.id}
-                  href={`/dashboard/polizas/${pago.poliza_id}`}
                   className="list-group-item list-group-item-action"
+                  role="button"
+                  onClick={() => onEditPoliza?.(pago.poliza_id)}
+                  style={{ cursor: 'pointer' }}
                 >
                   <div className="d-flex w-100 justify-content-between">
                     <h6 className="mb-1">
-                      {pago.cliente_nombre}
+                      {pago.polizas?.clientes?.primer_nombre} {pago.polizas?.clientes?.primer_apellido}
                       <span className="badge bg-danger ms-2">Vencido</span>
+                      {pago.polizas?.clientes?.usuarios && (
+                        <span className="badge bg-secondary ms-2" title="Asesor responsable">
+                          <i className="bi bi-person"></i> {pago.polizas.clientes.usuarios.nombre || pago.polizas.clientes.usuarios.email}
+                        </span>
+                      )}
                     </h6>
                     <small className="text-danger fw-bold">
                       {formatCurrency(pago.monto_programado)}
                     </small>
                   </div>
                   <p className="mb-1 small text-muted">
-                    Póliza: {pago.poliza_numero} | Periodo: {new Date(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })}
+                    Póliza: {pago.polizas?.numero_poliza} | Periodo: {formatMonth(pago.periodo_mes)}
                   </p>
                   <small className="text-danger">
-                    Límite: {new Date(pago.fecha_limite).toLocaleDateString('es-MX')}
-                    {pago.diasRestantes !== null && ` (${Math.abs(pago.diasRestantes)} días atrás)`}
+                    Límite: {formatYmd(pago.fecha_limite)}
+                    {pago.diasVencidos && pago.diasVencidos > 0 && ` (${pago.diasVencidos} días atrás)`}
                   </small>
-                </Link>
+                </div>
               ))
             )
           ) : (
@@ -152,42 +208,41 @@ export default function AlertasPagos() {
               </div>
             ) : (
               alertas.proximos.map((pago) => (
-                <Link
+                <div
                   key={pago.id}
-                  href={`/dashboard/polizas/${pago.poliza_id}`}
                   className="list-group-item list-group-item-action"
+                  role="button"
+                  onClick={() => onEditPoliza?.(pago.poliza_id)}
+                  style={{ cursor: 'pointer' }}
                 >
                   <div className="d-flex w-100 justify-content-between">
                     <h6 className="mb-1">
-                      {pago.cliente_nombre}
+                      {pago.polizas?.clientes?.primer_nombre} {pago.polizas?.clientes?.primer_apellido}
                       <span className="badge bg-warning text-dark ms-2">
-                        {pago.diasRestantes !== null && `${pago.diasRestantes} días`}
+                        {pago.diasRestantes && pago.diasRestantes > 0 ? `${pago.diasRestantes} días` : 'Próximo'}
                       </span>
+                      {pago.polizas?.clientes?.usuarios && (
+                        <span className="badge bg-secondary ms-2" title="Asesor responsable">
+                          <i className="bi bi-person"></i> {pago.polizas.clientes.usuarios.nombre || pago.polizas.clientes.usuarios.email}
+                        </span>
+                      )}
                     </h6>
                     <small className="fw-bold">
                       {formatCurrency(pago.monto_programado)}
                     </small>
                   </div>
                   <p className="mb-1 small text-muted">
-                    Póliza: {pago.poliza_numero} | Periodo: {new Date(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })}
+                    Póliza: {pago.polizas?.numero_poliza} | Periodo: {formatMonth(pago.periodo_mes)}
                   </p>
                   <small>
-                    Límite: {new Date(pago.fecha_limite).toLocaleDateString('es-MX')}
+                    Límite: {formatYmd(pago.fecha_limite)}
                   </small>
-                </Link>
+                </div>
               ))
             )
           )}
         </div>
       </div>
-
-      {(totalVencidos > 0 || totalProximos > 0) && (
-        <div className="card-footer text-center">
-          <Link href="/dashboard/pagos" className="btn btn-sm btn-outline-primary">
-            Ver todos los pagos
-          </Link>
-        </div>
-      )}
     </div>
   )
 }

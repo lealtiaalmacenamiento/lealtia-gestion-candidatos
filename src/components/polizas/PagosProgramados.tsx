@@ -1,7 +1,7 @@
 // Componente: Tabla de pagos programados de una póliza
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatCurrency } from '@/lib/format'
 
 interface Pago {
@@ -31,11 +31,7 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
   const [selectedPago, setSelectedPago] = useState<Pago | null>(null)
   const [showModal, setShowModal] = useState(false)
 
-  useEffect(() => {
-    fetchPagos()
-  }, [polizaId])
-
-  const fetchPagos = async () => {
+  const fetchPagos = useCallback(async () => {
     try {
       setLoading(true)
       const res = await fetch(`/api/polizas/${polizaId}/pagos`)
@@ -51,7 +47,11 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
     } finally {
       setLoading(false)
     }
-  }
+  }, [polizaId])
+
+  useEffect(() => {
+    fetchPagos()
+  }, [fetchPagos])
 
   const handleMarcarPagado = (pago: Pago) => {
     setSelectedPago(pago)
@@ -191,7 +191,7 @@ function ModalMarcarPago({
     
     try {
       setSaving(true)
-      const res = await fetch(`/api/polizas/${pago.poliza_id}/pagos/${pago.periodo_mes}`, {
+      const res = await fetch(`/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -205,9 +205,11 @@ function ModalMarcarPago({
       
       if (res.ok) {
         onSuccess()
-      } else {
-        alert('Error: ' + json.error)
+        return
       }
+
+      const message = json?.error || 'Error al registrar pago'
+      alert('Error: ' + message)
     } catch (error) {
       console.error('Error marcando pago:', error)
       alert('Error al registrar pago')

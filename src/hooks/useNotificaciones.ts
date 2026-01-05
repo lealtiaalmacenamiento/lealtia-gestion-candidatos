@@ -3,8 +3,10 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { useAuth } from '@/context/AuthProvider'
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 export interface Notificacion {
   id: number
@@ -13,27 +15,25 @@ export interface Notificacion {
   titulo: string
   mensaje: string
   leida: boolean
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
   created_at: string
   leida_at: string | null
 }
 
 export function useNotificaciones() {
+  const { user, loadingUser } = useAuth()
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
   const [noLeidas, setNoLeidas] = useState(0)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchNotificaciones()
-    setupRealtimeSubscription()
-  }, [])
+  const fetchNotificaciones = useCallback(async () => {
+    if (!user?.id_auth) return
 
-  const fetchNotificaciones = async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/notificaciones?limit=50')
+      const res = await fetch(`/api/notificaciones?usuario_id=${user.id_auth}&limit=50`)
       const json = await res.json()
-      
+
       if (res.ok) {
         setNotificaciones(json.notificaciones || [])
         setNoLeidas(json.no_leidas || 0)
@@ -43,12 +43,10 @@ export function useNotificaciones() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
 
-  const setupRealtimeSubscription = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) return
+  const setupRealtimeSubscription = useCallback(async () => {
+    if (!user?.id_auth) return
 
     const channel = supabase
       .channel('notificaciones-realtime')
@@ -58,10 +56,11 @@ export function useNotificaciones() {
           event: 'INSERT',
           schema: 'public',
           table: 'notificaciones',
-          filter: `usuario_id=eq.${user.id}`
+          filter: `usuario_id=eq.${user.id_auth}`
         },
-        (payload: any) => {
-          const newNotif = payload.new as Notificacion
+        (payload: RealtimePostgresChangesPayload<Notificacion>) => {
+          const newNotif = payload.new as Notificacion | null
+          if (!newNotif) return
           setNotificaciones(prev => [newNotif, ...prev])
           setNoLeidas(prev => prev + 1)
           
@@ -80,13 +79,12 @@ export function useNotificaciones() {
           event: 'UPDATE',
           schema: 'public',
           table: 'notificaciones',
-          filter: `usuario_id=eq.${user.id}`
+          filter: `usuario_id=eq.${user.id_auth}`
         },
-        (payload: any) => {
-          const updated = payload.new as Notificacion
-          setNotificaciones(prev => 
-            prev.map(n => n.id === updated.id ? updated : n)
-          )
+        (payload: RealtimePostgresChangesPayload<Notificacion>) => {
+          const updated = payload.new as Notificacion | null
+          if (!updated) return
+          setNotificaciones(prev => prev.map(n => n.id === updated.id ? updated : n))
           if (updated.leida) {
             setNoLeidas(prev => Math.max(0, prev - 1))
           }
@@ -97,7 +95,19 @@ export function useNotificaciones() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    if (user?.id_auth && !loadingUser) {
+      fetchNotificaciones()
+      const cleanupPromise = setupRealtimeSubscription()
+      return () => {
+        cleanupPromise?.then(fn => fn?.())
+      }
+    } else if (!loadingUser) {
+      setLoading(false)
+    }
+  }, [user, loadingUser, fetchNotificaciones, setupRealtimeSubscription])
 
   const marcarComoLeida = async (id: number) => {
     try {
@@ -119,9 +129,13 @@ export function useNotificaciones() {
   }
 
   const marcarTodasLeidas = async () => {
+    if (!user?.id_auth) return
+    
     try {
       const res = await fetch('/api/notificaciones/marcar-todas-leidas', {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: user.id_auth })
       })
 
       if (res.ok) {

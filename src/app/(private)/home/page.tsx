@@ -4,7 +4,6 @@ import { useAuth } from '@/context/AuthProvider';
 import Link from 'next/link';
 import FullScreenLoader from '@/components/ui/FullScreenLoader';
 import { normalizeRole } from '@/lib/roles';
-import AlertasPagos from '@/components/dashboard/AlertasPagos';
 
 const modules = [
   { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['supervisor', 'admin'], color: 'primary' },
@@ -134,13 +133,6 @@ export default function HomeDashboard() {
                   <div className="alert alert-warning">No tienes un rol válido para ver el menú.</div>
                 </div>
               )}  
-        </div>
-        
-        {/* Widget de Alertas de Pagos */}
-        <div className="row mt-4">
-          <div className="col-lg-6">
-            <AlertasPagos />
-          </div>
         </div>
       </div>
     </>

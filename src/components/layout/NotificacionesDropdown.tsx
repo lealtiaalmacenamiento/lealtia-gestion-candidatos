@@ -38,7 +38,7 @@ export default function NotificacionesDropdown() {
   // Solicitar permisos de notificaciones del navegador
   useEffect(() => {
     requestNotificationPermission()
-  }, [])
+  }, [requestNotificationPermission])
 
   const getIcono = (tipo: string) => {
     switch (tipo) {

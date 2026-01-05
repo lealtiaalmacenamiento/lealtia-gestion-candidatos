@@ -1,7 +1,7 @@
 // Página: Dashboard de Comisiones (con 2 tabs)
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatCurrency } from '@/lib/format'
 
 interface ComisionConConexion {
@@ -55,11 +55,7 @@ export default function ComisionesPage() {
     agente: ''
   })
 
-  useEffect(() => {
-    fetchComisiones()
-  }, [activeTab, filtros])
-
-  const fetchComisiones = async () => {
+  const fetchComisiones = useCallback(async () => {
     try {
       setLoading(true)
       
@@ -91,7 +87,11 @@ export default function ComisionesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeTab, filtros])
+
+  useEffect(() => {
+    fetchComisiones()
+  }, [fetchComisiones])
 
   const handleFilterChange = (key: string, value: string) => {
     setFiltros(prev => ({ ...prev, [key]: value }))
