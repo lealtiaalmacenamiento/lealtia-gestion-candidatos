@@ -26,6 +26,13 @@ export function useNotificaciones() {
   const [noLeidas, setNoLeidas] = useState(0)
   const [loading, setLoading] = useState(true)
 
+  const realtimeHabilitado = (() => {
+    if (typeof window === 'undefined') return false
+    const disableFlag = process.env.NEXT_PUBLIC_ENABLE_REALTIME_NOTIFS === 'false'
+    const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+    return !disableFlag && !isLocal
+  })()
+
   const fetchNotificaciones = useCallback(async () => {
     if (!user?.id_auth) return
 
@@ -46,7 +53,7 @@ export function useNotificaciones() {
   }, [user])
 
   const setupRealtimeSubscription = useCallback(async () => {
-    if (!user?.id_auth) return
+    if (!user?.id_auth || !realtimeHabilitado) return
 
     const channel = supabase
       .channel('notificaciones-realtime')
@@ -95,11 +102,18 @@ export function useNotificaciones() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user])
+  }, [realtimeHabilitado, user])
 
   useEffect(() => {
     if (user?.id_auth && !loadingUser) {
       fetchNotificaciones()
+
+      // Evitamos websocket en local; solo polling silencioso
+      if (!realtimeHabilitado) {
+        const interval = setInterval(fetchNotificaciones, 60_000)
+        return () => clearInterval(interval)
+      }
+
       const cleanupPromise = setupRealtimeSubscription()
       return () => {
         cleanupPromise?.then(fn => fn?.())
@@ -107,7 +121,7 @@ export function useNotificaciones() {
     } else if (!loadingUser) {
       setLoading(false)
     }
-  }, [user, loadingUser, fetchNotificaciones, setupRealtimeSubscription])
+  }, [user, loadingUser, fetchNotificaciones, setupRealtimeSubscription, realtimeHabilitado])
 
   const marcarComoLeida = async (id: number) => {
     try {

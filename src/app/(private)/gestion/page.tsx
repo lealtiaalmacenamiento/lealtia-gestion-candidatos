@@ -1339,7 +1339,10 @@ export default function GestionPage() {
                           const nextMontos = { ...(editPoliza.meses_montos||{}) }
                           if (e.target.checked) {
                             next[m] = true
-                            if (nextMontos[m] == null && editPoliza.prima_input != null) nextMontos[m] = Number(editPoliza.prima_input)
+                            if (nextMontos[m] == null) {
+                              const def = defaultMontoPeriodo(editPoliza)
+                              nextMontos[m] = def != null ? def : Number(editPoliza.prima_input ?? 0)
+                            }
                           } else {
                             delete next[m]
                             delete nextMontos[m]
@@ -1443,6 +1446,14 @@ function generateMonthKeys(poliza?: { fecha_emision?: string|null; fecha_renovac
     keys.push(`${y}-${m}`)
   }
   return keys
+}
+
+function defaultMontoPeriodo(poliza?: { prima_input?: number|null; periodicidad_pago?: string|null }) {
+  if (!poliza || typeof poliza.prima_input !== 'number' || !Number.isFinite(poliza.prima_input)) return null
+  const norm = poliza.periodicidad_pago ? normalizePeriodicidadValue(poliza.periodicidad_pago) : null
+  const map: Record<string, number> = { mensual: 12, trimestral: 4, semestral: 2, anual: 1 }
+  const divisor = map[norm || ''] || 1
+  return Number((poliza.prima_input / divisor).toFixed(2))
 }
 function shortMonthHeader(key: string) {
   const [y,m] = key.split('-')

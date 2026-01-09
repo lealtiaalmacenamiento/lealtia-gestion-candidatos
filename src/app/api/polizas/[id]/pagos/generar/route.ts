@@ -22,7 +22,7 @@ export async function POST(
     // Verificar que la póliza existe y tiene periodicidad configurada
     const { data: poliza, error: polizaError } = await supabase
       .from('polizas')
-      .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check')
+      .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id, clientes!inner(asesor_id)')
       .eq('id', polizaId)
       .single()
 
@@ -70,7 +70,35 @@ export async function POST(
       return NextResponse.json({ error: 'Periodicidad desconocida' }, { status: 400 })
     }
 
-    const montoPeriodo = Number((Number(poliza.prima_mxn || 0) / cfg.divisor).toFixed(2))
+    // Calcular porcentaje del producto parametrizado (usa anio_1_percent; fallback al último porcentaje válido; si no hay ninguno, 0)
+    let pct = 0
+    if (poliza.producto_parametro_id) {
+      const { data: prod } = await supabase
+        .from('producto_parametros')
+        .select('anio_1_percent, anio_2_percent, anio_3_percent, anio_4_percent, anio_5_percent, anio_6_percent, anio_7_percent, anio_8_percent, anio_9_percent, anio_10_percent, anio_11_plus_percent')
+        .eq('id', poliza.producto_parametro_id)
+        .maybeSingle()
+
+      if (prod) {
+        const chain = [
+          prod.anio_1_percent,
+          prod.anio_2_percent,
+          prod.anio_3_percent,
+          prod.anio_4_percent,
+          prod.anio_5_percent,
+          prod.anio_6_percent,
+          prod.anio_7_percent,
+          prod.anio_8_percent,
+          prod.anio_9_percent,
+          prod.anio_10_percent,
+          prod.anio_11_plus_percent
+        ].filter(v => typeof v === 'number' && Number.isFinite(v)) as number[]
+        if (chain.length) pct = chain[chain.length - 1]
+      }
+    }
+
+    const baseMensual = Number(poliza.prima_mxn || 0) / cfg.divisor
+    const montoPeriodo = Number(((baseMensual * pct) / 100).toFixed(2))
     const emision = poliza.fecha_emision ? new Date(poliza.fecha_emision) : null
     if (!emision || Number.isNaN(emision.valueOf())) {
       return NextResponse.json({ error: 'Fecha de emisión inválida' }, { status: 400 })
@@ -178,6 +206,23 @@ export async function POST(
 
     if (pagosError) {
       console.error('Error consultando pagos generados:', pagosError)
+    }
+
+    // Notificar al asesor que se regeneró/calibró el calendario (p.ej. corrección de fecha límite o reapertura)
+    try {
+      const asesorId = (poliza as unknown as { clientes?: { asesor_id?: string|null }|null })?.clientes?.asesor_id || null
+      if (asesorId) {
+        await supabase.from('notificaciones').insert({
+          usuario_id: asesorId,
+          tipo: 'pago_proximo',
+          titulo: 'Pagos recalculados',
+          mensaje: `Se actualizó el calendario de pagos de la póliza ${poliza.numero_poliza || polizaId}`,
+          leida: false,
+          metadata: { poliza_id: polizaId }
+        })
+      }
+    } catch (e) {
+      console.error('[pagos_generar] notificacion recalculo err', e)
     }
 
     return NextResponse.json({

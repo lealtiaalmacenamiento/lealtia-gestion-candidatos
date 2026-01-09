@@ -96,6 +96,7 @@ export async function POST(req: Request) {
   }
 
   let polizaId: string | null = null
+  let reqRow: any = null
   let updatedPoliza: {
     id: string
     prima_input?: number|null
@@ -110,11 +111,12 @@ export async function POST(req: Request) {
     comision_mxn?: number|null
   } | null = null
   try {
-    const { data: reqRow } = await supa
+    const { data: reqData } = await supa
       .from('poliza_update_requests')
       .select('solicitante_id, poliza_id, payload_propuesto')
       .eq('id', body.request_id)
       .maybeSingle()
+    reqRow = reqData
     polizaId = reqRow?.poliza_id || null
 
     if (polizaId) {
@@ -151,7 +153,7 @@ export async function POST(req: Request) {
         const admin = getServiceClient()
         const { data: poliza } = await admin
           .from('polizas')
-          .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check')
+          .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id')
           .eq('id', polizaId)
           .single()
 
@@ -189,7 +191,35 @@ export async function POST(req: Request) {
             const baseFechaLimite = new Date(Date.UTC(startYear, startMonth, 1))
             baseFechaLimite.setUTCDate(baseDiaLimite)
 
-            const montoPeriodo = Number((Number(poliza.prima_mxn || 0) / cfg.divisor).toFixed(2))
+            // Tomar porcentaje del producto parametrizado: anio_1_percent con fallback al último porcentaje no nulo; si no hay, 0
+            let pct = 0
+            if (poliza.producto_parametro_id) {
+              const { data: prod } = await admin
+                .from('producto_parametros')
+                .select('anio_1_percent, anio_2_percent, anio_3_percent, anio_4_percent, anio_5_percent, anio_6_percent, anio_7_percent, anio_8_percent, anio_9_percent, anio_10_percent, anio_11_plus_percent')
+                .eq('id', poliza.producto_parametro_id)
+                .maybeSingle()
+
+              if (prod) {
+                const chain = [
+                  prod.anio_1_percent,
+                  prod.anio_2_percent,
+                  prod.anio_3_percent,
+                  prod.anio_4_percent,
+                  prod.anio_5_percent,
+                  prod.anio_6_percent,
+                  prod.anio_7_percent,
+                  prod.anio_8_percent,
+                  prod.anio_9_percent,
+                  prod.anio_10_percent,
+                  prod.anio_11_plus_percent
+                ].filter(v => typeof v === 'number' && Number.isFinite(v)) as number[]
+                if (chain.length) pct = chain[chain.length - 1]
+              }
+            }
+
+            const baseMensual = Number(poliza.prima_mxn || 0) / cfg.divisor
+            const montoPeriodo = Number(((baseMensual * pct) / 100).toFixed(2))
             const pagosToInsert: Array<{ poliza_id: string; periodo_mes: string; fecha_programada: string; fecha_limite: string; monto_programado: number; estado: string; created_by?: string | null }> = []
 
             for (let i = 0; i < cfg.divisor; i++) {
@@ -321,5 +351,21 @@ export async function POST(req: Request) {
   } catch {}
 
   await logAccion('apply_poliza_update', { usuario: auth.user.email || undefined, tabla_afectada: 'poliza_update_requests', snapshot: { id: body.request_id } })
+  try {
+    // Notificar al solicitante que su solicitud fue aprobada
+    const admin = getServiceClient()
+    if (reqRow?.solicitante_id) {
+      await admin.from('notificaciones').insert({
+        usuario_id: reqRow.solicitante_id,
+        tipo: 'sistema',
+        titulo: 'Solicitud de póliza aprobada',
+        mensaje: `Se aprobó tu solicitud ${body.request_id || ''}${polizaId ? ` para póliza ${polizaId}` : ''}`.trim(),
+        leida: false,
+        metadata: { request_id: body.request_id, poliza_id: polizaId }
+      })
+    }
+  } catch (e) {
+    if (debugOn) console.debug('[apply_poliza_update][debug] notificacion solicitante error', e)
+  }
   return NextResponse.json({ ok: true, poliza_id: polizaId, poliza: updatedPoliza })
 }

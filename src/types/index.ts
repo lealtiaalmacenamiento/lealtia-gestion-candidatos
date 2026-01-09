@@ -7,6 +7,8 @@ export interface Candidato {
   // Nuevo identificador POP
   pop?: string
   candidato: string
+  // Fecha de nacimiento del candidato
+  fecha_nacimiento?: string | null
   mes: string
   efc: string
   seg_gmm: number

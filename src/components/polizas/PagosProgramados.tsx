@@ -182,12 +182,17 @@ function ModalMarcarPago({
   onSuccess: () => void
 }) {
   const [montoPagado, setMontoPagado] = useState(pago.monto_programado.toString())
-  const [fechaPago, setFechaPago] = useState(new Date().toISOString().split('T')[0])
+  const [fechaPago, setFechaPago] = useState('')
   const [notas, setNotas] = useState(pago.notas || '')
   const [saving, setSaving] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!fechaPago) {
+      alert('Selecciona la fecha de pago real')
+      return
+    }
     
     try {
       setSaving(true)

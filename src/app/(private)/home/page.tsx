@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthProvider';
 import Link from 'next/link';
 import FullScreenLoader from '@/components/ui/FullScreenLoader';
 import { normalizeRole } from '@/lib/roles';
+import NotificacionesDropdown from '@/components/layout/NotificacionesDropdown';
 
 const modules = [
   { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['supervisor', 'admin'], color: 'primary' },
@@ -89,7 +90,8 @@ export default function HomeDashboard() {
             <i className="bi bi-shield-lock-fill text-[#072e40]"></i>
             Rol: {role || '—'}
           </span>
-          <div className="ms-auto d-flex align-items-center">
+          <div className="ms-auto d-flex align-items-center gap-2">
+            <NotificacionesDropdown />
             <button className="border border-white text-white px-4 py-1 rounded-pill bg-transparent hover:bg-white hover:text-[#072e40] transition small fw-medium btn btn-sm" onClick={handleLogout} disabled={loggingOut}>
               {loggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
             </button>

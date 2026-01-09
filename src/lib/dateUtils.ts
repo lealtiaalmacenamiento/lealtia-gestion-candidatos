@@ -11,7 +11,9 @@ const DATE_FIELD_NAMES = new Set([
   'ultima_actualizacion',
   'fecha_creacion_ct',
   // Nueva fecha de creación POP
-  'fecha_creacion_pop'
+  'fecha_creacion_pop',
+  // Fecha de nacimiento del candidato
+  'fecha_nacimiento'
 ])
 
 // Convierte dd/mm/aaaa -> aaaa-mm-dd si es válido

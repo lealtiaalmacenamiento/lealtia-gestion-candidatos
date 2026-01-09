@@ -1,7 +1,7 @@
 // Página: Dashboard de Comisiones (con 2 tabs)
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { formatCurrency } from '@/lib/format'
 
 interface ComisionConConexion {
@@ -12,14 +12,6 @@ interface ComisionConConexion {
   agente_nombre: string
   mes_conexion: number
   total_polizas: number
-  polizas_mes_1: number
-  polizas_mes_2: number
-  polizas_mes_3: number
-  polizas_mes_4_plus: number
-  prima_mes_1: number
-  prima_mes_2: number
-  prima_mes_3: number
-  prima_mes_4_plus: number
   comision_vigente: number
 }
 
@@ -40,20 +32,50 @@ interface Resumen {
   efcs_unicos?: number
 }
 
+const getCurrentPeriodoCdmx = () => {
+  try {
+    // en-CA yields YYYY-MM; tz forces CDMX current month
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Mexico_City',
+      year: 'numeric',
+      month: '2-digit'
+    }).format(new Date())
+  } catch {
+    return ''
+  }
+}
+
 export default function ComisionesPage() {
+  const defaultPeriodo = useMemo(() => getCurrentPeriodoCdmx(), [])
+  const defaultYear = useMemo(() => Number(defaultPeriodo?.slice(0, 4)) || new Date().getFullYear(), [defaultPeriodo])
+  const defaultMonth = useMemo(() => defaultPeriodo?.slice(5, 7) || new Intl.DateTimeFormat('en-CA', { month: '2-digit' }).format(new Date()), [defaultPeriodo])
   const [activeTab, setActiveTab] = useState<'con' | 'sin'>('con')
   const [comisionesCon, setComisionesCon] = useState<ComisionConConexion[]>([])
   const [comisionesSin, setComisionesSin] = useState<ComisionSinConexion[]>([])
   const [resumenCon, setResumenCon] = useState<Resumen | null>(null)
   const [resumenSin, setResumenSin] = useState<Resumen | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedYear, setSelectedYear] = useState<number>(defaultYear)
+  const [selectedMonth, setSelectedMonth] = useState<string>(defaultMonth)
 
   // Filtros
   const [filtros, setFiltros] = useState({
-    periodo: '',
-    efc: '',
+    periodo: defaultPeriodo,
     agente: ''
   })
+
+  const monthOptions = useMemo(() => {
+    const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+    return months.map((label, idx) => ({ label, value: String(idx + 1).padStart(2, '0') }))
+  }, [])
+
+  const yearOptions = useMemo(() => {
+    const range: number[] = []
+    for (let y = defaultYear + 1; y >= defaultYear - 4; y -= 1) {
+      range.push(y)
+    }
+    return range
+  }, [defaultYear])
 
   const fetchComisiones = useCallback(async () => {
     try {
@@ -61,7 +83,6 @@ export default function ComisionesPage() {
       
       const params = new URLSearchParams()
       if (filtros.periodo) params.set('periodo', filtros.periodo)
-      if (filtros.efc && activeTab === 'con') params.set('efc', filtros.efc)
       if (filtros.agente) params.set('agente', filtros.agente)
 
       const endpoint = activeTab === 'con' 
@@ -97,8 +118,17 @@ export default function ComisionesPage() {
     setFiltros(prev => ({ ...prev, [key]: value }))
   }
 
+  const handleMonthYearChange = (month: string, year: number) => {
+    const periodo = `${year}-${month}`
+    setSelectedMonth(month)
+    setSelectedYear(year)
+    setFiltros(prev => ({ ...prev, periodo }))
+  }
+
   const resetFiltros = () => {
-    setFiltros({ periodo: '', efc: '', agente: '' })
+    setSelectedYear(defaultYear)
+    setSelectedMonth(defaultMonth)
+    setFiltros({ periodo: defaultPeriodo, agente: '' })
   }
 
   return (
@@ -136,29 +166,31 @@ export default function ComisionesPage() {
       <div className="card mb-4">
         <div className="card-body">
           <div className="row g-3">
-            <div className="col-md-3">
-              <label className="form-label">Periodo</label>
-              <input
-                type="month"
-                className="form-control"
-                value={filtros.periodo}
-                onChange={(e) => handleFilterChange('periodo', e.target.value)}
-              />
+            <div className="col-md-2">
+              <label className="form-label">Año</label>
+              <select
+                className="form-select"
+                value={selectedYear}
+                onChange={(e) => handleMonthYearChange(selectedMonth, Number(e.target.value))}
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-2">
+              <label className="form-label">Mes</label>
+              <select
+                className="form-select"
+                value={selectedMonth}
+                onChange={(e) => handleMonthYearChange(e.target.value, selectedYear)}
+              >
+                {monthOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
             
-            {activeTab === 'con' && (
-              <div className="col-md-3">
-                <label className="form-label">EFC ID</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  placeholder="ID del EFC"
-                  value={filtros.efc}
-                  onChange={(e) => handleFilterChange('efc', e.target.value)}
-                />
-              </div>
-            )}
-
             <div className="col-md-3">
               <label className="form-label">Agente</label>
               <input
@@ -211,14 +243,6 @@ export default function ComisionesPage() {
               </div>
             </div>
           </div>
-          <div className="col-md-3">
-            <div className="card bg-light">
-              <div className="card-body">
-                <h6 className="text-muted mb-1">Periodos</h6>
-                <h3>{(activeTab === 'con' ? resumenCon : resumenSin)?.periodos_unicos || 0}</h3>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -259,14 +283,9 @@ function TablaConConexion({ data }: { data: ComisionConConexion[] }) {
             <thead>
               <tr>
                 <th>Periodo</th>
-                <th>EFC</th>
                 <th>Agente</th>
                 <th className="text-center">Mes Conexión</th>
                 <th className="text-center">Total Pólizas</th>
-                <th className="text-center">Mes 1</th>
-                <th className="text-center">Mes 2</th>
-                <th className="text-center">Mes 3</th>
-                <th className="text-center">Mes 4+</th>
                 <th className="text-end">Comisión</th>
               </tr>
             </thead>
@@ -274,32 +293,11 @@ function TablaConConexion({ data }: { data: ComisionConConexion[] }) {
               {data.map((row, idx) => (
                 <tr key={idx}>
                   <td>{row.periodo}</td>
-                  <td>{row.efc_nombre}</td>
                   <td>{row.agente_nombre}</td>
                   <td className="text-center">
                     <span className="badge bg-info">{row.mes_conexion}</span>
                   </td>
                   <td className="text-center fw-bold">{row.total_polizas}</td>
-                  <td className="text-center">
-                    {row.polizas_mes_1}
-                    <br />
-                    <small className="text-muted">{formatCurrency(row.prima_mes_1)}</small>
-                  </td>
-                  <td className="text-center">
-                    {row.polizas_mes_2}
-                    <br />
-                    <small className="text-muted">{formatCurrency(row.prima_mes_2)}</small>
-                  </td>
-                  <td className="text-center">
-                    {row.polizas_mes_3}
-                    <br />
-                    <small className="text-muted">{formatCurrency(row.prima_mes_3)}</small>
-                  </td>
-                  <td className="text-center">
-                    {row.polizas_mes_4_plus}
-                    <br />
-                    <small className="text-muted">{formatCurrency(row.prima_mes_4_plus)}</small>
-                  </td>
                   <td className="text-end fw-bold text-success">
                     {formatCurrency(row.comision_vigente)}
                   </td>

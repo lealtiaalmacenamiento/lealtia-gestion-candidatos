@@ -41,6 +41,7 @@ export interface Database {
         Row: {
           id_candidato: number
           candidato: string
+          fecha_nacimiento: string | null
           ct: string | null
           mes: string | null
           efc: string | null
@@ -51,6 +52,7 @@ export interface Database {
         Insert: {
           id_candidato?: number
           candidato: string
+          fecha_nacimiento?: string | null
           ct?: string | null
           mes?: string | null
           efc?: string | null
@@ -61,6 +63,7 @@ export interface Database {
         Update: {
           id_candidato?: number
           candidato?: string
+          fecha_nacimiento?: string | null
           ct?: string | null
           mes?: string | null
           efc?: string | null

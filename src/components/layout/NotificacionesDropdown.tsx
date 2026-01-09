@@ -156,18 +156,6 @@ export default function NotificacionesDropdown() {
             ))
           )}
 
-          {notificaciones.length > 5 && (
-            <>
-              <div className="dropdown-divider"></div>
-              <Link
-                href="/dashboard/notificaciones"
-                className="dropdown-item text-center text-primary fw-bold"
-                onClick={() => setShowDropdown(false)}
-              >
-                Ver todas las notificaciones
-              </Link>
-            </>
-          )}
         </div>
       )}
     </div>

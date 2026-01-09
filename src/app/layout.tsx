@@ -38,11 +38,13 @@ export default function RootLayout({ children }: RootLayoutProps) {
         <AuthProvider>
           <PageTitleProvider>
             <DialogProvider>
-              <div style={{ marginTop: showBanner ? 28 : 0 }}>
-                {children}
+              <div className="d-flex flex-column min-vh-100">
+                <div style={{ marginTop: showBanner ? 28 : 0, flex: 1 }}>
+                  {children}
+                </div>
+                <Footer />
               </div>
             </DialogProvider>
-            <Footer />
           </PageTitleProvider>
         </AuthProvider>
       </body>

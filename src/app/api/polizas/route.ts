@@ -328,6 +328,22 @@ export async function POST(req: Request) {
 
   try {
     const admin = getServiceClient()
+    // Notificar alta al asesor (y supervisor si existiera) después de crear
+    const notifyAlta = async (polizaId: string, asesorAuthId?: string | null) => {
+      if (!asesorAuthId) return
+      try {
+        await admin.from('notificaciones').insert({
+          usuario_id: asesorAuthId,
+          tipo: 'sistema',
+          titulo: 'Nueva póliza registrada',
+          mensaje: `Se creó la póliza ${numero_poliza} para tu cliente`,
+          leida: false,
+          metadata: { poliza_id: polizaId, cliente_id }
+        })
+      } catch (e) {
+        console.error('[POST /api/polizas] error creando notificacion alta', e)
+      }
+    }
     // Guardar contra duplicados: misma póliza para el mismo cliente
     const { data: dup } = await admin
       .from('polizas')
@@ -358,6 +374,13 @@ export async function POST(req: Request) {
     try {
       await logAccion('alta_poliza', { usuario: usuarioEmail, tabla_afectada: 'polizas', id_registro: (data as unknown as { id?: number })?.id ?? 0, snapshot: { cliente_id } })
     } catch { /* no-block */ }
+    // Notificación al asesor
+    try {
+      const { data: clienteRow } = await admin.from('clientes').select('asesor_id').eq('id', cliente_id).maybeSingle()
+      await notifyAlta((data as { id: string }).id, clienteRow?.asesor_id)
+    } catch (e) {
+      console.error('[POST /api/polizas] error fetching cliente para notificacion', e)
+    }
     return NextResponse.json({ item: data }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Error inesperado'
