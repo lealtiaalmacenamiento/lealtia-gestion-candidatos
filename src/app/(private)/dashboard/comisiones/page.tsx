@@ -2,6 +2,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useAuth } from '@/context/AuthProvider'
 import { formatCurrency } from '@/lib/format'
 
 interface ComisionConConexion {
@@ -46,6 +47,16 @@ const getCurrentPeriodoCdmx = () => {
 }
 
 export default function ComisionesPage() {
+  // Solo supervisores/admin
+  const { user, loadingUser } = useAuth()
+  const role = (user?.rol || '').toLowerCase()
+  const notAllowed = !loadingUser && user && role !== 'supervisor' && role !== 'admin'
+
+  useEffect(() => {
+    if (notAllowed && typeof window !== 'undefined') {
+      window.location.replace('/home')
+    }
+  }, [notAllowed])
   const defaultPeriodo = useMemo(() => getCurrentPeriodoCdmx(), [])
   const defaultYear = useMemo(() => Number(defaultPeriodo?.slice(0, 4)) || new Date().getFullYear(), [defaultPeriodo])
   const defaultMonth = useMemo(() => defaultPeriodo?.slice(5, 7) || new Intl.DateTimeFormat('en-CA', { month: '2-digit' }).format(new Date()), [defaultPeriodo])
@@ -111,8 +122,9 @@ export default function ComisionesPage() {
   }, [activeTab, filtros])
 
   useEffect(() => {
+    if (loadingUser || notAllowed) return
     fetchComisiones()
-  }, [fetchComisiones])
+  }, [fetchComisiones, loadingUser, notAllowed])
 
   const handleFilterChange = (key: string, value: string) => {
     setFiltros(prev => ({ ...prev, [key]: value }))
@@ -129,6 +141,14 @@ export default function ComisionesPage() {
     setSelectedYear(defaultYear)
     setSelectedMonth(defaultMonth)
     setFiltros({ periodo: defaultPeriodo, agente: '' })
+  }
+
+  if (notAllowed) {
+    return (
+      <div className="container-fluid py-4">
+        <div className="alert alert-warning">No tienes permisos para ver Comisiones.</div>
+      </div>
+    )
   }
 
   return (
