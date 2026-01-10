@@ -54,7 +54,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Transformar los datos
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const participants = (data || []).map((row: any) => ({
       usuario_id: row.usuario_id,
       nombre: row.usuarios?.nombre || 'Sin nombre',

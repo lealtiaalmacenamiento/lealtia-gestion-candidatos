@@ -66,6 +66,18 @@ export async function POST(req: Request) {
       if (user?.email) {
         await sendMail({ to: user.email, subject: 'Solicitud de póliza rechazada', html: `<p>Tu solicitud fue rechazada para la póliza ${reqRow.poliza_id}. Motivo: ${body.motivo || ''}</p>` })
       }
+      try {
+        await supa.from('notificaciones').insert({
+          usuario_id: reqRow.solicitante_id,
+          tipo: 'sistema',
+          titulo: 'Solicitud de póliza rechazada',
+          mensaje: `Se rechazó tu solicitud ${body.request_id || ''} para la póliza ${reqRow.poliza_id || ''}. Motivo: ${body.motivo || ''}`.trim(),
+          leida: false,
+          metadata: { request_id: body.request_id, poliza_id: reqRow.poliza_id, motivo: body.motivo || '' }
+        })
+      } catch (e) {
+        if (debugOn) console.debug('[reject_poliza_update][debug] notificacion solicitante error', e)
+      }
     }
   } catch {}
 

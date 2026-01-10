@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthProvider';
 import Link from 'next/link';
 import FullScreenLoader from '@/components/ui/FullScreenLoader';
 import { normalizeRole } from '@/lib/roles';
+import NotificacionesDropdown from '@/components/layout/NotificacionesDropdown';
 
 const modules = [
   { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['supervisor', 'admin'], color: 'primary' },
@@ -21,6 +22,8 @@ const modules = [
   { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['supervisor','admin','agente'], color: 'primary' },
   // Fase 5: Campañas
   { key: 'campanias', title: 'Campañas', desc: 'Campañas promocionales y progreso', icon: 'trophy', roles: ['supervisor','admin','agente','promotor'], color: 'success' },
+  // Fase 6: Comisiones
+  { key: 'dashboard/comisiones', title: 'Comisiones', desc: 'Dashboard de comisiones y pagos', icon: 'cash-coin', roles: ['supervisor','admin'], color: 'success' },
   // Pendientes de aprobación (cliente / póliza)
   { key: 'pendientes', title: 'Cambios pendientes', desc: 'Aprobar solicitudes de cliente y póliza', icon: 'inboxes', roles: ['supervisor','admin'], color: 'danger' },
   // Módulos especializados (opcionalmente ocultables si usas solo la vista unificada)
@@ -87,7 +90,8 @@ export default function HomeDashboard() {
             <i className="bi bi-shield-lock-fill text-[#072e40]"></i>
             Rol: {role || '—'}
           </span>
-          <div className="ms-auto d-flex align-items-center">
+          <div className="ms-auto d-flex align-items-center gap-2">
+            <NotificacionesDropdown />
             <button className="border border-white text-white px-4 py-1 rounded-pill bg-transparent hover:bg-white hover:text-[#072e40] transition small fw-medium btn btn-sm" onClick={handleLogout} disabled={loggingOut}>
               {loggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
             </button>
@@ -130,7 +134,7 @@ export default function HomeDashboard() {
                 <div className="col-12">
                   <div className="alert alert-warning">No tienes un rol válido para ver el menú.</div>
                 </div>
-              )}
+              )}  
         </div>
       </div>
     </>

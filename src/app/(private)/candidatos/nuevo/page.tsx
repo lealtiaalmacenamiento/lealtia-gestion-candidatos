@@ -11,6 +11,7 @@ interface FormState {
   pop: string;
   ct: string;
   candidato: string;
+  fecha_nacimiento?: string | null;
   // Nueva fecha manual: fecha de creación CT
   fecha_creacion_ct?: string;
   fecha_creacion_pop?: string;
@@ -32,7 +33,7 @@ interface FormState {
   inicio_escuela_fundamental?: string;
 }
 
-const initialForm: FormState = { pop: '', ct: '', candidato: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '', fecha_creacion_pop: '', mes_conexion: '' }
+const initialForm: FormState = { pop: '', ct: '', candidato: '', fecha_nacimiento: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '', fecha_creacion_pop: '', mes_conexion: '' }
 
 export default function NuevoCandidato() {
   const [meses, setMeses] = useState<CedulaA1[]>([])
@@ -452,6 +453,11 @@ export default function NuevoCandidato() {
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
                   <input name="candidato" className="form-control" value={form.candidato} onChange={handleChange} placeholder="Nombre completo" required />
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1">FECHA DE NACIMIENTO</label>
+                  <input type="date" name="fecha_nacimiento" className="form-control" value={form.fecha_nacimiento || ''} onChange={handleChange} />
+                  <div className="form-text small">Usada para completar la ficha del candidato. Opcional.</div>
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">EMAIL (CANDIDATO)</label>

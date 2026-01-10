@@ -21,8 +21,6 @@ export async function pngToBase64(url: string): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type { Prospecto } from '@/types'
 
 // Tipo auxiliar para doc con soporte de autoTable

@@ -11,6 +11,7 @@ import { MONTH_OPTIONS, buildYearOptions } from '@/lib/mesConexion'
 interface FormState {
   ct?: string;
   candidato?: string;
+  fecha_nacimiento?: string | null;
   email_agente?: string;
   fecha_creacion_ct?: string;
   dias_desde_ct?: number; // derivado
@@ -81,7 +82,11 @@ export default function EditarCandidato() {
           const mesConexionDb = (cand as unknown as { mes_conexion?: string | null }).mes_conexion || ''
           const mesConexionAuto = computeMesConexion(cand.fecha_creacion_ct, cand.fecha_creacion_pop)
           const mesConexion = mesConexionDb || mesConexionAuto || ''
-          const candConMes = { ...cand, mes_conexion: mesConexion }
+          const candConMes: FormState = {
+            ...cand,
+            mes_conexion: mesConexion,
+            fecha_nacimiento: (cand as Candidato).fecha_nacimiento ?? null
+          }
           // Normalizar datos existentes + derivados
           setForm(prev => ({ ...prev, ...calcularDerivados(candConMes), ...candConMes }))
           setMesConexionManual(Boolean(mesConexionDb))
@@ -440,6 +445,10 @@ export default function EditarCandidato() {
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">CANDIDATO <span className="text-danger">*</span></label>
                 <input name="candidato" className="form-control" value={form.candidato || ''} onChange={handleChange} required />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">FECHA DE NACIMIENTO</label>
+                <input type="date" name="fecha_nacimiento" className="form-control" value={form.fecha_nacimiento || ''} onChange={handleChange} />
               </div>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">EMAIL (CANDIDATO)</label>

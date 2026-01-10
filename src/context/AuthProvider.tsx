@@ -24,7 +24,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let performedRecovery = false
     const init = async () => {
       try {
-        console.log('[AuthProvider:init] Intento cargar usuario vía /api/login')
         const res = await fetch('/api/login')
         if (res.ok) {
           const data = await res.json()
@@ -32,13 +31,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUser(data)
             // Creamos una sesión sintética mínima sólo para marcar presencia
             setSession({} as Session)
-            console.log('[AuthProvider:init] Usuario autenticado', data?.email)
           }
         } else {
           if (!cancelled) {
             setUser(null)
             setSession(null)
-            console.warn('[AuthProvider:init] /api/login status', res.status)
             // Fallback: si existen cookies de supabase pero el registro usuarios se borró, limpiamos sesión llamando logout
             if (!performedRecovery) {
               performedRecovery = true

@@ -1,9 +1,10 @@
 "use client"
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { deleteCliente } from '@/lib/api'
+import AlertasPagos from '@/components/dashboard/AlertasPagos'
 
 type Cliente = {
   id: string
@@ -33,10 +34,76 @@ type Poliza = {
   producto_nombre?: string|null
   fecha_emision?: string|null
   renovacion?: string|null
+  fecha_limite_pago?: string|null
   tipo_producto?: string|null
   fecha_renovacion?: string|null
   dia_pago?: number|null
   meses_check?: Record<string, boolean>|null
+  meses_montos?: Record<string, number|null>|null
+}
+
+function normalizeDateInput(value?: string | null): string | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  const slash = trimmed.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+  if (slash) {
+    const [ , dd, mm, yyyy ] = slash
+    const month = mm.padStart(2, '0')
+    const day = dd.padStart(2, '0')
+    return `${yyyy}-${month}-${day}`
+  }
+  const parsed = Date.parse(trimmed)
+  if (!Number.isNaN(parsed)) return new Date(parsed).toISOString().slice(0, 10)
+  return trimmed
+}
+
+function normalizePeriodicidadValue(value?: string | null): string | null {
+  if (!value) return null
+  const v = value.trim().toUpperCase()
+  const map: Record<string, string> = {
+    M: 'mensual', MENSUAL: 'mensual', MES: 'mensual',
+    T: 'trimestral', TRIMESTRAL: 'trimestral', TRIMESTRE: 'trimestral',
+    S: 'semestral', SEMESTRAL: 'semestral', SEMESTRA: 'semestral',
+    A: 'anual', ANUAL: 'anual', ANUALIDAD: 'anual'
+  }
+  return map[v] || value.trim().toLowerCase()
+}
+
+function clampDayToMonth(year: number, monthIndexZeroBased: number, day: number): number {
+  const last = new Date(Date.UTC(year, monthIndexZeroBased + 1, 0)).getUTCDate()
+  return Math.max(1, Math.min(day, last))
+}
+
+function dateFromReferenceAndDay(refIso: string, day: number): string | null {
+  if (!refIso || !Number.isFinite(day)) return null
+  const parsed = Date.parse(refIso)
+  if (Number.isNaN(parsed)) return null
+  const base = new Date(parsed)
+  const y = base.getUTCFullYear()
+  const m = base.getUTCMonth()
+  const d = clampDayToMonth(y, m, day)
+  const month = String(m + 1).padStart(2, '0')
+  const dayStr = String(d).padStart(2, '0')
+  return `${y}-${month}-${dayStr}`
+}
+
+const normalizePolizaDates = (p: Poliza): Poliza => {
+  const emision = normalizeDateInput(p.fecha_emision)
+  const renovacion = normalizeDateInput(p.fecha_renovacion || p.renovacion)
+  const refBase = emision || renovacion || null
+  const autoFechaLimite = refBase && Number.isFinite(p.dia_pago) ? dateFromReferenceAndDay(refBase, Number(p.dia_pago)) : null
+
+  return {
+    ...p,
+    fecha_emision: emision,
+    // Usar renovacion calculada como respaldo si la fecha_renovacion viene vacía
+    fecha_renovacion: renovacion,
+    // Prefill fecha_limite_pago si viene vacía usando día de pago y fecha_emision como ancla
+    fecha_limite_pago: normalizeDateInput(p.fecha_limite_pago || autoFechaLimite),
+    renovacion
+  }
 }
 
 export default function GestionPage() {
@@ -65,6 +132,43 @@ export default function GestionPage() {
 
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
+  const tableMonthKeys = useMemo(() => {
+    if (!polizas.length) return generateMonthKeys()
+    const set = new Set<string>()
+    for (const p of polizas) {
+      for (const k of generateMonthKeys(p)) set.add(k)
+    }
+    return Array.from(set).sort()
+  }, [polizas])
+    useEffect(() => {
+      let abort = false
+      const loadPagos = async () => {
+        if (!editPoliza?.id) return
+        try {
+          const res = await fetch(`/api/polizas/${editPoliza.id}/pagos`, { cache: 'no-store' })
+          const j = await res.json().catch(()=>({}))
+          if (!res.ok || !Array.isArray(j?.pagos)) return
+          const meses_check: Record<string, boolean> = {}
+          const meses_montos: Record<string, number> = {}
+          for (const pago of j.pagos as Array<{ periodo_mes?: string; estado?: string; monto_pagado?: number; monto_programado?: number }>) {
+            if (!pago?.periodo_mes) continue
+            const d = new Date(pago.periodo_mes)
+            if (Number.isNaN(d.valueOf())) continue
+            const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`
+            if (pago.estado === 'pagado') {
+              meses_check[key] = true
+              const monto = typeof pago.monto_pagado === 'number' ? pago.monto_pagado : pago.monto_programado
+              if (typeof monto === 'number' && Number.isFinite(monto) && monto >= 0) meses_montos[key] = monto
+            }
+          }
+          if (!abort) {
+            setEditPoliza(prev => prev ? { ...prev, meses_check: { ...(prev.meses_check||{}), ...meses_check }, meses_montos: { ...(prev.meses_montos||{}), ...meses_montos } } : prev)
+          }
+        } catch {}
+      }
+      loadPagos()
+      return () => { abort = true }
+    }, [editPoliza?.id])
   // Edición cómoda de prima: mantener texto crudo para evitar saltos del cursor por formateo
   const [editPrimaText, setEditPrimaText] = useState<string>('')
   const [creating, setCreating] = useState(false)
@@ -75,7 +179,7 @@ export default function GestionPage() {
   const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
   const [productos, setProductos] = useState<Array<{ id: string; nombre_comercial: string; tipo_producto: string; moneda?: string|null; sa_min?: number|null; sa_max?: number|null }>>([])
   const [tipoProducto, setTipoProducto] = useState<string>('')
-  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; estatus: string; forma_pago: string; periodicidad_pago?: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
+  const [nuevaPoliza, setNuevaPoliza] = useState<{ numero_poliza: string; fecha_emision: string; fecha_renovacion: string; fecha_limite_pago: string; estatus: string; forma_pago: string; periodicidad_pago?: string; dia_pago: string; prima_input: string; prima_moneda: string; producto_parametro_id?: string; meses_check: Record<string, boolean> }>({ numero_poliza: '', fecha_emision: '', fecha_renovacion: '', fecha_limite_pago: '', estatus: 'EN_VIGOR', forma_pago: '', periodicidad_pago: undefined, dia_pago: '', prima_input: '', prima_moneda: 'MXN', meses_check: {} })
   const [savingPoliza, setSavingPoliza] = useState<boolean>(false)
   const [savingMeta, setSavingMeta] = useState(false)
   // Meta header inputs
@@ -91,7 +195,28 @@ export default function GestionPage() {
       } catch {}
     })()
   }, [addingPoliza])
-  // vista meses comprimida (sin toggle por ahora)
+
+  // Función para abrir modal de edición de póliza desde alertas
+  const handleEditPolizaFromAlerta = useCallback(async (polizaId: string) => {
+    try {
+      setLoading(true)
+      // Obtener la póliza completa
+      const res = await fetch(`/api/polizas?include_clientes_inactivos=1`, { cache: 'no-store' })
+      const json = await res.json()
+      if (res.ok && Array.isArray(json.items)) {
+        const poliza = json.items.find((p: Poliza) => p.id === polizaId)
+        if (poliza) {
+          const normalized = normalizePolizaDates(poliza)
+          setEditPoliza(normalized)
+          setEditPrimaText(String(normalized.prima_input || ''))
+        }
+      }
+    } catch (error) {
+      console.error('Error cargando póliza:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -187,7 +312,7 @@ export default function GestionPage() {
       if (qPolizas.trim()) url.searchParams.set('q', qPolizas.trim())
       const rp = await fetch(url.toString(), { cache: 'no-store' })
       const jp = await rp.json().catch(()=>({}))
-      let items = jp.items || []
+      let items: Poliza[] = Array.isArray(jp.items) ? (jp.items as Poliza[]) : []
       const q = qPolizas.trim().toLowerCase()
       // Fallback: si el servidor devolvió vacío con q, intentar traer sin q y filtrar en cliente
       if (q && (!Array.isArray(items) || items.length === 0)) {
@@ -204,7 +329,7 @@ export default function GestionPage() {
           })
         } catch {}
       }
-      setPolizas(items)
+      setPolizas(items.map(normalizePolizaDates))
     } finally { setLoading(false) }
   }, [qPolizas])
 
@@ -220,7 +345,7 @@ export default function GestionPage() {
         if (q) url.searchParams.set('q', q)
         const rp = await fetch(url.toString(), { cache: 'no-store' })
         const jp = await rp.json().catch(()=>({}))
-        let items = jp.items || []
+        let items: Poliza[] = Array.isArray(jp.items) ? (jp.items as Poliza[]) : []
         // Fallback client-side si vacío con q
         if (q && (!Array.isArray(items) || items.length === 0)) {
           try {
@@ -237,7 +362,7 @@ export default function GestionPage() {
             })
           } catch {}
         }
-        setPolizas(items)
+        setPolizas(items.map(normalizePolizaDates))
       } finally { setLoading(false) }
     }, 400)
     return () => clearTimeout(t)
@@ -282,17 +407,38 @@ export default function GestionPage() {
     // Guardar una referencia del estado esperado para verificación post-guardar
     const expectedId = p.id
     const expectedPrima = typeof p.prima_input === 'number' ? Number(p.prima_input.toFixed(2)) : null
+    const periodicidadNormalizada = normalizePeriodicidadValue(p.periodicidad_pago)
+    if (!p.fecha_limite_pago || !p.fecha_limite_pago.trim()) {
+      await dialog.alert('Fecha límite de pago es requerida')
+      setSavingPoliza(false)
+      return
+    }
+    const allowedKeys = new Set(generateMonthKeys(p))
+    const filteredCheckEntries = Object.entries(p.meses_check || {}).filter(([k, v]) => allowedKeys.has(k) && !!v)
+    const filteredMontosEntries = Object.entries(p.meses_montos || {}).filter(([k]) => allowedKeys.has(k))
+
+    const missingMonto = filteredCheckEntries.some(([m]) => {
+      const val = (p.meses_montos || {})[m]
+      return val === undefined || val === null || !Number.isFinite(val) || val < 0
+    })
+    if (missingMonto) {
+      await dialog.alert('Debes capturar el monto pagado para cada mes marcado como pagado')
+      setSavingPoliza(false)
+      return
+    }
     const payload: Record<string, unknown> = {
       numero_poliza: emptyAsUndef(p.numero_poliza),
       estatus: emptyAsUndef(p.estatus),
       forma_pago: emptyAsUndef(p.forma_pago),
       fecha_emision: emptyAsUndef(p.fecha_emision),
       fecha_renovacion: emptyAsUndef(p.fecha_renovacion),
-  periodicidad_pago: emptyAsUndef(p.periodicidad_pago),
+      fecha_limite_pago: emptyAsUndef(p.fecha_limite_pago),
+      periodicidad_pago: emptyAsUndef(periodicidadNormalizada),
       dia_pago: p.dia_pago ?? undefined,
       prima_input: p.prima_input ?? undefined,
       prima_moneda: emptyAsUndef(p.prima_moneda),
-      meses_check: p.meses_check || {},
+      meses_check: Object.fromEntries(filteredCheckEntries),
+      meses_montos: Object.fromEntries(filteredMontosEntries),
     }
     try {
       const res = await fetch('/api/polizas/updates', {
@@ -320,6 +466,14 @@ export default function GestionPage() {
         } else {
           await dialog.alert('Guardado y aprobado')
         }
+        // Regenerar calendario de pagos si se aprobó como super para reflejar periodicidad/día/meses
+        if (p.id) {
+          try {
+            await fetch(`/api/polizas/${p.id}/pagos/generar`, { method: 'POST' })
+          } catch (err) {
+            console.error('No se pudo regenerar pagos', err)
+          }
+        }
       } else if (!isSuper) {
         await dialog.alert('Solicitud enviada')
       }
@@ -328,12 +482,10 @@ export default function GestionPage() {
       try {
         if (selectedCliente?.id) {
           const url = new URL('/api/polizas', window.location.origin)
-          url.searchParams.set('cliente_id', selectedCliente.id)
-          if (qPolizas.trim()) url.searchParams.set('q', qPolizas.trim())
           const rp = await fetch(url.toString(), { cache: 'no-store' })
           const jp = await rp.json().catch(()=>({}))
           if (Array.isArray(jp.items)) {
-            setPolizas(jp.items)
+            setPolizas((jp.items || []).map(normalizePolizaDates))
             // Verificación: si se aprobó como super, confirmar que la prima persistió
             if (isSuper && expectedId) {
               const updated = (jp.items as Array<{ id: string; prima_input?: number | null }>).find((it) => it.id === expectedId)
@@ -409,6 +561,13 @@ export default function GestionPage() {
         <section className="border rounded p-3">
           {isSuper ? (
             <>
+              {/* Widget de Alertas de Pagos */}
+              <div className="row mb-4">
+                <div className="col-lg-8">
+                  <AlertasPagos onEditPoliza={handleEditPolizaFromAlerta} />
+                </div>
+              </div>
+
               <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Agentes</h2>
                 <div className="d-flex align-items-end gap-2 ms-auto flex-wrap">
@@ -618,6 +777,13 @@ export default function GestionPage() {
             </>
           ) : (
             <>
+              {/* Widget de Alertas de Pagos */}
+              <div className="row mb-4">
+                <div className="col-lg-8">
+                  <AlertasPagos onEditPoliza={handleEditPolizaFromAlerta} />
+                </div>
+              </div>
+
               <header className="flex items-center gap-2 mb-3 flex-wrap">
                 <h2 className="font-medium">Clientes</h2>
                 <div className="d-flex ms-auto align-items-end gap-2 flex-wrap">
@@ -866,7 +1032,7 @@ export default function GestionPage() {
                 <label className="form-label small mb-1">Buscar pólizas</label>
                 <input className="form-control form-control-sm" placeholder="No. póliza o producto" value={qPolizas} onChange={e=>setQPolizas(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter' && selectedCliente) { void openPolizas(selectedCliente) } }} />
               </div>
-              <button className="btn btn-sm btn-success" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
+              <button className="btn btn-sm btn-success" onClick={()=>{ setAddingPoliza(true); setNuevaPoliza({ numero_poliza:'', fecha_emision:'', fecha_renovacion:'', fecha_limite_pago:'', estatus:'EN_VIGOR', forma_pago:'', periodicidad_pago: undefined, dia_pago:'', prima_input:'', prima_moneda:'MXN', meses_check:{}, producto_parametro_id: undefined }) }}>Agregar póliza</button>
             </div>
           </div>
     <div className="table-responsive small">
@@ -883,7 +1049,7 @@ export default function GestionPage() {
                   <th>Tipo</th>
                   <th>Día de pago</th>
                   <th>Prima</th>
-                  {generateMonthKeys().map(m => <th key={m}>{shortMonthHeader(m)}</th>)}
+                  {tableMonthKeys.map(m => <th key={m}>{shortMonthHeader(m)}</th>)}
                   <th></th>
                 </tr>
               </thead>
@@ -900,91 +1066,15 @@ export default function GestionPage() {
                     <td className="text-xs">{p.tipo_producto || '—'}</td>
                     <td className="text-xs">{p.dia_pago ?? '—'}</td>
                     <td className="text-xs">{typeof p.prima_input === 'number' ? formatMoney(p.prima_input, p.prima_moneda) : '—'}</td>
-                    {generateMonthKeys().map(m => <td key={m} className="text-center text-xs">{p.meses_check && p.meses_check[m] ? '✔' : ''}</td>)}
+                    {generateMonthKeys(p).map(m => <td key={m} className="text-center text-xs">{p.meses_check && p.meses_check[m] ? '✔' : ''}</td>)}
                     <td className="text-end">
-                      <button className="btn btn-sm btn-primary" onClick={()=>setEditPoliza({...p})}>Editar</button>
+                      <button className="btn btn-sm btn-primary" onClick={()=>setEditPoliza(normalizePolizaDates(p))}>Editar</button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {editPoliza && (
-            <AppModal title={`Editar póliza ${editPoliza.numero_poliza || ''}`} icon="file-earmark-text" onClose={()=>setEditPoliza(null)}>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="d-flex flex-column"><label className="form-label small">No. Póliza</label><input className="form-control form-control-sm" value={editPoliza.numero_poliza||''} onChange={e=>setEditPoliza({...editPoliza, numero_poliza: e.target.value})} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Estatus</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={editPoliza.estatus || 'EN_VIGOR'}
-                    onChange={e=> setEditPoliza({ ...editPoliza, estatus: e.target.value })}
-                  >
-                    <option value="EN_VIGOR">En vigor</option>
-                    <option value="ANULADA">Anulada</option>
-                  </select>
-                </div>
-                <div className="d-flex flex-column"><label className="form-label small">Periodicidad</label>
-                  <select className="form-select form-select-sm" value={editPoliza.periodicidad_pago||''} onChange={e=>setEditPoliza({...editPoliza, periodicidad_pago: e.target.value})}>
-                    <option value="">—</option>
-                    <option value="A">A</option>
-                    <option value="S">S</option>
-                    <option value="T">T</option>
-                    <option value="M">M</option>
-                  </select>
-                </div>
-                <div className="d-flex flex-column"><label className="form-label small">Método de pago</label>
-                  <select className="form-select form-select-sm" value={editPoliza.forma_pago||''} onChange={e=>setEditPoliza({...editPoliza, forma_pago: e.target.value})}>
-                    <option value="">—</option>
-                    <option value="MODO_DIRECTO">Modo directo</option>
-                    <option value="CARGO_AUTOMATICO">Cargo automático</option>
-                  </select>
-                </div>
-                <div className="d-flex flex-column"><label className="form-label small">Fecha emisión</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_emision || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_emision: e.target.value})} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Fecha renovación</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_renovacion || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_renovacion: e.target.value||undefined})} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Tipo</label><input className="form-control form-control-sm" disabled value={editPoliza.tipo_producto || ''} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Día de pago</label><input className="form-control form-control-sm" type="number" min={1} max={31} value={editPoliza.dia_pago ?? ''} onChange={e=>{ const v = parseInt(e.target.value,10); setEditPoliza({...editPoliza, dia_pago: isFinite(v)? v:null}) }} /></div>
-                <div className="d-flex flex-column"><label className="form-label small">Prima anual</label>
-                  <input
-                    className="form-control form-control-sm"
-                    inputMode="decimal"
-                    pattern="[0-9]*[.,]?[0-9]*"
-                    placeholder="0.00"
-                    value={editPrimaText}
-                    onChange={e=>{
-                      // Permitir dígitos, punto o coma como decimal; no aplicar formateo aquí
-                      const v = e.target.value
-                      // Mantener sólo dígitos, separadores y signo
-                      const cleaned = v.replace(/[^0-9.,-]/g, '')
-                      setEditPrimaText(cleaned)
-                      const asNumber = parseMoneyInput(cleaned)
-                      setEditPoliza({ ...editPoliza, prima_input: (asNumber!=null && Number.isFinite(asNumber)) ? asNumber : null })
-                    }}
-                    onBlur={() => {
-                      // Normalizar a 2 decimales si es un número válido
-                      const asNumber = parseMoneyInput(editPrimaText)
-                      if (asNumber!=null && Number.isFinite(asNumber)) setEditPrimaText(asNumber.toFixed(2))
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="mt-2 small">
-                <strong>Meses</strong>
-                <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #ddd' }} className="p-2 mt-1">
-                  <div className="d-flex flex-wrap gap-3">
-                    {generateMonthKeys().map(m => (
-                      <label key={m} className="form-check-label d-flex align-items-center gap-1" style={{ width: '95px', fontSize: '11px' }}>
-                        <input type="checkbox" className="form-check-input" checked={!!(editPoliza.meses_check && editPoliza.meses_check[m])} onChange={e=>{ const next = { ...(editPoliza.meses_check||{}) }; if (e.target.checked) next[m] = true; else delete next[m]; setEditPoliza({ ...editPoliza, meses_check: next }) }} />{shortMonthHeader(m)}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 d-flex justify-content-end gap-2">
-                <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
-                <button className="btn btn-sm btn-success" disabled={savingPoliza} onClick={()=>submitPolizaCambio(editPoliza)}>{savingPoliza ? 'Guardando…' : (isSuper? 'Guardar y aprobar':'Enviar solicitud')}</button>
-              </div>
-            </AppModal>
-          )}
           {addingPoliza && (
             <AppModal title="Agregar póliza" icon="file-earmark-plus" onClose={()=>!submittingNuevaPoliza && setAddingPoliza(false)}>
               <div className="grid grid-cols-2 gap-3">
@@ -999,6 +1089,18 @@ export default function GestionPage() {
                 <div className="d-flex flex-column">
                   <label className="form-label small">Fecha de renovación (opcional)</label>
                   <input className="form-control form-control-sm" type="date" value={nuevaPoliza.fecha_renovacion} onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_renovacion: e.target.value})} />
+                </div>
+                <div className="d-flex flex-column">
+                  <label className="form-label small">Fecha límite de pago</label>
+                  <input
+                    className="form-control form-control-sm"
+                    type="date"
+                    required
+                    title="Se repite cada periodo usando este día; formato yyyy-mm-dd"
+                    value={nuevaPoliza.fecha_limite_pago}
+                    onChange={e=>setNuevaPoliza({...nuevaPoliza, fecha_limite_pago: e.target.value})}
+                  />
+                  <span className="form-text" style={{ fontSize: '11px' }}>Se repite cada periodo con este día (formato yyyy-mm-dd).</span>
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Tipo de producto</label>
@@ -1034,12 +1136,22 @@ export default function GestionPage() {
                 </div>
                 <div className="d-flex flex-column">
                   <label className="form-label small">Periodicidad</label>
-                  <select className="form-select form-select-sm" value={nuevaPoliza.periodicidad_pago || ''} onChange={e=>setNuevaPoliza({...nuevaPoliza, periodicidad_pago: e.target.value})}>
+                  <select
+                    className="form-select form-select-sm"
+                    value={normalizePeriodicidadValue(nuevaPoliza.periodicidad_pago) || ''}
+                    onChange={e=>{
+                      const norm = normalizePeriodicidadValue(e.target.value)
+                      setNuevaPoliza({
+                        ...nuevaPoliza,
+                        periodicidad_pago: norm || undefined
+                      })
+                    }}
+                  >
                     <option value="">Selecciona…</option>
-                    <option value="A">A</option>
-                    <option value="S">S</option>
-                    <option value="T">T</option>
-                    <option value="M">M</option>
+                    <option value="anual">Anual (A)</option>
+                    <option value="semestral">Semestral (S)</option>
+                    <option value="trimestral">Trimestral (T)</option>
+                    <option value="mensual">Mensual (M)</option>
                   </select>
                 </div>
                 <div className="d-flex flex-column">
@@ -1088,15 +1200,17 @@ export default function GestionPage() {
                       <button className="btn btn-sm btn-success" disabled={submittingNuevaPoliza || dup} onClick={async()=>{
                   if (submittingNuevaPoliza) return
                   const primaNum = Number((nuevaPoliza.prima_input||'').replace(/,/g,''))
-                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.periodicidad_pago || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { await dialog.alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Periodicidad, Método de pago, Prima anual'); return }
+                  if (!selectedCliente?.id || !nuevaPoliza.producto_parametro_id || !nuevaPoliza.numero_poliza || !nuevaPoliza.fecha_emision || !nuevaPoliza.fecha_limite_pago || !nuevaPoliza.periodicidad_pago || !nuevaPoliza.forma_pago || !isFinite(primaNum)) { await dialog.alert('Campos requeridos: Producto, No. Póliza, Fecha de emisión, Fecha límite de pago, Periodicidad, Método de pago, Prima anual'); return }
+                  if (!nuevaPoliza.fecha_limite_pago || !nuevaPoliza.fecha_limite_pago.trim()) { await dialog.alert('Fecha límite de pago es requerida'); return }
                   const payload: Record<string, unknown> = {
                     cliente_id: selectedCliente.id,
                     numero_poliza: nuevaPoliza.numero_poliza,
                     fecha_emision: nuevaPoliza.fecha_emision,
                     fecha_renovacion: nuevaPoliza.fecha_renovacion || null,
+                    fecha_limite_pago: nuevaPoliza.fecha_limite_pago,
                     estatus: nuevaPoliza.estatus || null,
                     forma_pago: nuevaPoliza.forma_pago,
-                    periodicidad_pago: nuevaPoliza.periodicidad_pago,
+                    periodicidad_pago: normalizePeriodicidadValue(nuevaPoliza.periodicidad_pago),
                     // tipo_pago removido
                     dia_pago: nuevaPoliza.dia_pago ? Number(nuevaPoliza.dia_pago) : null,
                     prima_input: primaNum,
@@ -1117,7 +1231,8 @@ export default function GestionPage() {
                       if (qPolizas.trim()) url.searchParams.set('q', qPolizas.trim())
                       const rp = await fetch(url.toString())
                       const jp = await rp.json()
-                      setPolizas(jp.items||[])
+                      const items: Poliza[] = Array.isArray(jp.items) ? (jp.items as Poliza[]) : []
+                      setPolizas(items.map(normalizePolizaDates))
                     } finally { setLoading(false) }
                   } catch { await dialog.alert('Error al crear') } finally { setSubmittingNuevaPoliza(false) }
                 }}>Crear</button>
@@ -1129,6 +1244,143 @@ export default function GestionPage() {
           )}
           {/* agregar póliza modal deshabilitado temporalmente */}
         </section>
+      )}
+
+      {editPoliza && (
+        <AppModal title={`Editar póliza ${editPoliza.numero_poliza || ''}`} icon="file-earmark-text" onClose={()=>setEditPoliza(null)}>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="d-flex flex-column"><label className="form-label small">No. Póliza</label><input className="form-control form-control-sm" value={editPoliza.numero_poliza||''} onChange={e=>setEditPoliza({...editPoliza, numero_poliza: e.target.value})} /></div>
+            <div className="d-flex flex-column"><label className="form-label small">Estatus</label>
+              <select
+                className="form-select form-select-sm"
+                value={editPoliza.estatus || 'EN_VIGOR'}
+                onChange={e=> setEditPoliza({ ...editPoliza, estatus: e.target.value })}
+              >
+                <option value="EN_VIGOR">En vigor</option>
+                <option value="ANULADA">Anulada</option>
+              </select>
+            </div>
+            <div className="d-flex flex-column"><label className="form-label small">Periodicidad</label>
+              <select
+                className="form-select form-select-sm"
+                value={normalizePeriodicidadValue(editPoliza.periodicidad_pago)||''}
+                onChange={e=>{
+                  const norm = normalizePeriodicidadValue(e.target.value)
+                  setEditPoliza({ ...editPoliza, periodicidad_pago: norm || undefined })
+                }}
+              >
+                <option value="">—</option>
+                <option value="anual">Anual (A)</option>
+                <option value="semestral">Semestral (S)</option>
+                <option value="trimestral">Trimestral (T)</option>
+                <option value="mensual">Mensual (M)</option>
+              </select>
+            </div>
+            <div className="d-flex flex-column"><label className="form-label small">Método de pago</label>
+              <select className="form-select form-select-sm" value={editPoliza.forma_pago||''} onChange={e=>setEditPoliza({...editPoliza, forma_pago: e.target.value})}>
+                <option value="">—</option>
+                <option value="MODO_DIRECTO">Modo directo</option>
+                <option value="CARGO_AUTOMATICO">Cargo automático</option>
+              </select>
+            </div>
+            <div className="d-flex flex-column"><label className="form-label small">Fecha emisión</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_emision || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_emision: e.target.value})} /></div>
+            <div className="d-flex flex-column"><label className="form-label small">Fecha renovación</label><input className="form-control form-control-sm" type="date" value={editPoliza.fecha_renovacion || ''} onChange={e=>setEditPoliza({...editPoliza, fecha_renovacion: e.target.value||undefined})} /></div>
+            <div className="d-flex flex-column">
+              <label className="form-label small">Fecha límite de pago (requerida)</label>
+              <input
+                className="form-control form-control-sm"
+                type="date"
+                required
+                title="Se repite cada periodo usando este día; formato yyyy-mm-dd"
+                value={editPoliza.fecha_limite_pago || ''}
+                onChange={e=>setEditPoliza({...editPoliza, fecha_limite_pago: e.target.value||undefined})}
+              />
+              <span className="form-text" style={{ fontSize: '11px' }}>Se repite cada periodo con este día (formato yyyy-mm-dd).</span>
+            </div>
+            <div className="d-flex flex-column"><label className="form-label small">Tipo</label><input className="form-control form-control-sm" disabled value={editPoliza.tipo_producto || ''} /></div>
+            <div className="d-flex flex-column"><label className="form-label small">Día de pago</label><input className="form-control form-control-sm" type="number" min={1} max={31} value={editPoliza.dia_pago ?? ''} onChange={e=>{ const v = parseInt(e.target.value,10); setEditPoliza({...editPoliza, dia_pago: isFinite(v)? v:null}) }} /></div>
+            <div className="d-flex flex-column"><label className="form-label small">Prima anual</label>
+              <input
+                className="form-control form-control-sm"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
+                placeholder="0.00"
+                value={editPrimaText}
+                onChange={e=>{
+                  // Permitir dígitos, punto o coma como decimal; no aplicar formateo aquí
+                  const v = e.target.value
+                  // Mantener sólo dígitos, separadores y signo
+                  const cleaned = v.replace(/[^0-9.,-]/g, '')
+                  setEditPrimaText(cleaned)
+                  const asNumber = parseMoneyInput(cleaned)
+                  setEditPoliza({ ...editPoliza, prima_input: (asNumber!=null && Number.isFinite(asNumber)) ? asNumber : null })
+                }}
+                onBlur={() => {
+                  // Normalizar a 2 decimales si es un número válido
+                  const asNumber = parseMoneyInput(editPrimaText)
+                  if (asNumber!=null && Number.isFinite(asNumber)) setEditPrimaText(asNumber.toFixed(2))
+                }}
+              />
+            </div>
+          </div>
+          <div className="mt-2 small">
+            <strong>Meses</strong>
+            <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #ddd' }} className="p-2 mt-1">
+              <div className="d-flex flex-wrap gap-3">
+                {generateMonthKeys(editPoliza).map(m => (
+                  <div key={m} className="d-flex flex-column" style={{ width: '120px', fontSize: '11px' }}>
+                    <label className="form-check-label d-flex align-items-center gap-1">
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={!!(editPoliza.meses_check && editPoliza.meses_check[m])}
+                        onChange={e=>{
+                          const next = { ...(editPoliza.meses_check||{}) }
+                          const nextMontos = { ...(editPoliza.meses_montos||{}) }
+                          if (e.target.checked) {
+                            next[m] = true
+                            if (nextMontos[m] == null) {
+                              const def = defaultMontoPeriodo(editPoliza)
+                              nextMontos[m] = def != null ? def : Number(editPoliza.prima_input ?? 0)
+                            }
+                          } else {
+                            delete next[m]
+                            delete nextMontos[m]
+                          }
+                          setEditPoliza({ ...editPoliza, meses_check: next, meses_montos: nextMontos })
+                        }}
+                      />
+                      {shortMonthHeader(m)}
+                    </label>
+                    {!!(editPoliza.meses_check && editPoliza.meses_check[m]) && (
+                      <input
+                        className="form-control form-control-sm mt-1"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editPoliza.meses_montos?.[m] ?? ''}
+                        onChange={e=>{
+                          const val = e.target.value
+                          const num = val === '' ? null : Number(val)
+                          const nextMontos = { ...(editPoliza.meses_montos||{}) }
+                          if (val === '') { delete nextMontos[m] }
+                          else { nextMontos[m] = Number.isFinite(num) ? num : null }
+                          setEditPoliza({ ...editPoliza, meses_montos: nextMontos })
+                        }}
+                        placeholder="Monto"
+                        title="Monto pagado para este mes"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 d-flex justify-content-end gap-2">
+            <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
+            <button className="btn btn-sm btn-success" disabled={savingPoliza} onClick={()=>submitPolizaCambio(editPoliza)}>{savingPoliza ? 'Guardando…' : (isSuper? 'Guardar y aprobar':'Enviar solicitud')}</button>
+          </div>
+        </AppModal>
       )}
     </div>
   )
@@ -1151,18 +1403,57 @@ function emptyAsUndef(v?: string|null) { const s = (v||'').trim(); return s ? s 
 function formatMoney(v: number, moneda?: string|null) {
   try { return (moneda ? (moneda + ' ') : '$') + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } catch { return (moneda? moneda+' ':'$') + v.toFixed(2) }
 }
-function generateMonthKeys() {
-  // Meses fijos comenzando en enero 2025 (24 meses)
+function generateMonthKeys(poliza?: { fecha_emision?: string|null; fecha_renovacion?: string|null; periodicidad_pago?: string|null }, fallbackMonths = 24) {
+  const map: Record<string, number> = { mensual: 1, trimestral: 3, semestral: 6, anual: 12 }
+  const norm = poliza?.periodicidad_pago ? normalizePeriodicidadValue(poliza.periodicidad_pago) : null
+  const step = map[norm || ''] || 1
+
+  const parseMonthStart = (value?: string|null): Date | null => {
+    if (!value) return null
+    const d = new Date(value)
+    if (Number.isNaN(d.valueOf())) return null
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+  }
+
+  const start = parseMonthStart(poliza?.fecha_emision)
+  const end = parseMonthStart(poliza?.fecha_renovacion)
+
   const keys: string[] = []
-  const startYear = 2025
-  const startMonthIndex = 0 // enero
-  for (let i=0;i<24;i++) {
-    const d = new Date(startYear, startMonthIndex + i, 1)
-    const y = d.getFullYear()
-    const m = String(d.getMonth()+1).padStart(2,'0')
+  // Fallback: si no hay fechas, mantener comportamiento previo (enero 2025 en adelante)
+  if (!start) {
+    const fallbackStart = new Date(Date.UTC(2025, 0, 1))
+    for (let i=0;i<fallbackMonths;i++) {
+      const d = new Date(Date.UTC(fallbackStart.getUTCFullYear(), fallbackStart.getUTCMonth() + i, 1))
+      const y = d.getUTCFullYear()
+      const m = String(d.getUTCMonth()+1).padStart(2,'0')
+      keys.push(`${y}-${m}`)
+    }
+    return keys
+  }
+
+  // Si no hay fecha de renovación, generar un año por defecto usando la periodicidad (inclusive)
+  const computedEnd = end || new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + (fallbackMonths-1), 1))
+
+  const guardMax = 120 // evita loops infinitos
+  for (let i = 0; i < guardMax; i++) {
+    const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + (i * step), 1))
+    // Si hay fecha de renovación real, no incluir ese mes como pago (end es exclusivo)
+    if (end && current >= computedEnd) break
+    // Si es fallback (sin renovación), incluir hasta computedEnd inclusive
+    if (!end && current > computedEnd) break
+    const y = current.getUTCFullYear()
+    const m = String(current.getUTCMonth()+1).padStart(2,'0')
     keys.push(`${y}-${m}`)
   }
   return keys
+}
+
+function defaultMontoPeriodo(poliza?: { prima_input?: number|null; periodicidad_pago?: string|null }) {
+  if (!poliza || typeof poliza.prima_input !== 'number' || !Number.isFinite(poliza.prima_input)) return null
+  const norm = poliza.periodicidad_pago ? normalizePeriodicidadValue(poliza.periodicidad_pago) : null
+  const map: Record<string, number> = { mensual: 12, trimestral: 4, semestral: 2, anual: 1 }
+  const divisor = map[norm || ''] || 1
+  return Number((poliza.prima_input / divisor).toFixed(2))
 }
 function shortMonthHeader(key: string) {
   const [y,m] = key.split('-')

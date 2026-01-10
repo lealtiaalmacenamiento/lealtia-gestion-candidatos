@@ -17,7 +17,7 @@ import { useAuth } from '@/context/AuthProvider';
 import { exportCandidatoPDF, exportCandidatosExcel } from '@/lib/exporters'
 
 // Tipos
-type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'mes_conexion' | 'efc' | 'ct' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct' | 'fecha_creacion_pop'>;
+type SortKey = keyof Pick<Candidato, 'id_candidato' | 'candidato' | 'mes' | 'mes_conexion' | 'efc' | 'ct' | 'fecha_nacimiento' | 'fecha_tentativa_de_examen' | 'fecha_de_creacion' | 'ultima_actualizacion' | 'fecha_creacion_ct' | 'fecha_creacion_pop'>;
 type AnyColKey = keyof Candidato;
 
 export default function ConsultaCandidatosPage() {
@@ -227,6 +227,7 @@ function ConsultaCandidatosInner() {
     { key: 'pop' as unknown as keyof Candidato, label: 'POP' },
     { key: 'candidato', label: 'Candidato', sortable: true },
     { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
+    { key: 'fecha_nacimiento' as unknown as keyof Candidato, label: 'Fecha nacimiento', sortable: true },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'mes_conexion', label: 'Mes conexión', sortable: true },
   { key: 'fecha_creacion_pop' as unknown as keyof Candidato, label: 'Fecha creación POP' },
@@ -475,19 +476,17 @@ useEffect(() => {
                     const cls = (col.key === 'fecha_de_creacion' && !c.fecha_de_creacion) || (col.key === 'ultima_actualizacion' && !c.ultima_actualizacion) || (col.key === 'fecha_tentativa_de_examen' && !c.fecha_tentativa_de_examen) ? 'text-muted' : '';
                     const allCompleted = areAllEtapasCompleted(c as CandidatoExt)
                     const isAgente = allCompleted
-                    const display = (col.key === 'fecha_de_creacion')
-                      ? (formatDate(c.fecha_de_creacion) || '-')
-                      : (col.key === 'ultima_actualizacion'
-                        ? (formatDate(c.ultima_actualizacion) || '-')
-                        : (col.key === 'fecha_tentativa_de_examen'
-                          ? (formatDate(c.fecha_tentativa_de_examen) || '-')
-                          : (col.key === 'fecha_creacion_ct'
-                            ? (formatDate(c.fecha_creacion_ct) || '-')
-                            : (col.key === 'mes_conexion'
-                              ? (formatMesConexion(c.mes_conexion) || '-')
-                              : (col.key === 'proceso'
-                                ? (isAgente ? 'Agente' : (etiquetaProceso((c as unknown as { proceso?: string }).proceso) || ''))
-                                : value)))));
+                    const display = (() => {
+                      if (col.key === 'fecha_de_creacion') return formatDate(c.fecha_de_creacion) || '-'
+                      if (col.key === 'ultima_actualizacion') return formatDate(c.ultima_actualizacion) || '-'
+                      if (col.key === 'fecha_tentativa_de_examen') return formatDate(c.fecha_tentativa_de_examen) || '-'
+                      if (col.key === 'fecha_creacion_ct') return formatDate(c.fecha_creacion_ct) || '-'
+                      if (col.key === 'fecha_creacion_pop') return formatDate((c as CandidatoExt).fecha_creacion_pop) || '-'
+                      if (col.key === 'fecha_nacimiento') return formatDate((c as CandidatoExt).fecha_nacimiento || undefined) || '-'
+                      if (col.key === 'mes_conexion') return formatMesConexion(c.mes_conexion) || '-'
+                      if (col.key === 'proceso') return isAgente ? 'Agente' : (etiquetaProceso((c as unknown as { proceso?: string }).proceso) || '')
+                      return value
+                    })();
                     const etapaKeys = new Set([
                       'fecha_tentativa_de_examen',
                       'periodo_para_registro_y_envio_de_documentos',
