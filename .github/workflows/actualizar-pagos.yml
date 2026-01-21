@@ -2,9 +2,10 @@ name: Actualizar pagos vencidos (Fase 6)
 
 on:
   schedule:
-    # Ejecutar diariamente a las 2:00 AM CST (8:00 AM UTC)
-    # CST = UTC-6, entonces 2 AM CST = 8 AM UTC
-    - cron: '0 8 * * *'
+    # Ejecutar cada 30 minutos entre 09:00 y 23:00 CDMX (CST, UTC-6)
+    # Ventana en UTC: 15:00-23:59 y 00:00-05:59
+    - cron: '*/30 15-23 * * *'
+    - cron: '*/30 0-5 * * *'
   workflow_dispatch:
     # Permitir ejecución manual desde GitHub UI
 

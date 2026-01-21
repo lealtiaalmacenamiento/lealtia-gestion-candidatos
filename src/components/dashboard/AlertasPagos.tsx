@@ -55,6 +55,15 @@ interface AlertasResponse {
   proximos: PagoAlerta[]
 }
 
+function sortPorAsesorOCandidato(list: PagoAlerta[]) {
+  const getKey = (p: PagoAlerta) => {
+    const asesor = p.polizas?.clientes?.usuarios?.nombre || p.polizas?.clientes?.usuarios?.email
+    const candidato = `${p.polizas?.clientes?.primer_nombre || ''} ${p.polizas?.clientes?.primer_apellido || ''}`.trim()
+    return (asesor || candidato || '').toLowerCase()
+  }
+  return [...list].sort((a, b) => getKey(a).localeCompare(getKey(b), 'es'))
+}
+
 interface AlertasPagosProps {
   onEditPoliza?: (polizaId: string) => void
 }
@@ -88,7 +97,10 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
       const json = await res.json()
 
       if (res.ok) {
-        setAlertas(json)
+        setAlertas({
+          vencidos: sortPorAsesorOCandidato(json.vencidos || []),
+          proximos: sortPorAsesorOCandidato(json.proximos || [])
+        })
       } else {
         console.error('Error al cargar alertas:', json)
       }

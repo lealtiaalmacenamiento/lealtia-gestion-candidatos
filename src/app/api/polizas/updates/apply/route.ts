@@ -344,8 +344,13 @@ export async function POST(req: Request) {
 
     if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
+      let polizaNumeroCorreo: string | null = null
+      if (polizaId) {
+        const { data: polizaRow } = await supa.from('polizas').select('numero_poliza').eq('id', polizaId).maybeSingle()
+        polizaNumeroCorreo = polizaRow?.numero_poliza ?? null
+      }
       if (user?.email) {
-        await sendMail({ to: user.email, subject: 'Solicitud de póliza aprobada', html: `<p>Tu solicitud fue aprobada para la póliza ${reqRow.poliza_id}.</p>` })
+        await sendMail({ to: user.email, subject: 'Solicitud de póliza aprobada', html: `<p>Tu solicitud fue aprobada para la póliza ${polizaNumeroCorreo || reqRow.poliza_id || ''}.</p>` })
       }
     }
   } catch {}
@@ -355,13 +360,21 @@ export async function POST(req: Request) {
     // Notificar al solicitante que su solicitud fue aprobada
     const admin = getServiceClient()
     if (reqRow?.solicitante_id) {
+      let polizaNumero: string | null = null
+      if (polizaId) {
+        const { data: polizaRow } = await admin.from('polizas').select('numero_poliza').eq('id', polizaId).maybeSingle()
+        polizaNumero = polizaRow?.numero_poliza ?? null
+      }
+
       await admin.from('notificaciones').insert({
         usuario_id: reqRow.solicitante_id,
         tipo: 'sistema',
         titulo: 'Solicitud de póliza aprobada',
-        mensaje: `Se aprobó tu solicitud ${body.request_id || ''}${polizaId ? ` para póliza ${polizaId}` : ''}`.trim(),
+        mensaje: polizaNumero 
+          ? `Se aprobó tu solicitud para la póliza ${polizaNumero}`
+          : 'Se aprobó tu solicitud de actualización de póliza',
         leida: false,
-        metadata: { request_id: body.request_id, poliza_id: polizaId }
+        metadata: { request_id: body.request_id, poliza_id: polizaId, poliza_numero: polizaNumero }
       })
     }
   } catch (e) {
