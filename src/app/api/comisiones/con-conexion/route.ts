@@ -1,6 +1,7 @@
 // GET /api/comisiones/con-conexion - Dashboard de comisiones de agentes CON mes de conexión
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { getUsuarioSesion } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,16 +19,27 @@ export async function GET(request: Request) {
     const supabase = getServiceClient()
     const { searchParams } = new URL(request.url)
     
-    const periodo = searchParams.get('periodo') // YYYY-MM
+    const periodoDesde = searchParams.get('periodo_desde') // YYYY-MM
+    const periodoHasta = searchParams.get('periodo_hasta') // YYYY-MM
     const efc = searchParams.get('efc')
     const agente = searchParams.get('agente')
+
+    // Obtener usuario autenticado
+    const authUser = await getUsuarioSesion()
+    const isAgente = authUser?.rol?.toLowerCase() === 'agente'
 
     let query = supabase
       .from('vw_dashboard_comisiones_con_conexion')
       .select('*')
 
-    // Aplicar filtros
-    if (periodo) query = query.eq('periodo', periodo)
+    // Si es agente, filtrar solo sus propias comisiones
+    if (isAgente && authUser?.id_auth) {
+      query = query.eq('id_auth', authUser.id_auth)
+    }
+
+    // Aplicar filtros de rango de fechas
+    if (periodoDesde) query = query.gte('periodo', periodoDesde)
+    if (periodoHasta) query = query.lte('periodo', periodoHasta)
     if (efc) query = query.eq('efc', efc)
     if (agente) query = query.ilike('agente_nombre', `%${agente}%`)
 

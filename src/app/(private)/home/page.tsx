@@ -23,7 +23,7 @@ const modules = [
   // Fase 5: Campañas
   { key: 'campanias', title: 'Campañas', desc: 'Campañas promocionales y progreso', icon: 'trophy', roles: ['supervisor','admin','agente','promotor'], color: 'success' },
   // Fase 6: Comisiones
-  { key: 'dashboard/comisiones', title: 'Comisiones', desc: 'Dashboard de comisiones y pagos', icon: 'cash-coin', roles: ['supervisor','admin'], color: 'success' },
+  { key: 'dashboard/comisiones', title: 'Comisiones', desc: 'Dashboard de comisiones y pagos', icon: 'cash-coin', roles: ['supervisor','admin','agente'], color: 'success' },
   // Pendientes de aprobación (cliente / póliza)
   { key: 'pendientes', title: 'Cambios pendientes', desc: 'Aprobar solicitudes de cliente y póliza', icon: 'inboxes', roles: ['supervisor','admin'], color: 'danger' },
   // Módulos especializados (opcionalmente ocultables si usas solo la vista unificada)

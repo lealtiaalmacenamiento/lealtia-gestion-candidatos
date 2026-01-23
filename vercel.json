@@ -3,6 +3,7 @@
   "ignoreCommand": "bash ./scripts/vercel-ignore.sh",
   "crons": [
     { "path": "/api/reports/prospectos-daily-changes", "schedule": "0 6 * * *" },
-    { "path": "/api/market/sync", "schedule": "0 13 * * *" }
+    { "path": "/api/market/sync", "schedule": "0 13 * * *" },
+    { "path": "/api/cron/cleanup-notifications", "schedule": "0 3 * * *" }
   ]
 }

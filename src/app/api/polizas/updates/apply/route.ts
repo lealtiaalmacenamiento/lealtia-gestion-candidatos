@@ -151,6 +151,22 @@ export async function POST(req: Request) {
       // Regenerar calendario de pagos cuando se actualiza la póliza (sin depender del cliente)
       try {
         const admin = getServiceClient()
+        
+        // Obtener la póliza ANTES de la actualización para detectar cambio de periodicidad
+        const { data: polizaAntes } = await admin
+          .from('polizas')
+          .select('periodicidad_pago')
+          .eq('id', polizaId)
+          .single()
+        
+        const periodicidadAnterior = polizaAntes?.periodicidad_pago
+        const periodicidadNueva = (reqRow?.payload_propuesto as { periodicidad_pago?: string } | null)?.periodicidad_pago
+        const cambioPeriodicidad = periodicidadNueva && periodicidadNueva !== periodicidadAnterior
+        
+        if (debugOn && cambioPeriodicidad) {
+          console.debug('[apply_poliza_update][debug] Cambio de periodicidad detectado:', periodicidadAnterior, '->', periodicidadNueva)
+        }
+        
         const { data: poliza } = await admin
           .from('polizas')
           .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id')
@@ -167,11 +183,22 @@ export async function POST(req: Request) {
           const cfg = map[poliza.periodicidad_pago as keyof typeof map]
 
           if (cfg) {
-            await admin
-              .from('poliza_pagos_mensuales')
-              .delete()
-              .eq('poliza_id', polizaId)
-              .neq('estado', 'pagado')
+            // Si cambió la periodicidad, ELIMINAR TODOS los pagos (incluso los pagados) para regenerar correctamente
+            if (cambioPeriodicidad) {
+              await admin
+                .from('poliza_pagos_mensuales')
+                .delete()
+                .eq('poliza_id', polizaId)
+              
+              console.info(`[apply_poliza_update] Periodicidad cambió de ${periodicidadAnterior} a ${periodicidadNueva}. Todos los pagos eliminados para regeneración.`)
+            } else {
+              // Si no cambió, solo eliminar pagos no pagados
+              await admin
+                .from('poliza_pagos_mensuales')
+                .delete()
+                .eq('poliza_id', polizaId)
+                .neq('estado', 'pagado')
+            }
 
             const emision = new Date(poliza.fecha_emision)
             const startYear = emision.getUTCFullYear()
