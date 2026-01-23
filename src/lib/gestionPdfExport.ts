@@ -257,12 +257,12 @@ export async function exportGestionPDF(
   autoTable(doc, {
     startY: yPosition,
     margin: { left: marginLeft, right: marginRight },
-    head: [['Concepto', 'Cantidad']],
+    head: [['Concepto', 'Cantidad', 'Monto']],
     body: [
-      ['Total Clientes', data.clientes.length.toString()],
-      ['Total Pólizas', totalGeneralPolizas.toString()],
-      ['Prima Total', formatCurrency(totalGeneralPrimas)],
-      ['Comisión Total', formatCurrency(totalGeneralComisiones)]
+      ['Total Clientes', data.clientes.length.toString(), '-'],
+      ['Total Pólizas', totalGeneralPolizas.toString(), '-'],
+      ['Prima Total', totalGeneralPolizas.toString(), formatCurrency(totalGeneralPrimas)],
+      ['Comisión Total', totalGeneralPolizas.toString(), formatCurrency(totalGeneralComisiones)]
     ],
     theme: 'grid',
     headStyles: {
@@ -275,8 +275,9 @@ export async function exportGestionPDF(
       fontSize: 9
     },
     columnStyles: {
-      0: { cellWidth: 80 },
-      1: { cellWidth: 102, halign: 'right' }
+      0: { cellWidth: 60 },
+      1: { cellWidth: 50, halign: 'right' },
+      2: { cellWidth: 52, halign: 'right' }
     }
   })
 
