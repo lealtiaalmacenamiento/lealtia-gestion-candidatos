@@ -3,7 +3,7 @@ import { getServiceClient } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = getServiceClient();
     

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { PuntosThreshold, ClasificacionPuntos, TipoProducto } from '@/types';
 
 const CLASIFICACIONES: ClasificacionPuntos[] = ['CERO', 'SIMPLE', 'MEDIO', 'DOBLE', 'TRIPLE'];
@@ -26,7 +26,7 @@ export default function PuntosThresholdsSection({ onNotif }: Props) {
     activo: true
   });
 
-  const loadThresholds = async () => {
+  const loadThresholds = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch('/api/parametros/puntos-thresholds');
@@ -41,11 +41,11 @@ export default function PuntosThresholdsSection({ onNotif }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [onNotif]);
 
   useEffect(() => {
     void loadThresholds();
-  }, []);
+  }, [loadThresholds]);
 
   const startEdit = (row: PuntosThreshold) => {
     setEditId(row.id);
@@ -347,7 +347,7 @@ export default function PuntosThresholdsSection({ onNotif }: Props) {
                     value={newRow.umbral_max ?? ''}
                     onChange={e => handleNewChange('umbral_max', e.target.value ? parseFloat(e.target.value) : null)}
                   />
-                  <small className="text-muted">Dejar vacío para "sin límite superior"</small>
+                  <small className="text-muted">Dejar vacío para &ldquo;sin límite superior&rdquo;</small>
                 </div>
                 <div className="mb-3">
                   <label className="form-label">Puntos</label>

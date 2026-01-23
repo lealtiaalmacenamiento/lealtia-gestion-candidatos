@@ -104,16 +104,13 @@ export async function exportGestionPDF(
   const marginBottom = 10
   const pageWidth = 210 // A4
   const pageHeight = 297 // A4
-  const contentWidth = pageWidth - marginLeft - marginRight
 
-  let currentPage = 1
   let yPosition = marginTop
 
   // Función para verificar espacio disponible y agregar página si es necesario
   const checkPageBreak = (requiredSpace: number) => {
     if (yPosition + requiredSpace > pageHeight - marginBottom) {
       doc.addPage()
-      currentPage++
       yPosition = marginTop
       drawHeader()
       yPosition += headerHeight + 5
