@@ -237,14 +237,16 @@ export async function exportGestionPDF(
   let totalGeneralPolizas = 0
   let totalGeneralPrimas = 0
   let totalGeneralComisiones = 0
-  let totalGeneralPagos = 0
+  let totalGeneralPagosRealizados = 0
+  let totalGeneralPagosTotales = 0
 
   data.clientes.forEach(cliente => {
     cliente.polizas.forEach(poliza => {
       totalGeneralPolizas++
       totalGeneralPrimas += poliza.prima || 0
       totalGeneralComisiones += poliza.comision_vigente || 0
-      totalGeneralPagos += poliza.pagos_realizados || 0
+      totalGeneralPagosRealizados += poliza.pagos_realizados || 0
+      totalGeneralPagosTotales += poliza.pagos_totales || 0
     })
   })
 
@@ -263,8 +265,8 @@ export async function exportGestionPDF(
     body: [
       ['Total Clientes', data.clientes.length.toString(), '-'],
       ['Total Pólizas', totalGeneralPolizas.toString(), '-'],
-      ['Prima Total', totalGeneralPolizas.toString(), formatCurrency(totalGeneralPrimas)],
-      ['Comisión Total', totalGeneralPagos.toString(), formatCurrency(totalGeneralComisiones)]
+      ['Prima Total', `${totalGeneralPagosRealizados} de ${totalGeneralPagosTotales}`, formatCurrency(totalGeneralPrimas)],
+      ['Comisión Total', `${totalGeneralPagosRealizados} de ${totalGeneralPagosTotales}`, formatCurrency(totalGeneralComisiones)]
     ],
     theme: 'grid',
     headStyles: {
