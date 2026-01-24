@@ -18,6 +18,7 @@ import type { CedulaA1, Efc, ProductoParametro, TipoProducto, MonedaPoliza, Para
 import SegmentsSection from './SegmentsSection';
 import ProductTypesSection from './ProductTypesSection';
 import CampaignsSection from './CampaignsSection';
+import PuntosThresholdsSection from './PuntosThresholdsSection';
 // Campos posibles para ficha de candidato (deben coincidir con los usados en el PDF)
 const FICHA_CAMPOS = [
   'CLAVE TEMPORAL',
@@ -405,6 +406,11 @@ export default function ParametrosClient(){
 
           {/* FASE 5: Tipos de póliza */}
           <ProductTypesSection onNotify={(msg, type) => setNotif({ msg, type })} />
+
+          {/* Configuración de puntos por tipo de producto */}
+          <section className="border rounded p-3 bg-white shadow-sm">
+            <PuntosThresholdsSection onNotif={(msg, type) => setNotif({ msg, type })} />
+          </section>
 
           {/* Sección FICHA CANDIDATO */}
           <section className="border rounded p-3 bg-white shadow-sm">

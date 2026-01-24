@@ -68,8 +68,6 @@ export default function NotificacionesDropdown() {
     return `Hace ${diffDays}d`
   }
 
-  const notificacionesRecientes = notificaciones.slice(0, 5)
-
   return (
     <div className="position-relative" ref={dropdownRef}>
       {/* Botón de notificaciones */}
@@ -122,13 +120,13 @@ export default function NotificacionesDropdown() {
                 <span className="visually-hidden">Cargando...</span>
               </div>
             </div>
-          ) : notificacionesRecientes.length === 0 ? (
+          ) : notificaciones.length === 0 ? (
             <div className="text-center text-muted py-4">
               <i className="bi bi-bell-slash fs-1"></i>
               <p className="mt-2 mb-0">No tienes notificaciones</p>
             </div>
           ) : (
-            notificacionesRecientes.map((notif) => (
+            notificaciones.map((notif) => (
               <div
                 key={notif.id}
                 className={`dropdown-item ${!notif.leida ? 'bg-light' : ''}`}

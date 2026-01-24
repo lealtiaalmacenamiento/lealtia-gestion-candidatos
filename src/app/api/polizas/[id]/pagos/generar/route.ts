@@ -70,6 +70,8 @@ export async function POST(
       return NextResponse.json({ error: 'Periodicidad desconocida' }, { status: 400 })
     }
 
+    console.info('[pagos_generar] periodicidad:', poliza.periodicidad_pago, 'cfg:', cfg, 'generará', cfg.divisor, 'pagos')
+
     // Calcular porcentaje del producto parametrizado (usa anio_1_percent; fallback al último porcentaje válido; si no hay ninguno, 0)
     let pct = 0
     if (poliza.producto_parametro_id) {
@@ -150,6 +152,8 @@ export async function POST(
         created_by: null
       })
     }
+
+    console.info('[pagos_generar] pagosToInsert.length:', pagosToInsert.length, 'polizaId:', polizaId)
 
     const { error: insertError } = await supabase
       .from('poliza_pagos_mensuales')

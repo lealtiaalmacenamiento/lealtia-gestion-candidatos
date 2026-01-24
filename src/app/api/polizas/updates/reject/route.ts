@@ -61,19 +61,25 @@ export async function POST(req: Request) {
       .select('solicitante_id, poliza_id')
       .eq('id', body.request_id)
       .maybeSingle()
-  if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
+    if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
+      let polizaNumero: string | null = null
+      if (reqRow.poliza_id) {
+        const { data: polizaRow } = await supa.from('polizas').select('numero_poliza').eq('id', reqRow.poliza_id).maybeSingle()
+        polizaNumero = polizaRow?.numero_poliza ?? null
+      }
+
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
       if (user?.email) {
-        await sendMail({ to: user.email, subject: 'Solicitud de póliza rechazada', html: `<p>Tu solicitud fue rechazada para la póliza ${reqRow.poliza_id}. Motivo: ${body.motivo || ''}</p>` })
+        await sendMail({ to: user.email, subject: 'Solicitud de póliza rechazada', html: `<p>Tu solicitud fue rechazada para la póliza ${polizaNumero || reqRow.poliza_id || ''}. Motivo: ${body.motivo || ''}</p>` })
       }
       try {
         await supa.from('notificaciones').insert({
           usuario_id: reqRow.solicitante_id,
           tipo: 'sistema',
           titulo: 'Solicitud de póliza rechazada',
-          mensaje: `Se rechazó tu solicitud ${body.request_id || ''} para la póliza ${reqRow.poliza_id || ''}. Motivo: ${body.motivo || ''}`.trim(),
+          mensaje: `Se rechazó tu solicitud${polizaNumero ? ` para la póliza ${polizaNumero}` : ''}${body.motivo ? `. Motivo: ${body.motivo}` : ''}`,
           leida: false,
-          metadata: { request_id: body.request_id, poliza_id: reqRow.poliza_id, motivo: body.motivo || '' }
+          metadata: { request_id: body.request_id, poliza_id: reqRow.poliza_id, poliza_numero: polizaNumero, motivo: body.motivo || '' }
         })
       } catch (e) {
         if (debugOn) console.debug('[reject_poliza_update][debug] notificacion solicitante error', e)

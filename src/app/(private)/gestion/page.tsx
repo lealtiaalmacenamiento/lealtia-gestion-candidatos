@@ -5,6 +5,9 @@ import { useAuth } from '@/context/AuthProvider'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { deleteCliente } from '@/lib/api'
 import AlertasPagos from '@/components/dashboard/AlertasPagos'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import { exportGestionPDF, pngToBase64 } from '@/lib/gestionPdfExport'
 
 type Cliente = {
   id: string
@@ -261,6 +264,85 @@ export default function GestionPage() {
 
   useEffect(() => { void load() }, [load])
 
+  const exportarPDFReporte = useCallback(async () => {
+    if (!isSuper) return
+    
+    try {
+      // Obtener datos del reporte
+      const res = await fetch('/api/reportes/gestion', { cache: 'no-store' })
+      const json = await res.json()
+      
+      if (!res.ok) {
+        await dialog.alert(json.error || 'Error al obtener datos del reporte')
+        return
+      }
+      
+      // Cargar logo
+      let logoBase64: string | undefined
+      try {
+        logoBase64 = await pngToBase64('/Logolealtiaruedablanca.png')
+      } catch {
+        console.warn('No se pudo cargar el logo')
+      }
+      
+      // Crear PDF
+      const doc = new jsPDF()
+      await exportGestionPDF(doc, json.data, autoTable, {
+        titulo: 'Reporte General de Clientes y Pólizas',
+        logo: logoBase64,
+        logoW: 32,
+        logoH: 32
+      })
+      
+      // Descargar
+      doc.save('Reporte de comisiones General.pdf')
+      
+    } catch (error) {
+      console.error('Error al exportar PDF:', error)
+      await dialog.alert('Error al generar el reporte PDF')
+    }
+  }, [isSuper, dialog])
+
+  const exportarPDFReporteAgente = useCallback(async (agenteId: string, agenteNombre: string) => {
+    if (!isSuper) return
+    
+    try {
+      // Obtener datos del reporte para el agente específico
+      const res = await fetch(`/api/reportes/gestion?asesor_id=${encodeURIComponent(agenteId)}`, { cache: 'no-store' })
+      const json = await res.json()
+      
+      if (!res.ok) {
+        await dialog.alert(json.error || 'Error al obtener datos del reporte')
+        return
+      }
+      
+      // Cargar logo
+      let logoBase64: string | undefined
+      try {
+        logoBase64 = await pngToBase64('/Logolealtiaruedablanca.png')
+      } catch {
+        console.warn('No se pudo cargar el logo')
+      }
+      
+      // Crear PDF
+      const doc = new jsPDF()
+      await exportGestionPDF(doc, json.data, autoTable, {
+        titulo: `Reporte de Comisiones - ${agenteNombre}`,
+        logo: logoBase64,
+        logoW: 32,
+        logoH: 32
+      })
+      
+      // Descargar
+      const nombreArchivo = `Reporte de comisiones ${agenteNombre.replace(/\s+/g, '_')}.pdf`
+      doc.save(nombreArchivo)
+      
+    } catch (error) {
+      console.error('Error al exportar PDF:', error)
+      await dialog.alert('Error al generar el reporte PDF')
+    }
+  }, [isSuper, dialog])
+
   const searchClientesSuper = useCallback(async () => {
     if (!isSuper) return
     const q = qClientesSuper.trim()
@@ -404,6 +486,24 @@ export default function GestionPage() {
   async function submitPolizaCambio(p: Poliza) {
     if (savingPoliza) return
     setSavingPoliza(true)
+    
+    // Detectar cambio de periodicidad
+    const polizaOriginal = polizas.find(pol => pol.id === p.id)
+    const periodicidadOriginal = polizaOriginal?.periodicidad_pago
+    const periodicidadNueva = normalizePeriodicidadValue(p.periodicidad_pago)
+    
+    if (periodicidadOriginal && periodicidadNueva && periodicidadOriginal !== periodicidadNueva) {
+      const confirmar = await dialog.confirm(
+        `¿Estás seguro de cambiar la periodicidad de "${periodicidadOriginal}" a "${periodicidadNueva}"?\n\n` +
+        `ADVERTENCIA: Esto eliminará todos los pagos existentes (incluso los pagados) y regenerará el calendario de pagos según la nueva periodicidad.\n\n` +
+        `Deberás volver a registrar los pagos realizados después de este cambio.`
+      )
+      if (!confirmar) {
+        setSavingPoliza(false)
+        return
+      }
+    }
+    
     // Guardar una referencia del estado esperado para verificación post-guardar
     const expectedId = p.id
     const expectedPrima = typeof p.prima_input === 'number' ? Number(p.prima_input.toFixed(2)) : null
@@ -482,6 +582,7 @@ export default function GestionPage() {
       try {
         if (selectedCliente?.id) {
           const url = new URL('/api/polizas', window.location.origin)
+          url.searchParams.set('cliente_id', selectedCliente.id)
           const rp = await fetch(url.toString(), { cache: 'no-store' })
           const jp = await rp.json().catch(()=>({}))
           if (Array.isArray(jp.items)) {
@@ -603,6 +704,15 @@ export default function GestionPage() {
                     </>
                   )}
                   <button className="px-3 py-1 text-sm bg-gray-100 border rounded" onClick={()=> window.location.reload()}>Refrescar</button>
+                  {/* Botón de exportar PDF (solo supervisores) */}
+                  <button 
+                    className="px-3 py-1 text-sm btn btn-info" 
+                    onClick={exportarPDFReporte}
+                    title="Descargar reporte general en PDF"
+                  >
+                    <i className="bi bi-file-earmark-pdf me-1"></i>
+                    Exportar PDF
+                  </button>
                   {/* Total comisiones (supervisor) */}
                   {agentes.length > 0 && (
                     <span className="badge text-bg-primary">
@@ -712,6 +822,18 @@ export default function GestionPage() {
                                   Comisión: {(()=>{ try { return (ag.badges!.comisiones_mxn || 0).toLocaleString('es-MX', { style:'currency', currency:'MXN' }) } catch { return 'MXN $0.00' } })()}
                                 </span>
                               )}
+                              {/* Botón exportar PDF por agente */}
+                              <button 
+                                className="btn btn-sm btn-outline-info"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  void exportarPDFReporteAgente(ag.id_auth || String(ag.id), ag.nombre || ag.email)
+                                }}
+                                title="Descargar reporte de comisiones del agente"
+                              >
+                                <i className="bi bi-file-earmark-pdf me-1"></i>
+                                PDF
+                              </button>
                               {/* Botón 'Editar meta' removido intencionalmente */}
                             </div>
                           </div>

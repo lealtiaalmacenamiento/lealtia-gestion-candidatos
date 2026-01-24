@@ -47,10 +47,11 @@ const getCurrentPeriodoCdmx = () => {
 }
 
 export default function ComisionesPage() {
-  // Solo supervisores/admin
+  // Solo supervisores/admin o agentes
   const { user, loadingUser } = useAuth()
   const role = (user?.rol || '').toLowerCase()
-  const notAllowed = !loadingUser && user && role !== 'supervisor' && role !== 'admin'
+  const isSupervisor = role === 'supervisor' || role === 'admin'
+  const notAllowed = !loadingUser && user && !['supervisor', 'admin', 'agente'].includes(role)
 
   useEffect(() => {
     if (notAllowed && typeof window !== 'undefined') {
@@ -66,12 +67,18 @@ export default function ComisionesPage() {
   const [resumenCon, setResumenCon] = useState<Resumen | null>(null)
   const [resumenSin, setResumenSin] = useState<Resumen | null>(null)
   const [loading, setLoading] = useState(true)
-  const [selectedYear, setSelectedYear] = useState<number>(defaultYear)
-  const [selectedMonth, setSelectedMonth] = useState<string>(defaultMonth)
+  const [agentes, setAgentes] = useState<Array<{ id: string; nombre: string }>>([])
+  
+  // Rango de fechas
+  const [yearDesde, setYearDesde] = useState<number>(defaultYear)
+  const [monthDesde, setMonthDesde] = useState<string>(defaultMonth)
+  const [yearHasta, setYearHasta] = useState<number>(defaultYear)
+  const [monthHasta, setMonthHasta] = useState<string>(defaultMonth)
 
   // Filtros
   const [filtros, setFiltros] = useState({
-    periodo: defaultPeriodo,
+    periodoDesde: defaultPeriodo,
+    periodoHasta: defaultPeriodo,
     agente: ''
   })
 
@@ -93,54 +100,108 @@ export default function ComisionesPage() {
       setLoading(true)
       
       const params = new URLSearchParams()
-      if (filtros.periodo) params.set('periodo', filtros.periodo)
-      if (filtros.agente) params.set('agente', filtros.agente)
+      if (filtros.periodoDesde) params.set('periodo_desde', filtros.periodoDesde)
+      if (filtros.periodoHasta) params.set('periodo_hasta', filtros.periodoHasta)
+      if (isSupervisor && filtros.agente) params.set('agente', filtros.agente)
 
-      const endpoint = activeTab === 'con' 
-        ? `/api/comisiones/con-conexion?${params}`
-        : `/api/comisiones/sin-conexion?${params}`
+      if (isSupervisor) {
+        // Supervisores: cargar según pestaña activa
+        const endpoint = activeTab === 'con' 
+          ? `/api/comisiones/con-conexion?${params}`
+          : `/api/comisiones/sin-conexion?${params}`
 
-      const res = await fetch(endpoint)
-      const json = await res.json()
+        const res = await fetch(endpoint)
+        const json = await res.json()
 
-      if (res.ok) {
-        if (activeTab === 'con') {
-          setComisionesCon(json.data || [])
-          setResumenCon(json.resumen || null)
+        if (res.ok) {
+          if (activeTab === 'con') {
+            setComisionesCon(json.data || [])
+            setResumenCon(json.resumen || null)
+          } else {
+            setComisionesSin(json.data || [])
+            setResumenSin(json.resumen || null)
+          }
         } else {
-          setComisionesSin(json.data || [])
-          setResumenSin(json.resumen || null)
+          console.error('Error cargando comisiones:', json.error)
         }
       } else {
-        console.error('Error cargando comisiones:', json.error)
+        // Agentes: cargar ambas vistas
+        const [resCon, resSin] = await Promise.all([
+          fetch(`/api/comisiones/con-conexion?${params}`),
+          fetch(`/api/comisiones/sin-conexion?${params}`)
+        ])
+        
+        const [jsonCon, jsonSin] = await Promise.all([
+          resCon.json(),
+          resSin.json()
+        ])
+
+        if (resCon.ok) {
+          setComisionesCon(jsonCon.data || [])
+          setResumenCon(jsonCon.resumen || null)
+        }
+        if (resSin.ok) {
+          setComisionesSin(jsonSin.data || [])
+          setResumenSin(jsonSin.resumen || null)
+        }
       }
     } catch (error) {
       console.error('Error fetching comisiones:', error)
     } finally {
       setLoading(false)
     }
-  }, [activeTab, filtros])
+  }, [activeTab, filtros, isSupervisor])
 
   useEffect(() => {
     if (loadingUser || notAllowed) return
     fetchComisiones()
   }, [fetchComisiones, loadingUser, notAllowed])
 
+  // Cargar todos los agentes disponibles (solo supervisores)
+  useEffect(() => {
+    if (!isSupervisor || loadingUser || notAllowed) return
+    
+    const fetchAgentes = async () => {
+      try {
+        const res = await fetch(`/api/comisiones/agentes?tab=${activeTab}`)
+        const json = await res.json()
+        if (res.ok) {
+          setAgentes(json.data || [])
+          // Resetear filtro de agente al cambiar de pestaña
+          setFiltros(prev => ({ ...prev, agente: '' }))
+        }
+      } catch (error) {
+        console.error('Error fetching agentes:', error)
+      }
+    }
+    
+    fetchAgentes()
+  }, [isSupervisor, loadingUser, notAllowed, activeTab])
+
   const handleFilterChange = (key: string, value: string) => {
     setFiltros(prev => ({ ...prev, [key]: value }))
   }
 
-  const handleMonthYearChange = (month: string, year: number) => {
+  const handleDesdeChange = (month: string, year: number) => {
     const periodo = `${year}-${month}`
-    setSelectedMonth(month)
-    setSelectedYear(year)
-    setFiltros(prev => ({ ...prev, periodo }))
+    setMonthDesde(month)
+    setYearDesde(year)
+    setFiltros(prev => ({ ...prev, periodoDesde: periodo }))
+  }
+
+  const handleHastaChange = (month: string, year: number) => {
+    const periodo = `${year}-${month}`
+    setMonthHasta(month)
+    setYearHasta(year)
+    setFiltros(prev => ({ ...prev, periodoHasta: periodo }))
   }
 
   const resetFiltros = () => {
-    setSelectedYear(defaultYear)
-    setSelectedMonth(defaultMonth)
-    setFiltros({ periodo: defaultPeriodo, agente: '' })
+    setYearDesde(defaultYear)
+    setMonthDesde(defaultMonth)
+    setYearHasta(defaultYear)
+    setMonthHasta(defaultMonth)
+    setFiltros({ periodoDesde: defaultPeriodo, periodoHasta: defaultPeriodo, agente: '' })
   }
 
   if (notAllowed) {
@@ -157,41 +218,47 @@ export default function ComisionesPage() {
         <div className="col">
           <h2>Dashboard de Comisiones</h2>
           <p className="text-muted">
-            Consulta las comisiones de agentes con y sin mes de conexión establecido
+            {isSupervisor 
+              ? 'Consulta las comisiones de agentes con y sin mes de conexión establecido'
+              : 'Consulta tus comisiones por periodo'
+            }
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <ul className="nav nav-tabs mb-4">
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === 'con' ? 'active' : ''}`}
-            onClick={() => setActiveTab('con')}
-          >
-            Con Mes de Conexión
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === 'sin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sin')}
-          >
-            Sin Mes de Conexión
-          </button>
-        </li>
-      </ul>
+      {/* Tabs (solo para supervisores) */}
+      {isSupervisor && (
+        <ul className="nav nav-tabs mb-4">
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === 'con' ? 'active' : ''}`}
+              onClick={() => setActiveTab('con')}
+            >
+              Con Mes de Conexión
+            </button>
+          </li>
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === 'sin' ? 'active' : ''}`}
+              onClick={() => setActiveTab('sin')}
+            >
+              Sin Mes de Conexión
+            </button>
+          </li>
+        </ul>
+      )}
 
       {/* Filtros */}
       <div className="card mb-4">
         <div className="card-body">
           <div className="row g-3">
+            {/* Desde */}
             <div className="col-md-2">
-              <label className="form-label">Año</label>
+              <label className="form-label fw-bold">Desde</label>
               <select
-                className="form-select"
-                value={selectedYear}
-                onChange={(e) => handleMonthYearChange(selectedMonth, Number(e.target.value))}
+                className="form-select form-select-sm"
+                value={yearDesde}
+                onChange={(e) => handleDesdeChange(monthDesde, Number(e.target.value))}
               >
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}</option>
@@ -199,11 +266,37 @@ export default function ComisionesPage() {
               </select>
             </div>
             <div className="col-md-2">
-              <label className="form-label">Mes</label>
+              <label className="form-label">&nbsp;</label>
               <select
-                className="form-select"
-                value={selectedMonth}
-                onChange={(e) => handleMonthYearChange(e.target.value, selectedYear)}
+                className="form-select form-select-sm"
+                value={monthDesde}
+                onChange={(e) => handleDesdeChange(e.target.value, yearDesde)}
+              >
+                {monthOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Hasta */}
+            <div className="col-md-2">
+              <label className="form-label fw-bold">Hasta</label>
+              <select
+                className="form-select form-select-sm"
+                value={yearHasta}
+                onChange={(e) => handleHastaChange(monthHasta, Number(e.target.value))}
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-2">
+              <label className="form-label">&nbsp;</label>
+              <select
+                className="form-select form-select-sm"
+                value={monthHasta}
+                onChange={(e) => handleHastaChange(e.target.value, yearHasta)}
               >
                 {monthOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -211,20 +304,26 @@ export default function ComisionesPage() {
               </select>
             </div>
             
-            <div className="col-md-3">
-              <label className="form-label">Agente</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Nombre o ID"
-                value={filtros.agente}
-                onChange={(e) => handleFilterChange('agente', e.target.value)}
-              />
-            </div>
+            {/* Filtro de agente (solo supervisores) */}
+            {isSupervisor && (
+              <div className="col-md-2">
+                <label className="form-label">Agente</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={filtros.agente}
+                  onChange={(e) => handleFilterChange('agente', e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {agentes.map((ag) => (
+                    <option key={ag.id} value={ag.nombre}>{ag.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            <div className="col-md-3 d-flex align-items-end">
+            <div className={`col-md-${isSupervisor ? '2' : '4'} d-flex align-items-end`}>
               <button 
-                className="btn btn-outline-secondary w-100"
+                className="btn btn-outline-secondary btn-sm w-100"
                 onClick={resetFiltros}
               >
                 Limpiar Filtros
@@ -235,13 +334,18 @@ export default function ComisionesPage() {
       </div>
 
       {/* Resumen */}
-      {(resumenCon || resumenSin) && (
+      {!loading && (resumenCon || resumenSin) && (
         <div className="row mb-4">
           <div className="col-md-3">
             <div className="card bg-light">
               <div className="card-body">
                 <h6 className="text-muted mb-1">Total Pólizas</h6>
-                <h3>{(activeTab === 'con' ? resumenCon : resumenSin)?.total_polizas || 0}</h3>
+                <h3>
+                  {isSupervisor 
+                    ? ((activeTab === 'con' ? resumenCon : resumenSin)?.total_polizas || 0)
+                    : ((resumenCon?.total_polizas || 0) + (resumenSin?.total_polizas || 0))
+                  }
+                </h3>
               </div>
             </div>
           </div>
@@ -249,7 +353,13 @@ export default function ComisionesPage() {
             <div className="card bg-light">
               <div className="card-body">
                 <h6 className="text-muted mb-1">Prima Total</h6>
-                <h3>{formatCurrency((activeTab === 'con' ? resumenCon : resumenSin)?.total_prima || 0)}</h3>
+                <h3>
+                  {formatCurrency(
+                    isSupervisor 
+                      ? ((activeTab === 'con' ? resumenCon : resumenSin)?.total_prima || 0)
+                      : ((resumenCon?.total_prima || 0) + (resumenSin?.total_prima || 0))
+                  )}
+                </h3>
               </div>
             </div>
           </div>
@@ -258,7 +368,11 @@ export default function ComisionesPage() {
               <div className="card-body">
                 <h6 className="text-muted mb-1">Comisión Total</h6>
                 <h3 className="text-success">
-                  {formatCurrency((activeTab === 'con' ? resumenCon : resumenSin)?.total_comision || 0)}
+                  {formatCurrency(
+                    isSupervisor 
+                      ? ((activeTab === 'con' ? resumenCon : resumenSin)?.total_comision || 0)
+                      : ((resumenCon?.total_comision || 0) + (resumenSin?.total_comision || 0))
+                  )}
                 </h3>
               </div>
             </div>
@@ -275,10 +389,33 @@ export default function ComisionesPage() {
         </div>
       ) : (
         <>
-          {activeTab === 'con' ? (
-            <TablaConConexion data={comisionesCon} />
+          {isSupervisor ? (
+            activeTab === 'con' ? (
+              <TablaConConexion data={comisionesCon} />
+            ) : (
+              <TablaSinConexion data={comisionesSin} />
+            )
           ) : (
-            <TablaSinConexion data={comisionesSin} />
+            // Agentes ven ambas vistas juntas
+            <>
+              {comisionesCon.length > 0 && (
+                <div className="mb-4">
+                  <h5 className="mb-3">Comisiones con Mes de Conexión</h5>
+                  <TablaConConexion data={comisionesCon} />
+                </div>
+              )}
+              {comisionesSin.length > 0 && (
+                <div className="mb-4">
+                  <h5 className="mb-3">Comisiones sin Mes de Conexión</h5>
+                  <TablaSinConexion data={comisionesSin} />
+                </div>
+              )}
+              {comisionesCon.length === 0 && comisionesSin.length === 0 && (
+                <div className="alert alert-info">
+                  No se encontraron comisiones para el rango de fechas seleccionado.
+                </div>
+              )}
+            </>
           )}
         </>
       )}

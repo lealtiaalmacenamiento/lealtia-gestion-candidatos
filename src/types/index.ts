@@ -535,3 +535,20 @@ export interface CampaignEvaluationContext {
   segmentIds?: string[]
   segmentSlugs?: string[]
 }
+
+/* ===== Configuración de puntos ===== */
+export type ClasificacionPuntos = 'CERO' | 'SIMPLE' | 'MEDIO' | 'DOBLE' | 'TRIPLE'
+
+export interface PuntosThreshold {
+  id: string
+  tipo_producto: TipoProducto
+  umbral_min: number
+  umbral_max: number | null
+  puntos: number
+  clasificacion: ClasificacionPuntos
+  descripcion?: string | null
+  orden: number
+  activo: boolean
+  creado_at?: string
+  updated_at?: string
+}

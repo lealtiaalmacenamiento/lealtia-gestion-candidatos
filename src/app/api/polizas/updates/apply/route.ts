@@ -151,6 +151,22 @@ export async function POST(req: Request) {
       // Regenerar calendario de pagos cuando se actualiza la póliza (sin depender del cliente)
       try {
         const admin = getServiceClient()
+        
+        // Obtener la póliza ANTES de la actualización para detectar cambio de periodicidad
+        const { data: polizaAntes } = await admin
+          .from('polizas')
+          .select('periodicidad_pago')
+          .eq('id', polizaId)
+          .single()
+        
+        const periodicidadAnterior = polizaAntes?.periodicidad_pago
+        const periodicidadNueva = (reqRow?.payload_propuesto as { periodicidad_pago?: string } | null)?.periodicidad_pago
+        const cambioPeriodicidad = periodicidadNueva && periodicidadNueva !== periodicidadAnterior
+        
+        if (debugOn && cambioPeriodicidad) {
+          console.debug('[apply_poliza_update][debug] Cambio de periodicidad detectado:', periodicidadAnterior, '->', periodicidadNueva)
+        }
+        
         const { data: poliza } = await admin
           .from('polizas')
           .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id')
@@ -167,11 +183,22 @@ export async function POST(req: Request) {
           const cfg = map[poliza.periodicidad_pago as keyof typeof map]
 
           if (cfg) {
-            await admin
-              .from('poliza_pagos_mensuales')
-              .delete()
-              .eq('poliza_id', polizaId)
-              .neq('estado', 'pagado')
+            // Si cambió la periodicidad, ELIMINAR TODOS los pagos (incluso los pagados) para regenerar correctamente
+            if (cambioPeriodicidad) {
+              await admin
+                .from('poliza_pagos_mensuales')
+                .delete()
+                .eq('poliza_id', polizaId)
+              
+              console.info(`[apply_poliza_update] Periodicidad cambió de ${periodicidadAnterior} a ${periodicidadNueva}. Todos los pagos eliminados para regeneración.`)
+            } else {
+              // Si no cambió, solo eliminar pagos no pagados
+              await admin
+                .from('poliza_pagos_mensuales')
+                .delete()
+                .eq('poliza_id', polizaId)
+                .neq('estado', 'pagado')
+            }
 
             const emision = new Date(poliza.fecha_emision)
             const startYear = emision.getUTCFullYear()
@@ -344,8 +371,13 @@ export async function POST(req: Request) {
 
     if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {
       const { data: user } = await supa.from('usuarios').select('email').eq('id', reqRow.solicitante_id).maybeSingle()
+      let polizaNumeroCorreo: string | null = null
+      if (polizaId) {
+        const { data: polizaRow } = await supa.from('polizas').select('numero_poliza').eq('id', polizaId).maybeSingle()
+        polizaNumeroCorreo = polizaRow?.numero_poliza ?? null
+      }
       if (user?.email) {
-        await sendMail({ to: user.email, subject: 'Solicitud de póliza aprobada', html: `<p>Tu solicitud fue aprobada para la póliza ${reqRow.poliza_id}.</p>` })
+        await sendMail({ to: user.email, subject: 'Solicitud de póliza aprobada', html: `<p>Tu solicitud fue aprobada para la póliza ${polizaNumeroCorreo || reqRow.poliza_id || ''}.</p>` })
       }
     }
   } catch {}
@@ -355,13 +387,21 @@ export async function POST(req: Request) {
     // Notificar al solicitante que su solicitud fue aprobada
     const admin = getServiceClient()
     if (reqRow?.solicitante_id) {
+      let polizaNumero: string | null = null
+      if (polizaId) {
+        const { data: polizaRow } = await admin.from('polizas').select('numero_poliza').eq('id', polizaId).maybeSingle()
+        polizaNumero = polizaRow?.numero_poliza ?? null
+      }
+
       await admin.from('notificaciones').insert({
         usuario_id: reqRow.solicitante_id,
         tipo: 'sistema',
         titulo: 'Solicitud de póliza aprobada',
-        mensaje: `Se aprobó tu solicitud ${body.request_id || ''}${polizaId ? ` para póliza ${polizaId}` : ''}`.trim(),
+        mensaje: polizaNumero 
+          ? `Se aprobó tu solicitud para la póliza ${polizaNumero}`
+          : 'Se aprobó tu solicitud de actualización de póliza',
         leida: false,
-        metadata: { request_id: body.request_id, poliza_id: polizaId }
+        metadata: { request_id: body.request_id, poliza_id: polizaId, poliza_numero: polizaNumero }
       })
     }
   } catch (e) {

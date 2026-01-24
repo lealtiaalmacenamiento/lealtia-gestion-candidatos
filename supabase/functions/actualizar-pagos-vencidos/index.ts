@@ -99,7 +99,7 @@ async function generarNotificacionesPagosVencidos(supabase: any): Promise<number
         monto_programado,
         fecha_limite,
         polizas!inner(
-          numero,
+          numero_poliza,
           asesor_id,
           clientes!inner(nombre_completo)
         )
@@ -140,12 +140,12 @@ async function generarNotificacionesPagosVencidos(supabase: any): Promise<number
           ? '⚠️ Pago Vencido'
           : `⚠️ ${count} Pagos Vencidos`,
         mensaje: count === 1
-          ? `El pago de ${primerPago.polizas.clientes.nombre_completo} (Póliza ${primerPago.polizas.numero}) ha vencido.`
+            ? `El pago de ${primerPago.polizas.clientes.nombre_completo} (Póliza ${primerPago.polizas.numero_poliza}) ha vencido.`
           : `Tienes ${count} pagos vencidos hoy. Revisa el dashboard de pagos.`,
         leida: false,
         metadata: {
           pago_ids: pagos.map(p => p.id),
-          poliza_ids: pagos.map(p => p.poliza_id),
+          poliza_numeros: pagos.map(p => p.polizas?.numero_poliza),
           monto_total: pagos.reduce((sum, p) => sum + (p.monto_programado || 0), 0),
           fecha_limite: primerPago.fecha_limite
         }

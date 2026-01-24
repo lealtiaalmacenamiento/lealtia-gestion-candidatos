@@ -55,6 +55,15 @@ interface AlertasResponse {
   proximos: PagoAlerta[]
 }
 
+function sortPorAsesorOCandidato(list: PagoAlerta[]) {
+  const getKey = (p: PagoAlerta) => {
+    const asesor = p.polizas?.clientes?.usuarios?.nombre || p.polizas?.clientes?.usuarios?.email
+    const candidato = `${p.polizas?.clientes?.primer_nombre || ''} ${p.polizas?.clientes?.primer_apellido || ''}`.trim()
+    return (asesor || candidato || '').toLowerCase()
+  }
+  return [...list].sort((a, b) => getKey(a).localeCompare(getKey(b), 'es'))
+}
+
 interface AlertasPagosProps {
   onEditPoliza?: (polizaId: string) => void
 }
@@ -64,6 +73,7 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
   const [alertas, setAlertas] = useState<AlertasResponse>({ vencidos: [], proximos: [] })
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState<'vencidos' | 'proximos'>('vencidos')
+  const [selectedAgente, setSelectedAgente] = useState<string>('all')
 
   useEffect(() => {
     if (user?.id_auth && !loadingUser) {
@@ -88,7 +98,10 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
       const json = await res.json()
 
       if (res.ok) {
-        setAlertas(json)
+        setAlertas({
+          vencidos: sortPorAsesorOCandidato(json.vencidos || []),
+          proximos: sortPorAsesorOCandidato(json.proximos || [])
+        })
       } else {
         console.error('Error al cargar alertas:', json)
       }
@@ -101,6 +114,31 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
 
   const totalVencidos = alertas.vencidos.length
   const totalProximos = alertas.proximos.length
+
+  // Extraer lista única de agentes
+  const uniqueAgentes = Array.from(
+    new Map(
+      [...alertas.vencidos, ...alertas.proximos]
+        .filter(p => p.polizas?.clientes?.usuarios)
+        .map(p => {
+          const usuario = p.polizas.clientes.usuarios!
+          return [usuario.id_auth, { id: usuario.id_auth, nombre: usuario.nombre || usuario.email }]
+        })
+    ).values()
+  ).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'))
+
+  // Filtrar alertas por agente seleccionado
+  const alertasFiltradas = {
+    vencidos: selectedAgente === 'all' 
+      ? alertas.vencidos 
+      : alertas.vencidos.filter(p => p.polizas?.clientes?.usuarios?.id_auth === selectedAgente),
+    proximos: selectedAgente === 'all' 
+      ? alertas.proximos 
+      : alertas.proximos.filter(p => p.polizas?.clientes?.usuarios?.id_auth === selectedAgente)
+  }
+
+  const totalVencidosFiltrados = alertasFiltradas.vencidos.length
+  const totalProximosFiltrados = alertasFiltradas.proximos.length
 
   if (loading) {
     return (
@@ -133,6 +171,24 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
       </div>
 
       <div className="card-body">
+        {/* Filtro de agente */}
+        {uniqueAgentes.length > 0 && (
+          <div className="mb-3">
+            <select 
+              className="form-select form-select-sm"
+              value={selectedAgente}
+              onChange={(e) => setSelectedAgente(e.target.value)}
+            >
+              <option value="all">Todos los agentes</option>
+              {uniqueAgentes.map(agente => (
+                <option key={agente.id} value={agente.id}>
+                  {agente.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Tabs */}
         <ul className="nav nav-pills nav-fill mb-3">
           <li className="nav-item">
@@ -141,8 +197,8 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
               onClick={() => setActiveCategory('vencidos')}
             >
               Vencidos
-              {totalVencidos > 0 && (
-                <span className="badge bg-danger ms-2">{totalVencidos}</span>
+              {totalVencidosFiltrados > 0 && (
+                <span className="badge bg-danger ms-2">{totalVencidosFiltrados}</span>
               )}
             </button>
           </li>
@@ -152,8 +208,8 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
               onClick={() => setActiveCategory('proximos')}
             >
               Próximos (7 días)
-              {totalProximos > 0 && (
-                <span className="badge bg-warning text-dark ms-2">{totalProximos}</span>
+              {totalProximosFiltrados > 0 && (
+                <span className="badge bg-warning text-dark ms-2">{totalProximosFiltrados}</span>
               )}
             </button>
           </li>
@@ -162,13 +218,13 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
         {/* Lista de alertas */}
         <div className="list-group list-group-flush" style={{ maxHeight: '400px', overflowY: 'auto' }}>
           {activeCategory === 'vencidos' ? (
-            totalVencidos === 0 ? (
+            totalVencidosFiltrados === 0 ? (
               <div className="text-center text-muted py-4">
                 <i className="bi bi-check-circle fs-1"></i>
                 <p className="mt-2">No hay pagos vencidos</p>
               </div>
             ) : (
-              alertas.vencidos.map((pago) => (
+              alertasFiltradas.vencidos.map((pago) => (
                 <div
                   key={pago.id}
                   className="list-group-item list-group-item-action"
@@ -201,13 +257,13 @@ export default function AlertasPagos({ onEditPoliza }: AlertasPagosProps = {}) {
               ))
             )
           ) : (
-            totalProximos === 0 ? (
+            totalProximosFiltrados === 0 ? (
               <div className="text-center text-muted py-4">
                 <i className="bi bi-calendar-check fs-1"></i>
                 <p className="mt-2">No hay pagos próximos en los próximos 7 días</p>
               </div>
             ) : (
-              alertas.proximos.map((pago) => (
+              alertasFiltradas.proximos.map((pago) => (
                 <div
                   key={pago.id}
                   className="list-group-item list-group-item-action"
