@@ -207,13 +207,21 @@ export function buildCitaCancelacionEmail(opts: {
 }
 // Carga perezosa de nodemailer para evitar que se incluya en el bundle cliente.
 
-// Requiere variables de entorno:
-// GMAIL_USER=lealtia.almacenamiento@gmail.com
-// GMAIL_APP_PASS=contraseña de aplicación (NO la contraseña normal)
+// Requiere variables de entorno (prioridad MAILER_* > GMAIL_*):
+// MAILER_USER=contacto@lealtia.com.mx
+// MAILER_PASS=contraseña SMTP (Titan/Gmail app password)
+// Opcional: MAILER_HOST=smtp.titan.email
+// Opcional: MAILER_PORT=465
+// Opcional: MAILER_SECURE=true|false (true fuerza SSL/TLS)
 // Opcional: MAIL_FROM (Nombre <email>)
 
-const user = process.env.GMAIL_USER
-const pass = process.env.GMAIL_APP_PASS
+const user = process.env.MAILER_USER || process.env.GMAIL_USER
+const pass = process.env.MAILER_PASS || process.env.GMAIL_APP_PASS
+const host = process.env.MAILER_HOST
+const port = process.env.MAILER_PORT ? Number(process.env.MAILER_PORT) : undefined
+const secure = typeof process.env.MAILER_SECURE === 'string'
+  ? ['1', 'true', 'yes', 'on'].includes(process.env.MAILER_SECURE.toLowerCase())
+  : undefined
 
 
 import nodemailer from 'nodemailer'
@@ -239,12 +247,22 @@ function resolveLoginUrl() {
 }
 
 async function getTransporter(): Promise<MailTx> {
-  if (!user || !pass) throw new Error('Mailer no configurado (GMAIL_USER / GMAIL_APP_PASS)')
+  if (!user || !pass) throw new Error('Mailer no configurado (MAILER_USER / MAILER_PASS)')
   if (!transporter) {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user, pass }
-    })
+    const useCustomSmtp = Boolean(host)
+    const options = useCustomSmtp
+      ? {
+          host,
+          port: port ?? 465,
+          secure: secure ?? true,
+          auth: { user, pass }
+        }
+      : {
+          service: 'gmail',
+          auth: { user, pass }
+        }
+
+    transporter = nodemailer.createTransport(options as Parameters<typeof nodemailer.createTransport>[0])
     try {
       // verify no está incluida en nuestro type ligero; comprobamos existencia antes
       if (typeof (transporter as unknown as { verify?: () => Promise<unknown> }).verify === 'function') {
@@ -272,7 +290,13 @@ export async function sendMail({ to, subject, html, text, cc, bcc, attachments }
   const tx = await getTransporter()
   const from = process.env.MAIL_FROM || user
   const opts = { from, to, cc, bcc, subject, text, html, attachments }
-  await tx.sendMail(opts)
+  try {
+    await tx.sendMail(opts)
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e)
+    console.error('[mailer] sendMail failed:', errMsg)
+    throw new Error(`Mailer error: ${errMsg}`)
+  }
 }
 
 export function buildAltaUsuarioEmail(email: string, password: string) {

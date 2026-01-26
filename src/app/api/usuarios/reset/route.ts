@@ -75,7 +75,11 @@ export async function POST(req: Request) {
     try {
       const { subject, html, text } = buildAltaUsuarioEmail(email, nueva)
       await sendMail({ to: email, subject: '[Reset] ' + subject, html, text })
-    } catch {}
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Mailer error'
+      console.error('[usuarios/reset] mailer failed:', msg)
+      return NextResponse.json({ error: msg }, { status: 500 })
+    }
 
     await logAccion('reset_password', { usuario: email, tabla_afectada: 'usuarios', snapshot: { email } })
     return NextResponse.json({ success:true })
