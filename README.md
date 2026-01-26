@@ -17,7 +17,7 @@ SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=SERVICE_ROLE_KEY
 SUPABASE_KEY=SERVICE_ROLE_KEY
 
-# Mailer (Titan Mail SMTP o Gmail como fallback)
+# Mailer (GoDaddy/Titan Mail SMTP)
 MAILER_HOST=smtpout.secureserver.net
 MAILER_PORT=465
 MAILER_SECURE=true

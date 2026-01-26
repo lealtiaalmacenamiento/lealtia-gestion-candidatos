@@ -207,21 +207,21 @@ export function buildCitaCancelacionEmail(opts: {
 }
 // Carga perezosa de nodemailer para evitar que se incluya en el bundle cliente.
 
-// Requiere variables de entorno (prioridad MAILER_* > GMAIL_*):
+// Requiere variables de entorno:
+// MAILER_HOST=smtpout.secureserver.net (GoDaddy/Titan)
 // MAILER_USER=contacto@lealtia.com.mx
-// MAILER_PASS=contraseña SMTP (Titan/Gmail app password)
-// Opcional: MAILER_HOST=smtp.titan.email
-// Opcional: MAILER_PORT=465
-// Opcional: MAILER_SECURE=true|false (true fuerza SSL/TLS)
+// MAILER_PASS=contraseña SMTP
+// Opcional: MAILER_PORT=465 (default)
+// Opcional: MAILER_SECURE=true|false (default: true)
 // Opcional: MAIL_FROM (Nombre <email>)
 
-const user = process.env.MAILER_USER || process.env.GMAIL_USER
-const pass = process.env.MAILER_PASS || process.env.GMAIL_APP_PASS
+const user = process.env.MAILER_USER
+const pass = process.env.MAILER_PASS
 const host = process.env.MAILER_HOST
-const port = process.env.MAILER_PORT ? Number(process.env.MAILER_PORT) : undefined
+const port = process.env.MAILER_PORT ? Number(process.env.MAILER_PORT) : 465
 const secure = typeof process.env.MAILER_SECURE === 'string'
   ? ['1', 'true', 'yes', 'on'].includes(process.env.MAILER_SECURE.toLowerCase())
-  : undefined
+  : true
 
 
 import nodemailer from 'nodemailer'
@@ -248,19 +248,15 @@ function resolveLoginUrl() {
 
 async function getTransporter(): Promise<MailTx> {
   if (!user || !pass) throw new Error('Mailer no configurado (MAILER_USER / MAILER_PASS)')
+  if (!host) throw new Error('Mailer no configurado (MAILER_HOST requerido)')
+  
   if (!transporter) {
-    const useCustomSmtp = Boolean(host)
-    const options = useCustomSmtp
-      ? {
-          host,
-          port: port ?? 465,
-          secure: secure ?? true,
-          auth: { user, pass }
-        }
-      : {
-          service: 'gmail',
-          auth: { user, pass }
-        }
+    const options = {
+      host,
+      port,
+      secure,
+      auth: { user, pass }
+    }
 
     transporter = nodemailer.createTransport(options as Parameters<typeof nodemailer.createTransport>[0])
     try {
