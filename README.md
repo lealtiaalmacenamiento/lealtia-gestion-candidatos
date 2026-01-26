@@ -18,7 +18,7 @@ SUPABASE_SERVICE_ROLE_KEY=SERVICE_ROLE_KEY
 SUPABASE_KEY=SERVICE_ROLE_KEY
 
 # Mailer (Titan Mail SMTP o Gmail como fallback)
-MAILER_HOST=smtp.titan.email
+MAILER_HOST=smtpout.secureserver.net
 MAILER_PORT=465
 MAILER_SECURE=true
 MAILER_USER=contacto@lealtia.com.mx
