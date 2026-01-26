@@ -16,6 +16,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=ANON_KEY
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=SERVICE_ROLE_KEY
 SUPABASE_KEY=SERVICE_ROLE_KEY
+
+# Mailer (GoDaddy/Titan Mail SMTP)
+MAILER_HOST=smtpout.secureserver.net
+MAILER_PORT=465
+MAILER_SECURE=true
+MAILER_USER=contacto@lealtia.com.mx
+MAILER_PASS=your_smtp_password
+MAIL_FROM="Lealtia <contacto@lealtia.com.mx>"
+MAIL_LOGIN_URL=https://yourdomain.com/login
 ```
 
 En Vercel configúralas en Project Settings > Environment Variables (Production + Preview + Development si aplica).

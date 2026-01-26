@@ -208,12 +208,20 @@ export function buildCitaCancelacionEmail(opts: {
 // Carga perezosa de nodemailer para evitar que se incluya en el bundle cliente.
 
 // Requiere variables de entorno:
-// GMAIL_USER=lealtia.almacenamiento@gmail.com
-// GMAIL_APP_PASS=contraseña de aplicación (NO la contraseña normal)
+// MAILER_HOST=smtpout.secureserver.net (GoDaddy/Titan)
+// MAILER_USER=contacto@lealtia.com.mx
+// MAILER_PASS=contraseña SMTP
+// Opcional: MAILER_PORT=465 (default)
+// Opcional: MAILER_SECURE=true|false (default: true)
 // Opcional: MAIL_FROM (Nombre <email>)
 
-const user = process.env.GMAIL_USER
-const pass = process.env.GMAIL_APP_PASS
+const user = process.env.MAILER_USER
+const pass = process.env.MAILER_PASS
+const host = process.env.MAILER_HOST
+const port = process.env.MAILER_PORT ? Number(process.env.MAILER_PORT) : 465
+const secure = typeof process.env.MAILER_SECURE === 'string'
+  ? ['1', 'true', 'yes', 'on'].includes(process.env.MAILER_SECURE.toLowerCase())
+  : true
 
 
 import nodemailer from 'nodemailer'
@@ -239,12 +247,18 @@ function resolveLoginUrl() {
 }
 
 async function getTransporter(): Promise<MailTx> {
-  if (!user || !pass) throw new Error('Mailer no configurado (GMAIL_USER / GMAIL_APP_PASS)')
+  if (!user || !pass) throw new Error('Mailer no configurado (MAILER_USER / MAILER_PASS)')
+  if (!host) throw new Error('Mailer no configurado (MAILER_HOST requerido)')
+  
   if (!transporter) {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
+    const options = {
+      host,
+      port,
+      secure,
       auth: { user, pass }
-    })
+    }
+
+    transporter = nodemailer.createTransport(options as Parameters<typeof nodemailer.createTransport>[0])
     try {
       // verify no está incluida en nuestro type ligero; comprobamos existencia antes
       if (typeof (transporter as unknown as { verify?: () => Promise<unknown> }).verify === 'function') {
@@ -272,7 +286,13 @@ export async function sendMail({ to, subject, html, text, cc, bcc, attachments }
   const tx = await getTransporter()
   const from = process.env.MAIL_FROM || user
   const opts = { from, to, cc, bcc, subject, text, html, attachments }
-  await tx.sendMail(opts)
+  try {
+    await tx.sendMail(opts)
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e)
+    console.error('[mailer] sendMail failed:', errMsg)
+    throw new Error(`Mailer error: ${errMsg}`)
+  }
 }
 
 export function buildAltaUsuarioEmail(email: string, password: string) {
