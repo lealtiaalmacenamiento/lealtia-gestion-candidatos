@@ -21,7 +21,14 @@ export function getServiceClient(): SupabaseClient {
     adminClient = buildPlaceholder()
     return adminClient
   }
-  adminClient = createClient(url, serviceKey)
+  // Service role debe saltar RLS automáticamente
+  adminClient = createClient(url, serviceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
+  console.log('[supabaseAdmin] Service client creado con URL:', url, 'key prefix:', serviceKey.slice(0, 8))
   return adminClient
 }
 

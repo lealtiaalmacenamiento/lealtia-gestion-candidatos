@@ -44,15 +44,19 @@ export async function middleware(req: NextRequest) {
 
   // Rutas públicas
   const publicPaths = new Set([
-    '/', '/login', '/api/login', '/api/logout',
+    '/', '/login', '/api/login', '/api/logout', '/politica-privacidad',
     // Endpoints usados por Cron/diagnóstico
     '/api/reports/prospectos-daily-changes',
     '/api/market/sync',
-    '/api/auth_debug', '/api/env-check'
+    '/api/auth_debug', '/api/env-check',
+    // Endpoints landing public (sin auth)
+    '/api/landing/resolve-agent',
+    '/api/landing/create-prospecto',
+    '/api/landing/recruitment'
   ])
   // Si viene el secreto de cron (header o query), tratarlo como solicitud de cron
   const hasCronSecret = !!req.headers.get('x-cron-secret') || !!url.searchParams.get('secret')
-  const isAsset = url.pathname.startsWith('/_next/') || url.pathname.startsWith('/favicon') || url.pathname.startsWith('/public/')
+  const isAsset = url.pathname.startsWith('/_next/') || url.pathname.startsWith('/favicon') || url.pathname.startsWith('/public/') || url.pathname.match(/\.(jpg|jpeg|png|gif|svg|webp|ico|css|js)$/i)
   const isPublic = publicPaths.has(url.pathname) || isAsset || isCronRequest || hasCronSecret
 
   // Para asegurar autorización del Cron aunque el header no llegue, reescribimos agregando el secret como query interno
@@ -90,6 +94,9 @@ export async function middleware(req: NextRequest) {
     })
     return redirect
   }
+
+  // Si hay sesión y estás en la landing → permitir acceso (no redirigir)
+  // Los usuarios logueados pueden ver la landing también
 
   return res
 }

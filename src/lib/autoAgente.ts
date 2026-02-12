@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { logAccion } from '@/lib/logger'
 import { buildAltaUsuarioEmail, sendMail } from '@/lib/mailer'
 
@@ -10,6 +10,7 @@ export interface CrearAgenteResultado {
   correoEnviado?: boolean
   correoError?: string
   error?: string
+  usuarioId?: number
 }
 
 // Reutilizamos la lógica de api/usuarios
@@ -39,17 +40,63 @@ function isServiceRoleKey(key: string | undefined): boolean {
   } catch { return false }
 }
 
+function getAdminClient(): { client?: SupabaseClient; error?: string } {
+  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+  const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY
+  if(!SUPABASE_URL || !SERVICE_KEY || !isServiceRoleKey(SERVICE_KEY)) {
+    return { error: 'Service role key faltante o inválida' }
+  }
+  return { client: createClient(SUPABASE_URL, SERVICE_KEY) }
+}
+
+function normalizeInitials(nombre?: string | null): string | null {
+  if (!nombre) return null
+  const ascii = nombre.normalize('NFD').replace(/\p{Diacritic}/gu, '')
+  const parts = ascii.split(/\s+/).filter(Boolean)
+  if (!parts.length) return null
+  return parts.map(p => p[0]!.toUpperCase()).join('')
+}
+
+function last4Digits(ct?: string | null): string | null {
+  if (!ct) return null
+  const digits = String(ct).replace(/\D/g, '')
+  if (!digits) return null
+  return digits.slice(-4)
+}
+
+export function buildCodigoAgente(nombre?: string | null, ct?: string | null): string | null {
+  const initials = normalizeInitials(nombre)
+  const last4 = last4Digits(ct)
+  if (!initials || !last4) return null
+  return `${initials}${last4}`.toUpperCase()
+}
+
+export async function ensureAgentCodeForUsuario(opts: { usuarioId?: number | null; nombre?: string | null; ct?: string | null }): Promise<{ code?: string; skipped?: boolean; error?: string }>
+{
+  const { usuarioId, nombre, ct } = opts
+  if (!usuarioId) return { skipped: true, error: 'Sin usuarioId' }
+  const code = buildCodigoAgente(nombre, ct)
+  if (!code) return { skipped: true, error: 'Nombre o CT insuficientes para generar código' }
+  const adminRes = getAdminClient()
+  if (!adminRes.client) return { error: adminRes.error || 'Sin cliente admin' }
+  const admin = adminRes.client
+  const { error } = await admin
+    .from('agent_codes')
+    .upsert({ code, agente_id: usuarioId, nombre_agente: nombre ?? 'Agente', activo: true }, { onConflict: 'code' })
+  if (error) return { error: error.message }
+  return { code }
+}
+
 export async function crearUsuarioAgenteAuto({ email, nombre }: CrearAgenteOpts): Promise<CrearAgenteResultado> {
   const out: CrearAgenteResultado = {}
   if(!email || !/.+@.+\..+/.test(email)) { out.error = 'Email inválido'; return out }
-  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-  const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY
-  if(!SUPABASE_URL || !SERVICE_KEY || !isServiceRoleKey(SERVICE_KEY)) { out.error = 'Service role key faltante o inválida'; return out }
-  const admin = createClient(SUPABASE_URL, SERVICE_KEY)
+  const adminRes = getAdminClient()
+  if (!adminRes.client) { out.error = adminRes.error; return out }
+  const admin = adminRes.client
   // ¿Existe ya? (usuarios)
   const existente = await admin.from('usuarios').select('id,rol').eq('email', email).maybeSingle()
   if (existente.error) { out.error = existente.error.message; return out }
-  if (existente.data) { out.existed = true; return out }
+  if (existente.data) { out.existed = true; out.usuarioId = (existente.data as any).id; return out }
   // Crear
   const tempPassword = randomTempPassword()
   if(!isStrongPassword(tempPassword)) { out.error = 'Password generada inválida'; return out }
@@ -70,6 +117,7 @@ export async function crearUsuarioAgenteAuto({ email, nombre }: CrearAgenteOpts)
     return out
   }
   out.created = true
+  out.usuarioId = (ins.data as any)?.id
   out.passwordTemporal = tempPassword
   await logAccion('alta_usuario_auto_candidato', { usuario: email, tabla_afectada: 'usuarios', snapshot: { email, nombre, rol: 'agente' } })
   try {

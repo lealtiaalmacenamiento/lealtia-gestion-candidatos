@@ -3,7 +3,7 @@ import './globals.css'; // Contiene bootstrap + bootstrap-icons
 import { AuthProvider } from '@/context/AuthProvider'
 import { PageTitleProvider } from '@/context/PageTitleContext'
 import React from 'react';
-import Footer from '@/components/Footer'
+import { ConditionalFooter } from '@/components/ConditionalFooter'
 import { DialogProvider } from '@/components/ui/DialogProvider'
 
 interface RootLayoutProps {
@@ -42,7 +42,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                 <div style={{ marginTop: showBanner ? 28 : 0, flex: 1 }}>
                   {children}
                 </div>
-                <Footer />
+                <ConditionalFooter />
               </div>
             </DialogProvider>
           </PageTitleProvider>

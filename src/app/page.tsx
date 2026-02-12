@@ -1,30 +1,34 @@
-﻿"use client"
-import { useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/context/AuthProvider'
+﻿import LandingNav from '@/components/landing/LandingNav'
+import Hero from '@/components/landing/Hero'
+import AboutSection from '@/components/landing/AboutSection'
+import QuoteSection from '@/components/landing/QuoteSection'
+import WhyLealtia from '@/components/landing/WhyLealtia'
+import BecomeAgent from '@/components/landing/BecomeAgent'
+import RecruitmentForm from '@/components/landing/RecruitmentForm'
+import EmotionalSection from '@/components/landing/EmotionalSection'
+import LandingFooter from '@/components/landing/LandingFooter'
+import './landing.css'
 
-export default function Home() {
-  const router = useRouter()
-  const { user, session } = useAuth()
-
-  const redirected = useRef(false)
-  useEffect(() => {
-    if (redirected.current) return
-    if (user === null) {
-      console.log('[root] sin sesión -> /login')
-      redirected.current = true
-      router.replace('/login')
-    } else if (user) {
-      console.log('[root] sesión encontrada -> /home')
-      redirected.current = true
-      router.replace('/home')
-    } else {
-      console.log('[root] esperando datos de usuario...')
-    }
-  }, [user, session, router])
-
-  return <div style={{ padding: 24, fontFamily: 'sans-serif' }}></div>
+export const metadata = {
+  title: 'Lealtia - Promotoría de Seguros y Comunidad de Agentes',
+  description: 'Construye tu futuro con Lealtia. Cotiza seguros o únete como agente con capacitación, home office y comunidad activa.',
 }
 
-// vercel: redeploy marker (2025-08-29-3)
+export default function Home() {
+  return (
+    <div className="landing-page">
+      <LandingNav />
+      <Hero />
+      <AboutSection />
+      <WhyLealtia />
+      <QuoteSection />
+      <BecomeAgent />
+      <RecruitmentForm />
+      <EmotionalSection />
+      <LandingFooter />
+    </div>
+  )
+}
+
+
 

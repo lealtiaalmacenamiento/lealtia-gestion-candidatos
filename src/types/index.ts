@@ -65,6 +65,7 @@ export interface Usuario {
   must_change_password?: boolean
   id_auth?: string
   is_desarrollador?: boolean
+  codigo_agente?: string
 }
 
 export type IntegrationProviderKey = 'google' | 'zoom' | 'teams'

@@ -37,6 +37,19 @@ export default function Header() {
               <i className="bi bi-person-fill text-[#072e40]"></i>
               {user.email}
             </span>
+
+            {user.codigo_agente ? (
+              <span className="inline-flex align-items-center gap-2 bg-white text-[#072e40] px-3 py-1 rounded-pill small fw-semibold shadow-sm border border-white/60">
+                <i className="bi bi-credit-card-2-front text-[#072e40]"></i>
+                CÓDIGO: {user.codigo_agente}
+              </span>
+            ) : (
+              <span className="inline-flex align-items-center gap-2 bg-white/20 text-white px-3 py-1 rounded-pill small fw-normal shadow-sm border border-white/40">
+                <i className="bi bi-credit-card-2-front"></i>
+                SIN CÓDIGO
+              </span>
+            )}
+
             <span
               className="inline-flex align-items-center gap-2 bg-white text-[#072e40] px-3 py-1 rounded-pill small fw-semibold shadow-sm border border-white/60"
               title={`Rol: ${user.rol}`}
@@ -44,6 +57,7 @@ export default function Header() {
               <i className="bi bi-shield-lock-fill text-[#072e40]"></i>
               {user.rol}
             </span>
+            
             <button
               onClick={goDashboard}
               disabled={onDashboard}

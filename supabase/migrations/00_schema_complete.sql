@@ -1,10 +1,17 @@
 ﻿-- =============================================================================
 -- LEALTIA GESTION CANDIDATOS - SCHEMA COMPLETO CONSOLIDADO
 -- =============================================================================
--- Fecha de consolidación: 2026-01-21
+-- Fecha de consolidación: 2026-01-22
 -- 
 -- Este archivo consolida TODAS las migraciones de supabase/migrations/
 -- en un solo schema ejecutable desde cero en PostgreSQL limpio.
+-- 
+-- ⚠️ IMPORTANTE: Este script es completamente IDEMPOTENTE
+-- - Puede ejecutarse múltiples veces sin errores
+-- - Detecta automáticamente qué elementos ya existen
+-- - Solo aplica cambios cuando es necesario
+-- - Usa CREATE IF NOT EXISTS, CREATE OR REPLACE, DROP IF EXISTS
+-- - Los INSERT de datos usan ON CONFLICT DO NOTHING
 -- 
 -- Orden de ejecución:
 -- 1. Extensions y helpers básicos
@@ -40,27 +47,61 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm" WITH SCHEMA public;
 -- =============================================================================
 
 -- Tipos de Fase 2 y 3 (producto, clientes, polizas)
-CREATE TYPE estatus_poliza AS ENUM ('EN_VIGOR', 'ANULADA');
-CREATE TYPE forma_pago AS ENUM ('MODO_DIRECTO', 'CARGO_AUTOMATICO');
-CREATE TYPE tipo_producto AS ENUM ('VI', 'GMM');
-CREATE TYPE tipo_clasificacion_puntos AS ENUM ('CERO','MEDIO','SIMPLE','DOBLE','TRIPLE');
-CREATE TYPE moneda_poliza AS ENUM ('MXN','USD','UDI');
-CREATE TYPE estado_solicitud_cambio AS ENUM ('PENDIENTE','APROBADA','RECHAZADA');
-CREATE TYPE tipo_cambio_cliente AS ENUM ('CREACION','MODIFICACION','APROBACION','RECHAZO');
+DO $$ BEGIN
+  CREATE TYPE estatus_poliza AS ENUM ('EN_VIGOR', 'ANULADA');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE forma_pago AS ENUM ('MODO_DIRECTO', 'CARGO_AUTOMATICO');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE tipo_producto AS ENUM ('VI', 'GMM');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE tipo_clasificacion_puntos AS ENUM ('CERO','MEDIO','SIMPLE','DOBLE','TRIPLE');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE moneda_poliza AS ENUM ('MXN','USD','UDI');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE estado_solicitud_cambio AS ENUM ('PENDIENTE','APROBADA','RECHAZADA');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE tipo_cambio_cliente AS ENUM ('CREACION','MODIFICACION','APROBACION','RECHAZO');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Periodicidad de pago (versión final expandida - Phase 6)
-CREATE TYPE periodicidad_pago AS ENUM ('mensual', 'trimestral', 'semestral', 'anual');
+DO $$ BEGIN
+  CREATE TYPE periodicidad_pago AS ENUM ('mensual', 'trimestral', 'semestral', 'anual');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Tipos de Fase 4 (agenda/citas)
-CREATE TYPE meeting_provider AS ENUM ('google_meet', 'zoom', 'teams');
-CREATE TYPE cita_estado AS ENUM ('confirmada', 'cancelada');
+DO $$ BEGIN
+  CREATE TYPE meeting_provider AS ENUM ('google_meet', 'zoom', 'teams');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE cita_estado AS ENUM ('confirmada', 'cancelada');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Tipos de Fase 5 (campañas)
-CREATE TYPE campaign_status AS ENUM ('draft', 'active', 'paused', 'archived');
-CREATE TYPE campaign_progress_status AS ENUM ('not_eligible', 'eligible', 'completed');
+DO $$ BEGIN
+  CREATE TYPE campaign_status AS ENUM ('draft', 'active', 'paused', 'archived');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE campaign_progress_status AS ENUM ('not_eligible', 'eligible', 'completed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Tipos de Fase 6 (pagos)
-CREATE TYPE poliza_pago_estado AS ENUM ('pendiente', 'pagado', 'vencido', 'omitido');
+DO $$ BEGIN
+  CREATE TYPE poliza_pago_estado AS ENUM ('pendiente', 'pagado', 'vencido', 'omitido');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- =============================================================================
 -- 3. SECUENCIAS Y FUNCIONES HELPER BÁSICAS
@@ -313,6 +354,26 @@ CREATE TABLE IF NOT EXISTS poliza_puntos_cache (
 CREATE INDEX IF NOT EXISTS idx_poliza_puntos_cache_poliza_base 
   ON poliza_puntos_cache(poliza_id, base_factor)
   WHERE base_factor IS NOT NULL;
+
+-- Tabla para configurar umbrales de puntos por tipo de producto (20260122)
+CREATE TABLE IF NOT EXISTS puntos_thresholds (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo_producto tipo_producto NOT NULL,
+  umbral_min numeric(14,2) NOT NULL,
+  umbral_max numeric(14,2) NULL,
+  puntos numeric(10,2) NOT NULL,
+  clasificacion tipo_clasificacion_puntos NOT NULL,
+  descripcion text NULL,
+  orden int NOT NULL DEFAULT 0,
+  activo boolean NOT NULL DEFAULT true,
+  creado_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ck_puntos_thresholds_umbral_valido CHECK (umbral_max IS NULL OR umbral_max > umbral_min)
+);
+
+CREATE INDEX IF NOT EXISTS idx_puntos_thresholds_lookup 
+  ON puntos_thresholds(tipo_producto, activo, orden) 
+  WHERE activo = true;
 
 -- Tablas de historial y aprobaciones
 CREATE TABLE IF NOT EXISTS cliente_historial (
@@ -699,81 +760,103 @@ COMMENT ON COLUMN notificaciones.metadata IS 'Datos extras en JSON: {poliza_id, 
 -- =============================================================================
 
 -- usuarios
+DROP TRIGGER IF EXISTS trg_usuarios_set_updated_at ON usuarios;
 CREATE TRIGGER trg_usuarios_set_updated_at
   BEFORE UPDATE ON usuarios
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- candidatos
+DROP TRIGGER IF EXISTS trg_candidatos_set_updated_at ON candidatos;
 CREATE TRIGGER trg_candidatos_set_updated_at
   BEFORE UPDATE ON candidatos
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- clientes
+DROP TRIGGER IF EXISTS trg_clientes_set_updated_at ON clientes;
 CREATE TRIGGER trg_clientes_set_updated_at
   BEFORE UPDATE ON clientes
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- polizas
+DROP TRIGGER IF EXISTS trg_polizas_set_updated_at ON polizas;
 CREATE TRIGGER trg_polizas_set_updated_at
   BEFORE UPDATE ON polizas
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- poliza_puntos_cache
+DROP TRIGGER IF EXISTS trg_poliza_puntos_cache_set_updated_at ON poliza_puntos_cache;
 CREATE TRIGGER trg_poliza_puntos_cache_set_updated_at
   BEFORE UPDATE ON poliza_puntos_cache
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- puntos_thresholds (20260122)
+DROP TRIGGER IF EXISTS trg_puntos_thresholds_set_updated_at ON puntos_thresholds;
+CREATE TRIGGER trg_puntos_thresholds_set_updated_at
+  BEFORE UPDATE ON puntos_thresholds
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- producto_parametros
+DROP TRIGGER IF EXISTS trg_producto_parametros_set_updated_at ON producto_parametros;
 CREATE TRIGGER trg_producto_parametros_set_updated_at
   BEFORE UPDATE ON producto_parametros
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- planificaciones
+DROP TRIGGER IF EXISTS trg_planificaciones_set_updated_at ON planificaciones;
 CREATE TRIGGER trg_planificaciones_set_updated_at
   BEFORE UPDATE ON planificaciones
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- prospectos
+DROP TRIGGER IF EXISTS trg_prospectos_set_updated_at ON prospectos;
 CREATE TRIGGER trg_prospectos_set_updated_at
   BEFORE UPDATE ON prospectos
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- segments
+DROP TRIGGER IF EXISTS trg_segments_set_updated_at ON segments;
 CREATE TRIGGER trg_segments_set_updated_at
   BEFORE UPDATE ON segments
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- product_types
+DROP TRIGGER IF EXISTS trg_product_types_set_updated_at ON product_types;
 CREATE TRIGGER trg_product_types_set_updated_at
   BEFORE UPDATE ON product_types
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- campaigns
+DROP TRIGGER IF EXISTS trg_campaigns_set_updated_at ON campaigns;
 CREATE TRIGGER trg_campaigns_set_updated_at
   BEFORE UPDATE ON campaigns
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- campaign_rules
+DROP TRIGGER IF EXISTS trg_campaign_rules_set_updated_at ON campaign_rules;
 CREATE TRIGGER trg_campaign_rules_set_updated_at
   BEFORE UPDATE ON campaign_rules
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- campaign_rewards
+DROP TRIGGER IF EXISTS trg_campaign_rewards_set_updated_at ON campaign_rewards;
 CREATE TRIGGER trg_campaign_rewards_set_updated_at
   BEFORE UPDATE ON campaign_rewards
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- campaign_progress
+DROP TRIGGER IF EXISTS trg_campaign_progress_set_updated_at ON campaign_progress;
 CREATE TRIGGER trg_campaign_progress_set_updated_at
   BEFORE UPDATE ON campaign_progress
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- poliza_pagos_mensuales
+DROP TRIGGER IF EXISTS trg_poliza_pagos_set_updated_at ON poliza_pagos_mensuales;
 CREATE TRIGGER trg_poliza_pagos_set_updated_at
   BEFORE UPDATE ON poliza_pagos_mensuales
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- notificaciones
+DROP TRIGGER IF EXISTS trg_notificaciones_set_updated_at ON notificaciones;
 CREATE TRIGGER trg_notificaciones_set_updated_at
   BEFORE UPDATE ON notificaciones
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -801,6 +884,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_producto_parametros_set_keys ON producto_parametros;
 CREATE TRIGGER trg_producto_parametros_set_keys
   BEFORE INSERT OR UPDATE ON producto_parametros
   FOR EACH ROW EXECUTE FUNCTION producto_parametros_set_keys();
@@ -925,6 +1009,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_polizas_normalize_amounts ON polizas;
 CREATE TRIGGER trg_polizas_normalize_amounts
   BEFORE INSERT OR UPDATE OF prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision
   ON polizas
@@ -951,6 +1036,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_polizas_before_insupd_enforce_moneda ON polizas;
 CREATE TRIGGER trg_polizas_before_insupd_enforce_moneda
   BEFORE INSERT OR UPDATE ON polizas
   FOR EACH ROW EXECUTE FUNCTION polizas_before_insupd_enforce_moneda();
@@ -999,6 +1085,7 @@ DECLARE
   v_fecha date;
   v_pp_auto uuid;
   v_sa_mxn_live numeric;
+  v_threshold record;
 BEGIN
   SELECT p.prima_input, p.prima_mxn, p.prima_moneda, p.sa_mxn, p.sa_input, p.sa_moneda,
          p.estatus, p.producto_parametro_id, p.fecha_emision
@@ -1062,24 +1149,28 @@ BEGIN
       v_tipo := NULL;
     END IF;
 
-    IF v_tipo = 'GMM'::tipo_producto THEN
-      IF v_prima_mxn IS NOT NULL AND v_prima_mxn >= 7500 THEN
-        v_puntos := 0.5; v_clas := 'MEDIO';
+    -- NUEVA LÓGICA: Buscar en puntos_thresholds (20260122)
+    IF v_tipo IS NOT NULL AND v_prima_mxn IS NOT NULL THEN
+      SELECT *
+      INTO v_threshold
+      FROM puntos_thresholds
+      WHERE tipo_producto = v_tipo
+        AND activo = true
+        AND v_prima_mxn >= umbral_min
+        AND (umbral_max IS NULL OR v_prima_mxn < umbral_max)
+      ORDER BY orden
+      LIMIT 1;
+      
+      IF FOUND THEN
+        v_puntos := v_threshold.puntos;
+        v_clas := v_threshold.clasificacion;
       ELSE
-        v_puntos := 0; v_clas := 'CERO';
-      END IF;
-    ELSIF v_tipo = 'VI'::tipo_producto THEN
-      IF v_prima_mxn IS NULL OR v_prima_mxn < 15000 THEN
-        v_puntos := 0; v_clas := 'CERO';
-      ELSIF v_prima_mxn >= 150000 THEN
-        v_puntos := 3; v_clas := 'TRIPLE';
-      ELSIF v_prima_mxn >= 50000 THEN
-        v_puntos := 2; v_clas := 'DOBLE';
-      ELSE
-        v_puntos := 1; v_clas := 'SIMPLE';
+        v_puntos := 0;
+        v_clas := 'CERO';
       END IF;
     ELSE
-      v_puntos := 0; v_clas := 'CERO';
+      v_puntos := 0;
+      v_clas := 'CERO';
     END IF;
   END IF;
 
@@ -1204,10 +1295,12 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_polizas_after_insert_recalc ON polizas;
 CREATE TRIGGER trg_polizas_after_insert_recalc
   AFTER INSERT ON polizas
   FOR EACH ROW EXECUTE FUNCTION polizas_after_change_recalc();
 
+DROP TRIGGER IF EXISTS trg_polizas_after_update_recalc ON polizas;
 CREATE TRIGGER trg_polizas_after_update_recalc
   AFTER UPDATE OF prima_input, prima_moneda, sa_input, sa_moneda, fecha_emision, estatus, producto_parametro_id ON polizas
   FOR EACH ROW EXECUTE FUNCTION polizas_after_change_recalc();
@@ -1258,6 +1351,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_producto_parametros_after_update_recalc ON producto_parametros;
 CREATE TRIGGER trg_producto_parametros_after_update_recalc
   AFTER UPDATE ON producto_parametros
   FOR EACH ROW EXECUTE FUNCTION producto_parametros_after_update_recalc();
@@ -1286,6 +1380,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_producto_parametros_after_update_sync_moneda ON producto_parametros;
 CREATE TRIGGER trg_producto_parametros_after_update_sync_moneda
   AFTER UPDATE ON producto_parametros
   FOR EACH ROW EXECUTE FUNCTION producto_parametros_after_update_sync_moneda();
@@ -1687,11 +1782,13 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_campaigns_invalidate_cache ON campaigns;
 CREATE TRIGGER trg_campaigns_invalidate_cache
   AFTER INSERT OR UPDATE OR DELETE ON campaigns
   FOR EACH ROW
   EXECUTE FUNCTION invalidate_campaign_cache();
 
+DROP TRIGGER IF EXISTS trg_campaign_rules_invalidate_cache ON campaign_rules;
 CREATE TRIGGER trg_campaign_rules_invalidate_cache
   AFTER INSERT OR UPDATE OR DELETE ON campaign_rules
   FOR EACH ROW
@@ -1932,6 +2029,7 @@ ALTER TABLE dias_mes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE polizas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE poliza_puntos_cache ENABLE ROW LEVEL SECURITY;
+ALTER TABLE puntos_thresholds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cliente_historial ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cliente_update_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historial_costos_poliza ENABLE ROW LEVEL SECURITY;
@@ -1957,58 +2055,71 @@ ALTER TABLE poliza_pagos_mensuales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notificaciones ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para udi_values y fx_values
+DROP POLICY IF EXISTS sel_udi_values ON udi_values;
 CREATE POLICY sel_udi_values ON udi_values
   FOR SELECT TO authenticated
   USING (true);
+DROP POLICY IF EXISTS ins_udi_values_super ON udi_values;
 CREATE POLICY ins_udi_values_super ON udi_values
   FOR INSERT TO authenticated
   WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS upd_udi_values_super ON udi_values;
 CREATE POLICY upd_udi_values_super ON udi_values
   FOR UPDATE TO authenticated
   USING (is_super_role());
+DROP POLICY IF EXISTS del_udi_values_super ON udi_values;
 CREATE POLICY del_udi_values_super ON udi_values
   FOR DELETE TO authenticated
   USING (is_super_role());
 
+DROP POLICY IF EXISTS sel_fx_values ON fx_values;
 CREATE POLICY sel_fx_values ON fx_values
   FOR SELECT TO authenticated
   USING (true);
+DROP POLICY IF EXISTS ins_fx_values_super ON fx_values;
 CREATE POLICY ins_fx_values_super ON fx_values
   FOR INSERT TO authenticated
   WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS upd_fx_values_super ON fx_values;
 CREATE POLICY upd_fx_values_super ON fx_values
   FOR UPDATE TO authenticated
   USING (is_super_role());
+DROP POLICY IF EXISTS del_fx_values_super ON fx_values;
 CREATE POLICY del_fx_values_super ON fx_values
   FOR DELETE TO authenticated
   USING (is_super_role());
 
 -- Políticas para clientes
+DROP POLICY IF EXISTS sel_clientes ON clientes;
 CREATE POLICY sel_clientes ON clientes
   FOR SELECT TO authenticated
   USING (asesor_id = auth.uid() OR is_super_role());
+DROP POLICY IF EXISTS upd_clientes_super ON clientes;
 CREATE POLICY upd_clientes_super ON clientes
   FOR UPDATE TO authenticated
   USING (is_super_role());
+DROP POLICY IF EXISTS ins_clientes_asesor ON clientes;
 CREATE POLICY ins_clientes_asesor ON clientes
   FOR INSERT TO authenticated
   WITH CHECK (asesor_id = auth.uid() OR is_super_role());
 
 -- Políticas para polizas
+DROP POLICY IF EXISTS sel_polizas ON polizas;
 CREATE POLICY sel_polizas ON polizas
   FOR SELECT TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM clientes c
       WHERE c.id = polizas.cliente_id
-        AND (c.asesor_id = auth.uid() OR is_super_role())
+      AND (c.asesor_id = auth.uid() OR is_super_role())
     )
   );
-CREATE POLICY upd_polizas_super ON polizas
+DROP POLICY IF EXISTS upd_polizas_super ON polizas;
   FOR UPDATE TO authenticated
   USING (is_super_role());
 
 -- Políticas para poliza_puntos_cache
+DROP POLICY IF EXISTS sel_poliza_puntos_cache ON poliza_puntos_cache;
 CREATE POLICY sel_poliza_puntos_cache ON poliza_puntos_cache
   FOR SELECT TO authenticated
   USING (
@@ -2019,50 +2130,81 @@ CREATE POLICY sel_poliza_puntos_cache ON poliza_puntos_cache
         AND (c.asesor_id = auth.uid() OR is_super_role())
     )
   );
+DROP POLICY IF EXISTS ins_poliza_puntos_cache_super ON poliza_puntos_cache;
 CREATE POLICY ins_poliza_puntos_cache_super ON poliza_puntos_cache
   FOR INSERT TO authenticated
   WITH CHECK (is_super_role());
+
+-- Políticas para puntos_thresholds (20260122)
+DROP POLICY IF EXISTS sel_puntos_thresholds ON puntos_thresholds;
+CREATE POLICY sel_puntos_thresholds ON puntos_thresholds
+  FOR SELECT TO authenticated
+  USING (true);
+DROP POLICY IF EXISTS ins_puntos_thresholds_super ON puntos_thresholds;
+CREATE POLICY ins_puntos_thresholds_super ON puntos_thresholds
+  FOR INSERT TO authenticated
+  WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS upd_puntos_thresholds_super ON puntos_thresholds;
+CREATE POLICY upd_puntos_thresholds_super ON puntos_thresholds
+  FOR UPDATE TO authenticated
+  USING (is_super_role());
+DROP POLICY IF EXISTS del_puntos_thresholds_super ON puntos_thresholds;
+CREATE POLICY del_puntos_thresholds_super ON puntos_thresholds
+  FOR DELETE TO authenticated
+  USING (is_super_role());
+DROP POLICY IF EXISTS upd_poliza_puntos_cache_super ON poliza_puntos_cache;
 CREATE POLICY upd_poliza_puntos_cache_super ON poliza_puntos_cache
   FOR UPDATE TO authenticated
   USING (is_super_role());
+DROP POLICY IF EXISTS del_poliza_puntos_cache_super ON poliza_puntos_cache;
 CREATE POLICY del_poliza_puntos_cache_super ON poliza_puntos_cache
   FOR DELETE TO authenticated
   USING (is_super_role());
 
 -- Políticas para cliente_update_requests
+DROP POLICY IF EXISTS ins_cliente_update_requests ON cliente_update_requests;
 CREATE POLICY ins_cliente_update_requests ON cliente_update_requests
   FOR INSERT TO authenticated
   WITH CHECK (solicitante_id = auth.uid());
+DROP POLICY IF EXISTS sel_cliente_update_requests ON cliente_update_requests;
 CREATE POLICY sel_cliente_update_requests ON cliente_update_requests
   FOR SELECT TO authenticated
   USING (solicitante_id = auth.uid() OR is_super_role());
+DROP POLICY IF EXISTS upd_cliente_update_requests_super ON cliente_update_requests;
 CREATE POLICY upd_cliente_update_requests_super ON cliente_update_requests
   FOR UPDATE TO authenticated
   USING (is_super_role());
 
 -- Políticas para poliza_update_requests
+DROP POLICY IF EXISTS ins_poliza_update_requests ON poliza_update_requests;
 CREATE POLICY ins_poliza_update_requests ON poliza_update_requests
   FOR INSERT TO authenticated
   WITH CHECK (solicitante_id = auth.uid());
+DROP POLICY IF EXISTS sel_poliza_update_requests ON poliza_update_requests;
 CREATE POLICY sel_poliza_update_requests ON poliza_update_requests
   FOR SELECT TO authenticated
   USING (solicitante_id = auth.uid() OR is_super_role());
+DROP POLICY IF EXISTS upd_poliza_update_requests_super ON poliza_update_requests;
 CREATE POLICY upd_poliza_update_requests_super ON poliza_update_requests
   FOR UPDATE TO authenticated
   USING (is_super_role());
 
 -- Políticas para cliente_historial
+DROP POLICY IF EXISTS sel_cliente_historial ON cliente_historial;
 CREATE POLICY sel_cliente_historial ON cliente_historial
   FOR SELECT TO authenticated
   USING (is_super_role());
+DROP POLICY IF EXISTS ins_cliente_historial_super ON cliente_historial;
 CREATE POLICY ins_cliente_historial_super ON cliente_historial
   FOR INSERT TO authenticated
   WITH CHECK (is_super_role());
 
 -- Políticas para historial_costos_poliza
+DROP POLICY IF EXISTS sel_historial_costos_poliza_super ON historial_costos_poliza;
 CREATE POLICY sel_historial_costos_poliza_super ON historial_costos_poliza
   FOR SELECT TO authenticated
   USING (is_super_role());
+DROP POLICY IF EXISTS ins_historial_costos_poliza_super ON historial_costos_poliza;
 CREATE POLICY ins_historial_costos_poliza_super ON historial_costos_poliza
   FOR INSERT TO authenticated
   WITH CHECK (is_super_role());
@@ -2101,41 +2243,51 @@ CREATE POLICY pol_notificaciones_insert ON notificaciones
   WITH CHECK (true);
 
 -- Políticas para segments
+DROP POLICY IF EXISTS segments_select_all ON segments;
 CREATE POLICY segments_select_all ON segments
   FOR SELECT TO authenticated
   USING (true);
+DROP POLICY IF EXISTS segments_manage_super ON segments;
 CREATE POLICY segments_manage_super ON segments
   FOR ALL TO authenticated
   USING (is_super_role());
 
 -- Políticas para product_types
+DROP POLICY IF EXISTS product_types_select_all ON product_types;
 CREATE POLICY product_types_select_all ON product_types
   FOR SELECT TO authenticated
   USING (true);
+DROP POLICY IF EXISTS product_types_manage_super ON product_types;
 CREATE POLICY product_types_manage_super ON product_types
   FOR ALL TO authenticated
   USING (is_super_role());
 
 -- Políticas para campaigns
+DROP POLICY IF EXISTS campaigns_select_all ON campaigns;
 CREATE POLICY campaigns_select_all ON campaigns
   FOR SELECT TO authenticated
   USING (true);
+DROP POLICY IF EXISTS campaigns_manage_super ON campaigns;
 CREATE POLICY campaigns_manage_super ON campaigns
   FOR ALL TO authenticated
   USING (is_super_role());
 
 -- Políticas para campaign_rules
+DROP POLICY IF EXISTS campaign_rules_select_all ON campaign_rules;
 CREATE POLICY campaign_rules_select_all ON campaign_rules
   FOR SELECT TO authenticated
   USING (true);
+DROP POLICY IF EXISTS campaign_rules_manage_super ON campaign_rules;
 CREATE POLICY campaign_rules_manage_super ON campaign_rules
   FOR ALL TO authenticated
   USING (is_super_role());
 
 -- Políticas para campaign_progress
+DROP POLICY IF EXISTS campaign_progress_select_all ON campaign_progress;
 CREATE POLICY campaign_progress_select_all ON campaign_progress
   FOR SELECT TO authenticated
   USING (true);
+DROP POLICY IF EXISTS campaign_progress_manage_super ON campaign_progress;
 CREATE POLICY campaign_progress_manage_super ON campaign_progress
   FOR ALL TO authenticated
   USING (is_super_role());
@@ -2195,6 +2347,19 @@ VALUES
   ('GMM', 'Gastos Médicos Mayores', 'Productos de seguro de gastos médicos mayores')
 ON CONFLICT (code) DO NOTHING;
 
+-- Seed puntos_thresholds (20260122)
+INSERT INTO puntos_thresholds (tipo_producto, umbral_min, umbral_max, puntos, clasificacion, descripcion, orden) VALUES
+-- GMM: 0.5 puntos si prima >= 7500, else 0
+('GMM', 0, 7500, 0, 'CERO', 'Prima menor a $7,500', 1),
+('GMM', 7500, NULL, 0.5, 'MEDIO', 'Prima de $7,500 o mas', 2),
+
+-- VI: 0 (<15k), 1 (15k-50k), 2 (50k-150k), 3 (>=150k)
+('VI', 0, 15000, 0, 'CERO', 'Prima menor a $15,000', 1),
+('VI', 15000, 50000, 1, 'SIMPLE', 'Prima entre $15,000 y $50,000', 2),
+('VI', 50000, 150000, 2, 'DOBLE', 'Prima entre $50,000 y $150,000', 3),
+('VI', 150000, NULL, 3, 'TRIPLE', 'Prima de $150,000 o mas', 4)
+ON CONFLICT DO NOTHING;
+
 -- =============================================================================
 -- 23. FUNCIONES Y TRIGGERS DE INVALIDACIÓN DE CACHE POR USUARIO
 -- =============================================================================
@@ -2243,6 +2408,7 @@ $$;
 
 COMMENT ON FUNCTION trigger_invalidate_cache_on_candidatos() IS 'Invalida cache cuando cambia mes_conexion u otros datos de candidatos';
 
+DROP TRIGGER IF EXISTS trigger_invalidate_cache_on_candidatos ON candidatos;
 CREATE TRIGGER trigger_invalidate_cache_on_candidatos
   AFTER INSERT OR UPDATE ON candidatos
   FOR EACH ROW
@@ -2273,6 +2439,7 @@ $$;
 
 COMMENT ON FUNCTION trigger_invalidate_cache_on_clientes() IS 'Invalida cache cuando se crean/modifican/eliminan clientes';
 
+DROP TRIGGER IF EXISTS trigger_invalidate_cache_on_clientes ON clientes;
 CREATE TRIGGER trigger_invalidate_cache_on_clientes
   AFTER INSERT OR UPDATE OR DELETE ON clientes
   FOR EACH ROW
@@ -2310,6 +2477,7 @@ $$;
 
 COMMENT ON FUNCTION trigger_invalidate_cache_on_polizas() IS 'Invalida cache cuando se crean/modifican/eliminan pólizas';
 
+DROP TRIGGER IF EXISTS trigger_invalidate_cache_on_polizas ON polizas;
 CREATE TRIGGER trigger_invalidate_cache_on_polizas
   AFTER INSERT OR UPDATE OR DELETE ON polizas
   FOR EACH ROW
@@ -2337,6 +2505,7 @@ $$;
 
 COMMENT ON FUNCTION trigger_invalidate_cache_on_planificaciones() IS 'Invalida cache cuando cambian planificaciones';
 
+DROP TRIGGER IF EXISTS trigger_invalidate_cache_on_planificaciones ON planificaciones;
 CREATE TRIGGER trigger_invalidate_cache_on_planificaciones
   AFTER INSERT OR UPDATE OR DELETE ON planificaciones
   FOR EACH ROW
@@ -2367,6 +2536,7 @@ $$;
 
 COMMENT ON FUNCTION trigger_invalidate_cache_on_prospectos() IS 'Invalida cache cuando cambian prospectos (afecta RC metrics)';
 
+DROP TRIGGER IF EXISTS trigger_invalidate_cache_on_prospectos ON prospectos;
 CREATE TRIGGER trigger_invalidate_cache_on_prospectos
   AFTER INSERT OR UPDATE OR DELETE ON prospectos
   FOR EACH ROW
@@ -2389,6 +2559,7 @@ $$;
 
 COMMENT ON FUNCTION trigger_invalidate_cache_on_user_segments() IS 'Invalida cache cuando cambian los segmentos del usuario (afecta elegibilidad por SEGMENT rules)';
 
+DROP TRIGGER IF EXISTS trigger_invalidate_cache_on_user_segments ON user_segments;
 CREATE TRIGGER trigger_invalidate_cache_on_user_segments
   AFTER INSERT OR UPDATE OR DELETE ON user_segments
   FOR EACH ROW
@@ -2411,6 +2582,7 @@ $$;
 
 COMMENT ON FUNCTION trigger_invalidate_cache_on_custom_metrics() IS 'Invalida cache cuando cambian métricas personalizadas de campañas';
 
+DROP TRIGGER IF EXISTS trigger_invalidate_cache_on_custom_metrics ON campaign_custom_metrics;
 CREATE TRIGGER trigger_invalidate_cache_on_custom_metrics
   AFTER INSERT OR UPDATE OR DELETE ON campaign_custom_metrics
   FOR EACH ROW
@@ -2505,6 +2677,11 @@ COMMIT;
 --   20251227_notificaciones.sql
 --   20260121_notificaciones_updated_at.sql
 --
+-- Configuración de Puntos (enero 2026):
+--   20260122_add_puntos_thresholds.sql
+--   20260122_fix_puntos_encoding.sql
+--   20260122_update_recalc_puntos_poliza.sql
+--
 -- =============================================================================
 -- CARACTERÍSTICAS DEL SCHEMA:
 -- 
@@ -2515,9 +2692,10 @@ COMMIT;
 -- ✓ Triggers automáticos: updated_at, recalc_puntos, generación pagos, cache
 -- ✓ Funciones de negocio: UDI/FX, normalización, puntos, comisiones, workflows
 -- ✓ Views optimizadas: Dashboards de comisiones, campañas, valores actuales
--- ✓ Datos semilla: UDI, FX, dias_mes, product_types
+-- ✓ Datos semilla: UDI, FX, dias_mes, product_types, puntos_thresholds
+-- ✓ Puntos configurables: Tabla puntos_thresholds para gestión dinámica
 -- 
--- VERSIÓN: 1.0.0 (Consolidación completa hasta 2026-01-21)
+-- VERSIÓN: 1.1.0 (Consolidación completa hasta 2026-01-22)
 -- =============================================================================
 
 

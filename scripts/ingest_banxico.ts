@@ -12,7 +12,14 @@
   - DAYS_BACK (por defecto 365)
 */
 
+import dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+dotenv.config({ path: join(__dirname, '..', '.env.local') })
 
 function envOrThrow(name: string): string {
   const v = process.env[name]

@@ -40,8 +40,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (!performedRecovery) {
               performedRecovery = true
               try { await fetch('/api/logout', { method: 'POST' }) } catch {}
-              // Redirigir a login sólo si no estamos ya allí para evitar loop
-              if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              // Redirigir a login sólo si no estamos en rutas públicas (landing, login, política)
+              const publicRoutes = ['/', '/login', '/politica-privacidad']
+              if (typeof window !== 'undefined' && !publicRoutes.includes(window.location.pathname)) {
                 window.location.replace('/login')
               }
             }
@@ -55,7 +56,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (!performedRecovery) {
             performedRecovery = true
             try { await fetch('/api/logout', { method: 'POST' }) } catch {}
-            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            // Redirigir a login sólo si no estamos en rutas públicas (landing, login, política)
+            const publicRoutes = ['/', '/login', '/politica-privacidad']
+            if (typeof window !== 'undefined' && !publicRoutes.includes(window.location.pathname)) {
               window.location.replace('/login')
             }
           }
