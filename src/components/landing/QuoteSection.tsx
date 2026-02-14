@@ -477,17 +477,6 @@ export default function QuoteSection() {
                     </div>
                   </div>
 
-                  <div className="alert alert-secondary mt-3">
-                    <small>
-                      <strong>Supuestos del cálculo:</strong><br/>
-                      • Tasa ISR para deducción: {(TASA_ISR * 100).toFixed(0)}%<br/>
-                      • UDI actual (para prima anual/mensual en MXN): {resultado.udiActual.toFixed(6)}<br/>
-                      • UDI al término del plan ({resultado.añosPago} años): {resultado.udiTermino.toFixed(6)} {resultado.esProyeccion ? '(proyectada)' : '(real)'} (cierra aportaciones)<br/>
-                      • UDI a los 65 años: {resultado.udi65.toFixed(6)} {resultado.esProyeccion ? '(proyectada)' : '(real/proy.)'} (para meta a 65 en planes 10/15)<br/>
-                      • UDI promedio (para total aportado en MXN): {resultado.udiPromedio.toFixed(6)}
-                    </small>
-                  </div>
-
                   {/* Botón para solicitar asesoría */}
                   {!prospectoCreado && !showContactForm && (
                     <div className="text-center mt-4">
