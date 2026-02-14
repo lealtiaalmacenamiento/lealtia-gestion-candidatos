@@ -15,7 +15,10 @@
     "seed:fake": "node scripts/seed_fake_data.js",
     "seed:segments": "ts-node --esm scripts/seed-segments.ts",
     "seed:campaigns": "ts-node --esm scripts/seed-campaigns.ts",
-    "migrate:developers": "ts-node --esm scripts/migrate-developers-segment.ts"
+    "migrate:developers": "ts-node --esm scripts/migrate-developers-segment.ts",
+    "udi:ingest": "tsx scripts/ingest_banxico.ts",
+    "udi:project": "tsx scripts/project_udi.ts",
+    "udi:update": "npm run udi:ingest && npm run udi:project"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -30,10 +33,10 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.1",
     "exceljs": "^4.4.0",
-    "fast-xml-parser": "^4.4.1",
-    "jspdf": "^4.0.0",
+    "fast-xml-parser": "^5.3.4",
+    "jspdf": "^4.1.0",
     "jspdf-autotable": "^5.0.2",
-    "next": "^15.5.7",
+    "next": "^15.5.12",
     "nodemailer": "^7.0.10",
     "pg": "^8.16.3",
     "react": "^19.1.2",
@@ -53,8 +56,9 @@
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.21.0",
     "typescript": "^5",
-    "vitest": "^2.1.1"
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=18.18.0"

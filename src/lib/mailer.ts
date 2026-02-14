@@ -328,3 +328,158 @@ export function buildAltaUsuarioEmail(email: string, password: string) {
   const text = `Acceso temporal\nUsuario: ${email}\nPassword temporal: ${password}\nInicia sesión: ${LOGIN_URL}\n© ${year} Lealtia`
   return { subject, html, text }
 }
+
+export function buildProspectoPPREmail(opts: {
+  nombreProspecto: string
+  edad: number
+  email: string
+  telefono: string
+  plan: string
+  primaMensualMXN: string
+  meta65MXN: string
+  añosPago: number
+  nombreAgente: string
+}) {
+  const subject = `Nuevo prospecto PPR desde landing - ${opts.nombreProspecto}`
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
+  const LOGIN_URL = resolveLoginUrl()
+  
+  const planNombre = opts.plan === '65' ? 'Imagina ser 65' : opts.plan === '15' ? 'Imagina ser 15' : 'Imagina ser 10'
+
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">Nuevo Prospecto PPR</h2>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <p>Hola <strong>${opts.nombreAgente}</strong>,</p>
+      <p>Se ha registrado un nuevo prospecto desde el simulador de Plan de Retiro:</p>
+      
+      <div style="background-color:#f8f9fa;padding:16px;border-radius:6px;margin:16px 0;">
+        <h3 style="margin:0 0 12px 0;color:#004481;font-size:16px;">Datos del prospecto</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:6px 0;"><strong>Nombre:</strong></td><td style="padding:6px 0;">${opts.nombreProspecto}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Edad:</strong></td><td style="padding:6px 0;">${opts.edad} años</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Email:</strong></td><td style="padding:6px 0;">${opts.email}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Teléfono:</strong></td><td style="padding:6px 0;">${opts.telefono}</td></tr>
+        </table>
+      </div>
+
+      <div style="background-color:#e8f4f8;padding:16px;border-radius:6px;margin:16px 0;">
+        <h3 style="margin:0 0 12px 0;color:#004481;font-size:16px;">Plan seleccionado</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:6px 0;"><strong>Plan:</strong></td><td style="padding:6px 0;">${planNombre}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Aportación mensual:</strong></td><td style="padding:6px 0;">${opts.primaMensualMXN}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Meta a los 65:</strong></td><td style="padding:6px 0;">${opts.meta65MXN}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Años de pago:</strong></td><td style="padding:6px 0;">${opts.añosPago} años</td></tr>
+        </table>
+      </div>
+
+      <p style="margin-top:20px;"><strong>Estado:</strong> Pendiente</p>
+      <p><strong>Origen:</strong> Landing page - simulador PPR</p>
+
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${LOGIN_URL}" style="background-color:#004481;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;display:inline-block">Ver en el sistema</a>
+      </div>
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
+
+  const text = `Nuevo prospecto de Plan de Retiro
+
+Nombre: ${opts.nombreProspecto}
+Edad: ${opts.edad} años
+Email: ${opts.email}
+Teléfono: ${opts.telefono}
+
+Plan seleccionado: ${planNombre}
+Aportación mensual: ${opts.primaMensualMXN}
+Meta a los 65: ${opts.meta65MXN}
+Años de pago: ${opts.añosPago}
+
+Estado: Pendiente
+Origen: Landing page - simulador PPR
+
+Accede al sistema: ${LOGIN_URL}
+
+© ${year} Lealtia`
+
+  return { subject, html, text }
+}
+
+export function buildRecruitmentEmail(opts: {
+  nombre: string
+  ciudad: string
+  edad: string
+  telefono: string
+  email: string
+  interes: string
+}) {
+  const subject = `Nueva solicitud de reclutamiento - ${opts.nombre}`
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
+  const LOGIN_URL = resolveLoginUrl()
+  
+  const interesLabel = opts.interes === 'cotizar' ? 'Cotizar un seguro' : 
+                       opts.interes === 'agente' ? 'Ser agente' : 
+                       opts.interes === 'ambos' ? 'Ambos (cotizar y ser agente)' : opts.interes
+
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#004481;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">Nueva Solicitud - Únete a Lealtia</h2>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <p>Se ha registrado una nueva solicitud desde el formulario "Únete a Lealtia" en la landing page:</p>
+      
+      <div style="background-color:#f8f9fa;padding:16px;border-radius:6px;margin:16px 0;">
+        <h3 style="margin:0 0 12px 0;color:#004481;font-size:16px;">Datos del contacto</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:6px 0;"><strong>Nombre:</strong></td><td style="padding:6px 0;">${opts.nombre}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Ciudad:</strong></td><td style="padding:6px 0;">${opts.ciudad}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Edad:</strong></td><td style="padding:6px 0;">${opts.edad} años</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Teléfono:</strong></td><td style="padding:6px 0;">${opts.telefono}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Email:</strong></td><td style="padding:6px 0;">${opts.email}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Me interesa:</strong></td><td style="padding:6px 0;">${interesLabel}</td></tr>
+        </table>
+      </div>
+
+      <p style="margin-top:20px;"><strong>Origen:</strong> Landing page - Formulario de reclutamiento</p>
+
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${LOGIN_URL}" style="background-color:#004481;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;display:inline-block">Acceder al sistema</a>
+      </div>
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
+
+  const text = `Nueva solicitud de reclutamiento
+
+Nombre: ${opts.nombre}
+Ciudad: ${opts.ciudad}
+Edad: ${opts.edad} años
+Teléfono: ${opts.telefono}
+Email: ${opts.email}
+Me interesa: ${interesLabel}
+
+Origen: Landing page - Formulario de reclutamiento
+
+Accede al sistema: ${LOGIN_URL}
+
+© ${year} Lealtia`
+
+  return { subject, html, text }
+}

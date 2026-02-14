@@ -80,3 +80,175 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
 
   return NextResponse.json({ success: true, polizasAnuladas: 0 })
 }
+
+/**
+ * PATCH /api/clientes/[id]
+ * Permite a supervisores mover un cliente a otro agente actualizando su asesor_id
+ * Las pólizas del cliente se mueven automáticamente porque están vinculadas por cliente_id
+ */
+export async function PATCH(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const usuario = await getUsuarioSesion()
+    if (!usuario) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+
+    const role = (usuario.rol || '').toLowerCase()
+    const isSuper = ['supervisor', 'super_usuario', 'admin'].includes(role)
+    
+    if (!isSuper) {
+      return NextResponse.json(
+        { error: 'Solo supervisores pueden mover clientes entre agentes' },
+        { status: 403 }
+      )
+    }
+
+    const { id } = await context.params
+    if (!id) {
+      return NextResponse.json({ error: 'ID de cliente requerido' }, { status: 400 })
+    }
+
+    const body = await req.json().catch(() => null) as {
+      asesor_id?: string | null
+    } | null
+
+    if (!body || !body.asesor_id) {
+      return NextResponse.json(
+        { error: 'asesor_id es requerido' },
+        { status: 400 }
+      )
+    }
+
+    const admin = getServiceClient()
+
+    // Verificar que el cliente existe
+    const { data: clienteExistente, error: clienteError } = await admin
+      .from('clientes')
+      .select('id, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email:correo, asesor_id')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (clienteError) {
+      return NextResponse.json({ error: clienteError.message }, { status: 500 })
+    }
+
+    if (!clienteExistente) {
+      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
+    }
+
+    // Verificar que el agente destino existe y está activo
+    const { data: agenteDestino, error: agenteError } = await admin
+      .from('usuarios')
+      .select('id, id_auth, email, nombre, activo')
+      .eq('id_auth', body.asesor_id)
+      .maybeSingle()
+
+    if (agenteError) {
+      return NextResponse.json({ error: agenteError.message }, { status: 500 })
+    }
+
+    if (!agenteDestino) {
+      return NextResponse.json(
+        { error: 'El agente destino no existe' },
+        { status: 404 }
+      )
+    }
+
+    type AgenteRow = { activo?: boolean | null }
+    if (!(agenteDestino as AgenteRow).activo) {
+      return NextResponse.json(
+        { error: 'El agente destino no está activo' },
+        { status: 400 }
+      )
+    }
+
+    // Verificar que no es el mismo agente
+    type ClienteRow = { asesor_id?: string | null }
+    if ((clienteExistente as ClienteRow).asesor_id === body.asesor_id) {
+      return NextResponse.json(
+        { error: 'El cliente ya pertenece a este agente' },
+        { status: 400 }
+      )
+    }
+
+    // Actualizar el asesor_id del cliente
+    const { data: clienteActualizado, error: updateError } = await admin
+      .from('clientes')
+      .update({ asesor_id: body.asesor_id })
+      .eq('id', id)
+      .select('id, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, email:correo, asesor_id')
+      .maybeSingle()
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+
+    // Auditoría: log de la transferencia
+    try {
+      type EmailRow = { email?: string | null }
+      const userEmail = (usuario as unknown as EmailRow).email || null
+      type ClienteEmailRow = { email?: string | null }
+      const clienteEmail = (clienteExistente as unknown as ClienteEmailRow).email || null
+      
+      await logAccion('transferencia_cliente', {
+        usuario: userEmail || undefined,
+        tabla_afectada: 'clientes',
+        id_registro: null, // UUID no es compatible con number, usar null
+        snapshot: {
+          cliente_id: id,
+          cliente_email: clienteEmail,
+          asesor_anterior: (clienteExistente as ClienteRow).asesor_id,
+          asesor_nuevo: body.asesor_id
+        }
+      })
+    } catch (e) {
+      console.error('[PATCH /api/clientes/[id]] Error logging acción:', e)
+    }
+
+    // Notificar al nuevo agente
+    try {
+      type AgenteIdRow = { id?: number | null }
+      const agenteId = (agenteDestino as AgenteIdRow).id
+      type ClienteNamesRow = {
+        primer_nombre?: string | null
+        segundo_nombre?: string | null
+        primer_apellido?: string | null
+        segundo_apellido?: string | null
+      }
+      type ClienteEmailRow = { email?: string | null }
+      const nombres = clienteExistente as ClienteNamesRow
+      const clienteEmail = (clienteExistente as unknown as ClienteEmailRow).email || null
+      const nombreCompleto = [
+        nombres.primer_nombre,
+        nombres.segundo_nombre,
+        nombres.primer_apellido,
+        nombres.segundo_apellido
+      ].filter(Boolean).join(' ')
+
+      if (agenteId) {
+        await admin.from('notificaciones').insert({
+          usuario_id: agenteId,
+          tipo: 'sistema',
+          titulo: 'Cliente asignado',
+          mensaje: `Se te asignó el cliente ${nombreCompleto || clienteEmail || id}`,
+          leida: false,
+          metadata: { cliente_id: id, tipo_operacion: 'transferencia' }
+        })
+      }
+    } catch (e) {
+      console.error('[PATCH /api/clientes/[id]] Error creando notificación:', e)
+    }
+
+    return NextResponse.json({
+      success: true,
+      cliente: clienteActualizado
+    })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Error inesperado'
+    console.error('[PATCH /api/clientes/[id]]', e)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}

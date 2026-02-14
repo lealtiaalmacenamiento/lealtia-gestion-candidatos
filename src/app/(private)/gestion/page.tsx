@@ -177,6 +177,11 @@ export default function GestionPage() {
   const [creating, setCreating] = useState(false)
   const [submittingNuevoCliente, setSubmittingNuevoCliente] = useState(false)
   const [nuevo, setNuevo] = useState<Cliente & { telefono_celular?: string|null, fecha_nacimiento?: string|null }>({ id: '', telefono_celular: '', fecha_nacimiento: null })
+  const [nuevoAgenteId, setNuevoAgenteId] = useState<string>('')
+  // Modal de mover cliente a otro agente
+  const [movingCliente, setMovingCliente] = useState<Cliente | null>(null)
+  const [targetAgenteId, setTargetAgenteId] = useState<string>('')
+  const [submittingMove, setSubmittingMove] = useState(false)
   // creación de póliza deshabilitada temporalmente
   const [addingPoliza, setAddingPoliza] = useState(false)
   const [submittingNuevaPoliza, setSubmittingNuevaPoliza] = useState(false)
@@ -759,6 +764,11 @@ export default function GestionPage() {
                               <div className="d-flex gap-2 justify-content-end">
                                 <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
                                 <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                                {isSuper && (
+                                  <button className="btn btn-sm btn-warning" onClick={()=>{ setMovingCliente(c); setTargetAgenteId('') }}>
+                                    <i className="bi bi-arrow-left-right me-1"></i>Mover
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -823,17 +833,19 @@ export default function GestionPage() {
                                 </span>
                               )}
                               {/* Botón exportar PDF por agente */}
-                              <button 
+                              <span 
                                 className="btn btn-sm btn-outline-info"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   void exportarPDFReporteAgente(ag.id_auth || String(ag.id), ag.nombre || ag.email)
                                 }}
                                 title="Descargar reporte de comisiones del agente"
+                                role="button"
+                                style={{ cursor: 'pointer' }}
                               >
                                 <i className="bi bi-file-earmark-pdf me-1"></i>
                                 PDF
-                              </button>
+                              </span>
                               {/* Botón 'Editar meta' removido intencionalmente */}
                             </div>
                           </div>
@@ -881,6 +893,11 @@ export default function GestionPage() {
                                       <div className="d-flex gap-2 justify-content-end">
                                         <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
                                         <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                                        {isSuper && (
+                                          <button className="btn btn-sm btn-warning" onClick={()=>{ setMovingCliente(c); setTargetAgenteId('') }}>
+                                            <i className="bi bi-arrow-left-right me-1"></i>Mover
+                                          </button>
+                                        )}
                                       </div>
                                     </td>
                                   </tr>
@@ -981,6 +998,11 @@ export default function GestionPage() {
                           <div className="d-flex gap-2 justify-content-end">
                             <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
                             <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...c})}>Editar</button>
+                            {isSuper && (
+                              <button className="btn btn-sm btn-warning" onClick={()=>{ setMovingCliente(c); setTargetAgenteId('') }}>
+                                <i className="bi bi-arrow-left-right me-1"></i>Mover
+                              </button>
+                            )}
                             <button
                               className="btn btn-sm btn-outline-danger"
                               disabled={deletingClienteId === c.id || c.activo === false}
@@ -1048,6 +1070,17 @@ export default function GestionPage() {
                 <div className="d-flex flex-column"><label className="form-label small">Teléfono celular</label><input className="form-control form-control-sm" value={nuevo.telefono_celular||''} onChange={e=>setNuevo({...nuevo, telefono_celular: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Email</label><input className="form-control form-control-sm" type="email" value={nuevo.email||''} onChange={e=>setNuevo({...nuevo, email: e.target.value})} /></div>
                 <div className="d-flex flex-column"><label className="form-label small">Cumpleaños</label><input className="form-control form-control-sm" type="date" value={nuevo.fecha_nacimiento || ''} onChange={e=>setNuevo({...nuevo, fecha_nacimiento: e.target.value})} /></div>
+                {isSuper && (
+                  <div className="d-flex flex-column">
+                    <label className="form-label small">Asignar a agente</label>
+                    <select className="form-select form-select-sm" value={nuevoAgenteId} onChange={e=>setNuevoAgenteId(e.target.value)}>
+                      <option value="">(Para mí mismo)</option>
+                      {agentes.map(a => (
+                        <option key={a.id} value={a.id_auth||''}>{a.nombre || a.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <div className="mt-3 d-flex justify-content-end gap-2">
                 <button className="btn btn-sm btn-secondary" disabled={submittingNuevoCliente} onClick={()=>setCreating(false)}>Cancelar</button>
@@ -1060,7 +1093,7 @@ export default function GestionPage() {
                   }
                   try {
                     setSubmittingNuevoCliente(true)
-                    const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                    const payload: Record<string, unknown> = {
                       primer_nombre: nuevo.primer_nombre,
                       segundo_nombre: nuevo.segundo_nombre,
                       primer_apellido: nuevo.primer_apellido,
@@ -1068,11 +1101,21 @@ export default function GestionPage() {
                       telefono_celular: nuevo.telefono_celular,
                       email: nuevo.email,
                       fecha_nacimiento: nuevo.fecha_nacimiento || null,
-                    })})
+                    }
+                    if (isSuper && nuevoAgenteId) {
+                      payload.asesor_id = nuevoAgenteId
+                    }
+                    const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)})
                     const j = await res.json()
                     if (!res.ok) { await dialog.alert(j.error || 'Error al crear'); return }
+                    // Cerrar modal y limpiar formulario
                     setCreating(false)
                     setNuevo({ id: '', telefono_celular: '', fecha_nacimiento: null })
+                    setNuevoAgenteId('')
+                    // Limpiar caché de clientes por agente para forzar recarga
+                    setClientesPorAgente({})
+                    setExpandedAgentes({})
+                    // Recargar lista de agentes y clientes
                     await load()
                   } catch { await dialog.alert('Error al crear') } finally { setSubmittingNuevoCliente(false) }
                 }}>Crear</button>
@@ -1080,6 +1123,67 @@ export default function GestionPage() {
             </AppModal>
           )}
           {/* Modal de edición de meta removido intencionalmente */}
+          {/* Modal para mover cliente a otro agente */}
+          {movingCliente && isSuper && (
+            <AppModal title="Mover cliente a otro agente" icon="arrow-left-right" onClose={()=>!submittingMove && setMovingCliente(null)}>
+              <p className="mb-3">
+                Vas a transferir el cliente <strong>{fmtNombre(movingCliente) || movingCliente.email}</strong> a otro agente. 
+                Todas las pólizas asociadas a este cliente también se moverán automáticamente.
+              </p>
+              <div className="d-flex flex-column">
+                <label className="form-label">Agente destino</label>
+                <select 
+                  className="form-select" 
+                  value={targetAgenteId} 
+                  onChange={e=>setTargetAgenteId(e.target.value)}
+                  disabled={submittingMove}
+                >
+                  <option value="">Selecciona un agente...</option>
+                  {agentes.map(a => (
+                    <option key={a.id} value={a.id_auth||''}>{a.nombre || a.email}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="mt-3 d-flex justify-content-end gap-2">
+                <button className="btn btn-sm btn-secondary" disabled={submittingMove} onClick={()=>setMovingCliente(null)}>Cancelar</button>
+                <button 
+                  className="btn btn-sm btn-primary" 
+                  disabled={submittingMove || !targetAgenteId}
+                  onClick={async()=>{
+                    if (!targetAgenteId || !movingCliente) return
+                    try {
+                      setSubmittingMove(true)
+                      const res = await fetch(`/api/clientes/${movingCliente.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ asesor_id: targetAgenteId })
+                      })
+                      const j = await res.json()
+                      if (!res.ok) {
+                        await dialog.alert(j.error || 'Error al mover cliente')
+                        return
+                      }
+                      await dialog.alert('Cliente movido exitosamente')
+                      setMovingCliente(null)
+                      setTargetAgenteId('')
+                      // Limpiar caché de clientes por agente para forzar recarga
+                      setClientesPorAgente({})
+                      setExpandedAgentes({})
+                      // Recargar datos siempre y volver a la lista
+                      await load()
+                      if (view !== 'list') setView('list')
+                    } catch (e) {
+                      await dialog.alert('Error al mover cliente')
+                    } finally {
+                      setSubmittingMove(false)
+                    }
+                  }}
+                >
+                  Mover cliente
+                </button>
+              </div>
+            </AppModal>
+          )}
         </section>
       )}
 
@@ -1124,6 +1228,11 @@ export default function GestionPage() {
           <div className="d-flex gap-2">
             <button className="btn btn-sm btn-outline-secondary" onClick={()=>{ if(selectedCliente) void openPolizas(selectedCliente) }}>Ver pólizas</button>
             <button className="btn btn-sm btn-primary" onClick={()=>setEditCliente({...selectedCliente})}>Editar</button>
+            {isSuper && (
+              <button className="btn btn-sm btn-warning" onClick={()=>{ setMovingCliente(selectedCliente); setTargetAgenteId('') }}>
+                <i className="bi bi-arrow-left-right me-1"></i>Mover a otro agente
+              </button>
+            )}
           </div>
           {editCliente && (
             <div className="mt-3 border rounded p-3 bg-light">

@@ -4,7 +4,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
-import { crearUsuarioAgenteAuto } from '@/lib/autoAgente'
+import { crearUsuarioAgenteAuto, ensureAgentCodeForUsuario } from '@/lib/autoAgente'
 import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
 // Forzar runtime Node.js (necesario para nodemailer / auth admin)
@@ -324,11 +324,27 @@ export async function POST(req: Request) {
   body.proceso = deriv.proceso
 
   // 1) Intentar creación de usuario agente (antes de insertar candidato) para poder abortar si falla gravemente
-  const agenteMeta: { created?: boolean; existed?: boolean; passwordTemporal?: string; correoEnviado?: boolean; correoError?: string; error?: string } = {}
+  const agenteMeta: { created?: boolean; existed?: boolean; passwordTemporal?: string; correoEnviado?: boolean; correoError?: string; error?: string; usuarioId?: number; agent_code?: unknown } = {}
   if (emailAgente && /.+@.+\..+/.test(emailAgente)) {
   const r = await crearUsuarioAgenteAuto({ email: emailAgente, nombre: body.candidato })
   Object.assign(agenteMeta, r)
   if (r.error) console.warn('[api/candidatos] usuario agente no creado:', r.error)
+  }
+
+  // 1b) Generar código de agente a partir de nombre + CT (si aplican)
+  if (emailAgente && body.ct) {
+    const { data: usuarioAg } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('email', emailAgente)
+      .maybeSingle()
+    const usuarioId = agenteMeta.usuarioId || (usuarioAg as any)?.id
+    if (usuarioId) {
+      const codigoRes = await ensureAgentCodeForUsuario({ usuarioId, nombre: body.candidato, ct: body.ct })
+      if (codigoRes.code || codigoRes.error) {
+        (agenteMeta as any).agent_code = codigoRes
+      }
+    }
   }
 
   // 2) Insertar candidato

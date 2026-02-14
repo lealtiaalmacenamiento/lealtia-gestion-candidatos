@@ -86,6 +86,12 @@ export default function HomeDashboard() {
             <i className="bi bi-person-fill text-[#072e40]"></i>
             Usuario: {username}
           </span>
+          {user.codigo_agente && (
+            <span className="inline-flex align-items-center gap-2 bg-white text-[#072e40] px-3 py-1 rounded-pill small fw-semibold shadow-sm border border-white mb-0" title={`Código de agente: ${user.codigo_agente}`}>
+              <i className="bi bi-credit-card-2-front text-[#072e40]"></i>
+              CÓDIGO: {user.codigo_agente}
+            </span>
+          )}
           <span className="inline-flex align-items-center gap-2 bg-white text-[#072e40] px-3 py-1 rounded-pill small fw-semibold shadow-sm border border-white mb-0" title={`Rol: ${role || '—'}`}> 
             <i className="bi bi-shield-lock-fill text-[#072e40]"></i>
             Rol: {role || '—'}

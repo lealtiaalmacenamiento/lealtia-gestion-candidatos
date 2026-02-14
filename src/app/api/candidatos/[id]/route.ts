@@ -4,7 +4,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
-import { crearUsuarioAgenteAuto } from '@/lib/autoAgente'
+import { crearUsuarioAgenteAuto, ensureAgentCodeForUsuario } from '@/lib/autoAgente'
 import type { Candidato } from '@/types'
 import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
@@ -222,6 +222,27 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Intentar (re)generar código de agente si hay email + CT + nombre
+  try {
+    const candActualizado = data as any
+    const emailAgenteFinal = (candActualizado?.email_agente || (existenteData as any).email_agente || (body as any).email_agente || '').toString().trim().toLowerCase()
+    const ctFinal = candActualizado?.ct ?? (body as any).ct ?? (existenteData as any).ct
+    const nombreFinal = candActualizado?.candidato ?? (body as any).candidato ?? (existenteData as any).candidato
+    if (emailAgenteFinal && ctFinal && nombreFinal) {
+      const { data: userAg } = await supabase
+        .from('usuarios')
+        .select('id')
+        .eq('email', emailAgenteFinal)
+        .maybeSingle()
+      if ((userAg as any)?.id) {
+        const codeRes = await ensureAgentCodeForUsuario({ usuarioId: (userAg as any).id, nombre: nombreFinal, ct: ctFinal })
+        if (codeRes.code || codeRes.error) {
+          agenteMeta = { ...(agenteMeta || {}), agent_code: codeRes }
+        }
+      }
+    }
+  } catch {/* best-effort */}
 
   // Sincronizar nombre del usuario agente si existe y se cambió el nombre del candidato original usado para crearlo
   try {
