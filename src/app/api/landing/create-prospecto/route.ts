@@ -129,14 +129,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calcular año y semana ISO
+    // Calcular año y semana ISO según estándar ISO 8601
     const now = new Date()
     const anio = now.getFullYear()
     
-    // Calcular semana ISO
-    const firstDayOfYear = new Date(anio, 0, 1)
-    const pastDaysOfYear = (now.getTime() - firstDayOfYear.getTime()) / 86400000
-    const semana_iso = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7)
+    // Calcular semana ISO correctamente según ISO 8601
+    // La semana 1 es la primera que contiene un jueves del año
+    function getISOWeek(date: Date): number {
+      const target = new Date(date.valueOf())
+      const dayNr = (date.getDay() + 6) % 7 // Lunes = 0
+      target.setDate(target.getDate() - dayNr + 3) // Jueves más cercano
+      const firstThursday = target.valueOf()
+      target.setMonth(0, 1) // 1 de enero
+      if (target.getDay() !== 4) { // Si no es jueves
+        target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7)
+      }
+      return 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000)
+    }
+    const semana_iso = getISOWeek(now)
 
     // Generar notas automáticas
     const planNombre = body.plan === '65' ? 'Imagina ser 65' : body.plan === '15' ? 'Imagina ser 15' : 'Imagina ser 10'
