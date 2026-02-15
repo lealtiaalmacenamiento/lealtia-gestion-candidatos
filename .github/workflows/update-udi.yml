@@ -27,9 +27,9 @@ jobs:
       - name: Update UDI values (Production)
         env:
           # Supabase de PRODUCCIÓN
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MAIN_SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MAIN_SUPABASE_SERVICE_KEY }}
-          BANXICO_TOKEN: ${{ secrets.BANXICO_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BANXICO_TOKEN: ${{ secrets.REPORTES_CRON_SECRET }}
         run: |
           echo "🔄 Ingesting latest UDI data from Banxico..."
           npm run udi:ingest
