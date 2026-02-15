@@ -1,0 +1,46 @@
+name: Update UDI Values
+
+on:
+  schedule:
+    # Ejecutar diariamente a las 8:00 UTC (2:00 AM Ciudad de México)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Permite ejecución manual
+
+jobs:
+  update-udi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update UDI values (Production)
+        env:
+          # Supabase de PRODUCCIÓN
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MAIN_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MAIN_SUPABASE_SERVICE_KEY }}
+          BANXICO_TOKEN: ${{ secrets.BANXICO_TOKEN }}
+        run: |
+          echo "🔄 Ingesting latest UDI data from Banxico..."
+          npm run udi:ingest
+          
+          echo "📈 Generating 65-year projections..."
+          npm run udi:project
+          
+          echo "✅ UDI update completed successfully"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ UDI update failed"
+          echo "Check logs for details"
