@@ -141,10 +141,10 @@ export default function QuoteSection() {
           is_default: data.is_default || false
         })
         if (code) {
-          setAgentMessage(`Código aplicado: ${code.toUpperCase()}${data.is_default ? ' (se asignó agente por defecto)' : ''}`)
+          setAgentMessage(`Código aplicado: ${code.toUpperCase()}`)
           localStorage.setItem('agent_ref_code', code)
         } else {
-          setAgentMessage(`Agente asignado: ${data.nombre}${data.is_default ? ' (por defecto)' : ''}`)
+          setAgentMessage(null)
         }
       } else {
         setAgentMessage('No se pudo asignar un agente. Intenta de nuevo.')

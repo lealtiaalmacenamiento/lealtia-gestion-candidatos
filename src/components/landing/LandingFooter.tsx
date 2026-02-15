@@ -48,17 +48,11 @@ export default function LandingFooter() {
           <div className="col-lg-4">
             <h4 className="footer-title">Síguenos</h4>
             <div className="social-links">
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+              <a href="https://www.facebook.com/lealtia/" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
                 <i className="bi bi-facebook"></i>
               </a>
-              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+              <a href="https://www.instagram.com/lealtia.mx" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
                 <i className="bi bi-instagram"></i>
-              </a>
-              <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
-                <i className="bi bi-linkedin"></i>
-              </a>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter">
-                <i className="bi bi-twitter"></i>
               </a>
             </div>
           </div>
