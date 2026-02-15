@@ -7,7 +7,7 @@
 */
 
 import dotenv from 'dotenv'
-import pg from 'pg'
+import { Pool } from 'pg'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
@@ -22,7 +22,12 @@ if (!DATABASE_URL) {
   process.exit(1)
 }
 
-const pool = new pg.Pool({ connectionString: DATABASE_URL })
+const pool = new Pool({ connectionString: DATABASE_URL })
+
+type UdiRow = {
+  fecha: string
+  valor: string
+}
 
 const YEARS_TO_PROJECT = 65
 const ANNUAL_INFLATION_RATE = 0.05 // 5% anual
@@ -33,7 +38,7 @@ async function projectUDI() {
 
   try {
     // 1. Obtener último valor real de UDI
-    const result = await pool.query(`
+    const result = await pool.query<UdiRow>(`
       SELECT fecha, valor
       FROM udi_values
       WHERE is_projection = false

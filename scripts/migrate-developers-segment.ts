@@ -1,5 +1,5 @@
 ﻿import 'dotenv/config'
-import pg from 'pg'
+import { Client } from 'pg'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 
@@ -248,7 +248,7 @@ async function runWithSupabase(url: string, serviceKey: string): Promise<void> {
 
 async function runWithPg(databaseUrl: string): Promise<void> {
   console.log('Origen de datos: DevDATABASE_URL')
-  const client = new pg.Client({ connectionString: databaseUrl })
+  const client = new Client({ connectionString: databaseUrl })
   await client.connect()
 
   try {
