@@ -273,7 +273,7 @@ async function getTransporter(): Promise<MailTx> {
 }
 
 export interface SendMailOptions {
-  to: string
+  to: string | string[]
   subject: string
   html?: string
   text?: string
@@ -345,7 +345,7 @@ export function buildProspectoPPREmail(opts: {
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
   const LOGIN_URL = resolveLoginUrl()
   
-  const planNombre = opts.plan === '65' ? 'Imagina ser 65' : opts.plan === '15' ? 'Imagina ser 15' : 'Imagina ser 10'
+  const planNombre = opts.plan === '65' ? '65 años' : opts.plan === '15' ? '15 años' : '10 años'
 
   const html = `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
@@ -382,9 +382,6 @@ export function buildProspectoPPREmail(opts: {
       <p style="margin-top:20px;"><strong>Estado:</strong> Pendiente</p>
       <p><strong>Origen:</strong> Landing page - simulador PPR</p>
 
-      <div style="text-align:center;margin-top:24px;">
-        <a href="${LOGIN_URL}" style="background-color:#004481;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;display:inline-block">Ver en el sistema</a>
-      </div>
     </div>
     <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
       <p>© ${year} Lealtia — Todos los derechos reservados</p>
@@ -406,8 +403,6 @@ Años de pago: ${opts.añosPago}
 
 Estado: Pendiente
 Origen: Landing page - simulador PPR
-
-Accede al sistema: ${LOGIN_URL}
 
 © ${year} Lealtia`
 

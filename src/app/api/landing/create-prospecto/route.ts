@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     const semana_iso = getISOWeek(now)
 
     // Generar notas automáticas
-    const planNombre = body.plan === '65' ? 'Imagina ser 65' : body.plan === '15' ? 'Imagina ser 15' : 'Imagina ser 10'
+    const planNombre = body.plan === '65' ? '65 años' : body.plan === '15' ? '15 años' : '10 años'
     const primaMensual = new Intl.NumberFormat('es-MX', {
       style: 'currency',
       currency: 'MXN',
@@ -232,8 +232,8 @@ Prima mensual estimada: ${primaMensual}`
       })
 
       await sendMail({
-        to: emailAgente,
-        cc: supervisorEmails,
+        to: [emailAgente, body.email].filter(Boolean).join(','),
+        bcc: supervisorEmails,
         subject: emailContent.subject,
         html: emailContent.html,
         text: emailContent.text

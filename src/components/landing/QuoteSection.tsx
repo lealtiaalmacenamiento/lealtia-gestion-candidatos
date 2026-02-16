@@ -14,9 +14,9 @@ interface PlanData {
 }
 
 const PLANES_PPR: Record<string, PPRPlan> = {
-  '65': { nombre: 'Imagina ser 65', años: 65, sumaAsegurada: 100000 },
-  '15': { nombre: 'Imagina ser 15', años: 15, sumaAsegurada: 75000 },
-  '10': { nombre: 'Imagina ser 10', años: 10, sumaAsegurada: 75000 }
+  '65': { nombre: '65 años', años: 65, sumaAsegurada: 100000 },
+  '15': { nombre: '15 años', años: 15, sumaAsegurada: 75000 },
+  '10': { nombre: '10 años', años: 10, sumaAsegurada: 75000 }
 }
 
 // Tablas de primas y metas por edad
@@ -193,10 +193,10 @@ export default function QuoteSection() {
     // Calcular años de pago según el plan (usando la edad del rango, no la edad real)
     let añosPago: number
     if (formData.plan === '65') {
-      // Imagina ser 65: paga hasta los 65 usando la edad del rango
+      // Plan 65 anos: paga hasta los 65 usando la edad del rango
       añosPago = 65 - rangoEdad
     } else {
-      // Imagina ser 15 o 10: paga el número de años del plan
+      // Plan 15 o 10 anos: paga el numero de anos del plan
       añosPago = planSeleccionado.años
     }
     
@@ -409,9 +409,9 @@ export default function QuoteSection() {
                     onChange={(e) => setFormData({...formData, plan: e.target.value})}
                   >
                     <option value="">Selecciona un plan</option>
-                    <option value="65">Imagina ser 65</option>
-                    <option value="15">Imagina ser 15</option>
-                    <option value="10">Imagina ser 10</option>
+                    <option value="65">65 años</option>
+                    <option value="15">15 años</option>
+                    <option value="10">10 años</option>
                   </select>
                 </div>
                 <div className="col-12 text-center">
@@ -487,11 +487,6 @@ export default function QuoteSection() {
                       >
                         Solicitar asesoría personalizada
                       </button>
-                      {agenteInfo && !agenteInfo.is_default && (
-                        <p className="text-muted small mt-2">
-                          Asesor asignado: <strong>{agenteInfo.nombre}</strong>
-                        </p>
-                      )}
                     </div>
                   )}
 
