@@ -2682,6 +2682,13 @@ COMMIT;
 --   20260122_fix_puntos_encoding.sql
 --   20260122_update_recalc_puntos_poliza.sql
 --
+-- UDI proyecciones y acceso anónimo (febrero 2026):
+--   20260207_add_udi_projection_column.sql
+--   20260214_allow_anon_udi_access.sql
+--
+-- Códigos de agente para landing page (febrero 2026):
+--   20260209_create_agent_codes.sql
+--
 -- =============================================================================
 -- CARACTERÍSTICAS DEL SCHEMA:
 -- 
@@ -2694,8 +2701,143 @@ COMMIT;
 -- ✓ Views optimizadas: Dashboards de comisiones, campañas, valores actuales
 -- ✓ Datos semilla: UDI, FX, dias_mes, product_types, puntos_thresholds
 -- ✓ Puntos configurables: Tabla puntos_thresholds para gestión dinámica
+-- ✓ Códigos de agente: Tabla agent_codes para referidos desde landing page
 -- 
--- VERSIÓN: 1.1.0 (Consolidación completa hasta 2026-01-22)
+-- VERSIÓN: 1.2.0 (Consolidación completa hasta 2026-02-14)
 -- =============================================================================
+
+-- =============================================================================
+-- 22. UDI: COLUMNA IS_PROJECTION (20260207)
+-- =============================================================================
+
+-- Agregar columna is_projection a udi_values
+ALTER TABLE udi_values 
+ADD COLUMN IF NOT EXISTS is_projection BOOLEAN DEFAULT FALSE;
+
+-- Agregar columna is_projection a fx_values (para futuro)
+ALTER TABLE fx_values 
+ADD COLUMN IF NOT EXISTS is_projection BOOLEAN DEFAULT FALSE;
+
+-- Índices para consultas eficientes
+CREATE INDEX IF NOT EXISTS idx_udi_projection ON udi_values(is_projection, fecha);
+CREATE INDEX IF NOT EXISTS idx_udi_fecha_projection ON udi_values(fecha, is_projection);
+
+CREATE INDEX IF NOT EXISTS idx_fx_projection ON fx_values(is_projection, fecha);
+CREATE INDEX IF NOT EXISTS idx_fx_fecha_projection ON fx_values(fecha, is_projection);
+
+COMMENT ON COLUMN udi_values.is_projection IS 'Indica si el valor es una proyección (true) o dato real de Banxico (false)';
+COMMENT ON COLUMN fx_values.is_projection IS 'Indica si el valor es una proyección (true) o dato real de Banxico (false)';
+
+UPDATE udi_values SET is_projection = FALSE WHERE is_projection IS NULL;
+UPDATE fx_values  SET is_projection = FALSE WHERE is_projection IS NULL;
+
+-- =============================================================================
+-- 23. CÓDIGOS DE AGENTE PARA LANDING PAGE (20260209)
+-- =============================================================================
+
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+CREATE TABLE IF NOT EXISTS public.agent_codes (
+  code TEXT PRIMARY KEY,
+  agente_id BIGINT NOT NULL,
+  nombre_agente TEXT NOT NULL,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NULL,
+  CONSTRAINT agent_codes_agente_id_fkey FOREIGN KEY (agente_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_codes_activo ON public.agent_codes(activo, code);
+CREATE INDEX IF NOT EXISTS idx_agent_codes_agente ON public.agent_codes(agente_id);
+
+COMMENT ON TABLE public.agent_codes IS 'Códigos de referido para agentes (landing page)';
+COMMENT ON COLUMN public.agent_codes.code IS 'Código único (ej: JMCT2024)';
+COMMENT ON COLUMN public.agent_codes.agente_id IS 'ID del agente propietario del código';
+COMMENT ON COLUMN public.agent_codes.nombre_agente IS 'Nombre del agente para referencia';
+COMMENT ON COLUMN public.agent_codes.activo IS 'Si el código está activo';
+COMMENT ON COLUMN public.agent_codes.expires_at IS 'Fecha de expiración opcional';
+
+ALTER TABLE public.agent_codes ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'agent_codes' AND policyname = 'Agentes pueden ver sus códigos') THEN
+    CREATE POLICY "Agentes pueden ver sus códigos" ON public.agent_codes
+      FOR SELECT
+      USING (agente_id IN (SELECT id FROM usuarios WHERE id_auth = auth.uid()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'agent_codes' AND policyname = 'Supervisores pueden ver todos los códigos') THEN
+    CREATE POLICY "Supervisores pueden ver todos los códigos" ON public.agent_codes
+      FOR SELECT USING (is_super_role());
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'agent_codes' AND policyname = 'Solo admins pueden gestionar códigos') THEN
+    CREATE POLICY "Solo admins pueden gestionar códigos" ON public.agent_codes
+      FOR ALL
+      USING (EXISTS (SELECT 1 FROM usuarios WHERE id_auth = auth.uid() AND rol = 'admin'));
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION temp_generate_agent_code(nombre TEXT, ct TEXT)
+RETURNS TEXT AS $$
+DECLARE
+  initials TEXT := '';
+  last4 TEXT := '';
+  word TEXT;
+  clean_ct TEXT;
+BEGIN
+  IF nombre IS NULL OR trim(nombre) = '' THEN RETURN NULL; END IF;
+  nombre := unaccent(trim(nombre));
+  FOREACH word IN ARRAY regexp_split_to_array(nombre, E'\\s+') LOOP
+    IF word != '' THEN initials := initials || upper(substring(word, 1, 1)); END IF;
+  END LOOP;
+  IF ct IS NULL OR trim(ct) = '' THEN RETURN NULL; END IF;
+  clean_ct := regexp_replace(ct::TEXT, '[^0-9]', '', 'g');
+  IF length(clean_ct) < 4 THEN RETURN NULL; END IF;
+  last4 := right(clean_ct, 4);
+  RETURN upper(initials || last4);
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+WITH first_candidate_per_user AS (
+  SELECT DISTINCT ON (u.id)
+    u.id as usuario_id,
+    u.email as usuario_email,
+    c.candidato,
+    c.ct,
+    COALESCE(u.nombre, c.candidato, u.email) as nombre_agente
+  FROM usuarios u
+  INNER JOIN candidatos c ON lower(c.email_agente) = lower(u.email)
+  WHERE u.activo = true
+    AND c.eliminado = false
+    AND c.ct IS NOT NULL
+    AND trim(c.ct::TEXT) != ''
+    AND c.candidato IS NOT NULL
+    AND trim(c.candidato) != ''
+  ORDER BY u.id, c.created_at ASC
+)
+INSERT INTO public.agent_codes (code, agente_id, nombre_agente, activo)
+SELECT 
+  temp_generate_agent_code(fc.candidato, fc.ct),
+  fc.usuario_id,
+  fc.nombre_agente,
+  true
+FROM first_candidate_per_user fc
+WHERE temp_generate_agent_code(fc.candidato, fc.ct) IS NOT NULL
+ON CONFLICT (code) DO NOTHING;
+
+DROP FUNCTION IF EXISTS temp_generate_agent_code(TEXT, TEXT);
+
+-- =============================================================================
+-- 24. UDI: ACCESO ANÓNIMO DE LECTURA (20260214)
+-- =============================================================================
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'udi_values' AND policyname = 'udi_values_select_anon') THEN
+    CREATE POLICY "udi_values_select_anon" ON public.udi_values
+      FOR SELECT TO anon USING (true);
+  END IF;
+END $$;
+
+COMMENT ON POLICY "udi_values_select_anon" ON public.udi_values 
+IS 'Permite acceso de lectura anónimo a valores UDI (datos públicos de Banxico)';
 
 
