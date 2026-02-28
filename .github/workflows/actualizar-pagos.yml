@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Llamar Edge Function
         env:
-          SUPABASE_URL: https://wqutrjnxvcgmyyiyjmsd.supabase.co
+          SUPABASE_URL: https://oooyuomshachmmblmpvd.supabase.co
         run: |
           echo "🔄 Ejecutando actualización de pagos vencidos..."
           

@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthProvider'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { deleteCliente } from '@/lib/api'
 import AlertasPagos from '@/components/dashboard/AlertasPagos'
+import PagosProgramados from '@/components/polizas/PagosProgramados'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { exportGestionPDF, pngToBase64 } from '@/lib/gestionPdfExport'
@@ -1606,6 +1607,11 @@ export default function GestionPage() {
                 ))}
               </div>
             </div>
+          </div>
+          <hr className="my-3" />
+          <div className="mt-2">
+            <strong className="small">Calendario de pagos</strong>
+            <PagosProgramados polizaId={editPoliza.id} />
           </div>
           <div className="mt-3 d-flex justify-content-end gap-2">
             <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
