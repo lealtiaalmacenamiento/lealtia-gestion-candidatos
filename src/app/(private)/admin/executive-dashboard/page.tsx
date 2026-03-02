@@ -467,7 +467,7 @@ export default function ExecutiveDashboardPage() {
           label: 'Ingreso cobrado (periodo)',
           value: formatCurrency(kpis.ingreso_mxn),
           color: 'success',
-          hint: 'Suma de pagos cobrados (monto_pagado) con fecha de cobro dentro del periodo.' },
+          hint: 'Suma de pagos cobrados (monto_pagado) con fecha de cobro dentro del periodo.',
         },
         {
           icon: 'lightning-charge',
