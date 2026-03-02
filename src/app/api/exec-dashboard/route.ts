@@ -45,11 +45,12 @@ export async function GET(req: NextRequest) {
 
   const sp   = req.nextUrl.searchParams
   const rpc  = sp.get('rpc') ?? ''
-  const desde  = toDate(sp.get('desde'))
-  const hasta  = toDate(sp.get('hasta'))
-  const asesor = toUUID(sp.get('asesor'))
-  const dias   = toInt(sp.get('dias'), 60)
-  const limit  = toInt(sp.get('limit'), 10)
+  const desde       = toDate(sp.get('desde'))
+  const hasta       = toDate(sp.get('hasta'))
+  const asesor      = toUUID(sp.get('asesor'))
+  const dias        = toInt(sp.get('dias'), 60)
+  const limit       = toInt(sp.get('limit'), 10)
+  const granularity = sp.get('granularity') ?? 'month'
 
   const sb = getServiceClient()
 
@@ -80,9 +81,10 @@ export async function GET(req: NextRequest) {
 
       case 'tendencia': {
         const { data, error } = await sb.rpc('rpc_exec_tendencia', {
-          p_desde:          desde  ?? null,
-          p_hasta:          hasta  ?? null,
-          p_asesor_auth_id: asesor ?? null,
+          p_desde:          desde       ?? null,
+          p_hasta:          hasta       ?? null,
+          p_asesor_auth_id: asesor      ?? null,
+          p_granularity:    granularity,
         })
         if (error) throw error
         result = data

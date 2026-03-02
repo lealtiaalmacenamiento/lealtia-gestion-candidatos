@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import { normalizeRole } from '@/lib/roles'
 import FullScreenLoader from '@/components/ui/FullScreenLoader'
-import { useExecDashboard } from '@/lib/execDashboard'
+import { useExecDashboard, fetchTendencia } from '@/lib/execDashboard'
 import { formatCurrency } from '@/lib/format'
 import type { DatePreset, ExecFilters } from '@/types/exec-dashboard'
 import {
@@ -457,6 +457,21 @@ export default function ExecutiveDashboardPage() {
       return next
     })
 
+  // ── Granularidad de la gráfica de tendencia ──────────────────────────
+  type Granularity = 'day' | 'month' | 'year'
+  const [granularity, setGranularity] = useState<Granularity>('month')
+  const [trendOverride, setTrendOverride] = useState<typeof tendencia | null>(null)
+  const [trendLoading, setTrendLoading] = useState(false)
+
+  useEffect(() => {
+    if (!filters.desde) return
+    setTrendLoading(true)
+    fetchTendencia(filters, granularity)
+      .then(data => setTrendOverride(data))
+      .catch(console.error)
+      .finally(() => setTrendLoading(false))
+  }, [granularity, filters])
+
   if (loadingUser) return <FullScreenLoader text="Cargando sesión…" />
   if (!user || notAllowed) return <FullScreenLoader text="Redirigiendo…" />
 
@@ -492,7 +507,8 @@ export default function ExecutiveDashboardPage() {
     : []
 
   // ── Trend chart data ─────────────────────────────────────────────────────
-  const trendData = (tendencia ?? []).map((t) => ({
+  const activeTrend = trendOverride ?? tendencia
+  const trendData = (activeTrend ?? []).map((t) => ({
     mes: t.mes_label,
     'Ingreso cobrado': t.ingreso_emitido,
     'Mes conexión': t.ganados,
@@ -589,9 +605,25 @@ export default function ExecutiveDashboardPage() {
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-header bg-transparent border-0 pt-3 pb-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
             <span className="fw-semibold">
-              <i className="bi bi-bar-chart-line me-2 text-primary"></i>Tendencia mensual
+              <i className="bi bi-bar-chart-line me-2 text-primary"></i>Tendencia
+              {trendLoading && <span className="spinner-border spinner-border-sm ms-2 text-muted"></span>}
             </span>
-            <div className="d-flex gap-2 flex-wrap">
+            <div className="d-flex align-items-center gap-3 flex-wrap">
+              {/* Granularidad */}
+              <div className="btn-group btn-group-sm" role="group">
+                {(['day', 'month', 'year'] as Granularity[]).map(g => (
+                  <button
+                    key={g}
+                    onClick={() => setGranularity(g)}
+                    className={`btn ${granularity === g ? 'btn-primary' : 'btn-outline-primary'}`}
+                    style={{ fontSize: '0.72rem' }}
+                  >
+                    {{ day: 'Día', month: 'Mes', year: 'Año' }[g]}
+                  </button>
+                ))}
+              </div>
+              {/* Toggle líneas */}
+              <div className="d-flex gap-2 flex-wrap">
               {([
                 { key: 'Ingreso cobrado', color: '#0d6efd' },
                 { key: 'Mes conexión',    color: '#198754' },
@@ -615,6 +647,7 @@ export default function ExecutiveDashboardPage() {
                   </button>
                 )
               })}
+              </div>
             </div>
           </div>
           <div className="card-body">

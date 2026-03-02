@@ -127,10 +127,9 @@ export async function fetchKpis(f: ExecFilters): Promise<ExecKpis | null> {
   )
 }
 
-export async function fetchTendencia(f: ExecFilters): Promise<ExecTendencia> {
-  // Usa exactamente el rango del filtro activo
+export async function fetchTendencia(f: ExecFilters, granularity: 'day' | 'month' | 'year' = 'month'): Promise<ExecTendencia> {
   const data = await fetchRpc<ExecTendencia>(
-    buildUrl('tendencia', { desde: f.desde, hasta: f.hasta, asesor: f.asesorAuthId })
+    buildUrl('tendencia', { desde: f.desde, hasta: f.hasta, asesor: f.asesorAuthId, granularity })
   )
   return data ?? []
 }
