@@ -24,6 +24,18 @@ function VencerBadge({ dias }: { dias: number }) {
   return <span className="badge bg-info text-dark">{dias}d</span>
 }
 
+/** Formatea una fecha ISO/YYYY-MM-DD en zona horaria CDMX (America/Mexico_City). */
+function fmtCDMX(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  // Append T00:00:00 so dates without time are treated as local midnight
+  const d = iso.includes('T') ? new Date(iso) : new Date(`${iso}T00:00:00`)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    day: '2-digit', month: 'short', year: 'numeric',
+  })
+}
+
 // ── Zona 1: Filtros ──────────────────────────────────────────────────────────
 function FiltersBar({
   filters,
@@ -290,7 +302,7 @@ function PolizasVencerSection({
                     <td className="small">{p.cliente}</td>
                     <td className="small text-muted">{p.asesor}</td>
                     <td><span className="badge bg-info text-dark">{p.tipo_producto}</span></td>
-                    <td className="small">{p.fecha_renovacion}</td>
+                    <td className="small">{fmtCDMX(p.fecha_renovacion)}</td>
                     <td><VencerBadge dias={p.dias_restantes} /></td>
                     <td className="text-end small">{formatCurrency(p.prima_mxn)}</td>
                   </tr>

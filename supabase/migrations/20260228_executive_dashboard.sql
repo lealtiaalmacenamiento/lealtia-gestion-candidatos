@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- LEALTIA GESTION CANDIDATOS - EXECUTIVE DASHBOARD MIGRATION
 -- Fecha: 2026-02-28
 -- Descripción: Agrega columnas, vistas y funciones RPC para el

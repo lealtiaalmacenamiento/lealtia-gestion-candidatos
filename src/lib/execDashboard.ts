@@ -31,38 +31,51 @@ import type {
 // UTILIDADES DE FECHA
 // =============================================================================
 
-/** Devuelve { desde, hasta } en YYYY-MM-DD según el preset seleccionado */
+/** Devuelve { desde, hasta } en YYYY-MM-DD según el preset seleccionado.
+ *  Todos los cálculos se hacen en la zona horaria de CDMX (America/Mexico_City). */
 export function buildDateRange(preset: DatePreset): { desde: string; hasta: string } {
-  const now   = new Date()
-  const today = fmtDate(now)
+  const { year, month, day } = todayCDMX()
+  const today = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 
   if (preset === 'mes_actual') {
-    const first = new Date(now.getFullYear(), now.getMonth(), 1)
-    return { desde: fmtDate(first), hasta: today }
+    const desde = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    return { desde, hasta: today }
   }
 
   if (preset === 'trimestre') {
-    const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
-    return { desde: fmtDate(qStart), hasta: today }
+    const qMonth = Math.floor(month / 3) * 3
+    const desde  = `${year}-${String(qMonth + 1).padStart(2, '0')}-01`
+    return { desde, hasta: today }
   }
 
   if (preset === 'anio_anterior') {
-    const prevYear = now.getFullYear() - 1
+    const prevYear = year - 1
     return { desde: `${prevYear}-01-01`, hasta: `${prevYear}-12-31` }
   }
 
   if (preset === 'personalizado') {
     // Rango libre: no se recalcula desde aquí; usar setCustomRange
-    return { desde: fmtDate(new Date(now.getFullYear(), 0, 1)), hasta: today }
+    return { desde: `${year}-01-01`, hasta: today }
   }
 
   // anio (año a la fecha)
-  const yearStart = new Date(now.getFullYear(), 0, 1)
-  return { desde: fmtDate(yearStart), hasta: today }
+  return { desde: `${year}-01-01`, hasta: today }
+}
+
+/** Fecha de hoy desglosada en zona horaria CDMX (America/Mexico_City). */
+function todayCDMX(): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year:     'numeric',
+    month:    '2-digit',
+    day:      '2-digit',
+  }).formatToParts(new Date())
+  const get = (t: string) => parseInt(parts.find(p => p.type === t)!.value)
+  return { year: get('year'), month: get('month') - 1, day: get('day') }
 }
 
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString('en-CA') // YYYY-MM-DD
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) // YYYY-MM-DD CDMX
 }
 
 /** Filtros iniciales por defecto (mes actual, todos los asesores) */
