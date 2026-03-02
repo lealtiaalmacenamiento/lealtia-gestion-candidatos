@@ -35,6 +35,7 @@ export async function PATCH(req: Request) {
     }
   }
   if (body.notas !== undefined) fields.notas = String(body.notas).trim() || null
+  if (body.motivo_descarte !== undefined) fields.motivo_descarte = body.motivo_descarte ? String(body.motivo_descarte).trim() || null : null
   if (body.estado !== undefined) {
     const e = String(body.estado)
   if (['pendiente','seguimiento','con_cita','descartado','ya_es_cliente'].includes(e)) fields.estado = e as ProspectoEstado

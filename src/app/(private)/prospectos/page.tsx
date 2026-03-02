@@ -269,7 +269,7 @@ export default function ProspectosPage(){
 
   // Modal de edición de prospecto
   const [editTarget, setEditTarget] = useState<Prospecto|null>(null)
-  const [editForm, setEditForm] = useState<{ nombre:string; email:string; telefono:string; notas:string; estado:string }>({ nombre:'', email:'', telefono:'', notas:'', estado:'pendiente' })
+  const [editForm, setEditForm] = useState<{ nombre:string; email:string; telefono:string; notas:string; estado:string; motivo_descarte:string }>({ nombre:'', email:'', telefono:'', notas:'', estado:'pendiente', motivo_descarte:'' })
   const editEmailInvalido = Boolean(editForm.email.trim()) && !emailValido(editForm.email)
   // Estado para modal de nuevo cliente
   const [showNuevoCliente, setShowNuevoCliente] = useState(false)
@@ -341,7 +341,8 @@ export default function ProspectosPage(){
       email: p.email || '',
       telefono: p.telefono || '',
       notas: p.notas || '',
-      estado: p.estado
+      estado: p.estado,
+      motivo_descarte: p.motivo_descarte || ''
     })
   }
   const closeEdit = () => { setEditTarget(null) }
@@ -367,6 +368,7 @@ export default function ProspectosPage(){
     if ((normalizedEmail || '') !== previousEmail) patch.email = normalizedEmail
     if ((editForm.telefono||'').trim() !== (editTarget.telefono||'').trim()) patch.telefono = (editForm.telefono||'').trim()
     if ((editForm.notas||'').trim() !== (editTarget.notas||'').trim()) patch.notas = (editForm.notas||'').trim()
+    if (editForm.estado === 'descartado' && (editForm.motivo_descarte||'').trim() !== (editTarget.motivo_descarte||'').trim()) patch.motivo_descarte = (editForm.motivo_descarte||'').trim() || null
     // NO incluir estado ya_es_cliente en este primer patch; se hará tras crear el cliente
   if (!convertingToCliente && editForm.estado !== editTarget.estado) patch.estado = editForm.estado as ProspectoEstado
     // Si lo único que cambia es el estado a ya_es_cliente, no enviamos patch ahora (abriremos modal)
@@ -1017,6 +1019,19 @@ export default function ProspectosPage(){
                 {estadoOptions().map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
+            {editForm.estado === 'descartado' && (
+              <div className="col-12">
+                <label className="form-label small">Motivo de descarte</label>
+                <select className="form-select" value={editForm.motivo_descarte} onChange={e=>setEditForm(f=>({...f,motivo_descarte:e.target.value}))}>
+                  <option value="">Sin especificar</option>
+                  <option value="precio">Precio</option>
+                  <option value="competencia">Competencia</option>
+                  <option value="sin_interes">Sin interés</option>
+                  <option value="sin_respuesta">Sin respuesta</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+            )}
             <div className="col-12">
               <label className="form-label small">Notas</label>
               <input className="form-control" value={editForm.notas} onChange={e=>setEditForm(f=>({...f,notas:e.target.value}))} />

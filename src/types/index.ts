@@ -206,6 +206,7 @@ export interface Prospecto {
   telefono?: string | null
   email?: string | null
   notas?: string | null
+  motivo_descarte?: string | null
   estado: ProspectoEstado
   // Ahora timestamp (ISO) con fecha y hora
   fecha_cita?: string | null
