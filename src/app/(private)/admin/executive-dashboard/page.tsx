@@ -131,9 +131,9 @@ function FiltersBar({
 
 // ── Zona 2a: Tarjetas KPI ────────────────────────────────────────────────────
 function KpiCard({
-  icon, label, value, sub, color = 'primary',
+  icon, label, value, sub, hint, color = 'primary',
 }: {
-  icon: string; label: string; value: string | number | null; sub?: string; color?: string
+  icon: string; label: string; value: string | number | null; sub?: string; hint?: string; color?: string
 }) {
   return (
     <div className="col-6 col-md-4 col-xl-3">
@@ -144,7 +144,14 @@ function KpiCard({
           </div>
           <div>
             <div className="fw-bold fs-5 lh-1">{value ?? '—'}</div>
-            <div className="small text-muted">{label}</div>
+            <div className="small text-muted d-flex align-items-center gap-1">
+              {label}
+              {hint && (
+                <span title={hint} style={{ cursor: 'help', lineHeight: 1 }} className="text-muted opacity-50">
+                  <i className="bi bi-info-circle" style={{ fontSize: '0.7rem' }}></i>
+                </span>
+              )}
+            </div>
             {sub && <div className="text-muted" style={{ fontSize: '0.72rem' }}>{sub}</div>}
           </div>
         </div>
@@ -445,16 +452,22 @@ export default function ExecutiveDashboardPage() {
   // ── KPI helpers ─────────────────────────────────────────────────────────
   const kpiCards = kpis
     ? [
-        { icon: 'person-plus', label: 'Candidatos', value: kpis.total_candidatos ?? 0, color: 'primary' },
-        { icon: 'person-check', label: 'Agentes conectados', value: kpis.total_ganados ?? 0, color: 'success' },
-        { icon: 'people', label: 'Clientes', value: kpis.total_clientes ?? 0, color: 'info' },
-        { icon: 'file-earmark-check', label: 'Pólizas emitidas', value: kpis.polizas_activas ?? 0, color: 'warning' },
-        { icon: 'file-earmark-x', label: 'Pólizas canceladas', value: kpis.polizas_canceladas ?? 0, color: 'danger' },
+        { icon: 'person-plus', label: 'Candidatos', value: kpis.total_candidatos ?? 0, color: 'primary',
+          hint: 'Candidatos registrados en el CRM durante el periodo seleccionado.' },
+        { icon: 'person-check', label: 'Agentes conectados', value: kpis.total_ganados ?? 0, color: 'success',
+          hint: 'Candidatos que completaron el proceso y obtuvieron su Clave de Agente (CT) en el periodo.' },
+        { icon: 'people', label: 'Clientes', value: kpis.total_clientes ?? 0, color: 'info',
+          hint: 'Clientes activos dados de alta en el sistema durante el periodo.' },
+        { icon: 'file-earmark-check', label: 'Pólizas emitidas', value: kpis.polizas_activas ?? 0, color: 'warning',
+          hint: 'Pólizas EN_VIGOR cuya fecha de alta en sistema cae dentro del periodo.' },
+        { icon: 'file-earmark-x', label: 'Pólizas canceladas', value: kpis.polizas_canceladas ?? 0, color: 'danger',
+          hint: 'Pólizas anuladas cuya fecha de cancelación cae dentro del periodo.' },
         {
           icon: 'cash-stack',
           label: 'Ingreso emitido (periodo)',
           value: formatCurrency(kpis.ingreso_mxn),
           color: 'success',
+          hint: 'Suma de primas MXN de pólizas EN_VIGOR emitidas en el periodo.',
         },
         {
           icon: 'lightning-charge',
@@ -462,6 +475,7 @@ export default function ExecutiveDashboardPage() {
           value: formatCurrency(kpis.proyeccion_fin_mes),
           sub: `${kpis.dias_transcurridos}/${kpis.dias_mes} días`,
           color: 'warning',
+          hint: 'Estimación lineal: (ingreso del periodo ÷ días transcurridos) × días del mes actual.',
         },
       ]
     : []
@@ -527,7 +541,7 @@ export default function ExecutiveDashboardPage() {
           </h6>
           <div className="row g-3 mb-4">
             {kpiCards.map((c) => (
-              <KpiCard key={c.label} icon={c.icon} label={c.label} value={c.value} sub={c.sub} color={c.color} />
+              <KpiCard key={c.label} icon={c.icon} label={c.label} value={c.value} sub={c.sub} hint={c.hint} color={c.color} />
             ))}
           </div>
         </>
