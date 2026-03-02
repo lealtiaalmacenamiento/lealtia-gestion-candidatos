@@ -483,7 +483,7 @@ export default function ExecutiveDashboardPage() {
   // ── Trend chart data ─────────────────────────────────────────────────────
   const trendData = (tendencia ?? []).map((t) => ({
     mes: t.mes_label,
-    Ingreso: t.ingreso_emitido,
+    'Ingreso cobrado': t.ingreso_emitido,
     'Mes conexión': t.ganados,
     Candidatos: t.nuevos_candidatos,
   }))
@@ -586,9 +586,9 @@ export default function ExecutiveDashboardPage() {
                 <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
                 <YAxis yAxisId="left" orientation="left" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number | string | undefined, name: string | undefined) => name === 'Ingreso' ? [formatCurrency(Number(v ?? 0)), name] : [v ?? 0, name ?? '']} />
+                <Tooltip formatter={(v: number | string | undefined, name: string | undefined) => name === 'Ingreso cobrado' ? [formatCurrency(Number(v ?? 0)), name] : [v ?? 0, name ?? '']} />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="Ingreso" stroke="#0d6efd" strokeWidth={2} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="Ingreso cobrado" stroke="#0d6efd" strokeWidth={2} dot={false} />
                 <Line yAxisId="right" type="monotone" dataKey="Mes conexión" stroke="#198754" strokeWidth={2} dot={{ r: 3 }} />
                 <Line yAxisId="right" type="monotone" dataKey="Candidatos" stroke="#ffc107" strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
