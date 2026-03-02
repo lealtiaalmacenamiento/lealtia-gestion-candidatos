@@ -459,7 +459,7 @@ export default function ExecutiveDashboardPage() {
         { icon: 'people', label: 'Clientes', value: kpis.total_clientes ?? 0, color: 'info',
           hint: 'Clientes activos dados de alta en el sistema durante el periodo.' },
         { icon: 'file-earmark-check', label: 'Pólizas emitidas', value: kpis.polizas_activas ?? 0, color: 'warning',
-          hint: 'Pólizas EN_VIGOR cuya fecha de alta en sistema cae dentro del periodo.' },
+          hint: 'Pólizas EN_VIGOR cuya fecha de emisión cae dentro del periodo.' },
         { icon: 'file-earmark-x', label: 'Pólizas canceladas', value: kpis.polizas_canceladas ?? 0, color: 'danger',
           hint: 'Pólizas anuladas cuya fecha de cancelación cae dentro del periodo.' },
         {

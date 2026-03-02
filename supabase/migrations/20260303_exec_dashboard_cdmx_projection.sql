@@ -95,22 +95,22 @@ BEGIN
     AND cl.creado_at::date BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
-  -- INGRESO: pólizas dadas de alta en el periodo
+  -- INGRESO: pólizas con fecha de emisión en el periodo
   SELECT COALESCE(SUM(p.prima_mxn), 0) INTO v_ingreso_mxn
   FROM polizas p
   INNER JOIN clientes cl ON p.cliente_id = cl.id
   WHERE p.estatus    = 'EN_VIGOR'
     AND p.anulada_at  IS NULL
-    AND p.fecha_alta_sistema::date BETWEEN v_desde AND v_hasta
+    AND p.fecha_emision BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
-  -- PÓLIZAS ACTIVAS emitidas en el periodo
+  -- PÓLIZAS ACTIVAS con fecha de emisión en el periodo
   SELECT COUNT(*) INTO v_polizas_activas
   FROM polizas p
   INNER JOIN clientes cl ON p.cliente_id = cl.id
   WHERE p.estatus    = 'EN_VIGOR'
     AND p.anulada_at  IS NULL
-    AND p.fecha_alta_sistema::date BETWEEN v_desde AND v_hasta
+    AND p.fecha_emision BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
   -- PÓLIZAS CANCELADAS en el periodo
@@ -170,5 +170,6 @@ $$;
 
 COMMENT ON FUNCTION rpc_exec_kpis(date, date, uuid) IS
   'KPIs del Dashboard Ejecutivo. Todos los conteos filtrados por periodo p_desde/p_hasta. '
-  'Proyección lineal al fin del mes de p_hasta usando el ingreso del periodo seleccionado. '
+  'Pólizas y ingreso filtrados por fecha_emision (no fecha_alta_sistema). '
+  'Proyección lineal al fin del mes actual CDMX usando el ingreso del periodo seleccionado. '
   'Timezone: America/Mexico_City (CDMX).';
