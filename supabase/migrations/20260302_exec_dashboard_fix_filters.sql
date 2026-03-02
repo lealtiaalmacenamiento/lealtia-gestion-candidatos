@@ -75,7 +75,7 @@ BEGIN
   SELECT COUNT(*) INTO v_total_clientes
   FROM clientes cl
   WHERE cl.activo = true
-    AND cl.created_at::date BETWEEN v_desde AND v_hasta
+    AND cl.creado_at::date BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
   -- INGRESO: pólizas dadas de alta en el periodo
