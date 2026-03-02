@@ -128,13 +128,9 @@ export async function fetchKpis(f: ExecFilters): Promise<ExecKpis | null> {
 }
 
 export async function fetchTendencia(f: ExecFilters): Promise<ExecTendencia> {
-  // Usa el rango del filtro activo; si el período es < 3 meses, expande el inicio
-  // para que la gráfica tenga contexto suficiente (mínimo el año del período).
-  const filterStart = new Date(f.desde)
-  const yearStart   = new Date(filterStart.getFullYear(), 0, 1)
-  const desde = fmtDate(filterStart < yearStart ? filterStart : yearStart)
+  // Usa exactamente el rango del filtro activo
   const data = await fetchRpc<ExecTendencia>(
-    buildUrl('tendencia', { desde, hasta: f.hasta, asesor: f.asesorAuthId })
+    buildUrl('tendencia', { desde: f.desde, hasta: f.hasta, asesor: f.asesorAuthId })
   )
   return data ?? []
 }

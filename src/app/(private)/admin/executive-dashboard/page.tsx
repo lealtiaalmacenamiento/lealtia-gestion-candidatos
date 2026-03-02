@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthProvider'
 import { normalizeRole } from '@/lib/roles'
 import FullScreenLoader from '@/components/ui/FullScreenLoader'
@@ -9,7 +9,7 @@ import { formatCurrency } from '@/lib/format'
 import type { DatePreset, ExecFilters } from '@/types/exec-dashboard'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend,
+  LineChart, Line, CartesianGrid,
   PieChart, Pie, Cell,
 } from 'recharts'
 
@@ -446,6 +446,17 @@ export default function ExecutiveDashboardPage() {
     setPreset, setAsesor, setCustomRange, refresh,
   } = useExecDashboard()
 
+  // ── Toggles de líneas en la gráfica de tendencia ─────────────────────
+  const TREND_LINES = ['Ingreso cobrado', 'Mes conexión', 'Candidatos'] as const
+  type TrendLine = typeof TREND_LINES[number]
+  const [visibleLines, setVisibleLines] = useState<Set<TrendLine>>(new Set(TREND_LINES))
+  const toggleLine = (line: TrendLine) =>
+    setVisibleLines(prev => {
+      const next = new Set(prev)
+      next.has(line) ? next.delete(line) : next.add(line)
+      return next
+    })
+
   if (loadingUser) return <FullScreenLoader text="Cargando sesión…" />
   if (!user || notAllowed) return <FullScreenLoader text="Redirigiendo…" />
 
@@ -576,8 +587,35 @@ export default function ExecutiveDashboardPage() {
       {/* ── ZONA 2b: Tendencia ──────────────────────────────────────────── */}
       {trendData.length > 0 && (
         <div className="card border-0 shadow-sm mb-4">
-          <div className="card-header bg-transparent fw-semibold border-0 pt-3 pb-0">
-            <i className="bi bi-bar-chart-line me-2 text-primary"></i>Tendencia mensual
+          <div className="card-header bg-transparent border-0 pt-3 pb-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span className="fw-semibold">
+              <i className="bi bi-bar-chart-line me-2 text-primary"></i>Tendencia mensual
+            </span>
+            <div className="d-flex gap-2 flex-wrap">
+              {([
+                { key: 'Ingreso cobrado', color: '#0d6efd' },
+                { key: 'Mes conexión',    color: '#198754' },
+                { key: 'Candidatos',      color: '#ffc107' },
+              ] as { key: TrendLine; color: string }[]).map(({ key, color }) => {
+                const active = visibleLines.has(key)
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleLine(key)}
+                    className="btn btn-sm px-2 py-1"
+                    style={{
+                      border: `2px solid ${color}`,
+                      background: active ? color : 'transparent',
+                      color: active ? '#fff' : color,
+                      fontSize: '0.75rem',
+                      borderRadius: '999px',
+                    }}
+                  >
+                    {key}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <div className="card-body">
             <ResponsiveContainer width="100%" height={260}>
@@ -587,10 +625,15 @@ export default function ExecutiveDashboardPage() {
                 <YAxis yAxisId="left" orientation="left" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v: number | string | undefined, name: string | undefined) => name === 'Ingreso cobrado' ? [formatCurrency(Number(v ?? 0)), name] : [v ?? 0, name ?? '']} />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="Ingreso cobrado" stroke="#0d6efd" strokeWidth={2} dot={false} />
-                <Line yAxisId="right" type="monotone" dataKey="Mes conexión" stroke="#198754" strokeWidth={2} dot={{ r: 3 }} />
-                <Line yAxisId="right" type="monotone" dataKey="Candidatos" stroke="#ffc107" strokeWidth={2} dot={{ r: 3 }} />
+                {visibleLines.has('Ingreso cobrado') && (
+                  <Line yAxisId="left" type="monotone" dataKey="Ingreso cobrado" stroke="#0d6efd" strokeWidth={2} dot={false} />
+                )}
+                {visibleLines.has('Mes conexión') && (
+                  <Line yAxisId="right" type="monotone" dataKey="Mes conexión" stroke="#198754" strokeWidth={2} dot={{ r: 3 }} />
+                )}
+                {visibleLines.has('Candidatos') && (
+                  <Line yAxisId="right" type="monotone" dataKey="Candidatos" stroke="#ffc107" strokeWidth={2} dot={{ r: 3 }} />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
