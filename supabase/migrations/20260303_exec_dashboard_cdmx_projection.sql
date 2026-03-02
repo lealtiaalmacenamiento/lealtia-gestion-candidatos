@@ -132,10 +132,11 @@ BEGIN
   WHERE pr.created_at::date BETWEEN v_desde AND v_hasta
     AND (v_asesor_usuario_id IS NULL OR pr.agente_id = v_asesor_usuario_id);
 
-  -- PROYECCIÓN LINEAL AL FIN DEL MES DE v_hasta
-  --   Tasa = ingreso del periodo / días transcurridos del periodo (hasta hoy o v_hasta si ya pasó)
-  --   Proyección = tasa_diaria * total_días_del_mes_de_v_hasta
-  v_fin_mes_hasta  := (date_trunc('month', v_hasta::timestamp) + interval '1 month - 1 day')::date;
+  -- PROYECCIÓN LINEAL AL FIN DEL MES ACTUAL (CDMX)
+  --   Tasa = ingreso del periodo seleccionado / días transcurridos del periodo
+  --   Proyección = tasa_diaria * días totales del mes actual en CDMX
+  --   (siempre el mes de hoy, independientemente del rango elegido)
+  v_fin_mes_hasta  := (date_trunc('month', v_today_cdmx::timestamp) + interval '1 month - 1 day')::date;
   v_dias_mes_hasta := EXTRACT(DAY FROM v_fin_mes_hasta)::int;
   -- días transcurridos del periodo: desde v_desde hasta min(hoy, v_hasta)
   v_dias_elapsed   := (LEAST(v_hasta, v_today_cdmx) - v_desde + 1)::int;
