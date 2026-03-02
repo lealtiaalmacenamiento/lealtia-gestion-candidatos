@@ -14,16 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Llamar Edge Function
+      - name: Llamar API de actualización de pagos
         env:
-          SUPABASE_URL: https://oooyuomshachmmblmpvd.supabase.co
+          APP_URL: ${{ secrets.APP_URL }}
+          SECRET: ${{ secrets.REPORTES_CRON_SECRET }}
         run: |
+          set -euo pipefail
+          : "${APP_URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
+          : "${SECRET:?Need REPORTES_CRON_SECRET secret}"
+          
           echo "🔄 Ejecutando actualización de pagos vencidos..."
           
           response=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: Bearer ${{ secrets.REPORTES_CRON_SECRET }}" \
+            -H "Authorization: Bearer ${SECRET}" \
             -H "Content-Type: application/json" \
-            ${SUPABASE_URL}/functions/v1/actualizar-pagos-vencidos)
+            "${APP_URL%/}/api/cron/actualizar-pagos")
           
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | head -n-1)
