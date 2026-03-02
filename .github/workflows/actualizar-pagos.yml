@@ -28,7 +28,8 @@ jobs:
           
           CURL_ARGS=(-s -w "\n%{http_code}" -X POST \
             -H "Authorization: Bearer ${SECRET}" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${SECRET}")
           
           if [ -n "${BYPASS_TOKEN:-}" ]; then
             CURL_ARGS+=(-H "x-vercel-protection-bypass: ${BYPASS_TOKEN}")

@@ -52,7 +52,13 @@ export async function middleware(req: NextRequest) {
     // Endpoints landing public (sin auth)
     '/api/landing/resolve-agent',
     '/api/landing/create-prospecto',
-    '/api/landing/recruitment'
+    '/api/landing/recruitment',
+    // Cron jobs internos
+    '/api/cron/actualizar-pagos',
+    '/api/cron/cleanup-notifications',
+    '/api/cron/refresh-cancelaciones',
+    '/api/cron/clean-campaign-cache',
+    '/api/cron/update-udi'
   ])
   // Si viene el secreto de cron (header o query), tratarlo como solicitud de cron
   const hasCronSecret = !!req.headers.get('x-cron-secret') || !!url.searchParams.get('secret')
