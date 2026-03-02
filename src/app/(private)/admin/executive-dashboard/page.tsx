@@ -436,19 +436,13 @@ export default function ExecutiveDashboardPage() {
         { icon: 'person-plus', label: 'Candidatos', value: kpis.total_candidatos ?? 0, color: 'primary' },
         { icon: 'person-check', label: 'Agentes conectados', value: kpis.total_ganados ?? 0, color: 'success' },
         { icon: 'people', label: 'Clientes', value: kpis.total_clientes ?? 0, color: 'info' },
-        { icon: 'file-earmark-check', label: 'Pólizas activas', value: kpis.polizas_activas ?? 0, color: 'warning' },
+        { icon: 'file-earmark-check', label: 'Pólizas emitidas', value: kpis.polizas_activas ?? 0, color: 'warning' },
         { icon: 'file-earmark-x', label: 'Pólizas canceladas', value: kpis.polizas_canceladas ?? 0, color: 'danger' },
         {
           icon: 'cash-stack',
           label: 'Ingreso emitido (periodo)',
           value: formatCurrency(kpis.ingreso_mxn),
           color: 'success',
-        },
-        {
-          icon: 'graph-up-arrow',
-          label: 'Pipeline value',
-          value: formatCurrency(kpis.pipeline_value),
-          color: 'primary',
         },
         {
           icon: 'lightning-charge',
@@ -525,6 +519,32 @@ export default function ExecutiveDashboardPage() {
             ))}
           </div>
         </>
+      )}
+
+      {/* ── Prospectos por estado ───────────────────────────────────────── */}
+      {kpis && (
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-header bg-transparent fw-semibold border-0 pt-3 pb-0">
+            <i className="bi bi-funnel me-2 text-secondary"></i>Prospectos por estado (periodo)
+          </div>
+          <div className="card-body py-3">
+            <div className="row g-3 text-center">
+              {[
+                { label: 'Pendiente',    value: kpis.prospectos_pendiente,   color: 'secondary' },
+                { label: 'Seguimiento',  value: kpis.prospectos_seguimiento, color: 'info'      },
+                { label: 'Con cita',     value: kpis.prospectos_con_cita,    color: 'success'   },
+                { label: 'Descartado',   value: kpis.prospectos_descartado,  color: 'danger'    },
+              ].map((s) => (
+                <div key={s.label} className="col-6 col-md-3">
+                  <div className={`p-3 rounded bg-${s.color} bg-opacity-10`}>
+                    <div className={`fw-bold fs-4 text-${s.color}`}>{s.value ?? 0}</div>
+                    <div className="small text-muted">{s.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── ZONA 2b: Tendencia ──────────────────────────────────────────── */}

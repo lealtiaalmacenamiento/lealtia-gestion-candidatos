@@ -47,10 +47,12 @@ export interface ExecKpis {
   polizas_canceladas: number
   // Financiero
   ingreso_mxn: number
-  /** Suma de prima_estimada de prospectos activos (pendiente/seguimiento/con_cita) */
-  pipeline_value: number
-  ingreso_mes_actual: number
   proyeccion_fin_mes: number
+  // Prospectos por estado (filtrados por periodo)
+  prospectos_pendiente: number
+  prospectos_seguimiento: number
+  prospectos_con_cita: number
+  prospectos_descartado: number
   // Metadatos del período
   periodo_desde: string
   periodo_hasta: string
