@@ -164,7 +164,7 @@ export async function fetchMotivosDescarte(f: ExecFilters): Promise<ExecMotivosD
 
 export async function fetchPolizasPorTipo(f: ExecFilters): Promise<ExecPolizasPorTipo> {
   const data = await fetchRpc<ExecPolizasPorTipo>(
-    buildUrl('polizas_por_tipo', { asesor: f.asesorAuthId })
+    buildUrl('polizas_por_tipo', { desde: f.desde, hasta: f.hasta, asesor: f.asesorAuthId })
   )
   return data ?? []
 }

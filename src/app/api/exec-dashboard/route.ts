@@ -138,6 +138,8 @@ export async function GET(req: NextRequest) {
 
       case 'polizas_por_tipo': {
         const { data, error } = await sb.rpc('rpc_exec_polizas_por_tipo', {
+          p_desde:          desde  ?? null,
+          p_hasta:          hasta  ?? null,
           p_asesor_auth_id: asesor ?? null,
         })
         if (error) throw error

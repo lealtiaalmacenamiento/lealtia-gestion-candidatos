@@ -203,9 +203,9 @@ function SlaSection({
       <div className="card-body py-3">
         <div className="row g-2">
           {[
-            { label: 'Días 1er contacto', value: data.tiempo_primer_contacto_dias != null ? data.tiempo_primer_contacto_dias.toFixed(1) : '—', icon: 'send', color: 'info' },
+            { label: 'Días a examen', value: data.tiempo_primer_contacto_dias != null ? data.tiempo_primer_contacto_dias.toFixed(1) : '—', icon: 'send', color: 'info' },
             { label: 'Días a cierre', value: data.tiempo_cierre_dias != null ? data.tiempo_cierre_dias.toFixed(1) : '—', icon: 'flag', color: 'success' },
-            { label: 'Sin contacto', value: data.sin_primer_contacto, icon: 'exclamation-triangle', color: 'danger' },
+            { label: 'Sin examen', value: data.sin_primer_contacto, icon: 'exclamation-triangle', color: 'danger' },
             { label: 'Muestra', value: data.muestra_total, icon: 'database', color: 'secondary' },
           ].map((item) => (
             <div key={item.label} className="col-6">
