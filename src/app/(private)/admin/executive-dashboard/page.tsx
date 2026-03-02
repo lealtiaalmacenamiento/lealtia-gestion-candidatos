@@ -434,15 +434,14 @@ export default function ExecutiveDashboardPage() {
   const kpiCards = kpis
     ? [
         { icon: 'person-plus', label: 'Candidatos', value: kpis.total_candidatos ?? 0, color: 'primary' },
-        { icon: 'calendar2-check', label: 'Mes conexión', value: kpis.total_ganados ?? 0, color: 'success' },
+        { icon: 'person-check', label: 'Agentes conectados', value: kpis.total_ganados ?? 0, color: 'success' },
         { icon: 'people', label: 'Clientes', value: kpis.total_clientes ?? 0, color: 'info' },
         { icon: 'file-earmark-check', label: 'Pólizas activas', value: kpis.polizas_activas ?? 0, color: 'warning' },
         { icon: 'file-earmark-x', label: 'Pólizas canceladas', value: kpis.polizas_canceladas ?? 0, color: 'danger' },
         {
           icon: 'cash-stack',
-          label: 'Ingreso emitido',
+          label: 'Ingreso emitido (periodo)',
           value: formatCurrency(kpis.ingreso_mxn),
-          sub: `Este mes: ${formatCurrency(kpis.ingreso_mes_actual)}`,
           color: 'success',
         },
         {
