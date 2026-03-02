@@ -18,6 +18,7 @@ jobs:
         env:
           APP_URL: ${{ secrets.APP_URL }}
           SECRET: ${{ secrets.REPORTES_CRON_SECRET }}
+          BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
         run: |
           set -euo pipefail
           : "${APP_URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
@@ -25,10 +26,15 @@ jobs:
           
           echo "🔄 Ejecutando actualización de pagos vencidos..."
           
-          response=$(curl -s -w "\n%{http_code}" -X POST \
+          CURL_ARGS=(-s -w "\n%{http_code}" -X POST \
             -H "Authorization: Bearer ${SECRET}" \
-            -H "Content-Type: application/json" \
-            "${APP_URL%/}/api/cron/actualizar-pagos")
+            -H "Content-Type: application/json")
+          
+          if [ -n "${BYPASS_TOKEN:-}" ]; then
+            CURL_ARGS+=(-H "x-vercel-protection-bypass: ${BYPASS_TOKEN}")
+          fi
+          
+          response=$(curl "${CURL_ARGS[@]}" "${APP_URL%/}/api/cron/actualizar-pagos")
           
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | head -n-1)
