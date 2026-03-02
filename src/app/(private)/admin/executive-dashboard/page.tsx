@@ -464,10 +464,10 @@ export default function ExecutiveDashboardPage() {
           hint: 'Pólizas anuladas cuya fecha de cancelación cae dentro del periodo.' },
         {
           icon: 'cash-stack',
-          label: 'Ingreso emitido (periodo)',
+          label: 'Ingreso cobrado (periodo)',
           value: formatCurrency(kpis.ingreso_mxn),
           color: 'success',
-          hint: 'Suma de primas MXN de pólizas EN_VIGOR emitidas en el periodo.',
+          hint: 'Suma de pagos cobrados (monto_pagado) con fecha de cobro dentro del periodo.' },
         },
         {
           icon: 'lightning-charge',
