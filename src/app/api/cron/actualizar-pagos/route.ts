@@ -34,10 +34,15 @@ type PagoVencidoRow = {
 // Handler
 // ---------------------------------------------------------------------------
 export async function POST(request: Request) {
-  // Validar secret
+  // Validar secret — acepta Authorization: Bearer o x-cron-secret
   const authHeader = request.headers.get('authorization')
+  const cronHeader = request.headers.get('x-cron-secret')
   const secret = process.env.REPORTES_CRON_SECRET || process.env.CRON_SECRET
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+
+  const validBearer = secret && authHeader === `Bearer ${secret}`
+  const validCron   = secret && cronHeader === secret
+
+  if (!validBearer && !validCron) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
