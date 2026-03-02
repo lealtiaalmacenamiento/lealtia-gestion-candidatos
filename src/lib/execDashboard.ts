@@ -137,8 +137,9 @@ export async function fetchTendencia(f: ExecFilters, granularity: 'day' | 'month
 // ── Zona 3 ──────────────────────────────────────────────────────────────────
 
 export async function fetchFunnel(f: ExecFilters): Promise<ExecFunnel> {
+  // Sin filtro de periodo — muestra todos los candidatos activos
   const data = await fetchRpc<ExecFunnel>(
-    buildUrl('funnel', { desde: f.desde, hasta: f.hasta, asesor: f.asesorAuthId })
+    buildUrl('funnel', { asesor: f.asesorAuthId })
   )
   return data ?? []
 }

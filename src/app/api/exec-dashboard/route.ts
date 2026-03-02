@@ -93,9 +93,8 @@ export async function GET(req: NextRequest) {
 
       // ── Zona 3: Conversión y actividad ────────────────────────────────
       case 'funnel': {
+        // El embudo siempre muestra TODOS los candidatos — sin filtro de periodo
         const { data, error } = await sb.rpc('rpc_exec_funnel', {
-          p_desde:          desde  ?? null,
-          p_hasta:          hasta  ?? null,
           p_asesor_auth_id: asesor ?? null,
         })
         if (error) throw error

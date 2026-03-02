@@ -7,6 +7,8 @@ import FullScreenLoader from '@/components/ui/FullScreenLoader'
 import { useExecDashboard, fetchTendencia } from '@/lib/execDashboard'
 import { formatCurrency } from '@/lib/format'
 import type { DatePreset, ExecFilters } from '@/types/exec-dashboard'
+import { PHASE_CALENDAR_THEME } from '@/lib/candidatePhases'
+import type { PhaseKey } from '@/lib/candidatePhases'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid,
@@ -161,28 +163,59 @@ function KpiCard({
 }
 
 // ── Zona 3a: Funnel ──────────────────────────────────────────────────────────
-function FunnelSection({ steps }: { steps: Array<{ label: string; count: number; porcentaje: number }> }) {
+function FunnelSection({ steps }: { steps: Array<{ key: string; label: string; count: number; porcentaje: number }> }) {
+  const total = steps.reduce((s, x) => s + x.count, 0)
+  const agenteCount = steps.find(s => s.key === 'agente')?.count ?? 0
+  const convPct = total > 0 ? ((agenteCount / total) * 100).toFixed(1) : '0.0'
+  const maxCount = Math.max(...steps.map(s => s.count), 1)
+
   return (
     <div className="card border-0 shadow-sm h-100">
       <div className="card-header bg-transparent fw-semibold border-0 pt-3 pb-0">
         <i className="bi bi-filter me-2 text-primary"></i>Embudo de candidatos
       </div>
       <div className="card-body pt-2">
-        {steps.map((s, i) => (
-          <div key={i} className="mb-3">
-            <div className="d-flex justify-content-between small mb-1">
-              <span>{s.label}</span>
-              <span className="fw-semibold">{s.count} <span className="text-muted">({s.porcentaje.toFixed(0)}%)</span></span>
-            </div>
-            <div className="progress" style={{ height: 10 }}>
-              <div
-                className="progress-bar bg-primary"
-                style={{ width: `${Math.max(s.porcentaje, 2)}%`, backgroundColor: BRAND }}
-              />
-            </div>
-          </div>
-        ))}
+        <div className="alert alert-info py-1 px-2 mb-3 small d-flex align-items-center gap-1" role="alert">
+          <i className="bi bi-info-circle-fill text-info me-1"></i>
+          <span>Muestra <strong>todos los candidatos activos</strong> — independiente del periodo seleccionado.</span>
+        </div>
+
         {steps.length === 0 && <div className="text-muted small">Sin datos</div>}
+
+        <div className="d-flex flex-column gap-2">
+          {steps.map((s) => {
+            const theme = PHASE_CALENDAR_THEME[s.key as PhaseKey]
+            const widthPct = Math.max((s.count / maxCount) * 100, s.count > 0 ? 8 : 0)
+            return (
+              <div key={s.key}>
+                <div className="d-flex justify-content-between small mb-1">
+                  <span>{theme?.icon ?? ''} {s.label}</span>
+                  <span className="fw-semibold">
+                    {s.count} <span className="text-muted">({s.porcentaje.toFixed(0)}%)</span>
+                  </span>
+                </div>
+                <div className="rounded" style={{ height: 10, backgroundColor: '#e9ecef' }}>
+                  <div className="rounded" style={{
+                    height: 10,
+                    width: `${widthPct}%`,
+                    backgroundColor: theme?.color ?? BRAND,
+                    transition: 'width 0.3s ease',
+                  }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {total > 0 && (
+          <div className="border-top pt-2 mt-3 d-flex justify-content-between small">
+            <span className="text-muted">Total: <strong>{total}</strong></span>
+            <span className="text-success fw-semibold">
+              Conversión: {convPct}%
+              <span className="text-muted ms-1">({agenteCount} agentes)</span>
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -198,14 +231,14 @@ function SlaSection({
   return (
     <div className="card border-0 shadow-sm h-100">
       <div className="card-header bg-transparent fw-semibold border-0 pt-3 pb-0">
-        <i className="bi bi-stopwatch me-2 text-warning"></i>SLA tiempos
+        <i className="bi bi-stopwatch me-2 text-warning"></i>SLA tiempos — prospectos
       </div>
       <div className="card-body py-3">
         <div className="row g-2">
           {[
-            { label: 'Días a examen', value: data.tiempo_primer_contacto_dias != null ? data.tiempo_primer_contacto_dias.toFixed(1) : '—', icon: 'send', color: 'info' },
+            { label: 'Días a 1er contacto', value: data.tiempo_primer_contacto_dias != null ? data.tiempo_primer_contacto_dias.toFixed(1) : '—', icon: 'send', color: 'info' },
             { label: 'Días a cierre', value: data.tiempo_cierre_dias != null ? data.tiempo_cierre_dias.toFixed(1) : '—', icon: 'flag', color: 'success' },
-            { label: 'Sin examen', value: data.sin_primer_contacto, icon: 'exclamation-triangle', color: 'danger' },
+            { label: 'Sin 1er contacto', value: data.sin_primer_contacto, icon: 'exclamation-triangle', color: 'danger' },
             { label: 'Muestra', value: data.muestra_total, icon: 'database', color: 'secondary' },
           ].map((item) => (
             <div key={item.label} className="col-6">
@@ -215,6 +248,9 @@ function SlaSection({
               </div>
             </div>
           ))}
+        </div>
+        <div className="text-muted mt-2" style={{ fontSize: '0.7rem' }}>
+          <i className="bi bi-info-circle me-1"></i>Basado en prospectos del periodo seleccionado.
         </div>
       </div>
     </div>

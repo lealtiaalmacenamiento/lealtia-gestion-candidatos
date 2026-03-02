@@ -81,7 +81,8 @@ export type ExecTendencia = ExecTendenciaMes[]
 // ---------------------------------------------------------------------------
 
 export interface ExecFunnelStep {
-  label: string        // "Candidatos" | "Prospectos" | "Cotizaciones" | "Clientes" | "Perdidos"
+  key: string          // PhaseKey: 'prospeccion' | 'registro' | ... | 'agente'
+  label: string        // Etiqueta legible de la fase
   count: number
   porcentaje: number
 }
@@ -90,7 +91,7 @@ export type ExecFunnel = ExecFunnelStep[]
 
 // ---------------------------------------------------------------------------
 // SLA / TIEMPOS (Zona 3 — rpc_exec_sla_stats)
-// Fuente: tabla candidatos (first_visit_at, updated_at)
+// Fuente: tabla prospectos (first_visit_at, created_at, updated_at)
 // ---------------------------------------------------------------------------
 
 export interface ExecSlaStats {
