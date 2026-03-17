@@ -7,10 +7,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string; periodo: string }> }
 ) {
   const resolvedParams = await params
-  const polizaIdNum = Number(resolvedParams.id)
+  const polizaId = resolvedParams.id
   const periodoMes = resolvedParams.periodo // Formato esperado: YYYY-MM-DD (primer día del mes)
 
-  if (!Number.isFinite(polizaIdNum)) {
+  if (!polizaId) {
     return NextResponse.json({ error: 'ID de póliza inválido' }, { status: 400 })
   }
   
@@ -32,7 +32,7 @@ export async function POST(
     const { data: pago, error: fetchError } = await supabase
       .from('poliza_pagos_mensuales')
       .select('*, polizas!inner(clientes!inner(asesor_id))')
-      .eq('poliza_id', polizaIdNum)
+      .eq('poliza_id', polizaId)
       .eq('periodo_mes', periodoMes)
       .single()
 
