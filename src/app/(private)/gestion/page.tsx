@@ -1,5 +1,5 @@
 "use client"
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import AppModal from '@/components/ui/AppModal'
 import { useAuth } from '@/context/AuthProvider'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -136,43 +136,7 @@ export default function GestionPage() {
 
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
-  const tableMonthKeys = useMemo(() => {
-    if (!polizas.length) return generateMonthKeys()
-    const set = new Set<string>()
-    for (const p of polizas) {
-      for (const k of generateMonthKeys(p)) set.add(k)
-    }
-    return Array.from(set).sort()
-  }, [polizas])
-    useEffect(() => {
-      let abort = false
-      const loadPagos = async () => {
-        if (!editPoliza?.id) return
-        try {
-          const res = await fetch(`/api/polizas/${editPoliza.id}/pagos`, { cache: 'no-store' })
-          const j = await res.json().catch(()=>({}))
-          if (!res.ok || !Array.isArray(j?.pagos)) return
-          const meses_check: Record<string, boolean> = {}
-          const meses_montos: Record<string, number> = {}
-          for (const pago of j.pagos as Array<{ periodo_mes?: string; estado?: string; monto_pagado?: number; monto_programado?: number }>) {
-            if (!pago?.periodo_mes) continue
-            const d = new Date(pago.periodo_mes)
-            if (Number.isNaN(d.valueOf())) continue
-            const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`
-            if (pago.estado === 'pagado') {
-              meses_check[key] = true
-              const monto = typeof pago.monto_pagado === 'number' ? pago.monto_pagado : pago.monto_programado
-              if (typeof monto === 'number' && Number.isFinite(monto) && monto >= 0) meses_montos[key] = monto
-            }
-          }
-          if (!abort) {
-            setEditPoliza(prev => prev ? { ...prev, meses_check: { ...(prev.meses_check||{}), ...meses_check }, meses_montos: { ...(prev.meses_montos||{}), ...meses_montos } } : prev)
-          }
-        } catch {}
-      }
-      loadPagos()
-      return () => { abort = true }
-    }, [editPoliza?.id])
+
   // Edición cómoda de prima: mantener texto crudo para evitar saltos del cursor por formateo
   const [editPrimaText, setEditPrimaText] = useState<string>('')
   const [creating, setCreating] = useState(false)
@@ -519,19 +483,6 @@ export default function GestionPage() {
       setSavingPoliza(false)
       return
     }
-    const allowedKeys = new Set(generateMonthKeys(p))
-    const filteredCheckEntries = Object.entries(p.meses_check || {}).filter(([k, v]) => allowedKeys.has(k) && !!v)
-    const filteredMontosEntries = Object.entries(p.meses_montos || {}).filter(([k]) => allowedKeys.has(k))
-
-    const missingMonto = filteredCheckEntries.some(([m]) => {
-      const val = (p.meses_montos || {})[m]
-      return val === undefined || val === null || !Number.isFinite(val) || val < 0
-    })
-    if (missingMonto) {
-      await dialog.alert('Debes capturar el monto pagado para cada mes marcado como pagado')
-      setSavingPoliza(false)
-      return
-    }
     const payload: Record<string, unknown> = {
       numero_poliza: emptyAsUndef(p.numero_poliza),
       estatus: emptyAsUndef(p.estatus),
@@ -543,8 +494,6 @@ export default function GestionPage() {
       dia_pago: p.dia_pago ?? undefined,
       prima_input: p.prima_input ?? undefined,
       prima_moneda: emptyAsUndef(p.prima_moneda),
-      meses_check: Object.fromEntries(filteredCheckEntries),
-      meses_montos: Object.fromEntries(filteredMontosEntries),
     }
     try {
       const res = await fetch('/api/polizas/updates', {
@@ -1281,7 +1230,6 @@ export default function GestionPage() {
                   <th>Tipo</th>
                   <th>Día de pago</th>
                   <th>Prima</th>
-                  {tableMonthKeys.map(m => <th key={m}>{shortMonthHeader(m)}</th>)}
                   <th></th>
                 </tr>
               </thead>
@@ -1298,7 +1246,6 @@ export default function GestionPage() {
                     <td className="text-xs">{p.tipo_producto || '—'}</td>
                     <td className="text-xs">{p.dia_pago ?? '—'}</td>
                     <td className="text-xs">{typeof p.prima_input === 'number' ? formatMoney(p.prima_input, p.prima_moneda) : '—'}</td>
-                    {generateMonthKeys(p).map(m => <td key={m} className="text-center text-xs">{p.meses_check && p.meses_check[m] ? '✔' : ''}</td>)}
                     <td className="text-end">
                       <button className="btn btn-sm btn-primary" onClick={()=>setEditPoliza(normalizePolizaDates(p))}>Editar</button>
                     </td>
@@ -1555,60 +1502,7 @@ export default function GestionPage() {
               />
             </div>
           </div>
-          <div className="mt-2 small">
-            <strong>Meses</strong>
-            <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #ddd' }} className="p-2 mt-1">
-              <div className="d-flex flex-wrap gap-3">
-                {generateMonthKeys(editPoliza).map(m => (
-                  <div key={m} className="d-flex flex-column" style={{ width: '120px', fontSize: '11px' }}>
-                    <label className="form-check-label d-flex align-items-center gap-1">
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={!!(editPoliza.meses_check && editPoliza.meses_check[m])}
-                        onChange={e=>{
-                          const next = { ...(editPoliza.meses_check||{}) }
-                          const nextMontos = { ...(editPoliza.meses_montos||{}) }
-                          if (e.target.checked) {
-                            next[m] = true
-                            if (nextMontos[m] == null) {
-                              const def = defaultMontoPeriodo(editPoliza)
-                              nextMontos[m] = def != null ? def : Number(editPoliza.prima_input ?? 0)
-                            }
-                          } else {
-                            delete next[m]
-                            delete nextMontos[m]
-                          }
-                          setEditPoliza({ ...editPoliza, meses_check: next, meses_montos: nextMontos })
-                        }}
-                      />
-                      {shortMonthHeader(m)}
-                    </label>
-                    {!!(editPoliza.meses_check && editPoliza.meses_check[m]) && (
-                      <input
-                        className="form-control form-control-sm mt-1"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editPoliza.meses_montos?.[m] ?? ''}
-                        onChange={e=>{
-                          const val = e.target.value
-                          const num = val === '' ? null : Number(val)
-                          const nextMontos = { ...(editPoliza.meses_montos||{}) }
-                          if (val === '') { delete nextMontos[m] }
-                          else { nextMontos[m] = Number.isFinite(num) ? num : null }
-                          setEditPoliza({ ...editPoliza, meses_montos: nextMontos })
-                        }}
-                        placeholder="Monto"
-                        title="Monto pagado para este mes"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <hr className="my-3" />
+
           <div className="mt-2">
             <strong className="small">Calendario de pagos</strong>
             <PagosProgramados polizaId={editPoliza.id} />
