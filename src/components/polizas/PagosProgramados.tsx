@@ -30,6 +30,7 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
   const [loading, setLoading] = useState(true)
   const [selectedPago, setSelectedPago] = useState<Pago | null>(null)
   const [showModal, setShowModal] = useState(false)
+  const [omitiendo, setOmitiendo] = useState<number | null>(null)
 
   const fetchPagos = useCallback(async () => {
     try {
@@ -56,6 +57,29 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
   const handleMarcarPagado = (pago: Pago) => {
     setSelectedPago(pago)
     setShowModal(true)
+  }
+
+  const handleOmitir = async (pago: Pago) => {
+    if (!window.confirm(`¿Marcar el pago de ${new Date(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })} como omitido?`)) return
+    try {
+      setOmitiendo(pago.id)
+      const res = await fetch(`/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'omitido' })
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(json.error || 'Error al omitir el pago')
+        return
+      }
+      fetchPagos()
+      onPagoRegistrado?.()
+    } catch {
+      alert('Error de red al omitir el pago')
+    } finally {
+      setOmitiendo(null)
+    }
   }
 
   const getBadgeClass = (pago: Pago) => {
@@ -130,14 +154,24 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
                   </span>
                 </td>
                 <td className="text-end">
-                  {pago.estado === 'pendiente' && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary"
-                      onClick={() => handleMarcarPagado(pago)}
-                    >
-                      Marcar Pagado
-                    </button>
+                  {(pago.estado === 'pendiente' || pago.estado === 'vencido') && (
+                    <div className="d-flex gap-1 justify-content-end">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={() => handleMarcarPagado(pago)}
+                      >
+                        Marcar Pagado
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => handleOmitir(pago)}
+                        disabled={omitiendo === pago.id}
+                      >
+                        {omitiendo === pago.id ? '…' : 'Omitir'}
+                      </button>
+                    </div>
                   )}
                   {pago.estado === 'pagado' && (
                     <span className="text-muted small">
