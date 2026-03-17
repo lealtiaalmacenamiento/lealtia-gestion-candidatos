@@ -67,8 +67,16 @@ export async function PATCH(req: Request) {
   }
 
   // Obtener snapshot anterior para historial
-  const { data: before, error: errBefore } = await supabase.from('prospectos').select('id,agente_id,estado,notas').eq('id', id).single()
+  const { data: before, error: errBefore } = await supabase.from('prospectos').select('id,agente_id,estado,notas,first_visit_at').eq('id', id).single()
   if (errBefore || !before) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
+
+  // Primer contacto: registrar cuándo el agente mueve el prospecto por primera vez
+  // Se escribe solo una vez (si first_visit_at es NULL) cuando el estado deja de ser 'pendiente'
+  const nuevoEstado = fields.estado as string | undefined
+  const contactoEstados = ['seguimiento', 'con_cita', 'descartado', 'ya_es_cliente']
+  if (nuevoEstado && contactoEstados.includes(nuevoEstado) && !(before as { first_visit_at?: string | null }).first_visit_at) {
+    fields.first_visit_at = new Date().toISOString()
+  }
 
   // Validaciones de cita: hora cerrada y evitar empalmes (solo si se actualiza la fecha_cita no nula)
   if (fields.fecha_cita) {

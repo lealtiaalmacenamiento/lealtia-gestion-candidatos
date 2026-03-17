@@ -176,10 +176,11 @@ $$;
 
 -- -----------------------------------------------------------------------------
 -- 3. rpc_exec_sla_stats
---    tiempo_primer_contacto_dias → días promedio a examen (fecha_tentativa_de_examen)
---    tiempo_cierre_dias          → días promedio a obtener CT
---    sin_primer_contacto         → candidatos sin fecha de examen aún
+-- NOTA: Esta versión (sobre candidatos) fue reemplazada por 20260317_fix_sla_stats_prospectos.sql
+--       que consulta la tabla prospectos (clientes potenciales) correctamente.
+--       Se comenta para evitar sobreescribir la versión correcta en instalaciones nuevas.
 -- -----------------------------------------------------------------------------
+/*
 CREATE OR REPLACE FUNCTION rpc_exec_sla_stats(
   p_desde          date DEFAULT NULL,
   p_hasta          date DEFAULT NULL,
@@ -236,6 +237,7 @@ BEGIN
   );
 END;
 $$;
+*/
 
 -- -----------------------------------------------------------------------------
 -- 4. rpc_exec_motivos_descarte

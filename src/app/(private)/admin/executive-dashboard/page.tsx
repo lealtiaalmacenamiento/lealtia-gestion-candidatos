@@ -379,9 +379,9 @@ function TopAsesoresSection({
                 <th>Asesor</th>
                 <th className="text-center">Clientes</th>
                 <th className="text-center">Pólizas</th>
-                <th className="text-center">Candidatos</th>
+                <th className="text-center">Prospectos</th>
                 <th className="text-center">Conv %</th>
-                <th className="text-end">Ingreso</th>
+                <th className="text-end">Cobrado</th>
               </tr>
             </thead>
             <tbody>

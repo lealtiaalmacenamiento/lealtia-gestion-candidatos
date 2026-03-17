@@ -18,7 +18,9 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
-  "README.md",
+      "README.md",
+      "_tmp_query.js",
+      "query-temp.js",
     ],
   },
   {
