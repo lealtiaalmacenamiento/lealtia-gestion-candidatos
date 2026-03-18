@@ -35,15 +35,16 @@ export async function GET(
     const supabase = getServiceClient()
 
     // Obtener pagos programados con información de la póliza
+    // Usar left join para que los pagos aparezcan aunque asesor_id sea null
     const { data: pagos, error } = await supabase
       .from('poliza_pagos_mensuales')
       .select(`
         *,
-        polizas!inner(
+        polizas(
           numero_poliza,
           prima_mxn,
           periodicidad_pago,
-          clientes!inner(
+          clientes(
             asesor_id,
             primer_nombre,
             primer_apellido

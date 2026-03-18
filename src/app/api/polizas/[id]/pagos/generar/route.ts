@@ -24,7 +24,7 @@ export async function POST(
     // Verificar que la póliza existe y tiene periodicidad configurada
     const { data: poliza, error: polizaError } = await supabase
       .from('polizas')
-      .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_renovacion, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id, clientes!inner(asesor_id)')
+      .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_renovacion, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id, clientes(asesor_id)')
       .eq('id', polizaId)
       .single()
 

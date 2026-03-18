@@ -79,10 +79,11 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
       })
       const json = await res.json()
       if (!res.ok) {
-        alert(json.error || 'Error al omitir el pago')
+        const msg = [json.error, json.detail].filter(Boolean).join(' — ')
+        alert('Error al omitir: ' + (msg || `HTTP ${res.status}`))
         return
       }
-      fetchPagos()
+      await fetchPagos()
       onPagoRegistrado?.()
     } catch {
       alert('Error de red al omitir el pago')
@@ -259,8 +260,8 @@ function ModalMarcarPago({
         return
       }
 
-      const message = json?.error || 'Error al registrar pago'
-      alert('Error: ' + message)
+      const msg = [json?.error, json?.detail].filter(Boolean).join(' — ')
+      alert('Error al registrar pago: ' + (msg || `HTTP ${res.status}`))
     } catch (error) {
       console.error('Error marcando pago:', error)
       alert('Error al registrar pago')
