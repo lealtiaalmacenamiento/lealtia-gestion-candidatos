@@ -22,10 +22,19 @@ interface Pago {
 
 interface PagosProgramadosProps {
   polizaId: string
+  refreshKey?: number          // incrementar para forzar re-fetch
   onPagoRegistrado?: () => void
 }
 
-export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosProgramadosProps) {
+/** Parsea una fecha date-only (YYYY-MM-DD) como mediodía local para evitar
+ *  el desfase UTC → CDMX que haría que 2025-11-01 se muestre como octubre. */
+function localDate(dateStr: string): Date {
+  // Si ya tiene hora/zona, usar tal cual
+  if (dateStr.includes('T') || dateStr.includes('Z')) return new Date(dateStr)
+  return new Date(dateStr + 'T12:00:00')
+}
+
+export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrado }: PagosProgramadosProps) {
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPago, setSelectedPago] = useState<Pago | null>(null)
@@ -52,7 +61,7 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
 
   useEffect(() => {
     fetchPagos()
-  }, [fetchPagos])
+  }, [fetchPagos, refreshKey])
 
   const handleMarcarPagado = (pago: Pago) => {
     setSelectedPago(pago)
@@ -60,7 +69,7 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
   }
 
   const handleOmitir = async (pago: Pago) => {
-    if (!window.confirm(`¿Marcar el pago de ${new Date(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })} como omitido?`)) return
+    if (!window.confirm(`¿Marcar el pago de ${localDate(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })} como omitido?`)) return
     try {
       setOmitiendo(pago.id)
       const res = await fetch(`/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`, {
@@ -129,13 +138,13 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
             {pagos.map((pago) => (
               <tr key={pago.id}>
                 <td>
-                  {new Date(pago.periodo_mes).toLocaleDateString('es-MX', { 
+                  {localDate(pago.periodo_mes).toLocaleDateString('es-MX', { 
                     year: 'numeric', 
                     month: 'long' 
                   })}
                 </td>
                 <td>
-                  {new Date(pago.fecha_limite).toLocaleDateString('es-MX')}
+                  {localDate(pago.fecha_limite).toLocaleDateString('es-MX')}
                   {pago.isOverdue && (
                     <span className="text-danger ms-2">
                       <i className="bi bi-exclamation-triangle-fill"></i>
@@ -173,9 +182,9 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
                       </button>
                     </div>
                   )}
-                  {pago.estado === 'pagado' && (
+                  {pago.estado === 'pagado' && pago.fecha_pago_real && (
                     <span className="text-muted small">
-                      {new Date(pago.fecha_pago_real!).toLocaleDateString('es-MX')}
+                      {localDate(pago.fecha_pago_real).toLocaleDateString('es-MX')}
                     </span>
                   )}
                 </td>
@@ -219,6 +228,9 @@ function ModalMarcarPago({
   const [fechaPago, setFechaPago] = useState('')
   const [notas, setNotas] = useState(pago.notas || '')
   const [saving, setSaving] = useState(false)
+
+  // Helper local (fuera del scope del componente padre, redefinir aquí)
+  const ld = (s: string) => s.includes('T') || s.includes('Z') ? new Date(s) : new Date(s + 'T12:00:00')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -272,7 +284,7 @@ function ModalMarcarPago({
                 <input 
                   type="text" 
                   className="form-control" 
-                  value={new Date(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })}
+                  value={ld(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })}
                   disabled 
                 />
               </div>

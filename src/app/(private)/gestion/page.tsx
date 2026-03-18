@@ -136,6 +136,7 @@ export default function GestionPage() {
 
   const [editCliente, setEditCliente] = useState<Cliente|null>(null)
   const [editPoliza, setEditPoliza] = useState<Poliza|null>(null)
+  const [pagosRefreshKey, setPagosRefreshKey] = useState(0)
 
   // Edición cómoda de prima: mantener texto crudo para evitar saltos del cursor por formateo
   const [editPrimaText, setEditPrimaText] = useState<string>('')
@@ -525,6 +526,7 @@ export default function GestionPage() {
         if (p.id) {
           try {
             await fetch(`/api/polizas/${p.id}/pagos/generar`, { method: 'POST' })
+            setPagosRefreshKey(k => k + 1)  // forzar re-fetch del calendario
           } catch (err) {
             console.error('No se pudo regenerar pagos', err)
           }
@@ -1505,7 +1507,7 @@ export default function GestionPage() {
 
           <div className="mt-2">
             <strong className="small">Calendario de pagos</strong>
-            <PagosProgramados polizaId={editPoliza.id} />
+            <PagosProgramados polizaId={editPoliza.id} refreshKey={pagosRefreshKey} />
           </div>
           <div className="mt-3 d-flex justify-content-end gap-2">
             <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
