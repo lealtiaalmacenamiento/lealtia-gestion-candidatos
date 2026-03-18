@@ -106,8 +106,9 @@ export async function exportExecDashboardPDF(doc: any, autoTable: (...args: any[
   const altStyles   = { fillColor: LIGHT }
 
   //  1. ENCABEZADO 
-  const logo = await pngToBase64('/Logolealtiaruedabcolor.png').catch(() => null)
-    ?? await pngToBase64('/Logolealtiaruedablanca.png').catch(() => null)
+  // Usar el logo blanco primero porque va sobre fondo oscuro
+  const logo = await pngToBase64('/Logolealtiaruedablanca.png').catch(() => null)
+    ?? await pngToBase64('/Logolealtiaruedabcolor.png').catch(() => null)
 
   doc.setFillColor(...BRAND)
   doc.rect(0, 0, PAGE_W, 38, 'F')
@@ -120,10 +121,10 @@ export async function exportExecDashboardPDF(doc: any, autoTable: (...args: any[
   doc.setFontSize(14)
   doc.setTextColor(...WHITE)
   doc.setFont('helvetica', 'bold')
-  doc.text('Centro de Control \u2014 Dashboard Ejecutivo', textX, 16)
+  doc.text('Centro de Control - Dashboard Ejecutivo', textX, 16)
   doc.setFontSize(8.5)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Periodo: ${data.filters.desde}  \u2192  ${data.filters.hasta}${data.asesorNombre ? `   \u00b7   Asesor: ${data.asesorNombre}` : ''}`, textX, 25)
+  doc.text(`Periodo: ${data.filters.desde} -> ${data.filters.hasta}${data.asesorNombre ? `  |  Asesor: ${data.asesorNombre}` : ''}`, textX, 25)
   doc.text(`Generado: ${generado}`, textX, 32)
   doc.setTextColor(0, 0, 0)
 
@@ -180,7 +181,7 @@ export async function exportExecDashboardPDF(doc: any, autoTable: (...args: any[
       body: data.funnel.map(f => [
         f.label,
         String(f.count),
-        f.porcentaje != null ? `${f.porcentaje.toFixed(1)}%` : '\u2014',
+        f.porcentaje != null ? `${f.porcentaje.toFixed(1)}%` : 'N/D',
       ]),
       theme: 'grid',
       headStyles,
@@ -193,12 +194,12 @@ export async function exportExecDashboardPDF(doc: any, autoTable: (...args: any[
   //  5. SLA 
   if (data.slaStats) {
     const s = data.slaStats
-    sectionTitle('SLA \u2014 Tiempos de atencion')
+    sectionTitle('SLA - Tiempos de atencion')
     tbl({
       head: [['Metrica', 'Valor']],
       body: [
-        ['Tiempo promedio primer contacto', s.tiempo_primer_contacto_dias != null ? `${s.tiempo_primer_contacto_dias.toFixed(1)} dias` : '\u2014'],
-        ['Tiempo promedio a cierre',        s.tiempo_cierre_dias          != null ? `${s.tiempo_cierre_dias.toFixed(1)} dias`          : '\u2014'],
+        ['Tiempo promedio primer contacto', s.tiempo_primer_contacto_dias != null ? `${s.tiempo_primer_contacto_dias.toFixed(1)} dias` : 'N/D'],
+        ['Tiempo promedio a cierre',        s.tiempo_cierre_dias          != null ? `${s.tiempo_cierre_dias.toFixed(1)} dias`          : 'N/D'],
         ['Sin primer contacto',             String(s.sin_primer_contacto)],
         ['Muestra total',                   String(s.muestra_total)],
       ],
@@ -336,7 +337,7 @@ export async function exportExecDashboardPDF(doc: any, autoTable: (...args: any[
     doc.setPage(i)
     doc.setFontSize(7)
     doc.setTextColor(...MUTED)
-    doc.text(`Lealtia \u2014 Centro de Control  \u00b7  Generado: ${generado}`, MARGIN, PAGE_H - 6)
+    doc.text(`Lealtia - Centro de Control  |  Generado: ${generado}`, MARGIN, PAGE_H - 6)
     doc.text(`Pagina ${i} / ${totalPages}`, PAGE_W - MARGIN, PAGE_H - 6, { align: 'right' })
   }
 
