@@ -1,4 +1,5 @@
 // POST /api/polizas/[id]/pagos/[periodo] - Marcar un pago como realizado
+export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 
@@ -28,16 +29,17 @@ export async function POST(
       return NextResponse.json({ error: 'Monto pagado inválido' }, { status: 400 })
     }
 
-    // Obtener el pago
+    // Obtener el pago (solo columnas propias, sin joins que puedan fallar por FK faltante)
     const { data: pago, error: fetchError } = await supabase
       .from('poliza_pagos_mensuales')
-      .select('*, polizas!inner(clientes!inner(asesor_id))')
+      .select('*')
       .eq('poliza_id', polizaId)
       .eq('periodo_mes', periodoMes)
       .single()
 
     if (fetchError || !pago) {
-      return NextResponse.json({ error: 'Pago no encontrado' }, { status: 404 })
+      console.error('[pagos-periodo] pago no encontrado polizaId:', polizaId, 'periodo:', periodoMes, 'err:', fetchError)
+      return NextResponse.json({ error: `Pago no encontrado (poliza=${polizaId} periodo=${periodoMes})`, detail: fetchError?.message }, { status: 404 })
     }
 
     // Validar que no esté ya en estado final
