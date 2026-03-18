@@ -7,6 +7,7 @@ import FullScreenLoader from '@/components/ui/FullScreenLoader'
 import { useExecDashboard, fetchTendencia } from '@/lib/execDashboard'
 import { formatCurrency } from '@/lib/format'
 import type { DatePreset, ExecFilters } from '@/types/exec-dashboard'
+import { exportExecDashboardPDF } from '@/lib/execDashboardExport'
 import { PHASE_CALENDAR_THEME } from '@/lib/candidatePhases'
 import type { PhaseKey } from '@/lib/candidatePhases'
 import {
@@ -498,6 +499,37 @@ export default function ExecutiveDashboardPage() {
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [trendOverride, setTrendOverride] = useState<typeof tendencia | null>(null)
   const [trendLoading, setTrendLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExportPdf() {
+    setExporting(true)
+    try {
+      const jsPDFMod   = await import('jspdf')
+      const autoTabMod = await import('jspdf-autotable')
+      const jsPDF    = jsPDFMod.default
+      const autoTable = autoTabMod.default
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const asesorNombre = asesores?.find(a => a.asesor_auth_id === filters.asesorAuthId)?.nombre ?? null
+      await exportExecDashboardPDF(doc, autoTable, {
+        filters: { desde: filters.desde, hasta: filters.hasta, asesorAuthId: filters.asesorAuthId },
+        asesorNombre,
+        kpis: kpis as Record<string, number | string | null> | null,
+        funnel: funnel ?? null,
+        slaStats: slaStats ?? null,
+        citasStats: citasStats ?? null,
+        motivosDescarte: motivosDescarte ?? [],
+        polizasPorTipo:  polizasPorTipo  ?? [],
+        polizasVencer:   polizasVencer   ?? [],
+        topAsesores:     topAsesores     ?? [],
+        topClientes:     topClientes     ?? [],
+      })
+    } catch (e) {
+      console.error('Error generando PDF:', e)
+      alert('No se pudo generar el PDF. Revisa la consola.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     if (!filters.desde) return
@@ -566,10 +598,21 @@ export default function ExecutiveDashboardPage() {
       {/* Header */}
       <div className="d-flex align-items-center gap-3 mb-4">
         <div className="fs-1 text-primary"><i className="bi bi-graph-up-arrow"></i></div>
-        <div>
+        <div className="flex-grow-1">
           <h4 className="mb-0 fw-bold">Centro de Control</h4>
           <p className="text-muted mb-0 small">Dashboard ejecutivo — exclusivo administradores</p>
         </div>
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+          onClick={handleExportPdf}
+          disabled={exporting || !kpis}
+          title="Exportar reporte completo a PDF"
+        >
+          {exporting
+            ? <><span className="spinner-border spinner-border-sm"></span> Generando…</>
+            : <><i className="bi bi-file-earmark-arrow-down"></i> Exportar PDF</>}
+        </button>
       </div>
 
       {/* Error banner */}
