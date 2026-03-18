@@ -116,10 +116,21 @@ export async function POST(
     const startMonth = emision.getUTCMonth()
     const diaPago = poliza.dia_pago ?? 1
 
-    // Rango de generación: desde fecha_emision hasta fecha_renovacion (exclusiva)
-    const endDate = renovacion && !Number.isNaN(renovacion.valueOf())
-      ? new Date(Date.UTC(renovacion.getUTCFullYear(), renovacion.getUTCMonth(), 1))
-      : new Date(Date.UTC(startYear + 1, startMonth, 1))  // fallback: un año
+    // Rango de generación: desde fecha_emision hasta fecha_renovacion (exclusiva).
+    // Si la renovación cae en el mismo mes o antes de la emisión, se usa cfg.divisor
+    // periodos como fallback (evita generar 0 pagos con datos de prueba / renovaciones cortas).
+    const startDate = new Date(Date.UTC(startYear, startMonth, 1))
+    const endDate = (() => {
+      if (!renovacion || Number.isNaN(renovacion.valueOf())) {
+        return new Date(Date.UTC(startYear, startMonth + cfg.divisor * cfg.step, 1))
+      }
+      const renDate = new Date(Date.UTC(renovacion.getUTCFullYear(), renovacion.getUTCMonth(), 1))
+      if (renDate <= startDate) {
+        // Mismo mes o anterior: fallback a cfg.divisor periodos
+        return new Date(Date.UTC(startYear, startMonth + cfg.divisor * cfg.step, 1))
+      }
+      return renDate
+    })()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.info('[pagos_generar] periodicidad:', poliza.periodicidad_pago, 'emision:', poliza.fecha_emision, 'renovacion:', (poliza as any).fecha_renovacion, 'endDate:', endDate.toISOString())
