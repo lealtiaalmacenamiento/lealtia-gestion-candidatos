@@ -72,18 +72,22 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
     if (!window.confirm(`¿Marcar el pago de ${localDate(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })} como omitido?`)) return
     try {
       setOmitiendo(pago.id)
-      const res = await fetch(`/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`, {
+      const url = `/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`
+      console.log('[PagosProgramados] omitir URL:', url, 'pago.id:', pago.id, 'poliza_id:', pago.poliza_id, 'periodo_mes:', pago.periodo_mes)
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accion: 'omitido' })
       })
       const json = await res.json()
+      console.log('[PagosProgramados] omitir response status:', res.status, 'body:', json)
       if (!res.ok) {
         const msg = [json.error, json.detail].filter(Boolean).join(' — ')
         alert('Error al omitir: ' + (msg || `HTTP ${res.status}`))
         return
       }
       await fetchPagos()
+      console.log('[PagosProgramados] pagos tras fetchPagos post-omitir:', pagos.length, 'items')
       onPagoRegistrado?.()
     } catch {
       alert('Error de red al omitir el pago')
@@ -243,17 +247,17 @@ function ModalMarcarPago({
     
     try {
       setSaving(true)
-      const res = await fetch(`/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`, {
+      const url = `/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`
+      const body = { monto_pagado: parseFloat(montoPagado), fecha_pago: new Date(fechaPago).toISOString(), notas }
+      console.log('[ModalMarcarPago] submit URL:', url, 'body:', body)
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          monto_pagado: parseFloat(montoPagado),
-          fecha_pago: new Date(fechaPago).toISOString(),
-          notas
-        })
+        body: JSON.stringify(body)
       })
 
       const json = await res.json()
+      console.log('[ModalMarcarPago] response status:', res.status, 'body:', json)
       
       if (res.ok) {
         onSuccess()
