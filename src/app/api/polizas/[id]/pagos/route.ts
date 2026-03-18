@@ -1,4 +1,5 @@
 // GET /api/polizas/[id]/pagos - Listar pagos programados de una póliza
+export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 

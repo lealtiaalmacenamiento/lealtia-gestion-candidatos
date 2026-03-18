@@ -12,17 +12,19 @@ export async function POST(
   try {
     const supabase = getServiceClient()
     
-    const { data: pagosPagados } = await supabase
+    // Preservar tanto 'pagado' como 'omitido' al regenerar
+    const { data: pagosPreservados } = await supabase
       .from('poliza_pagos_mensuales')
-      .select('periodo_mes')
+      .select('periodo_mes, estado')
       .eq('poliza_id', polizaId)
-      .eq('estado', 'pagado')
-    const pagadosSet = new Set((pagosPagados || []).map(p => p.periodo_mes))
+      .in('estado', ['pagado', 'omitido'])
+    const pagadosSet  = new Set((pagosPreservados || []).filter(p => p.estado === 'pagado').map(p => p.periodo_mes))
+    const omitidosSet = new Set((pagosPreservados || []).filter(p => p.estado === 'omitido').map(p => p.periodo_mes))
 
     // Verificar que la póliza existe y tiene periodicidad configurada
     const { data: poliza, error: polizaError } = await supabase
       .from('polizas')
-      .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id, clientes!inner(asesor_id)')
+      .select('id, numero_poliza, periodicidad_pago, fecha_emision, fecha_renovacion, fecha_limite_pago, dia_pago, prima_mxn, estatus, meses_check, producto_parametro_id, clientes!inner(asesor_id)')
       .eq('id', polizaId)
       .single()
 
@@ -44,12 +46,13 @@ export async function POST(
       }, { status: 400 })
     }
 
-    // Eliminar pagos existentes que no estén pagados
+    // Eliminar pagos pendientes/vencidos; preservar pagado y omitido
     const { error: deleteError } = await supabase
       .from('poliza_pagos_mensuales')
       .delete()
       .eq('poliza_id', polizaId)
       .neq('estado', 'pagado')
+      .neq('estado', 'omitido')
 
     if (deleteError) {
       console.error('Error eliminando pagos pendientes:', deleteError)
@@ -70,7 +73,10 @@ export async function POST(
       return NextResponse.json({ error: 'Periodicidad desconocida' }, { status: 400 })
     }
 
-    console.info('[pagos_generar] periodicidad:', poliza.periodicidad_pago, 'cfg:', cfg, 'generará', cfg.divisor, 'pagos')
+    // Calcular rango de fechas: desde fecha_emision hasta fecha_renovacion (exclusiva)
+    const renovacion = (poliza as unknown as Record<string, unknown>).fecha_renovacion
+      ? new Date((poliza as unknown as Record<string, unknown>).fecha_renovacion as string)
+      : null
 
     // Calcular porcentaje del producto parametrizado (usa anio_1_percent; fallback al último porcentaje válido; si no hay ninguno, 0)
     let pct = 0
@@ -110,6 +116,14 @@ export async function POST(
     const startMonth = emision.getUTCMonth()
     const diaPago = poliza.dia_pago ?? 1
 
+    // Rango de generación: desde fecha_emision hasta fecha_renovacion (exclusiva)
+    const endDate = renovacion && !Number.isNaN(renovacion.valueOf())
+      ? new Date(Date.UTC(renovacion.getUTCFullYear(), renovacion.getUTCMonth(), 1))
+      : new Date(Date.UTC(startYear + 1, startMonth, 1))  // fallback: un año
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.info('[pagos_generar] periodicidad:', poliza.periodicidad_pago, 'emision:', poliza.fecha_emision, 'renovacion:', (poliza as any).fecha_renovacion, 'endDate:', endDate.toISOString())
+
     const baseFechaPrimerPago = new Date(Date.UTC(startYear, startMonth, 1))
     baseFechaPrimerPago.setUTCDate(diaPago)
 
@@ -126,9 +140,13 @@ export async function POST(
 
     const pagosToInsert = [] as Array<{ poliza_id: string; periodo_mes: string; fecha_programada: string; fecha_limite: string; monto_programado: number; estado: string; created_by?: string | null }>
 
-    for (let i = 0; i < cfg.divisor; i++) {
+    for (let i = 0; i < 600; i++) {  // máximo 600 meses (50 años) como guarda de seguridad
       const offsetMonths = i * cfg.step
       const periodo = new Date(Date.UTC(startYear, startMonth + offsetMonths, 1))
+
+      // Detener cuando el periodo alcanza o supera la fecha de renovación
+      if (periodo >= endDate) break
+
       const fechaProg = new Date(baseFechaPrimerPago)
       fechaProg.setUTCMonth(fechaProg.getUTCMonth() + offsetMonths)
       const fechaLimCandidate = new Date(baseFechaLimite)
@@ -139,12 +157,14 @@ export async function POST(
         ? fechaLimCandidate
         : lastDayOfTargetMonth
 
-      if (pagadosSet.has(periodo.toISOString().slice(0, 10))) {
+      const periodoKey = periodo.toISOString().slice(0, 10)
+      // Saltar periodos ya pagados u omitidos (se conservan tal como están)
+      if (pagadosSet.has(periodoKey) || omitidosSet.has(periodoKey)) {
         continue
       }
       pagosToInsert.push({
         poliza_id: polizaId,
-        periodo_mes: periodo.toISOString().slice(0, 10),
+        periodo_mes: periodoKey,
         fecha_programada: fechaProg.toISOString(),
         fecha_limite: fechaLim.toISOString().slice(0, 10),
         monto_programado: montoPeriodo,

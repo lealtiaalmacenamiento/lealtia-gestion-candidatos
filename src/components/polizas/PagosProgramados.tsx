@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/format'
 
 interface Pago {
   id: number
-  poliza_id: number
+  poliza_id: string
   periodo_mes: string
   fecha_programada: string
   fecha_limite: string
@@ -35,7 +35,7 @@ export default function PagosProgramados({ polizaId, onPagoRegistrado }: PagosPr
   const fetchPagos = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await fetch(`/api/polizas/${polizaId}/pagos`)
+      const res = await fetch(`/api/polizas/${polizaId}/pagos`, { cache: 'no-store' })
       const json = await res.json()
       
       if (res.ok) {
