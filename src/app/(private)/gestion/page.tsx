@@ -1507,7 +1507,7 @@ export default function GestionPage() {
 
           <div className="mt-2">
             <strong className="small">Calendario de pagos</strong>
-            <PagosProgramados polizaId={editPoliza.id} refreshKey={pagosRefreshKey} />
+            <PagosProgramados polizaId={editPoliza.id} refreshKey={pagosRefreshKey} isSuper={isSuper} />
           </div>
           <div className="mt-3 d-flex justify-content-end gap-2">
             <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>

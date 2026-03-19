@@ -381,6 +381,30 @@ export async function POST(req: Request) {
       if (body?.debug) {
         console.debug('[apply_poliza_update][debug] updated poliza snapshot', updatedPoliza)
       }
+
+      // Aplicar cambios de pagos si el payload los incluye (pago_cambios)
+      type PagoCambio = { periodo_mes: string; accion: string; monto_pagado?: number; fecha_pago?: string; notas?: string }
+      const pagoCambios = (reqRow?.payload_propuesto as { pago_cambios?: PagoCambio[] } | null)?.pago_cambios
+      if (Array.isArray(pagoCambios) && pagoCambios.length > 0) {
+        const admin = getServiceClient()
+        for (const cambio of pagoCambios) {
+          if (!cambio.periodo_mes || !cambio.accion) continue
+          if (cambio.accion === 'omitido') {
+            await admin.from('poliza_pagos_mensuales')
+              .update({ estado: 'omitido', notas: cambio.notas || null, updated_at: new Date().toISOString() })
+              .eq('poliza_id', polizaId!)
+              .eq('periodo_mes', cambio.periodo_mes)
+          } else if (cambio.accion === 'pagado') {
+            const monto = cambio.monto_pagado != null ? Number(cambio.monto_pagado) : null
+            const fecha = cambio.fecha_pago ? new Date(cambio.fecha_pago) : new Date()
+            await admin.from('poliza_pagos_mensuales')
+              .update({ estado: 'pagado', monto_pagado: monto, fecha_pago_real: fecha.toISOString(), notas: cambio.notas || null, updated_at: new Date().toISOString() })
+              .eq('poliza_id', polizaId!)
+              .eq('periodo_mes', cambio.periodo_mes)
+          }
+        }
+        console.info('[apply_poliza_update] pago_cambios aplicados:', pagoCambios.length, 'polizaId:', polizaId)
+      }
     }
 
     if (process.env.NOTIFY_CHANGE_REQUESTS === '1' && reqRow?.solicitante_id) {

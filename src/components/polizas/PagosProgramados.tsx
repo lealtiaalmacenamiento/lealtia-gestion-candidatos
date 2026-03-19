@@ -23,6 +23,7 @@ interface Pago {
 interface PagosProgramadosProps {
   polizaId: string
   refreshKey?: number          // incrementar para forzar re-fetch
+  isSuper?: boolean            // si true, aplica cambios de pago de inmediato; si false, solicita aprobación
   onPagoRegistrado?: () => void
 }
 
@@ -34,12 +35,14 @@ function localDate(dateStr: string): Date {
   return new Date(dateStr + 'T12:00:00')
 }
 
-export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrado }: PagosProgramadosProps) {
+export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPagoRegistrado }: PagosProgramadosProps) {
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPago, setSelectedPago] = useState<Pago | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [omitiendo, setOmitiendo] = useState<number | null>(null)
+  // Periodos enviados a aprobación (sólo para usuarios no-super)
+  const [pendingApproval, setPendingApproval] = useState<Set<string>>(new Set())
 
   const fetchPagos = useCallback(async () => {
     try {
@@ -74,6 +77,28 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
     if (!window.confirm(`¿Marcar el pago de ${localDate(pago.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })} como omitido?`)) return
     try {
       setOmitiendo(pago.id)
+
+      if (!isSuper) {
+        // No-super: enviar a cola de aprobación
+        const res = await fetch('/api/polizas/updates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            poliza_id: pago.poliza_id,
+            payload: { pago_cambios: [{ periodo_mes: pago.periodo_mes, accion: 'omitido' }] }
+          })
+        })
+        const json = await res.json()
+        if (!res.ok) {
+          alert('Error al enviar solicitud: ' + (json.error || `HTTP ${res.status}`))
+          return
+        }
+        setPendingApproval(prev => new Set([...prev, pago.periodo_mes]))
+        alert('Solicitud enviada. Quedará aplicada cuando un supervisor la apruebe.')
+        return
+      }
+
+      // Super: aplicar de inmediato
       const url = `/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`
       console.log('[PagosProgramados] omitir URL:', url, 'pago.id:', pago.id, 'poliza_id:', pago.poliza_id, 'periodo_mes:', pago.periodo_mes)
       const res = await fetch(url, {
@@ -88,7 +113,7 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
         alert('Error al omitir: ' + (msg || `HTTP ${res.status}`))
         return
       }
-      // Actualización optimista: cambiar badge al instante sin esperar fetchPagos
+      // Actualización optimista
       setPagos(prev => prev.map(p => p.id === pago.id ? { ...p, estado: 'omitido' as const } : p))
       await fetchPagos()
       onPagoRegistrado?.()
@@ -100,6 +125,7 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
   }
 
   const getBadgeClass = (pago: Pago) => {
+    if (pendingApproval.has(pago.periodo_mes)) return 'badge bg-warning text-dark'
     if (pago.estado === 'pagado') return 'badge bg-success'
     if (pago.estado === 'omitido') return 'badge bg-secondary'
     if (pago.estado === 'vencido' || pago.isOverdue) return 'badge bg-danger'
@@ -109,6 +135,7 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
   }
 
   const getBadgeText = (pago: Pago) => {
+    if (pendingApproval.has(pago.periodo_mes)) return 'Pendiente aprob.'
     if (pago.estado === 'pagado') return 'Pagado'
     if (pago.estado === 'omitido') return 'Omitido'
     if (pago.estado === 'vencido' || pago.isOverdue) return 'Vencido'
@@ -208,17 +235,38 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
       {showModal && selectedPago && (
         <ModalMarcarPago
           pago={selectedPago}
+          isSuper={isSuper}
           onClose={() => {
             setShowModal(false)
             setSelectedPago(null)
           }}
           onSuccess={() => {
-            // Actualización optimista: badge pagado instantáneo
+            // Super: ya se aplicó directo, actualizar optimistamente
             if (selectedPago) {
               setPagos(prev => prev.map(p => p.id === selectedPago.id ? { ...p, estado: 'pagado' as const } : p))
             }
             fetchPagos()
             onPagoRegistrado?.()
+            setShowModal(false)
+            setSelectedPago(null)
+          }}
+          onApprovalRequest={(data) => {
+            // No-super: enviar a cola de aprobación supervisor
+            if (!selectedPago) return
+            const { periodo_mes, poliza_id } = selectedPago
+            void fetch('/api/polizas/updates', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                poliza_id,
+                payload: { pago_cambios: [{ periodo_mes, accion: 'pagado', monto_pagado: data.monto_pagado, fecha_pago: data.fecha_pago, notas: data.notas }] }
+              })
+            }).then(async r => {
+              const j = await r.json()
+              if (!r.ok) { alert('Error al enviar solicitud: ' + (j.error || '')); return }
+              setPendingApproval(prev => new Set([...prev, periodo_mes]))
+              alert('Solicitud enviada. Quedará aplicada cuando un supervisor la apruebe.')
+            })
             setShowModal(false)
             setSelectedPago(null)
           }}
@@ -231,12 +279,16 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
 // Componente Modal para registrar pago
 function ModalMarcarPago({ 
   pago, 
+  isSuper,
   onClose, 
-  onSuccess 
+  onSuccess,
+  onApprovalRequest
 }: { 
   pago: Pago
+  isSuper?: boolean
   onClose: () => void
   onSuccess: () => void
+  onApprovalRequest: (data: { monto_pagado: number; fecha_pago: string; notas: string }) => void
 }) {
   const [montoPagado, setMontoPagado] = useState(pago.monto_programado.toString())
   const [fechaPago, setFechaPago] = useState('')
@@ -256,6 +308,13 @@ function ModalMarcarPago({
     
     try {
       setSaving(true)
+
+      if (!isSuper) {
+        // No-super: no llamar al API directo, devolver datos al padre para cola de aprobación
+        onApprovalRequest({ monto_pagado: parseFloat(montoPagado), fecha_pago: new Date(fechaPago).toISOString(), notas })
+        return
+      }
+
       const url = `/api/polizas/${pago.poliza_id}/pagos/${encodeURIComponent(pago.periodo_mes)}`
       const body = { monto_pagado: parseFloat(montoPagado), fecha_pago: new Date(fechaPago).toISOString(), notas }
       console.log('[ModalMarcarPago] submit URL:', url, 'body:', body)
@@ -358,7 +417,7 @@ function ModalMarcarPago({
                 className="btn btn-primary"
                 disabled={saving}
               >
-                {saving ? 'Guardando...' : 'Registrar Pago'}
+                {saving ? 'Guardando...' : (isSuper ? 'Registrar Pago' : 'Enviar solicitud')}
               </button>
             </div>
           </form>
