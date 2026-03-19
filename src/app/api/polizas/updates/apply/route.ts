@@ -192,13 +192,24 @@ export async function POST(req: Request) {
               
               console.info(`[apply_poliza_update] Periodicidad cambió de ${periodicidadAnterior} a ${periodicidadNueva}. Todos los pagos eliminados para regeneración.`)
             } else {
-              // Si no cambió, solo eliminar pagos no pagados
+              // Si no cambió, solo eliminar pagos no pagados y no omitidos
               await admin
                 .from('poliza_pagos_mensuales')
                 .delete()
                 .eq('poliza_id', polizaId)
                 .neq('estado', 'pagado')
+                .neq('estado', 'omitido')
             }
+
+            // Leer los periodos preservados (pagado + omitido) DESPUÉS del delete para no sobreescribirlos
+            const { data: preservados, error: preservadosErr } = await admin
+              .from('poliza_pagos_mensuales')
+              .select('periodo_mes, estado')
+              .eq('poliza_id', polizaId)
+              .in('estado', ['pagado', 'omitido'])
+            if (preservadosErr) console.error('[apply_poliza_update] error leyendo preservados:', preservadosErr)
+            const preservadosSet = new Set((preservados || []).map(p => p.periodo_mes))
+            console.info('[apply_poliza_update] preservados (pagado+omitido):', [...preservadosSet])
 
             const emision = new Date(poliza.fecha_emision)
             const startYear = emision.getUTCFullYear()
@@ -259,9 +270,12 @@ export async function POST(req: Request) {
               const lastDayOfTargetMonth = new Date(Date.UTC(fechaLimCandidate.getUTCFullYear(), fechaLimCandidate.getUTCMonth() + 1, 0))
               const fechaLim = fechaLimCandidate.getUTCDate() === baseDiaLimite ? fechaLimCandidate : lastDayOfTargetMonth
 
+              const periodoKey = periodo.toISOString().slice(0, 10)
+              // Saltar periodos ya pagados u omitidos
+              if (preservadosSet.has(periodoKey)) continue
               pagosToInsert.push({
                 poliza_id: polizaId,
-                periodo_mes: periodo.toISOString().slice(0, 10),
+                periodo_mes: periodoKey,
                 fecha_programada: fechaProg.toISOString(),
                 fecha_limite: fechaLim.toISOString().slice(0, 10),
                 monto_programado: montoPeriodo,
@@ -272,7 +286,7 @@ export async function POST(req: Request) {
 
             await admin
               .from('poliza_pagos_mensuales')
-              .upsert(pagosToInsert, { onConflict: 'poliza_id,periodo_mes' })
+              .upsert(pagosToInsert, { onConflict: 'poliza_id,periodo_mes', ignoreDuplicates: true })
 
             const mesesCheck = (poliza as { meses_check?: Record<string, boolean> }).meses_check || {}
             const mesesMontosRaw = (reqRow?.payload_propuesto as { meses_montos?: Record<string, number | string | null> } | null)?.meses_montos || {}

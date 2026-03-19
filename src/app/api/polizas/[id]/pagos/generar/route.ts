@@ -13,13 +13,15 @@ export async function POST(
     const supabase = getServiceClient()
     
     // Preservar tanto 'pagado' como 'omitido' al regenerar
-    const { data: pagosPreservados } = await supabase
+    const { data: pagosPreservados, error: preservadosErr } = await supabase
       .from('poliza_pagos_mensuales')
       .select('periodo_mes, estado')
       .eq('poliza_id', polizaId)
       .in('estado', ['pagado', 'omitido'])
+    if (preservadosErr) console.error('[pagos_generar] error leyendo preservados:', preservadosErr)
     const pagadosSet  = new Set((pagosPreservados || []).filter(p => p.estado === 'pagado').map(p => p.periodo_mes))
     const omitidosSet = new Set((pagosPreservados || []).filter(p => p.estado === 'omitido').map(p => p.periodo_mes))
+    console.info('[pagos_generar] preservados pagado:', [...pagadosSet], 'omitido:', [...omitidosSet])
 
     // Verificar que la póliza existe y tiene periodicidad configurada
     const { data: poliza, error: polizaError } = await supabase
@@ -188,7 +190,7 @@ export async function POST(
 
     const { error: insertError } = await supabase
       .from('poliza_pagos_mensuales')
-      .upsert(pagosToInsert, { onConflict: 'poliza_id,periodo_mes' })
+      .upsert(pagosToInsert, { onConflict: 'poliza_id,periodo_mes', ignoreDuplicates: true })
 
     if (insertError) {
       console.error('Error generando pagos:', insertError)
