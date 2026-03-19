@@ -48,7 +48,9 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
       const json = await res.json()
       
       if (res.ok) {
-        setPagos(json.pagos || [])
+        const fetched: Pago[] = json.pagos || []
+        console.log('[PagosProgramados] fetchPagos result estados:', fetched.map(p => `${p.periodo_mes}=${p.estado}`).join(', '))
+        setPagos(fetched)
       } else {
         console.error('Error cargando pagos:', json.error)
       }
@@ -86,8 +88,9 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
         alert('Error al omitir: ' + (msg || `HTTP ${res.status}`))
         return
       }
+      // Actualización optimista: cambiar badge al instante sin esperar fetchPagos
+      setPagos(prev => prev.map(p => p.id === pago.id ? { ...p, estado: 'omitido' as const } : p))
       await fetchPagos()
-      console.log('[PagosProgramados] pagos tras fetchPagos post-omitir:', pagos.length, 'items')
       onPagoRegistrado?.()
     } catch {
       alert('Error de red al omitir el pago')
@@ -98,14 +101,16 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
 
   const getBadgeClass = (pago: Pago) => {
     if (pago.estado === 'pagado') return 'badge bg-success'
+    if (pago.estado === 'omitido') return 'badge bg-secondary'
     if (pago.estado === 'vencido' || pago.isOverdue) return 'badge bg-danger'
     if (pago.isDueSoon) return 'badge bg-warning text-dark'
-    if (pago.estado === 'pendiente') return 'badge bg-secondary'
+    if (pago.estado === 'pendiente') return 'badge bg-light text-dark border'
     return 'badge bg-light text-dark'
   }
 
   const getBadgeText = (pago: Pago) => {
     if (pago.estado === 'pagado') return 'Pagado'
+    if (pago.estado === 'omitido') return 'Omitido'
     if (pago.estado === 'vencido' || pago.isOverdue) return 'Vencido'
     if (pago.isDueSoon) return `Próximo (${pago.diasRestantes}d)`
     if (pago.estado === 'pendiente') return 'Pendiente'
@@ -208,6 +213,10 @@ export default function PagosProgramados({ polizaId, refreshKey, onPagoRegistrad
             setSelectedPago(null)
           }}
           onSuccess={() => {
+            // Actualización optimista: badge pagado instantáneo
+            if (selectedPago) {
+              setPagos(prev => prev.map(p => p.id === selectedPago.id ? { ...p, estado: 'pagado' as const } : p))
+            }
             fetchPagos()
             onPagoRegistrado?.()
             setShowModal(false)
