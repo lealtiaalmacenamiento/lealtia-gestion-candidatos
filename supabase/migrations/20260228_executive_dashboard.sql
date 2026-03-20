@@ -1,24 +1,20 @@
 -- =============================================================================
--- LEALTIA GESTION CANDIDATOS - EXECUTIVE DASHBOARD MIGRATION
--- Fecha: 2026-02-28
--- Descripción: Agrega columnas, vistas y funciones RPC para el
---              Dashboard Ejecutivo (admin/supervisor únicamente).
+-- LEALTIA GESTION CANDIDATOS — EXECUTIVE DASHBOARD (CONSOLIDADO)
+-- Consolida todas las migraciones del dashboard ejecutivo:
+--   20260228, 20260302, 20260303_*, 20260317_*
+-- Contiene la versión FINAL de cada función RPC.
 -- =============================================================================
--- DISTINCIÓN CLAVE DE TABLAS:
---   • candidatos  — embudo CRM principal (nuevo→prospecto→cotizando→ganado/perdido)
---                   NO recibe columnas nuevas.
---   • prospectos  — tabla de trabajo semanal del agente
---                   (pendiente→seguimiento→con_cita→descartado)
---                   ← aquí vive motivo_descarte (prima estimada la toma de planificaciones)
+-- TABLAS FUENTE:
+--   candidatos  — embudo CRM agentes (fases registro→agente)
+--   prospectos  — trabajo semanal asesor (clientes potenciales)
 -- =============================================================================
 
 BEGIN;
 
 -- =============================================================================
--- 1. COLUMNAS ADICIONALES EN PROSPECTOS
+-- 1. COLUMNAS ADICIONALES
 -- =============================================================================
 
--- Razón de descarte cuando estado = 'descartado'
 ALTER TABLE prospectos ADD COLUMN IF NOT EXISTS motivo_descarte text;
 
 COMMENT ON COLUMN prospectos.motivo_descarte IS
@@ -26,7 +22,7 @@ COMMENT ON COLUMN prospectos.motivo_descarte IS
   'precio, competencia, sin_interes, sin_respuesta, otro, etc.';
 
 -- =============================================================================
--- 2. VIEW: vw_exec_asesores_base
+-- 2. VISTA: vw_exec_asesores_base
 -- =============================================================================
 
 CREATE OR REPLACE VIEW vw_exec_asesores_base AS
@@ -44,7 +40,7 @@ COMMENT ON VIEW vw_exec_asesores_base IS
   'Vista de asesores activos para filtros del Dashboard Ejecutivo.';
 
 -- =============================================================================
--- 3. RPC: rpc_exec_asesores_list
+-- 3. rpc_exec_asesores_list
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_asesores_list()
@@ -54,8 +50,6 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
@@ -83,16 +77,10 @@ COMMENT ON FUNCTION rpc_exec_asesores_list() IS
   'Lista de agentes/supervisores activos para el selector de filtros del Dashboard Ejecutivo.';
 
 -- =============================================================================
--- 4. RPC: rpc_exec_kpis
---
---    PARÁMETROS:
---      p_desde          — inicio del período (default: inicio del mes actual)
---      p_hasta          — fin del período    (default: hoy)
---      p_asesor_auth_id — UUID auth.users del asesor (NULL = todos)
---
---    Pipeline Value = suma de planificaciones.prima_anual_promedio de PROSPECTOS activos
---                     (estado: pendiente, seguimiento, con_cita)
---    prospectos.agente_id es bigint (usuarios.id), se resuelve desde uuid.
+-- 4. rpc_exec_kpis
+--    Ingreso = monto_pagado de poliza_pagos_mensuales (estado=pagado, fecha_pago_real en periodo)
+--    Pólizas activas/canceladas filtradas por fecha_emision/anulada_at del periodo
+--    Proyección lineal CDMX al fin del mes actual
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_kpis(
@@ -106,46 +94,45 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_desde date := COALESCE(p_desde, date_trunc('month', CURRENT_DATE)::date);
-  v_hasta date := COALESCE(p_hasta, CURRENT_DATE);
+  v_today_cdmx date;
+  v_desde      date;
+  v_hasta      date;
 
-  -- Resolver usuario_id interno (bigint) para filtrar prospectos
   v_asesor_usuario_id bigint;
 
-  -- KPIs candidatos
   v_total_candidatos   bigint  := 0;
   v_total_prospectos   bigint  := 0;
   v_total_cotizando    bigint  := 0;
   v_total_ganados      bigint  := 0;
   v_total_perdidos     bigint  := 0;
-  -- KPIs clientes
   v_total_clientes     bigint  := 0;
-  -- Financiero
   v_ingreso_mxn        numeric := 0;
-  v_pipeline_value     numeric := 0;
   v_polizas_activas    bigint  := 0;
   v_polizas_canceladas bigint  := 0;
-  -- Proyección
-  v_dias_mes           int;
-  v_dias_trans         int;
-  v_ingreso_mes        numeric := 0;
-  v_proyeccion         numeric := 0;
+
+  v_fin_mes_hasta  date;
+  v_dias_mes_hasta int;
+  v_dias_elapsed   int;
+  v_proyeccion     numeric := 0;
+
+  v_prospectos_pendiente   bigint := 0;
+  v_prospectos_seguimiento bigint := 0;
+  v_prospectos_con_cita    bigint := 0;
+  v_prospectos_descartado  bigint := 0;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
 
-  -- Resolver usuario_id bigint del asesor para filtrar prospectos
+  v_today_cdmx := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
+  v_desde := COALESCE(p_desde, date_trunc('month', NOW() AT TIME ZONE 'America/Mexico_City')::date);
+  v_hasta  := COALESCE(p_hasta, v_today_cdmx);
+
   IF p_asesor_auth_id IS NOT NULL THEN
-    SELECT id INTO v_asesor_usuario_id
-    FROM usuarios
-    WHERE id_auth = p_asesor_auth_id
-    LIMIT 1;
+    SELECT id INTO v_asesor_usuario_id FROM usuarios
+    WHERE id_auth = p_asesor_auth_id LIMIT 1;
   END IF;
 
-  -- CANDIDATOS del período (email_agente → usuarios.email)
   SELECT COUNT(*) INTO v_total_candidatos
   FROM candidatos c
   LEFT JOIN usuarios u ON lower(u.email) = lower(c.email_agente)
@@ -153,50 +140,38 @@ BEGIN
     AND c.fecha_de_creacion::date BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR u.id_auth = p_asesor_auth_id);
 
-  -- Snapshot del pipeline: etapas mapeadas desde proceso/efc
   SELECT
-    COUNT(*) FILTER (WHERE c.proceso IN ('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS','SIN ETAPA') OR c.proceso IS NULL)  AS prospectos,
-    COUNT(*) FILTER (WHERE c.proceso IN ('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL','POST EXAMEN'))                      AS cotizando,
-    COUNT(*) FILTER (WHERE c.fecha_creacion_ct IS NOT NULL)                                                                               AS ganados,
-    0::bigint                                                                                                               AS perdidos
+    COUNT(*) FILTER (WHERE c.proceso IN ('PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS','SIN ETAPA') OR c.proceso IS NULL),
+    COUNT(*) FILTER (WHERE c.proceso IN ('PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL','POST EXAMEN')),
+    COUNT(*) FILTER (WHERE c.fecha_creacion_ct IS NOT NULL),
+    0::bigint
   INTO v_total_prospectos, v_total_cotizando, v_total_ganados, v_total_perdidos
   FROM candidatos c
   LEFT JOIN usuarios u ON lower(u.email) = lower(c.email_agente)
   WHERE c.eliminado = false
+    AND c.fecha_de_creacion::date BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR u.id_auth = p_asesor_auth_id);
 
-  -- CLIENTES ACTIVOS
   SELECT COUNT(*) INTO v_total_clientes
   FROM clientes cl
   WHERE cl.activo = true
+    AND cl.creado_at::date BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
-  -- INGRESO TOTAL (pólizas EN_VIGOR)
-  SELECT COALESCE(SUM(p.prima_mxn), 0) INTO v_ingreso_mxn
-  FROM polizas p
-  INNER JOIN clientes cl ON p.cliente_id = cl.id
-  WHERE p.estatus    = 'EN_VIGOR'
-    AND p.anulada_at  IS NULL
+  SELECT COALESCE(SUM(pp.monto_pagado), 0) INTO v_ingreso_mxn
+  FROM poliza_pagos_mensuales pp
+  INNER JOIN polizas p   ON pp.poliza_id = p.id
+  INNER JOIN clientes cl ON p.cliente_id  = cl.id
+  WHERE pp.estado = 'pagado'
+    AND pp.fecha_pago_real::date BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
-  -- PIPELINE VALUE — usa planificaciones.prima_anual_promedio (configurada por el agente)
-  --   prospectos.agente_id es bigint, usar v_asesor_usuario_id resuelto arriba.
-  --   Si no hay planificación relacionada usa $30,000 MXN como promedio de mercado.
-  SELECT COALESCE(SUM(COALESCE(pl.prima_anual_promedio, 30000)), 0) INTO v_pipeline_value
-  FROM prospectos pr
-  LEFT JOIN planificaciones pl
-    ON pl.agente_id   = pr.agente_id
-   AND pl.anio       = pr.anio
-   AND pl.semana_iso = pr.semana_iso
-  WHERE pr.estado IN ('pendiente', 'seguimiento', 'con_cita')
-    AND (v_asesor_usuario_id IS NULL OR pr.agente_id = v_asesor_usuario_id);
-
-  -- PÓLIZAS ACTIVAS Y CANCELADAS
   SELECT COUNT(*) INTO v_polizas_activas
   FROM polizas p
   INNER JOIN clientes cl ON p.cliente_id = cl.id
   WHERE p.estatus    = 'EN_VIGOR'
     AND p.anulada_at  IS NULL
+    AND p.fecha_emision BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
   SELECT COUNT(*) INTO v_polizas_canceladas
@@ -206,57 +181,62 @@ BEGIN
     AND p.anulada_at::date BETWEEN v_desde AND v_hasta
     AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
 
-  -- PROYECCIÓN LINEAL AL FIN DE MES
-  v_dias_mes   := EXTRACT(DAY FROM
-                    (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day'))::int;
-  v_dias_trans := EXTRACT(DAY FROM CURRENT_DATE)::int;
+  SELECT
+    COUNT(*) FILTER (WHERE pr.estado = 'pendiente'),
+    COUNT(*) FILTER (WHERE pr.estado = 'seguimiento'),
+    COUNT(*) FILTER (WHERE pr.estado = 'con_cita'),
+    COUNT(*) FILTER (WHERE pr.estado = 'descartado')
+  INTO v_prospectos_pendiente, v_prospectos_seguimiento, v_prospectos_con_cita, v_prospectos_descartado
+  FROM prospectos pr
+  WHERE pr.created_at::date BETWEEN v_desde AND v_hasta
+    AND (v_asesor_usuario_id IS NULL OR pr.agente_id = v_asesor_usuario_id);
 
-  SELECT COALESCE(SUM(p.prima_mxn), 0) INTO v_ingreso_mes
-  FROM polizas p
-  INNER JOIN clientes cl ON p.cliente_id = cl.id
-  WHERE p.estatus    = 'EN_VIGOR'
-    AND p.anulada_at  IS NULL
-    AND p.fecha_alta_sistema::date
-          BETWEEN date_trunc('month', CURRENT_DATE)::date AND CURRENT_DATE
-    AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id);
+  v_fin_mes_hasta  := (date_trunc('month', v_today_cdmx::timestamp) + interval '1 month - 1 day')::date;
+  v_dias_mes_hasta := EXTRACT(DAY FROM v_fin_mes_hasta)::int;
+  v_dias_elapsed   := (LEAST(v_hasta, v_today_cdmx) - v_desde + 1)::int;
 
-  IF v_dias_trans > 0 THEN
-    v_proyeccion := ROUND((v_ingreso_mes / v_dias_trans) * v_dias_mes, 2);
+  IF v_dias_elapsed > 0 THEN
+    v_proyeccion := ROUND((v_ingreso_mxn / v_dias_elapsed) * v_dias_mes_hasta, 2);
   END IF;
 
   RETURN jsonb_build_object(
-    'total_candidatos',      v_total_candidatos,
-    'total_prospectos',      v_total_prospectos,
-    'total_cotizando',       v_total_cotizando,
-    'total_ganados',         v_total_ganados,
-    'total_perdidos',        v_total_perdidos,
-    'total_clientes',        v_total_clientes,
-    'polizas_activas',       v_polizas_activas,
-    'polizas_canceladas',    v_polizas_canceladas,
-    'ingreso_mxn',           v_ingreso_mxn,
-    'pipeline_value',        v_pipeline_value,
-    'ingreso_mes_actual',    v_ingreso_mes,
-    'proyeccion_fin_mes',    v_proyeccion,
-    'periodo_desde',         v_desde,
-    'periodo_hasta',         v_hasta,
-    'dias_transcurridos',    v_dias_trans,
-    'dias_mes',              v_dias_mes
+    'total_candidatos',        v_total_candidatos,
+    'total_prospectos',        v_total_prospectos,
+    'total_cotizando',         v_total_cotizando,
+    'total_ganados',           v_total_ganados,
+    'total_perdidos',          v_total_perdidos,
+    'total_clientes',          v_total_clientes,
+    'polizas_activas',         v_polizas_activas,
+    'polizas_canceladas',      v_polizas_canceladas,
+    'ingreso_mxn',             v_ingreso_mxn,
+    'proyeccion_fin_mes',      v_proyeccion,
+    'periodo_desde',           v_desde,
+    'periodo_hasta',           v_hasta,
+    'dias_transcurridos',      v_dias_elapsed,
+    'dias_mes',                v_dias_mes_hasta,
+    'prospectos_pendiente',    v_prospectos_pendiente,
+    'prospectos_seguimiento',  v_prospectos_seguimiento,
+    'prospectos_con_cita',     v_prospectos_con_cita,
+    'prospectos_descartado',   v_prospectos_descartado
   );
 END;
 $$;
 
 COMMENT ON FUNCTION rpc_exec_kpis(date, date, uuid) IS
-  'KPIs del Dashboard Ejecutivo. '
-  'Pipeline Value = suma de planificaciones.prima_anual_promedio de prospectos activos (JOIN vía agente_id+anio+semana_iso).';
+  'KPIs del Dashboard Ejecutivo. Ingreso = monto_pagado (poliza_pagos_mensuales estado=pagado, fecha en periodo). '
+  'Pólizas por fecha_emision/anulada_at del periodo. Proyección lineal CDMX al fin del mes actual.';
 
 -- =============================================================================
--- 5. RPC: rpc_exec_tendencia (serie temporal mensual)
+-- 5. rpc_exec_tendencia  — serie temporal con granularidad day/month/year
+--    Ingreso = monto_pagado de poliza_pagos_mensuales (estado=pagado)
+--    Timezone CDMX
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_tendencia(
   p_desde          date DEFAULT NULL,
   p_hasta          date DEFAULT NULL,
-  p_asesor_auth_id uuid DEFAULT NULL
+  p_asesor_auth_id uuid DEFAULT NULL,
+  p_granularity    text DEFAULT 'month'   -- 'day' | 'month' | 'year'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -264,89 +244,119 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_desde date := COALESCE(p_desde, (CURRENT_DATE - interval '11 months')::date);
-  v_hasta date := COALESCE(p_hasta, CURRENT_DATE);
+  v_today_cdmx date := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
+  v_desde      date;
+  v_hasta      date;
+  v_gran       text;
+  v_interval   interval;
+  v_label_fmt  text;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
+  v_desde := COALESCE(p_desde, (v_today_cdmx - interval '11 months')::date);
+  v_hasta  := COALESCE(p_hasta, v_today_cdmx);
+
+  v_gran := CASE p_granularity
+    WHEN 'day'  THEN 'day'
+    WHEN 'year' THEN 'year'
+    ELSE             'month'
+  END;
+
+  v_interval  := CASE v_gran WHEN 'day' THEN interval '1 day'  WHEN 'year' THEN interval '1 year'  ELSE interval '1 month' END;
+  v_label_fmt := CASE v_gran WHEN 'day' THEN 'DD Mon'          WHEN 'year' THEN 'YYYY'              ELSE 'Mon YY'           END;
+
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
 
   RETURN (
-    WITH meses AS (
+    WITH periodos AS (
       SELECT generate_series(
-        date_trunc('month', v_desde),
-        date_trunc('month', v_hasta),
-        interval '1 month'
-      )::date AS mes
+        date_trunc(v_gran, v_desde::timestamp),
+        date_trunc(v_gran, v_hasta::timestamp),
+        v_interval
+      )::date AS periodo
     ),
-    candidatos_mes AS (
+    candidatos_p AS (
       SELECT
-        date_trunc('month', c.fecha_de_creacion)::date AS mes,
-        COUNT(*)                                        AS nuevos_candidatos
+        date_trunc(v_gran, c.fecha_de_creacion::timestamp)::date AS periodo,
+        COUNT(*) AS nuevos_candidatos
       FROM candidatos c
       LEFT JOIN usuarios u ON lower(u.email) = lower(c.email_agente)
       WHERE c.eliminado = false
         AND c.fecha_de_creacion::date BETWEEN v_desde AND v_hasta
         AND (p_asesor_auth_id IS NULL OR u.id_auth = p_asesor_auth_id)
-      GROUP BY date_trunc('month', c.fecha_de_creacion)
+      GROUP BY date_trunc(v_gran, c.fecha_de_creacion::timestamp)
     ),
-    ganados_mes AS (
-      -- Ganados agrupados por mes de CONEXIÓN (fecha_creacion_ct)
+    ganados_p AS (
       SELECT
-        date_trunc('month', c.fecha_creacion_ct)::date AS mes,
-        COUNT(*)                                        AS ganados
+        date_trunc(v_gran, c.fecha_creacion_ct::timestamp)::date AS periodo,
+        COUNT(*) AS ganados
       FROM candidatos c
       LEFT JOIN usuarios u ON lower(u.email) = lower(c.email_agente)
       WHERE c.eliminado = false
         AND c.fecha_creacion_ct BETWEEN v_desde AND v_hasta
         AND (p_asesor_auth_id IS NULL OR u.id_auth = p_asesor_auth_id)
-      GROUP BY date_trunc('month', c.fecha_creacion_ct)
+      GROUP BY date_trunc(v_gran, c.fecha_creacion_ct::timestamp)
     ),
-    polizas_mes AS (
+    polizas_p AS (
       SELECT
-        date_trunc('month', p.fecha_alta_sistema)::date AS mes,
-        COUNT(*)                                         AS polizas_emitidas,
-        COALESCE(SUM(p.prima_mxn), 0)                   AS ingreso_emitido
+        date_trunc(v_gran, p.fecha_emision::timestamp)::date AS periodo,
+        COUNT(*) AS polizas_emitidas
       FROM polizas p
       INNER JOIN clientes cl ON p.cliente_id = cl.id
-      WHERE p.fecha_alta_sistema::date BETWEEN v_desde AND v_hasta
+      WHERE p.fecha_emision BETWEEN v_desde AND v_hasta
         AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id)
-      GROUP BY date_trunc('month', p.fecha_alta_sistema)
+      GROUP BY date_trunc(v_gran, p.fecha_emision::timestamp)
+    ),
+    ingresos_p AS (
+      SELECT
+        date_trunc(v_gran, (pp.fecha_pago_real AT TIME ZONE 'America/Mexico_City')::timestamp)::date AS periodo,
+        COALESCE(SUM(pp.monto_pagado), 0) AS ingreso_emitido
+      FROM poliza_pagos_mensuales pp
+      INNER JOIN polizas  p  ON pp.poliza_id = p.id
+      INNER JOIN clientes cl ON p.cliente_id  = cl.id
+      WHERE pp.estado = 'pagado'
+        AND (pp.fecha_pago_real AT TIME ZONE 'America/Mexico_City')::date BETWEEN v_desde AND v_hasta
+        AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id)
+      GROUP BY date_trunc(v_gran, (pp.fecha_pago_real AT TIME ZONE 'America/Mexico_City')::timestamp)
     )
     SELECT COALESCE(
       jsonb_agg(
         jsonb_build_object(
-          'mes',               TO_CHAR(m.mes, 'YYYY-MM'),
-          'mes_label',         TO_CHAR(m.mes, 'Mon YY'),
-          'nuevos_candidatos', COALESCE(cm.nuevos_candidatos, 0),
-          'ganados',           COALESCE(gm.ganados, 0),
-          'polizas_emitidas',  COALESCE(pm.polizas_emitidas, 0),
-          'ingreso_emitido',   COALESCE(pm.ingreso_emitido, 0)
+          'mes',               TO_CHAR(p.periodo, 'YYYY-MM-DD'),
+          'mes_label',         TO_CHAR(p.periodo, v_label_fmt),
+          'nuevos_candidatos', COALESCE(cp.nuevos_candidatos, 0),
+          'ganados',           COALESCE(gp.ganados, 0),
+          'polizas_emitidas',  COALESCE(pp2.polizas_emitidas, 0),
+          'ingreso_emitido',   COALESCE(ip.ingreso_emitido, 0)
         )
-        ORDER BY m.mes
+        ORDER BY p.periodo
       ),
       '[]'::jsonb
     )
-    FROM meses m
-    LEFT JOIN candidatos_mes cm ON cm.mes = m.mes
-    LEFT JOIN ganados_mes    gm ON gm.mes = m.mes
-    LEFT JOIN polizas_mes    pm ON pm.mes = m.mes
+    FROM periodos p
+    LEFT JOIN candidatos_p cp  ON cp.periodo  = p.periodo
+    LEFT JOIN ganados_p    gp  ON gp.periodo  = p.periodo
+    LEFT JOIN polizas_p    pp2 ON pp2.periodo = p.periodo
+    LEFT JOIN ingresos_p   ip  ON ip.periodo  = p.periodo
   );
 END;
 $$;
 
-COMMENT ON FUNCTION rpc_exec_tendencia(date, date, uuid) IS
-  'Serie temporal mensual: candidatos nuevos, ganados, pólizas e ingreso.';
+COMMENT ON FUNCTION rpc_exec_tendencia(date, date, uuid, text) IS
+  'Serie temporal con granularidad configurable (day/month/year). '
+  'Ingreso cobrado = monto_pagado de poliza_pagos_mensuales estado=pagado. '
+  'Pólizas por fecha_emision. Timezone CDMX.';
 
 -- =============================================================================
--- 6. RPC: rpc_exec_funnel (embudo candidatos — tabla candidatos)
+-- 6. rpc_exec_funnel
+--    9 fases (igual que módulo candidatos). Sin filtro de periodo.
+--    Solo filtra por asesor opcionalmente.
+--    Elimina la sobrecarga antigua de 3 params (date,date,uuid).
 -- =============================================================================
+
+DROP FUNCTION IF EXISTS public.rpc_exec_funnel(date, date, uuid);
 
 CREATE OR REPLACE FUNCTION rpc_exec_funnel(
-  p_desde          date DEFAULT NULL,
-  p_hasta          date DEFAULT NULL,
   p_asesor_auth_id uuid DEFAULT NULL
 )
 RETURNS jsonb
@@ -355,85 +365,107 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_desde date := COALESCE(p_desde, date_trunc('year', CURRENT_DATE)::date);
-  v_hasta date := COALESCE(p_hasta, CURRENT_DATE);
+  v_asesor_usuario_id bigint;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
 
+  IF p_asesor_auth_id IS NOT NULL THEN
+    SELECT id INTO v_asesor_usuario_id FROM usuarios
+    WHERE id_auth = p_asesor_auth_id LIMIT 1;
+  END IF;
+
   RETURN (
-    WITH etapas AS (
+    WITH per_cand AS (
       SELECT
         CASE
-          WHEN c.fecha_creacion_ct IS NOT NULL                                                        THEN 'ganado'
-          WHEN c.proceso = 'POST EXAMEN'                                                THEN 'cotizando'
-          WHEN c.proceso = 'PERIODO PARA INGRESAR FOLIO OFICINA VIRTUAL'               THEN 'cotizando'
-          WHEN c.proceso = 'PERIODO PARA REGISTRO Y ENVÍO DE DOCUMENTOS'               THEN 'prospecto'
-          ELSE 'nuevo'
-        END AS estado,
-        COUNT(*) AS cnt
+          WHEN COALESCE((c.etapas_completadas->'periodo_para_registro_y_envio_de_documentos'->>'completed')::bool, false)
+            AND COALESCE((c.etapas_completadas->'capacitacion_cedula_a1'->>'completed')::bool, false)
+            AND COALESCE((c.etapas_completadas->'periodo_para_ingresar_folio_oficina_virtual'->>'completed')::bool, false)
+            AND COALESCE((c.etapas_completadas->'periodo_para_playbook'->>'completed')::bool, false)
+            AND COALESCE((c.etapas_completadas->'pre_escuela_sesion_unica_de_arranque'->>'completed')::bool, false)
+            AND COALESCE((c.etapas_completadas->'fecha_limite_para_presentar_curricula_cdp'->>'completed')::bool, false)
+            AND COALESCE((c.etapas_completadas->'inicio_escuela_fundamental'->>'completed')::bool, false)
+            THEN 'agente'
+          WHEN c.fecha_creacion_pop IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'fecha_creacion_pop'->>'completed')::bool, false)
+            AND NOT COALESCE((c.etapas_completadas->'fecha_creacion_ct'->>'completed')::bool, false)
+            THEN 'prospeccion'
+          WHEN c.periodo_para_registro_y_envio_de_documentos IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'periodo_para_registro_y_envio_de_documentos'->>'completed')::bool, false)
+            THEN 'registro'
+          WHEN c.capacitacion_cedula_a1 IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'capacitacion_cedula_a1'->>'completed')::bool, false)
+            THEN 'capacitacion_a1'
+          WHEN c.fecha_tentativa_de_examen IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'fecha_tentativa_de_examen'->>'completed')::bool, false)
+            THEN 'examen'
+          WHEN c.periodo_para_ingresar_folio_oficina_virtual IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'periodo_para_ingresar_folio_oficina_virtual'->>'completed')::bool, false)
+            THEN 'folio_ov'
+          WHEN c.periodo_para_playbook IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'periodo_para_playbook'->>'completed')::bool, false)
+            THEN 'playbook'
+          WHEN c.pre_escuela_sesion_unica_de_arranque IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'pre_escuela_sesion_unica_de_arranque'->>'completed')::bool, false)
+            THEN 'pre_escuela'
+          WHEN c.fecha_limite_para_presentar_curricula_cdp IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'fecha_limite_para_presentar_curricula_cdp'->>'completed')::bool, false)
+            THEN 'curricula_cdp'
+          WHEN c.inicio_escuela_fundamental IS NOT NULL
+            AND NOT COALESCE((c.etapas_completadas->'inicio_escuela_fundamental'->>'completed')::bool, false)
+            THEN 'escuela_fundamental'
+          ELSE 'prospeccion'
+        END AS fase
       FROM candidatos c
       LEFT JOIN usuarios u ON lower(u.email) = lower(c.email_agente)
       WHERE c.eliminado = false
-        AND c.fecha_de_creacion::date BETWEEN v_desde AND v_hasta
         AND (p_asesor_auth_id IS NULL OR u.id_auth = p_asesor_auth_id)
-      GROUP BY 1
     ),
-    ranked AS (
-      SELECT
-        CASE estado
-          WHEN 'nuevo'         THEN 1
-          WHEN 'prospecto'     THEN 2
-          WHEN 'cotizando'     THEN 3
-          WHEN 'ganado'        THEN 4
-          ELSE                      5
-        END AS orden,
-        CASE estado
-          WHEN 'nuevo'         THEN 'Candidatos'
-          WHEN 'prospecto'     THEN 'En proceso'
-          WHEN 'cotizando'     THEN 'Avanzados'
-          WHEN 'ganado'        THEN 'Completados'
-          ELSE estado
-        END AS label,
-        cnt
-      FROM etapas
+    counts AS (
+      SELECT fase, COUNT(*) AS cnt FROM per_cand GROUP BY fase
     ),
-
-    grouped AS (
-      SELECT MIN(orden) AS orden, label, SUM(cnt) AS cnt
-      FROM ranked
-      GROUP BY label
+    phase_order(fase, orden, label) AS (
+      VALUES
+        ('prospeccion',         1, 'Prospección'),
+        ('registro',            2, 'Registro y envío'),
+        ('capacitacion_a1',     3, 'Capacitación A1'),
+        ('examen',              4, 'Examen'),
+        ('folio_ov',            5, 'Folio Oficina Virtual'),
+        ('playbook',            6, 'Playbook'),
+        ('pre_escuela',         7, 'Pre-escuela'),
+        ('curricula_cdp',       8, 'Currícula CDP'),
+        ('escuela_fundamental', 9, 'Escuela Fundamental'),
+        ('agente',             10, 'Agente')
     ),
-    totaled AS (
-      SELECT orden, label, cnt, SUM(cnt) OVER () AS total
-      FROM grouped
+    total_cte AS (
+      SELECT SUM(cnt)::numeric AS total FROM counts
     )
     SELECT COALESCE(
       jsonb_agg(
         jsonb_build_object(
-          'label',      label,
-          'count',      cnt,
-          'porcentaje', ROUND(
-            cnt::numeric / NULLIF(total, 0) * 100, 1
-          )
+          'key',        po.fase,
+          'label',      po.label,
+          'count',      COALESCE(cn.cnt, 0),
+          'porcentaje', ROUND(COALESCE(cn.cnt, 0)::numeric / NULLIF(tc.total, 0) * 100, 1)
         )
-        ORDER BY orden
+        ORDER BY po.orden
       ),
       '[]'::jsonb
     )
-    FROM totaled
+    FROM phase_order po
+    CROSS JOIN total_cte tc
+    LEFT JOIN counts cn ON cn.fase = po.fase
   );
 END;
 $$;
 
-COMMENT ON FUNCTION rpc_exec_funnel(date, date, uuid) IS
-  'Embudo de conversión por etapa (tabla candidatos — CRM principal).';
+COMMENT ON FUNCTION rpc_exec_funnel(uuid) IS
+  'Embudo de candidatos con 9 fases (igual que módulo candidatos). Sin filtro de periodo — siempre muestra todos los candidatos activos. Filterable por asesor.';
 
 -- =============================================================================
--- 7. RPC: rpc_exec_citas_stats
+-- 7. rpc_exec_citas_stats — Timezone CDMX
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_citas_stats(
@@ -447,11 +479,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_desde date := COALESCE(p_desde, date_trunc('month', CURRENT_DATE)::date);
-  v_hasta date := COALESCE(p_hasta, CURRENT_DATE);
+  v_today_cdmx date := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
+  v_desde date;
+  v_hasta date;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
+  v_desde := COALESCE(p_desde, date_trunc('month', v_today_cdmx::timestamp)::date);
+  v_hasta  := COALESCE(p_hasta, v_today_cdmx);
+
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
@@ -461,27 +495,27 @@ BEGIN
       'total',       COUNT(*),
       'confirmadas', COUNT(*) FILTER (WHERE estado = 'confirmada'),
       'canceladas',  COUNT(*) FILTER (WHERE estado = 'cancelada'),
-      'completadas', COUNT(*) FILTER (WHERE estado = 'confirmada' AND fin  < now()),
-      'pendientes',  COUNT(*) FILTER (WHERE estado = 'confirmada' AND fin >= now()),
+      'completadas', COUNT(*) FILTER (WHERE estado = 'confirmada' AND fin  < NOW()),
+      'pendientes',  COUNT(*) FILTER (WHERE estado = 'confirmada' AND fin >= NOW()),
       'por_mes', (
         WITH meses AS (
           SELECT generate_series(
-            date_trunc('month', v_desde),
-            date_trunc('month', v_hasta),
+            date_trunc('month', v_desde::timestamp),
+            date_trunc('month', v_hasta::timestamp),
             interval '1 month'
           )::date AS mes
         ),
         stats AS (
           SELECT
-            date_trunc('month', ci2.inicio)::date                                 AS mes,
-            COUNT(*)                                                               AS total,
-            COUNT(*) FILTER (WHERE ci2.estado = 'confirmada')                     AS confirmadas,
-            COUNT(*) FILTER (WHERE ci2.estado = 'cancelada')                      AS canceladas,
-            COUNT(*) FILTER (WHERE ci2.estado = 'confirmada' AND ci2.fin < now()) AS completadas
+            date_trunc('month', ci2.inicio AT TIME ZONE 'America/Mexico_City')::date AS mes,
+            COUNT(*)                                                                   AS total,
+            COUNT(*) FILTER (WHERE ci2.estado = 'confirmada')                         AS confirmadas,
+            COUNT(*) FILTER (WHERE ci2.estado = 'cancelada')                          AS canceladas,
+            COUNT(*) FILTER (WHERE ci2.estado = 'confirmada' AND ci2.fin < NOW())     AS completadas
           FROM citas ci2
-          WHERE ci2.inicio::date BETWEEN v_desde AND v_hasta
+          WHERE (ci2.inicio AT TIME ZONE 'America/Mexico_City')::date BETWEEN v_desde AND v_hasta
             AND (p_asesor_auth_id IS NULL OR ci2.agente_id = p_asesor_auth_id)
-          GROUP BY date_trunc('month', ci2.inicio)
+          GROUP BY date_trunc('month', ci2.inicio AT TIME ZONE 'America/Mexico_City')
         )
         SELECT COALESCE(
           jsonb_agg(
@@ -502,20 +536,23 @@ BEGIN
       )
     )
     FROM citas ci
-    WHERE ci.inicio::date BETWEEN v_desde AND v_hasta
+    WHERE (ci.inicio AT TIME ZONE 'America/Mexico_City')::date BETWEEN v_desde AND v_hasta
       AND (p_asesor_auth_id IS NULL OR ci.agente_id = p_asesor_auth_id)
   );
 END;
 $$;
 
 COMMENT ON FUNCTION rpc_exec_citas_stats(date, date, uuid) IS
-  'Estadísticas de actividad comercial (citas) para el Dashboard Ejecutivo.';
+  'Estadísticas de citas del periodo. Timezone CDMX.';
 
 -- =============================================================================
--- 8. RPC: rpc_exec_sla_stats
+-- 8. rpc_exec_sla_stats
+--    Fuente: prospectos (clientes potenciales).
+--    tiempo_primer_contacto_dias = avg(first_visit_at - created_at)
+--    tiempo_cierre_dias          = avg(updated_at - created_at) para con_cita|descartado
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION rpc_exec_sla_stats(
+CREATE OR REPLACE FUNCTION public.rpc_exec_sla_stats(
   p_desde          date DEFAULT NULL,
   p_hasta          date DEFAULT NULL,
   p_asesor_auth_id uuid DEFAULT NULL
@@ -526,48 +563,58 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_desde date := COALESCE(p_desde, date_trunc('month', CURRENT_DATE)::date);
-  v_hasta date := COALESCE(p_hasta, CURRENT_DATE);
+  v_today_cdmx        date   := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
+  v_desde             date;
+  v_hasta             date;
+  v_asesor_usuario_id bigint;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
+  v_desde := COALESCE(p_desde, date_trunc('month', v_today_cdmx::timestamp)::date);
+  v_hasta  := COALESCE(p_hasta, v_today_cdmx);
+
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
+  END IF;
+
+  IF p_asesor_auth_id IS NOT NULL THEN
+    SELECT id INTO v_asesor_usuario_id FROM usuarios
+    WHERE id_auth = p_asesor_auth_id LIMIT 1;
   END IF;
 
   RETURN (
     SELECT jsonb_build_object(
       'tiempo_primer_contacto_dias',
-        NULL::numeric,
+        ROUND(
+          AVG(
+            CASE WHEN pr.first_visit_at IS NOT NULL
+              THEN EXTRACT(EPOCH FROM (pr.first_visit_at - pr.created_at)) / 86400.0
+            END
+          )::numeric, 1
+        ),
       'tiempo_cierre_dias',
         ROUND(
           AVG(
-            CASE WHEN c.fecha_creacion_ct IS NOT NULL
-              THEN (c.fecha_creacion_ct - c.fecha_de_creacion::date)::numeric
+            CASE WHEN pr.estado IN ('con_cita', 'descartado') AND pr.updated_at IS NOT NULL
+              THEN EXTRACT(EPOCH FROM (pr.updated_at - pr.created_at)) / 86400.0
             END
           )::numeric, 1
         ),
       'sin_primer_contacto',
-        COUNT(*) FILTER (WHERE c.fecha_creacion_ct IS NULL),
+        COUNT(*) FILTER (WHERE pr.first_visit_at IS NULL),
       'muestra_total',
         COUNT(*)
     )
-    FROM candidatos c
-    LEFT JOIN usuarios u ON lower(u.email) = lower(c.email_agente)
-    WHERE c.eliminado = false
-      AND c.fecha_de_creacion::date BETWEEN v_desde AND v_hasta
-      AND (p_asesor_auth_id IS NULL OR u.id_auth = p_asesor_auth_id)
+    FROM prospectos pr
+    WHERE pr.created_at::date BETWEEN v_desde AND v_hasta
+      AND (v_asesor_usuario_id IS NULL OR pr.agente_id = v_asesor_usuario_id)
   );
 END;
 $$;
 
-COMMENT ON FUNCTION rpc_exec_sla_stats(date, date, uuid) IS
-  'Tiempos promedio de primer contacto y cierre de candidatos (SLA).';
+COMMENT ON FUNCTION public.rpc_exec_sla_stats(date, date, uuid) IS
+  'SLA de prospectos (clientes potenciales): días a primer contacto (first_visit_at) y días a cierre (con_cita|descartado). Filtrable por periodo y asesor.';
 
 -- =============================================================================
--- 9. RPC: rpc_exec_motivos_descarte
---    Fuente: tabla PROSPECTOS (estado = 'descartado' + motivo_descarte).
---    prospectos.agente_id es bigint → se resuelve desde p_asesor_auth_id.
+-- 9. rpc_exec_motivos_descarte — Timezone CDMX
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_motivos_descarte(
@@ -581,21 +628,21 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_desde             date   := COALESCE(p_desde, date_trunc('year', CURRENT_DATE)::date);
-  v_hasta             date   := COALESCE(p_hasta, CURRENT_DATE);
+  v_today_cdmx        date   := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
+  v_desde             date;
+  v_hasta             date;
   v_asesor_usuario_id bigint;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
+  v_desde := COALESCE(p_desde, date_trunc('year', v_today_cdmx::timestamp)::date);
+  v_hasta  := COALESCE(p_hasta, v_today_cdmx);
+
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
 
   IF p_asesor_auth_id IS NOT NULL THEN
-    SELECT id INTO v_asesor_usuario_id
-    FROM usuarios
-    WHERE id_auth = p_asesor_auth_id
-    LIMIT 1;
+    SELECT id INTO v_asesor_usuario_id FROM usuarios
+    WHERE id_auth = p_asesor_auth_id LIMIT 1;
   END IF;
 
   RETURN (
@@ -609,7 +656,7 @@ BEGIN
     FROM (
       SELECT
         COALESCE(pr.motivo_descarte, 'Sin especificar') AS motivo_descarte,
-        COUNT(*)                                         AS cnt
+        COUNT(*) AS cnt
       FROM prospectos pr
       WHERE pr.estado = 'descartado'
         AND COALESCE(pr.updated_at, pr.created_at)::date BETWEEN v_desde AND v_hasta
@@ -623,13 +670,17 @@ END;
 $$;
 
 COMMENT ON FUNCTION rpc_exec_motivos_descarte(date, date, uuid) IS
-  'Top 10 motivos de descarte de prospectos (tabla prospectos, estado = ''descartado'').';
+  'Top 10 motivos de descarte de prospectos. Timezone CDMX.';
 
 -- =============================================================================
--- 10. RPC: rpc_exec_polizas_por_tipo
+-- 10. rpc_exec_polizas_por_tipo
+--     Filtrada por fecha_emision del periodo. Timezone CDMX.
+--     Mantiene sobrecarga de 1-arg (p_asesor_auth_id only) por compatibilidad.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_polizas_por_tipo(
+  p_desde          date DEFAULT NULL,
+  p_hasta          date DEFAULT NULL,
   p_asesor_auth_id uuid DEFAULT NULL
 )
 RETURNS jsonb
@@ -637,9 +688,14 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_today_cdmx date := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
+  v_desde date;
+  v_hasta date;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
+  v_desde := COALESCE(p_desde, date_trunc('month', v_today_cdmx::timestamp)::date);
+  v_hasta  := COALESCE(p_hasta, v_today_cdmx);
+
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
@@ -655,6 +711,7 @@ BEGIN
       LEFT  JOIN producto_parametros pp ON p.producto_parametro_id = pp.id
       WHERE p.estatus    = 'EN_VIGOR'
         AND p.anulada_at  IS NULL
+        AND p.fecha_emision BETWEEN v_desde AND v_hasta
         AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id)
       GROUP BY pp.tipo_producto
     )
@@ -674,11 +731,11 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION rpc_exec_polizas_por_tipo(uuid) IS
-  'Distribución de pólizas activas por tipo de producto (VI / GMM) para gráfica de dona.';
+COMMENT ON FUNCTION rpc_exec_polizas_por_tipo(date, date, uuid) IS
+  'Pólizas EN_VIGOR por tipo, filtradas por fecha_emision del periodo. Timezone CDMX.';
 
 -- =============================================================================
--- 11. RPC: rpc_exec_polizas_vencer
+-- 11. rpc_exec_polizas_vencer — Timezone CDMX
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_polizas_vencer(
@@ -690,9 +747,9 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_today_cdmx date := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
@@ -706,7 +763,7 @@ BEGIN
           'cliente',          cl.primer_nombre || ' ' || cl.primer_apellido,
           'asesor',           COALESCE(u.nombre, '—'),
           'fecha_renovacion', p.fecha_renovacion,
-          'dias_restantes',   (p.fecha_renovacion - CURRENT_DATE),
+          'dias_restantes',   (p.fecha_renovacion - v_today_cdmx),
           'prima_mxn',        p.prima_mxn,
           'tipo_producto',    COALESCE(pp.tipo_producto::text, '—')
         )
@@ -720,20 +777,22 @@ BEGIN
     LEFT  JOIN producto_parametros pp ON p.producto_parametro_id = pp.id
     WHERE p.estatus          = 'EN_VIGOR'
       AND p.fecha_renovacion  IS NOT NULL
-      AND p.fecha_renovacion  BETWEEN CURRENT_DATE AND (CURRENT_DATE + p_dias_alerta)
+      AND p.fecha_renovacion  BETWEEN v_today_cdmx AND (v_today_cdmx + p_dias_alerta)
       AND (p_asesor_auth_id IS NULL OR cl.asesor_id = p_asesor_auth_id)
   );
 END;
 $$;
 
 COMMENT ON FUNCTION rpc_exec_polizas_vencer(int, uuid) IS
-  'Lista de pólizas próximas a vencer en los próximos N días (alerta de retención).';
+  'Pólizas próximas a vencer. Días calculados desde hoy CDMX.';
 
 -- =============================================================================
--- 12. RPC: rpc_exec_top_asesores
+-- 12. rpc_exec_top_asesores
+--     Ingreso = cobrado real del periodo (poliza_pagos_mensuales estado=pagado)
+--     Conv % sobre prospectos del periodo
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION rpc_exec_top_asesores(
+CREATE OR REPLACE FUNCTION public.rpc_exec_top_asesores(
   p_desde date DEFAULT NULL,
   p_hasta date DEFAULT NULL,
   p_limit int  DEFAULT 10
@@ -744,18 +803,17 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_desde date := COALESCE(p_desde, date_trunc('year', CURRENT_DATE)::date);
-  v_hasta date := COALESCE(p_hasta, CURRENT_DATE);
+  v_today_cdmx date := (NOW() AT TIME ZONE 'America/Mexico_City')::date;
+  v_desde date := COALESCE(p_desde, date_trunc('year', v_today_cdmx::timestamp)::date);
+  v_hasta date := COALESCE(p_hasta, v_today_cdmx);
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
 
   RETURN (
     SELECT COALESCE(
-      jsonb_agg(row_data ORDER BY ingreso_generado DESC),
+      jsonb_agg(row_data ORDER BY ingreso_cobrado DESC),
       '[]'::jsonb
     )
     FROM (
@@ -767,63 +825,62 @@ BEGIN
           'email',              u.email,
           'rol',                u.rol,
           'clientes_total',     COUNT(DISTINCT cl.id),
-          'polizas_activas',    COUNT(DISTINCT p.id)
-                                  FILTER (WHERE p.estatus = 'EN_VIGOR' AND p.anulada_at IS NULL),
+          'polizas_activas',    COUNT(DISTINCT pol.id)
+                                  FILTER (WHERE pol.estatus = 'EN_VIGOR' AND pol.anulada_at IS NULL),
           'ingreso_generado',   COALESCE(
-                                  SUM(p.prima_mxn)
-                                    FILTER (WHERE p.estatus = 'EN_VIGOR' AND p.anulada_at IS NULL),
+                                  SUM(pp.monto_pagado)
+                                    FILTER (
+                                      WHERE pp.estado = 'pagado'
+                                        AND (pp.fecha_pago_real AT TIME ZONE 'America/Mexico_City')::date
+                                              BETWEEN v_desde AND v_hasta
+                                    ),
                                   0
                                 ),
           'candidatos_nuevos',  (
-            SELECT COUNT(*)
-            FROM candidatos c
-            WHERE lower(c.email_agente) = lower(u.email)
-              AND c.eliminado = false
-              AND c.fecha_de_creacion::date BETWEEN v_desde AND v_hasta
-          ),
-          'candidatos_ganados', (
-            SELECT COUNT(*)
-            FROM candidatos c
-            WHERE lower(c.email_agente) = lower(u.email)
-              AND c.eliminado = false
-              AND c.fecha_creacion_ct BETWEEN v_desde AND v_hasta
+            SELECT COUNT(*) FROM prospectos pr
+            WHERE pr.agente_id = u.id
+              AND pr.created_at::date BETWEEN v_desde AND v_hasta
           ),
           'conversion_pct',     (
             SELECT ROUND(
-              CASE
-                WHEN COUNT(*) = 0 THEN 0
-                ELSE COUNT(*) FILTER (WHERE c.fecha_creacion_ct IS NOT NULL)::numeric
+              CASE WHEN COUNT(*) = 0 THEN 0
+                ELSE COUNT(*) FILTER (WHERE pr.estado IN ('con_cita', 'ya_es_cliente'))::numeric
                        / COUNT(*) * 100
               END, 1
             )
-            FROM candidatos c
-            WHERE lower(c.email_agente) = lower(u.email)
-              AND c.eliminado = false
-              AND c.fecha_de_creacion::date BETWEEN v_desde AND v_hasta
+            FROM prospectos pr
+            WHERE pr.agente_id = u.id
+              AND pr.created_at::date BETWEEN v_desde AND v_hasta
           )
         ) AS row_data,
         COALESCE(
-          SUM(p.prima_mxn) FILTER (WHERE p.estatus = 'EN_VIGOR' AND p.anulada_at IS NULL),
+          SUM(pp.monto_pagado)
+            FILTER (
+              WHERE pp.estado = 'pagado'
+                AND (pp.fecha_pago_real AT TIME ZONE 'America/Mexico_City')::date
+                      BETWEEN v_desde AND v_hasta
+            ),
           0
-        ) AS ingreso_generado
-      FROM usuarios u
-      LEFT JOIN clientes cl ON cl.asesor_id  = u.id_auth
-      LEFT JOIN polizas p   ON p.cliente_id  = cl.id
-      WHERE u.rol     IN ('agente','supervisor')
-        AND u.activo   = true
+        ) AS ingreso_cobrado
+      FROM usuarios           u
+      LEFT JOIN clientes      cl  ON cl.asesor_id  = u.id_auth
+      LEFT JOIN polizas       pol ON pol.cliente_id = cl.id
+      LEFT JOIN poliza_pagos_mensuales pp ON pp.poliza_id = pol.id
+      WHERE u.rol    IN ('agente', 'supervisor')
+        AND u.activo  = true
       GROUP BY u.id, u.id_auth, u.nombre, u.email, u.rol
-      ORDER BY ingreso_generado DESC
+      ORDER BY ingreso_cobrado DESC
       LIMIT p_limit
     ) ranked
   );
 END;
 $$;
 
-COMMENT ON FUNCTION rpc_exec_top_asesores(date, date, int) IS
-  'Leaderboard de asesores: ingreso generado, clientes y tasa de conversión.';
+COMMENT ON FUNCTION public.rpc_exec_top_asesores(date, date, int) IS
+  'Leaderboard de asesores ordenado por ingreso cobrado real del periodo (poliza_pagos_mensuales estado=pagado). Conv% sobre prospectos del periodo.';
 
 -- =============================================================================
--- 13. RPC: rpc_exec_top_clientes
+-- 13. rpc_exec_top_clientes
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION rpc_exec_top_clientes(
@@ -836,8 +893,6 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Cuando es llamada desde service role (API route), auth.uid() = NULL  se permite.
-  -- Cuando es llamada desde cliente, se requiere super rol.
   IF auth.uid() IS NOT NULL AND NOT is_super_role() THEN
     RAISE EXCEPTION 'Acceso denegado: se requiere rol admin o supervisor';
   END IF;
@@ -883,49 +938,21 @@ COMMENT ON FUNCTION rpc_exec_top_clientes(uuid, int) IS
   'Leaderboard de clientes: pólizas activas y valor total de prima.';
 
 -- =============================================================================
--- 14. GRANTS (SECURITY DEFINER valida is_super_role internamente)
+-- 14. GRANTS
 -- =============================================================================
 
 GRANT SELECT ON vw_exec_asesores_base TO authenticated;
 
-GRANT EXECUTE ON FUNCTION rpc_exec_asesores_list()                    TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_kpis(date, date, uuid)             TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_tendencia(date, date, uuid)        TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_funnel(date, date, uuid)           TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_citas_stats(date, date, uuid)      TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_sla_stats(date, date, uuid)        TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_motivos_descarte(date, date, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_polizas_por_tipo(uuid)             TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_polizas_vencer(int, uuid)          TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_top_asesores(date, date, int)      TO authenticated;
-GRANT EXECUTE ON FUNCTION rpc_exec_top_clientes(uuid, int)            TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_asesores_list()                      TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_kpis(date, date, uuid)               TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_tendencia(date, date, uuid, text)    TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_funnel(uuid)                         TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_citas_stats(date, date, uuid)        TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_sla_stats(date, date, uuid)          TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_motivos_descarte(date, date, uuid)   TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_polizas_por_tipo(date, date, uuid)   TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_polizas_vencer(int, uuid)            TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_top_asesores(date, date, int)        TO authenticated;
+GRANT EXECUTE ON FUNCTION rpc_exec_top_clientes(uuid, int)              TO authenticated;
 
 COMMIT;
-
--- =============================================================================
--- FIN: 20260228_executive_dashboard.sql
--- RESUMEN:
---
---  COLUMNAS NUEVAS en PROSPECTOS (tabla de trabajo semanal del agente):
---    prospectos.motivo_descarte  text  ← razón de descarte
---  (pipeline_value usa planificaciones.prima_anual_promedio, no columna propia)
---
---  candidatos NO recibe columnas nuevas (es el CRM principal, embudo de fases).
---
---  VISTA: vw_exec_asesores_base
---
---  RPCs (todas SECURITY DEFINER, solo admin/supervisor):
---    rpc_exec_asesores_list()              → dropdown Zona 1
---    rpc_exec_kpis(desde,hasta,asesor)     → KPIs Zona 2
---      pipeline_value = prospectos activos × planificaciones.prima_anual_promedio (o $30K default)
---    rpc_exec_tendencia(desde,hasta,asesor)→ gráfica de líneas Zona 2
---    rpc_exec_funnel(desde,hasta,asesor)   → embudo candidatos Zona 3
---    rpc_exec_sla_stats(desde,hasta,asesor)→ SLA candidatos Zona 3
---    rpc_exec_citas_stats(desde,hasta,asesor)→ actividad citas Zona 3
---    rpc_exec_motivos_descarte(desde,hasta,asesor)
---      → TOP 10 motivos descarte PROSPECTOS Zona 3
---    rpc_exec_polizas_por_tipo(asesor)     → dona VI/GMM Zona 3
---    rpc_exec_polizas_vencer(dias,asesor)  → alerta renovaciones Zona 3
---    rpc_exec_top_asesores(desde,hasta,lim)→ leaderboard Zona 4
---    rpc_exec_top_clientes(asesor,lim)     → leaderboard Zona 4
--- =============================================================================
