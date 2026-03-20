@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { sendMail, buildProspectoPPREmail } from '@/lib/mailer'
+import { logAccion } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -200,6 +201,11 @@ Prima mensual estimada: ${primaMensual}`
     }
 
     console.log('[create-prospecto] ✅ Prospecto creado exitosamente:', prospecto.id)
+    void logAccion('alta_prospecto_landing', {
+      tabla_afectada: 'prospectos',
+      id_registro: prospecto.id,
+      snapshot: { nombre: body.nombre, email: body.email, plan: body.plan, agente_id }
+    })
 
     // Obtener emails de supervisores
     const { data: supervisores } = await supabase

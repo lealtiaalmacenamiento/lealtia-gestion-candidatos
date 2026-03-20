@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSegment, fetchSegments, updateSegment } from '@/lib/segments'
 import { ensureSuper } from '@/lib/apiGuards'
+import { logAccion } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
       description: body.description ?? null,
       active: body.active === undefined ? true : Boolean(body.active)
     })
+    void logAccion('alta_segmento', { usuario: (guard.usuario as { email?: string })?.email, tabla_afectada: 'segments', snapshot: { name: segment.name } })
     return NextResponse.json({ segment }, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error inesperado'
@@ -56,6 +58,7 @@ export async function PATCH(request: NextRequest) {
       description: body.description,
       active: body.active
     })
+    void logAccion('edicion_segmento', { usuario: (guard.usuario as { email?: string })?.email, tabla_afectada: 'segments', snapshot: { id, name: segment.name, active: segment.active } })
     return NextResponse.json({ segment })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error inesperado'

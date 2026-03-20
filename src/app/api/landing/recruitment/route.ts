@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { buildRecruitmentEmail, sendMail } from '@/lib/mailer'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { logAccion } from '@/lib/logger'
 
 // Forzar runtime Node.js para nodemailer
 export const runtime = 'nodejs'
@@ -77,6 +78,10 @@ export async function POST(req: Request) {
       text
     })
 
+    void logAccion('solicitud_reclutamiento_landing', {
+      tabla_afectada: 'ui',
+      snapshot: { nombre, ciudad, email, interes }
+    })
     return NextResponse.json({ 
       success: true,
       message: 'Solicitud enviada correctamente'

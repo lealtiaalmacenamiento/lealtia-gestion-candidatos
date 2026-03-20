@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabaseClient'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { semanaDesdeNumero } from '@/lib/semanaIso'
 
@@ -44,15 +43,16 @@ export async function GET(req: Request) {
 
     // Leer de ambas tablas (camelCase y snake_case) y combinar resultados para evitar falsos vacíos
     const sel = 'fecha,usuario,accion,tabla_afectada'
+    const admin = getServiceClient()
     const [qCamel, qSnake] = await Promise.all([
-      supabase
+      admin
         .from('RegistroAcciones')
         .select(sel)
         .gte('fecha', start.toISOString())
         .lte('fecha', end.toISOString())
         .ilike('usuario', usuario)
         .order('fecha', { ascending: true }),
-      supabase
+      admin
         .from('registro_acciones')
         .select(sel)
         .gte('fecha', start.toISOString())
@@ -152,7 +152,7 @@ export async function GET(req: Request) {
 
     // Complementar detalle desde prospectos_historial para diferenciar altas/cambios/notas con precisión
     try {
-      const { data: hist, error: histErr } = await supabase
+      const { data: hist, error: histErr } = await admin
         .from('prospectos_historial')
         .select('created_at, usuario_email, estado_anterior, estado_nuevo, nota_agregada')
         .gte('created_at', start.toISOString())

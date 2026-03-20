@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ensureSuper } from '@/lib/apiGuards'
 import { createProductType, fetchProductTypes, updateProductType } from '@/lib/productTypes'
+import { logAccion } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
       description: typeof body.description === 'string' ? body.description : null,
       active: body.active === undefined ? true : Boolean(body.active)
     })
+    void logAccion('alta_tipo_producto', { usuario: (guard.usuario as { email?: string })?.email, tabla_afectada: 'product_types', snapshot: { code: productType.code, name: productType.name } })
     return NextResponse.json({ productType }, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error inesperado'
@@ -58,6 +60,7 @@ export async function PATCH(request: NextRequest) {
       description: typeof body.description === 'string' ? body.description : undefined,
       active: typeof body.active === 'boolean' ? body.active : undefined
     })
+    void logAccion('edicion_tipo_producto', { usuario: (guard.usuario as { email?: string })?.email, tabla_afectada: 'product_types', snapshot: { id, code: productType.code, name: productType.name } })
     return NextResponse.json({ productType })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error inesperado'

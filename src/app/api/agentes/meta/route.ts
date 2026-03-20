@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { logAccion } from '@/lib/logger'
 
 export async function GET() {
   const usuario = await getUsuarioSesion()
@@ -34,5 +35,6 @@ export async function POST(req: Request) {
   const payload = { usuario_id: targetId, fecha_conexion_text: txt || null, objetivo: objetivo as number | null }
   const { data, error } = await supa.from('agente_meta').upsert(payload, { onConflict: 'usuario_id' }).select('*').maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  void logAccion('guardar_meta_agente', { usuario: usuario.email, tabla_afectada: 'agente_meta', snapshot: payload })
   return NextResponse.json(data)
 }

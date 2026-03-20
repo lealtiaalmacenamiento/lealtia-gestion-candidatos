@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCampaign, fetchCampaigns, normalizeCampaignStatus } from '@/lib/campaigns'
 import { ensureSuper } from '@/lib/apiGuards'
+import { logAccion } from '@/lib/logger'
 import type { CampaignStatus } from '@/types'
 
 function parseStatusParam(value: string | null): CampaignStatus | CampaignStatus[] | undefined {
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const campaign = await createCampaign(payload)
+    void logAccion('alta_campaign', { usuario: (guard.usuario as { email?: string })?.email, tabla_afectada: 'campaigns', snapshot: { slug: campaign.slug, name: campaign.name } })
     return NextResponse.json({ campaign }, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error inesperado'

@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { logAccion } from '@/lib/logger'
 
 export async function POST(
   request: Request,
@@ -89,6 +90,11 @@ export async function POST(
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
+    void logAccion(esOmitido ? 'omitir_pago_poliza' : 'marcar_pago_poliza', {
+      tabla_afectada: 'poliza_pagos_mensuales',
+      id_registro: pago.id,
+      snapshot: { poliza_id: polizaId, periodo_mes: periodoMes, accion: accion ?? 'pagado', monto_pagado: updateData.monto_pagado ?? null }
+    })
     return NextResponse.json({
       success: true,
       pago: updated,

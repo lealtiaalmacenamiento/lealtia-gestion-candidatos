@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { getServiceClient } from '@/lib/supabaseAdmin'
 import { isActiveUser, normalizeRole } from '@/lib/roles'
+import { logAccion } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -72,6 +73,11 @@ export async function POST(req: Request) {
     const { data, error } = await supaAdmin.rpc('recalc_puntos_poliza_all', { p_limit: limit }).single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    void logAccion('recalc_puntos_polizas', {
+      usuario: actor ?? 'sistema',
+      tabla_afectada: 'polizas',
+      snapshot: { affected: data, limit: limit ?? null }
+    })
     return NextResponse.json({ ok: true, affected: data, limit: limit ?? null, actor: actor ?? 'secret' })
   } catch (e) {
     const msg = (e instanceof Error) ? e.message : String(e)

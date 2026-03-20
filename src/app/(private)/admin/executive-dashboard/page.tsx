@@ -470,7 +470,7 @@ export default function ExecutiveDashboardPage() {
 
   // Guard de rol
   const role = normalizeRole(user?.rol) ?? (user?.rol ?? '').toLowerCase()
-  const notAllowed = !loadingUser && user && role !== 'admin'
+  const notAllowed = !loadingUser && user && !['admin', 'supervisor'].includes(role)
 
   useEffect(() => {
     if (notAllowed) window.location.replace('/home')
@@ -600,7 +600,7 @@ export default function ExecutiveDashboardPage() {
         <div className="fs-1 text-primary"><i className="bi bi-graph-up-arrow"></i></div>
         <div className="flex-grow-1">
           <h4 className="mb-0 fw-bold">Centro de Control</h4>
-          <p className="text-muted mb-0 small">Dashboard ejecutivo — exclusivo administradores</p>
+          <p className="text-muted mb-0 small">Dashboard ejecutivo</p>
         </div>
         <button
           type="button"

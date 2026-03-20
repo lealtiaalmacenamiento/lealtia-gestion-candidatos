@@ -31,7 +31,7 @@ const modules = [
   // { key: 'polizas/updates', title: 'Cambios de póliza', desc: 'Aprobación de cambios de póliza', icon: 'file-earmark-check', roles: ['editor','supervisor','admin'], color: 'secondary' },
   { key: 'historial', title: 'Historial de cambios', desc: 'Historial de cambios en Cliente y póliza', icon: 'journal-text', roles: ['supervisor','admin'], color: 'dark' },
   // Dashboard ejecutivo
-  { key: 'admin/executive-dashboard', title: 'Centro de Control', desc: 'Dashboard ejecutivo: KPIs, funnel, leaderboards', icon: 'graph-up-arrow', roles: ['admin'], color: 'primary' },
+  { key: 'admin/executive-dashboard', title: 'Centro de Control', desc: 'Dashboard ejecutivo: KPIs, funnel, leaderboards', icon: 'graph-up-arrow', roles: ['supervisor', 'admin'], color: 'primary' },
 ];
 
 export default function HomeDashboard() {

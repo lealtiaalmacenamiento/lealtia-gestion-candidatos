@@ -1,13 +1,13 @@
 // Evitar que importaciones en edge (middleware) arrastren supabase realtime y Node APIs.
-// Cargamos supabase dinámicamente sólo cuando realmente se invoca logAccion desde un entorno server Node.
+// Usamos el service role client para saltar RLS en inserts de auditoría.
 // Cache interno de supabase (tipo laxo para evitar arrastrar tipos pesados en edge)
 let _supabase: any | null = null
 async function getSupabaseLazy() {
   if (_supabase) return _supabase
-  // Dynamic import to keep edge bundle lighter; if fails, we fallback to no-op
+  // Usamos service role para saltar RLS; dynamic import para no arrastrar módulo en edge
   try {
-    const mod = await import('@/lib/supabaseClient')
-    _supabase = mod.supabase
+    const mod = await import('@/lib/supabaseAdmin')
+    _supabase = mod.getServiceClient()
     return _supabase
   } catch {
     return null
@@ -42,9 +42,9 @@ export async function logAccion(accion: string, opts: LogOptions = {}) {
   try {
   const sb = await getSupabaseLazy()
     if (!sb) return
-  const { error } = await sb.from('RegistroAcciones').insert(payload)
+  const { error } = await sb.from('registro_acciones').insert(payload)
     if (error) {
-      await sb.from('registro_acciones').insert(payload)
+      await sb.from('RegistroAcciones').insert(payload)
     }
   } catch (e) {
     if (process.env.NODE_ENV !== 'production') {

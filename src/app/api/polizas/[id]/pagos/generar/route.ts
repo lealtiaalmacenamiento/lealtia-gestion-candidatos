@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { logAccion } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -262,6 +263,10 @@ export async function POST(
       console.error('[pagos_generar] notificacion recalculo err', e)
     }
 
+    void logAccion('generar_pagos_poliza', {
+      tabla_afectada: 'poliza_pagos_mensuales',
+      snapshot: { poliza_id: polizaId, numero_poliza: poliza.numero_poliza, pagos_generados: pagos?.length || 0 }
+    })
     return NextResponse.json({
       success: true,
       message: 'Calendario de pagos regenerado exitosamente',

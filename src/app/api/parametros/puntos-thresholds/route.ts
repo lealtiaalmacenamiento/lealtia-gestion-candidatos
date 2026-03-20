@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabaseAdmin';
+import { logAccion } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,8 @@ export async function POST(request: NextRequest) {
       .single();
     
     if (error) throw error;
-    
+
+    void logAccion('alta_puntos_threshold', { tabla_afectada: 'puntos_thresholds', snapshot: data })
     return NextResponse.json(
       { success: true, data },
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } }
@@ -76,7 +78,8 @@ export async function PATCH(request: NextRequest) {
       .single();
     
     if (error) throw error;
-    
+
+    void logAccion('edicion_puntos_threshold', { tabla_afectada: 'puntos_thresholds', id_registro: Number(id) || 0, snapshot: { id, ...updates } })
     return NextResponse.json(
       { success: true, data },
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } }
@@ -110,7 +113,8 @@ export async function DELETE(request: NextRequest) {
       .eq('id', id);
     
     if (error) throw error;
-    
+
+    void logAccion('borrado_puntos_threshold', { tabla_afectada: 'puntos_thresholds', id_registro: Number(id) || 0, snapshot: { id } })
     return NextResponse.json(
       { success: true },
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } }

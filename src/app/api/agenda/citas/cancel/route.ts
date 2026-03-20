@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { cancelAgendaCitaCascade } from './cascade'
+import { logAccion } from '@/lib/logger'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -63,5 +64,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: result.error || 'No se pudo cancelar la cita' }, { status })
   }
 
+  if (!result.alreadyCancelled) {
+    void logAccion('cancelar_cita_agenda', {
+      usuario: actor.email ?? undefined,
+      tabla_afectada: 'citas',
+      id_registro: citaId,
+      snapshot: { motivo: motivo ?? null }
+    })
+  }
   return NextResponse.json({ success: true, alreadyCancelled: result.alreadyCancelled ?? false })
 }
