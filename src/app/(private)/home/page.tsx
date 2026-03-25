@@ -38,6 +38,7 @@ export default function HomeDashboard() {
   const { user, setUser, loadingUser } = useAuth();
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [pendingCount, setPendingCount] = React.useState<number | null>(null);
+  const [enlacesRapidos, setEnlacesRapidos] = React.useState<{ id: number; clave: string; valor: string }[]>([]);
 
   // Redirect effect similar al dashboard
   useEffect(() => {
@@ -60,6 +61,15 @@ export default function HomeDashboard() {
         })
         .catch(() => setPendingCount(null));
     }
+  }, [user]);
+
+  // Cargar accesos rápidos
+  useEffect(() => {
+    if (!user) return;
+    fetch('/api/parametros?tipo=enlaces_rapidos')
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(j => setEnlacesRapidos(j.data || []))
+      .catch(() => {/* no crítico */});
   }, [user]);
 
   if (loadingUser) return <FullScreenLoader text="Cargando sesión..." />;
@@ -144,6 +154,29 @@ export default function HomeDashboard() {
                 </div>
               )}  
         </div>
+
+        {/* Accesos rápidos configurables */}
+        {enlacesRapidos.length > 0 && (
+          <div className="mt-5">
+            <h6 className="fw-semibold text-uppercase text-muted small mb-3">
+              <i className="bi bi-link-45deg me-1"></i>Accesos rápidos
+            </h6>
+            <div className="d-flex flex-wrap gap-2">
+              {enlacesRapidos.map(e => (
+                <a
+                  key={e.id}
+                  href={String(e.valor)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-outline-primary px-4 py-2 fw-semibold"
+                >
+                  <i className="bi bi-box-arrow-up-right me-2"></i>
+                  {e.clave}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

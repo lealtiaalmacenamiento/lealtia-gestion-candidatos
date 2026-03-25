@@ -64,6 +64,18 @@ export async function PUT(request: Request) {
   }
 }
 
+// Eliminar parámetro
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ success: false, message: 'Falta el ID del parámetro' }, { status: 400 })
+  const supabase = ensureAdminClient()
+  const { error } = await supabase.from('Parametros').delete().eq('id', Number(id))
+  if (error) return NextResponse.json({ success: false, message: error.message }, { status: 500 })
+  await logAccion('eliminacion_parametro', { tabla_afectada: 'parametros', id_registro: Number(id) })
+  return NextResponse.json({ success: true })
+}
+
 // Crear parámetro (utilizado para seeds faltantes en runtime)
 export async function POST(request: Request) {
   try {

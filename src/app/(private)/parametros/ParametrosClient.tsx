@@ -19,6 +19,7 @@ import SegmentsSection from './SegmentsSection';
 import ProductTypesSection from './ProductTypesSection';
 import CampaignsSection from './CampaignsSection';
 import PuntosThresholdsSection from './PuntosThresholdsSection';
+import EnlacesRapidosSection from './EnlacesRapidosSection';
 // Campos posibles para ficha de candidato (deben coincidir con los usados en el PDF)
 const FICHA_CAMPOS = [
   'CLAVE TEMPORAL',
@@ -396,6 +397,9 @@ export default function ParametrosClient(){
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
       {!loading && (
         <div className="d-flex flex-column gap-5">
+          {/* Accesos rápidos */}
+          <EnlacesRapidosSection onNotify={(msg, type) => setNotif({ msg, type })} />
+
           {/* FASE 5: Campañas */}
           <section className="border rounded p-3 bg-white shadow-sm">
             <CampaignsSection onNotify={(msg, type) => setNotif({ msg, type })} />
