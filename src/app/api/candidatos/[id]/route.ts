@@ -4,7 +4,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
-import { crearUsuarioAgenteAuto, ensureAgentCodeForUsuario } from '@/lib/autoAgente'
+import { crearUsuarioAgenteAuto, ensureAgentCodeForUsuario, buildCodigoAgente } from '@/lib/autoAgente'
 import type { Candidato } from '@/types'
 import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
@@ -236,6 +236,19 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
         .eq('email', emailAgenteFinal)
         .maybeSingle()
       if ((userAg as any)?.id) {
+        // Si el CT cambió, desactivar el código antiguo antes de generar el nuevo
+        const ctAnterior = (existenteData as any).ct
+        if (body.ct && ctAnterior && body.ct !== ctAnterior) {
+          const nombreAnterior = (existenteData as any).candidato || nombreFinal
+          const codigoAntiguo = buildCodigoAgente(nombreAnterior, ctAnterior)
+          if (codigoAntiguo) {
+            await supabase
+              .from('agent_codes')
+              .update({ activo: false })
+              .eq('code', codigoAntiguo)
+              .eq('agente_id', (userAg as any).id)
+          }
+        }
         const codeRes = await ensureAgentCodeForUsuario({ usuarioId: (userAg as any).id, nombre: nombreFinal, ct: ctFinal })
         if (codeRes.code || codeRes.error) {
           agenteMeta = { ...(agenteMeta || {}), agent_code: codeRes }
