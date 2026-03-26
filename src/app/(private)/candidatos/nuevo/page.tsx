@@ -128,7 +128,9 @@ export default function NuevoCandidato() {
     const currentYear = new Date().getUTCFullYear()
     const ranges = [
       ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear }),
-      ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear + 1 })
+      ...parseAllRangesWithAnchor(m.periodo_para_registro_y_envio_de_documentos, { anchorMonth, anchorYear: currentYear + 1 }),
+      ...parseAllRangesWithAnchor(m.capacitacion_cedula_a1, { anchorMonth, anchorYear: currentYear }),
+      ...parseAllRangesWithAnchor(m.capacitacion_cedula_a1, { anchorMonth, anchorYear: currentYear + 1 })
     ]
     return pickYearFromRanges(ranges, t)
   }
