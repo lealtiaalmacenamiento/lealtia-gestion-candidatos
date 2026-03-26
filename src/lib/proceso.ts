@@ -266,7 +266,7 @@ export function parseAllRangesWithAnchor(raw?: string, anchor?: Anchor): Range[]
   if (!raw) return []
   const chunks = raw
     .split(/[\r\n]+|\t+|\s\|\s|,|;|\s{1}\u2022\s|\s+y\s+/i)
-    .map(s=>s.trim())
+    .map(s=>s.replace(/\*/g, '').trim())
     .filter(Boolean)
   const out: Range[] = []
   for (const c of chunks) {
