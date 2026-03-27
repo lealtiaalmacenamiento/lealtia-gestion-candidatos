@@ -4,7 +4,6 @@
   "crons": [
     { "path": "/api/reports/prospectos-daily-changes", "schedule": "0 6 * * *" },
     { "path": "/api/market/sync", "schedule": "0 13 * * *" },
-    { "path": "/api/cron/cleanup-notifications", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/cumpleanos", "schedule": "0 18 * * *" }
+    { "path": "/api/cron/cleanup-notifications", "schedule": "0 3 * * *" }
   ]
 }
