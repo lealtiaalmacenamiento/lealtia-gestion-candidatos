@@ -11,11 +11,11 @@ jobs:
     steps:
       - name: Call /api/cron/cumpleanos
         env:
-          URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          URL: ${{ secrets.APP_URL }}
           SECRET: ${{ secrets.REPORTES_CRON_SECRET }}
         run: |
           set -euo pipefail
-          : "${URL:?Need NEXT_PUBLIC_APP_URL secret (e.g. https://your-app.vercel.app)}"
+          : "${URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
           : "${SECRET:?Need REPORTES_CRON_SECRET secret}"
           curl -sS -X POST "${URL%/}/api/cron/cumpleanos" \
             -H "Authorization: Bearer ${SECRET}" \
