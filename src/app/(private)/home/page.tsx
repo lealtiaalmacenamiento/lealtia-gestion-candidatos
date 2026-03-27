@@ -32,13 +32,15 @@ const modules = [
   { key: 'historial', title: 'Historial de cambios', desc: 'Historial de cambios en Cliente y póliza', icon: 'journal-text', roles: ['supervisor','admin'], color: 'dark' },
   // Dashboard ejecutivo
   { key: 'admin/executive-dashboard', title: 'Centro de Control', desc: 'Dashboard ejecutivo: KPIs, funnel, leaderboards', icon: 'graph-up-arrow', roles: ['supervisor', 'admin'], color: 'primary' },
+  // Accesos rápidos
+  { key: 'accesos-rapidos', title: 'Accesos rápidos', desc: 'Accesos a portales y plataformas externas', icon: 'link-45deg', roles: ['viewer', 'supervisor', 'admin', 'agente', 'promotor'], color: 'primary' },
 ];
 
 export default function HomeDashboard() {
   const { user, setUser, loadingUser } = useAuth();
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [pendingCount, setPendingCount] = React.useState<number | null>(null);
-  const [enlacesRapidos, setEnlacesRapidos] = React.useState<{ id: number; clave: string; valor: string }[]>([]);
+  const [accesosTitle, setAccesosTitle] = React.useState('Accesos rápidos');
 
   // Redirect effect similar al dashboard
   useEffect(() => {
@@ -47,6 +49,18 @@ export default function HomeDashboard() {
       return () => clearTimeout(t);
     }
   }, [loadingUser, user]);
+
+  // Cargar título dinámico de accesos rápidos
+  useEffect(() => {
+    fetch('/api/parametros?tipo=enlaces_rapidos')
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(j => {
+        const all: { clave: string; valor: unknown }[] = j.data || [];
+        const tituloRow = all.find(x => x.clave === '__titulo__');
+        if (tituloRow) setAccesosTitle(String(tituloRow.valor));
+      })
+      .catch(() => {});
+  }, []);
 
   // Cargar contador de pendientes
   useEffect(() => {
@@ -63,14 +77,7 @@ export default function HomeDashboard() {
     }
   }, [user]);
 
-  // Cargar accesos rápidos
-  useEffect(() => {
-    if (!user) return;
-    fetch('/api/parametros?tipo=enlaces_rapidos')
-      .then(r => r.ok ? r.json() : { data: [] })
-      .then(j => setEnlacesRapidos(j.data || []))
-      .catch(() => {/* no crítico */});
-  }, [user]);
+
 
   if (loadingUser) return <FullScreenLoader text="Cargando sesión..." />;
   if (!user) return <FullScreenLoader text="Redirigiendo a inicio de sesión..." />;
@@ -132,7 +139,7 @@ export default function HomeDashboard() {
                       <div className="d-flex align-items-start mb-2 gap-2">
                         <span className={`dash-ico text-${m.color}`}><i className={`bi bi-${m.icon}`}></i></span>
                         <h6 className="card-title mb-0 fw-semibold flex-grow-1">
-                          {m.title}
+                          {m.key === 'accesos-rapidos' ? accesosTitle : m.title}
                           {m.key === 'pendientes' && pendingCount !== null && pendingCount > 0 && (
                             <span className="badge bg-danger ms-2">{pendingCount}</span>
                           )}
@@ -154,29 +161,6 @@ export default function HomeDashboard() {
                 </div>
               )}  
         </div>
-
-        {/* Accesos rápidos configurables */}
-        {enlacesRapidos.length > 0 && (
-          <div className="mt-5">
-            <h6 className="fw-semibold text-uppercase text-muted small mb-3">
-              <i className="bi bi-link-45deg me-1"></i>Accesos rápidos
-            </h6>
-            <div className="d-flex flex-wrap gap-2">
-              {enlacesRapidos.map(e => (
-                <a
-                  key={e.id}
-                  href={String(e.valor)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-outline-primary px-4 py-2 fw-semibold"
-                >
-                  <i className="bi bi-box-arrow-up-right me-2"></i>
-                  {e.clave}
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </>
   );

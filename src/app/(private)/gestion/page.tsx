@@ -840,7 +840,7 @@ export default function GestionPage() {
                                         <a href={`mailto:${c.email}`}>{c.email}</a>
                                       ) : '—'}
                                     </td>
-                                    <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
+                                    <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento.replace(/-/g,'/')).toLocaleDateString() : '—'}</td>
                                     <td className="text-end">
                                       <div className="d-flex gap-2 justify-content-end">
                                         <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>
@@ -945,7 +945,7 @@ export default function GestionPage() {
                             <a href={`mailto:${c.email}`}>{c.email}</a>
                           ) : '—'}
                         </td>
-                        <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento).toLocaleDateString() : '—'}</td>
+                        <td className="text-xs">{c.fecha_nacimiento ? new Date(c.fecha_nacimiento.replace(/-/g,'/')).toLocaleDateString() : '—'}</td>
                         <td className="text-end">
                           <div className="d-flex gap-2 justify-content-end">
                             <button className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={()=>{ void openPolizas(c) }}>Ver pólizas</button>

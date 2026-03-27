@@ -27,6 +27,11 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [editSaving, setEditSaving] = useState(false);
+  // Título del módulo
+  const [tituloId, setTituloId] = useState<number | null>(null);
+  const [titulo, setTitulo] = useState('Accesos rápidos');
+  const [tituloEdit, setTituloEdit] = useState('');
+  const [tituloSaving, setTituloSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,7 +39,10 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
       const res = await fetch('/api/parametros?tipo=enlaces_rapidos');
       if (res.ok) {
         const json = await res.json();
-        setEnlaces((json.data || []) as Enlace[]);
+        const all: Enlace[] = json.data || [];
+        const tRow = all.find(x => x.clave === '__titulo__');
+        if (tRow) { setTituloId(tRow.id); setTitulo(String(tRow.valor)); }
+        setEnlaces(all.filter(x => x.clave !== '__titulo__'));
       } else {
         onNotify('Error al cargar los enlaces', 'danger');
       }
@@ -48,6 +56,35 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
   useEffect(() => {
     if (open) void load();
   }, [open, load]);
+
+  // ── Guardar título ───────────────────────────────────────────────────
+  const handleTituloSave = async () => {
+    if (!tituloEdit.trim()) return;
+    setTituloSaving(true);
+    try {
+      const method = tituloId ? 'PUT' : 'POST';
+      const body = tituloId
+        ? { id: tituloId, clave: '__titulo__', valor: tituloEdit.trim(), solicitante: 'admin' }
+        : { tipo: 'enlaces_rapidos', clave: '__titulo__', valor: tituloEdit.trim(), solicitante: 'admin' };
+      const res = await fetch('/api/parametros', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        setTitulo(tituloEdit.trim());
+        setTituloEdit('');
+        onNotify('Título actualizado', 'success');
+        await load();
+      } else {
+        onNotify('Error al guardar el título', 'danger');
+      }
+    } catch {
+      onNotify('Error de conexión', 'danger');
+    } finally {
+      setTituloSaving(false);
+    }
+  };
 
   // ── Crear ───────────────────────────────────────────────────────────
   const handleAdd = async () => {
@@ -164,6 +201,28 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
 
       {open && (
         <div className="mt-3">
+          {/* Nombre del módulo */}
+          <div className="mb-3 p-3 bg-light rounded border">
+            <label className="form-label small fw-semibold mb-1">Nombre del módulo en inicio</label>
+            <div className="d-flex gap-2 align-items-center">
+              <span className="text-muted small me-1">Actual: <strong>{titulo}</strong></span>
+              <input
+                className="form-control form-control-sm"
+                style={{ maxWidth: 280 }}
+                placeholder="Nuevo nombre..."
+                value={tituloEdit}
+                onChange={e => setTituloEdit(e.target.value)}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={tituloSaving || !tituloEdit.trim()}
+                onClick={handleTituloSave}
+              >
+                {tituloSaving ? <span className="spinner-border spinner-border-sm" /> : 'Guardar nombre'}
+              </button>
+            </div>
+          </div>
+
           {loading && <div className="text-center py-3"><div className="spinner-border spinner-border-sm" /></div>}
 
           {!loading && enlaces.length === 0 && (
@@ -227,7 +286,7 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
                         <>
                           <td className="fw-semibold small">{e.clave}</td>
                           <td>
-                            <a href={String(e.valor)} target="_blank" rel="noopener noreferrer" className="small text-truncate d-inline-block" style={{ maxWidth: 260 }}>
+                            <a href={/^https?:\/\//i.test(String(e.valor)) ? String(e.valor) : `https://${e.valor}`} target="_blank" rel="noopener noreferrer" className="small text-truncate d-inline-block" style={{ maxWidth: 260 }}>
                               {String(e.valor)}
                             </a>
                           </td>

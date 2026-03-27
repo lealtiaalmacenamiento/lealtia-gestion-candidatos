@@ -478,3 +478,80 @@ Accede al sistema: ${LOGIN_URL}
 
   return { subject, html, text }
 }
+
+// ─── Felicitación de cumpleaños ───────────────────────────────────────────────
+export function buildCumpleanosEmail(opts: {
+  nombre: string
+  tipo: 'candidato' | 'cliente'
+}) {
+  const { nombre, tipo } = opts
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || ''
+  const subject = `¡Feliz cumpleaños, ${nombre}! 🎉`
+  const familiaTexto = tipo === 'cliente' ? 'nuestra familia de clientes' : 'nuestro equipo'
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subject}</title></head>
+<body style="margin:0;padding:0;background-color:#f0f4f8;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f4f8;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#004481 0%,#0066cc 100%);padding:36px 32px;text-align:center;">
+            ${LOGO_URL ? `<img src="${LOGO_URL}" alt="Lealtia" style="max-height:44px;margin-bottom:20px;display:block;margin-left:auto;margin-right:auto;" />` : '<p style="color:#fff;font-size:20px;font-weight:bold;margin:0 0 20px;">Lealtia</p>'}
+            <div style="font-size:52px;line-height:1;margin-bottom:12px;">🎂</div>
+            <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:-0.5px;">¡Feliz Cumpleaños!</h1>
+          </td>
+        </tr>
+
+        <!-- BODY -->
+        <tr>
+          <td style="background:#ffffff;padding:40px 40px 32px;">
+            <p style="margin:0 0 16px;font-size:17px;color:#1a1a2e;">Hola <strong style="color:#004481;">${nombre}</strong>,</p>
+            <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.7;">
+              En este día tan especial, todo el equipo de <strong>Lealtia</strong> te desea un cumpleaños lleno de alegría, salud y muchos éxitos.
+            </p>
+            <p style="margin:0 0 32px;font-size:15px;color:#444;line-height:1.7;">
+              Es un honor tenerte como parte de ${familiaTexto}. ¡Que este nuevo año de vida esté lleno de grandes logros y momentos inolvidables!
+            </p>
+
+            <!-- CTA decorativo -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center">
+                  <div style="background:linear-gradient(135deg,#fff8e1 0%,#fff3cd 100%);border:2px solid #ffd54f;border-radius:12px;padding:20px 32px;display:inline-block;text-align:center;">
+                    <p style="margin:0;font-size:32px;letter-spacing:6px;">🎉&nbsp;🎈&nbsp;🎊</p>
+                    <p style="margin:8px 0 0;font-size:14px;color:#7c5c00;font-weight:600;">¡Que lo disfrutes mucho!</p>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- FIRMA -->
+        <tr>
+          <td style="background:#f8f9fb;padding:24px 40px;border-top:1px solid #e8ecf0;">
+            <p style="margin:0;font-size:14px;color:#555;line-height:1.6;">Con cariño,</p>
+            <p style="margin:4px 0 0;font-size:15px;color:#004481;font-weight:700;">El equipo de Lealtia</p>
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="background:#e8ecf0;padding:16px 32px;text-align:center;">
+            <p style="margin:0;font-size:11px;color:#888;line-height:1.6;">© ${year} Lealtia — Todos los derechos reservados</p>
+            <p style="margin:4px 0 0;font-size:11px;color:#aaa;">Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+  const text = `¡Feliz cumpleaños, ${nombre}!\n\nTodo el equipo de Lealtia te desea un cumpleaños lleno de alegría, salud y muchos éxitos.\n\nEs un honor tenerte como parte de ${familiaTexto}. ¡Que este nuevo año de vida esté lleno de grandes logros!\n\nCon cariño,\nEl equipo de Lealtia\n\n© ${year} Lealtia`
+  return { subject, html, text }
+}
