@@ -23,6 +23,7 @@ jobs:
         env:
           URL: ${{ secrets.APP_URL }}
           SECRET: ${{ secrets.REPORTES_CRON_SECRET }}
+          BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
         run: |
           set -euo pipefail
           : "${URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
@@ -40,6 +41,7 @@ jobs:
           RESPONSE=$(curl -sS -X POST "${URL%/}/api/cron/cumpleanos${QUERY}" \
             -H "Authorization: Bearer ${SECRET}" \
             -H 'content-type: application/json' \
+            ${BYPASS_TOKEN:+-H "x-vercel-protection-bypass: ${BYPASS_TOKEN}"} \
             -w '\n---HTTP_CODE:%{http_code}')
 
           HTTP_CODE=$(echo "$RESPONSE" | grep -o 'HTTP_CODE:[0-9]*' | cut -d: -f2)
