@@ -5,6 +5,14 @@ on:
     - cron: '0 18 * * *' # 12:00 PM CDMX (UTC-6, México no tiene horario de verano)
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Entorno a usar'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - develop
       dry_run:
         description: 'Solo preview, sin enviar correos (dry=1)'
         required: false
@@ -21,7 +29,7 @@ jobs:
     steps:
       - name: Call /api/cron/cumpleanos
         env:
-          URL: ${{ secrets.APP_URL }}
+          URL: ${{ inputs.environment == 'develop' && secrets.APP_URL_DEV || secrets.APP_URL }}
           SECRET: ${{ secrets.REPORTES_CRON_SECRET }}
           BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
         run: |
