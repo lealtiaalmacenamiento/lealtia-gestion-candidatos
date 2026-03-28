@@ -4,6 +4,16 @@ on:
   schedule:
     - cron: '0 18 * * *' # 12:00 PM CDMX (UTC-6, México no tiene horario de verano)
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Solo preview, sin enviar correos (dry=1)'
+        required: false
+        default: 'false'
+        type: boolean
+      fecha:
+        description: 'Fecha a probar en formato MM-DD (ej: 03-27). Vacío = hoy.'
+        required: false
+        default: ''
 
 jobs:
   send-birthday-emails:
@@ -17,7 +27,30 @@ jobs:
           set -euo pipefail
           : "${URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
           : "${SECRET:?Need REPORTES_CRON_SECRET secret}"
-          curl -sS -X POST "${URL%/}/api/cron/cumpleanos" \
+
+          QUERY=""
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then QUERY="?dry=1"; fi
+          if [[ -n "${{ inputs.fecha }}" ]]; then
+            SEP="?"
+            [[ "$QUERY" == *"?"* ]] && SEP="&"
+            QUERY="${QUERY}${SEP}fecha=${{ inputs.fecha }}"
+          fi
+
+          echo "→ POST ${URL%/}/api/cron/cumpleanos${QUERY}"
+          RESPONSE=$(curl -sS -X POST "${URL%/}/api/cron/cumpleanos${QUERY}" \
             -H "Authorization: Bearer ${SECRET}" \
             -H 'content-type: application/json' \
-            -w '\nHTTP %{http_code}\n'
+            -w '\n---HTTP_CODE:%{http_code}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | grep -o 'HTTP_CODE:[0-9]*' | cut -d: -f2)
+          BODY=$(echo "$RESPONSE" | sed '/---HTTP_CODE:/d')
+
+          echo "HTTP $HTTP_CODE"
+          echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
+
+          SENT=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sent',0))" 2>/dev/null || echo "?")
+          FAILED=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('failed',0))" 2>/dev/null || echo "?")
+          echo ""
+          echo "✅ Enviados: $SENT  |  ❌ Fallidos: $FAILED"
+
+          [[ "$HTTP_CODE" == "200" ]] || exit 1
