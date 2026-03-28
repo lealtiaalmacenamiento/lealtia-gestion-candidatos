@@ -58,7 +58,8 @@ export async function middleware(req: NextRequest) {
     '/api/cron/cleanup-notifications',
     '/api/cron/refresh-cancelaciones',
     '/api/cron/clean-campaign-cache',
-    '/api/cron/update-udi'
+    '/api/cron/update-udi',
+    '/api/cron/cumpleanos'
   ])
   // Si viene el secreto de cron (header o query), tratarlo como solicitud de cron
   const hasCronSecret = !!req.headers.get('x-cron-secret') || !!url.searchParams.get('secret')
