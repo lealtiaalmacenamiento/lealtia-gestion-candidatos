@@ -336,7 +336,7 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
             <label className="form-label small mb-1 fw-semibold">Etiqueta del botón <span className="text-danger">*</span></label>
             <input
               className="form-control form-control-sm"
-              placeholder="Ej: Portal GNP"
+              placeholder="Ej: Portal SMNYL"
               value={newForm.clave}
               onChange={e => setNewForm(f => ({ ...f, clave: e.target.value }))}
             />
