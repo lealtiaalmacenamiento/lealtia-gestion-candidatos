@@ -179,7 +179,7 @@ export async function POST(
       pagosToInsert.push({
         poliza_id: polizaId,
         periodo_mes: periodoKey,
-        fecha_programada: fechaProg.toISOString(),
+        fecha_programada: fechaProg.toISOString().slice(0, 10),
         fecha_limite: fechaLim.toISOString().slice(0, 10),
         monto_programado: montoPeriodo,
         estado: 'pendiente',
