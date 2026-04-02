@@ -42,11 +42,11 @@ export async function POST(req: Request) {
       return todayMMDD()
     })()
 
-    // Obtener emails de todos los supervisores y admins activos
+    // Obtener emails de supervisores activos (excluye admin)
     const { data: supervisores } = await supabase
       .from('usuarios')
       .select('email')
-      .in('rol', ['supervisor', 'admin'])
+      .eq('rol', 'supervisor')
       .eq('activo', true)
 
     const ccEmails: string[] = (supervisores || [])
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       try {
         await sendMail({
           to: emailDestino,
-          cc: ccEmails.length ? ccEmails : undefined,
+          bcc: ccEmails.length ? ccEmails : undefined,
           subject,
           html,
           text,
@@ -137,11 +137,9 @@ export async function POST(req: Request) {
 
       const nombre = [c.primer_nombre, c.segundo_nombre, c.primer_apellido].filter(Boolean).join(' ')
       const { subject, html, text } = buildCumpleanosEmail({ nombre, tipo: 'cliente' })
-      // CC: supervisores/admins + asesor del cliente (si tiene y no está ya en la lista)
+      // BCC: supervisores (ocultos al cliente y al asesor)
+      // CC: asesor del cliente (visible)
       const asesorEmail = c.asesor_id ? (asesorEmailMap[c.asesor_id] || null) : null
-      const ccCliente = asesorEmail && !ccEmails.includes(asesorEmail)
-        ? [...ccEmails, asesorEmail]
-        : ccEmails
       if (dryRun) {
         results.push({ tipo: 'cliente', nombre, email: c.correo, ok: true, dry: true })
         continue
@@ -149,7 +147,8 @@ export async function POST(req: Request) {
       try {
         await sendMail({
           to: c.correo,
-          cc: ccCliente.length ? ccCliente : undefined,
+          cc: asesorEmail || undefined,
+          bcc: ccEmails.length ? ccEmails : undefined,
           subject,
           html,
           text,
