@@ -55,7 +55,6 @@ export async function GET(req: NextRequest) {
   const sb = getServiceClient()
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let result: any = null
 
     switch (rpc) {

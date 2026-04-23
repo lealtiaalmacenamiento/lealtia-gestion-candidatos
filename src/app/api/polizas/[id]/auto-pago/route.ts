@@ -55,7 +55,7 @@ export async function PATCH(
 
   void logAccion('toggle_auto_pago_poliza', {
     tabla_afectada: 'polizas',
-    id_registro: polizaId,
+    id_registro: Number(polizaId),
     snapshot: { auto_pago: body.auto_pago }
   })
 

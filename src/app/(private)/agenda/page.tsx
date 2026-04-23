@@ -437,7 +437,6 @@ export default function AgendaPage() {
     setProspectEmailLocked(false)
     setProspectQuery('')
     setProspectOptionsError(null)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.agenteId])
 
   // Load prospect options when agent or search query changes

@@ -62,7 +62,6 @@ export default function VidaMujerSection() {
       await resolveAgent(code || undefined)
     }
     resolveAgentCode()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Actualizar preview del SA en pesos cuando cambia el dropdown o la UDI
@@ -561,7 +560,7 @@ export default function VidaMujerSection() {
                       lineHeight: 1.6,
                     }}
                   >
-                    <strong style={{ color: '#8E8AB5' }}>¿Qué significa "valor esperado"?</strong>{' '}
+                    <strong style={{ color: '#8E8AB5' }}>¿Qué significa &quot;valor esperado&quot;?</strong>{' '}
                     Los montos en pesos son estimaciones basadas en el valor proyectado del UDI en el año de cada pago.
                     Como el UDI sube con la inflación, en la práctica recibirás más pesos — pero el UDI garantizado es el dato firme.
                     Prima de hoy: <strong>${resultado.udiHoy.toFixed(4)}</strong> por UDI.

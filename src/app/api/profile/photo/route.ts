@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     // Borrar cualquier foto anterior del usuario (puede tener distinta extensión/timestamp)
     const { data: existingFiles } = await supabase.storage
       .from('fotos-perfil')
-      .list(usuario.id)
+      .list(String(usuario.id))
     if (existingFiles && existingFiles.length > 0) {
       const oldPaths = existingFiles.map(f => `${usuario.id}/${f.name}`)
       await supabase.storage.from('fotos-perfil').remove(oldPaths)

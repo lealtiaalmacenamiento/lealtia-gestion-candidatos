@@ -343,7 +343,6 @@ export function buildProspectoPPREmail(opts: {
   const subject = `Nuevo prospecto PPR desde landing - ${opts.nombreProspecto}`
   const year = new Date().getFullYear()
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
-  const LOGIN_URL = resolveLoginUrl()
   
   const planNombre = opts.plan === '65' ? '65 años' : opts.plan === '15' ? '15 años' : '10 años'
 

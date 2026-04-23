@@ -74,10 +74,6 @@ function todayCDMX(): { year: number; month: number; day: number } {
   return { year: get('year'), month: get('month') - 1, day: get('day') }
 }
 
-function fmtDate(d: Date): string {
-  return d.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) // YYYY-MM-DD CDMX
-}
-
 /** Filtros iniciales por defecto (mes actual, todos los asesores) */
 export function defaultFilters(): ExecFilters {
   return {
@@ -326,7 +322,6 @@ export function useExecDashboard() {
 
   useEffect(() => {
     loadAll(state.filters)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.filters, loadAll])
 
   // ── Realtime: recarga automática al detectar cambios en BD ────────────────
@@ -353,7 +348,6 @@ export function useExecDashboard() {
       if (debounceTimer) clearTimeout(debounceTimer)
       supabase.removeChannel(channel)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.filters, loadAll])
 
   // ── Acciones expuestas ────────────────────────────────────────────────────

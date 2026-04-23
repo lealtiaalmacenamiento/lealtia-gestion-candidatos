@@ -1127,7 +1127,7 @@ export default function GestionPage() {
                       // Recargar datos siempre y volver a la lista
                       await load()
                       if (view !== 'list') setView('list')
-                    } catch (e) {
+                    } catch {
                       await dialog.alert('Error al mover cliente')
                     } finally {
                       setSubmittingMove(false)
@@ -1565,63 +1565,6 @@ function emptyAsUndef(v?: string|null) { const s = (v||'').trim(); return s ? s 
 function formatMoney(v: number, moneda?: string|null) {
   try { return (moneda ? (moneda + ' ') : '$') + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } catch { return (moneda? moneda+' ':'$') + v.toFixed(2) }
 }
-function generateMonthKeys(poliza?: { fecha_emision?: string|null; fecha_renovacion?: string|null; periodicidad_pago?: string|null }, fallbackMonths = 24) {
-  const map: Record<string, number> = { mensual: 1, trimestral: 3, semestral: 6, anual: 12 }
-  const norm = poliza?.periodicidad_pago ? normalizePeriodicidadValue(poliza.periodicidad_pago) : null
-  const step = map[norm || ''] || 1
-
-  const parseMonthStart = (value?: string|null): Date | null => {
-    if (!value) return null
-    const d = new Date(value)
-    if (Number.isNaN(d.valueOf())) return null
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-  }
-
-  const start = parseMonthStart(poliza?.fecha_emision)
-  const end = parseMonthStart(poliza?.fecha_renovacion)
-
-  const keys: string[] = []
-  // Fallback: si no hay fechas, mantener comportamiento previo (enero 2025 en adelante)
-  if (!start) {
-    const fallbackStart = new Date(Date.UTC(2025, 0, 1))
-    for (let i=0;i<fallbackMonths;i++) {
-      const d = new Date(Date.UTC(fallbackStart.getUTCFullYear(), fallbackStart.getUTCMonth() + i, 1))
-      const y = d.getUTCFullYear()
-      const m = String(d.getUTCMonth()+1).padStart(2,'0')
-      keys.push(`${y}-${m}`)
-    }
-    return keys
-  }
-
-  // Si no hay fecha de renovación, generar un año por defecto usando la periodicidad (inclusive)
-  const computedEnd = end || new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + (fallbackMonths-1), 1))
-
-  const guardMax = 120 // evita loops infinitos
-  for (let i = 0; i < guardMax; i++) {
-    const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + (i * step), 1))
-    // Si hay fecha de renovación real, no incluir ese mes como pago (end es exclusivo)
-    if (end && current >= computedEnd) break
-    // Si es fallback (sin renovación), incluir hasta computedEnd inclusive
-    if (!end && current > computedEnd) break
-    const y = current.getUTCFullYear()
-    const m = String(current.getUTCMonth()+1).padStart(2,'0')
-    keys.push(`${y}-${m}`)
-  }
-  return keys
-}
-
-function defaultMontoPeriodo(poliza?: { prima_input?: number|null; periodicidad_pago?: string|null }) {
-  if (!poliza || typeof poliza.prima_input !== 'number' || !Number.isFinite(poliza.prima_input)) return null
-  const norm = poliza.periodicidad_pago ? normalizePeriodicidadValue(poliza.periodicidad_pago) : null
-  const map: Record<string, number> = { mensual: 12, trimestral: 4, semestral: 2, anual: 1 }
-  const divisor = map[norm || ''] || 1
-  return Number((poliza.prima_input / divisor).toFixed(2))
-}
-function shortMonthHeader(key: string) {
-  const [y,m] = key.split('-')
-  return `${m}/${y.slice(2)}`
-}
-
 // Helpers para hipervínculos
 function normalizePhoneMx(raw: string): string {
   // Quitar todo excepto dígitos

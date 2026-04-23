@@ -102,7 +102,7 @@ export async function GET(req: Request) {
       renovacion,
       producto_nombre,
       tipo_producto,
-      auto_pago: r.auto_pago ?? false,
+      auto_pago: (r as any).auto_pago ?? false,
       comision: {
         anio_vigencia: r.poliza_puntos_cache?.year_factor ?? null,
         porcentaje: pct,
@@ -178,7 +178,7 @@ export async function GET(req: Request) {
       renovacion,
       producto_nombre,
       tipo_producto,
-      auto_pago: r.auto_pago ?? false,
+      auto_pago: (r as any).auto_pago ?? false,
       comision: {
         anio_vigencia: r.poliza_puntos_cache?.year_factor ?? null,
         porcentaje: pct,

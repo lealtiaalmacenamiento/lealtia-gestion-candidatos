@@ -33,7 +33,7 @@ export async function GET() {
   
   // Obtener código de agente si existe - usar service client para evitar problemas de RLS
   const adminClient = getServiceClient()
-  const { data: agentCode, error: codeError } = await adminClient
+  const { data: agentCode } = await adminClient
     .from('agent_codes')
     .select('code')
     .eq('agente_id', usuarioBD.id)
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   }
   
   // Obtener código de agente si existe
-  const { data: agentCode, error: codeError } = await supabase
+  const { data: agentCode } = await supabase
     .from('agent_codes')
     .select('code')
     .eq('agente_id', usuarioBD.id)
