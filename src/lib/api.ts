@@ -412,6 +412,12 @@ export async function getAgendaSlots(usuarioIds: number[], range?: { desde?: str
   return handleResponse<AgendaSlotsResponse>(res)
 }
 
+export interface ExtraParticipante {
+  nombre?: string | null
+  email?: string | null
+  prospectoId?: number | null
+}
+
 export interface CreateAgendaCitaPayload {
   prospectoId?: number | null
   agenteId: number
@@ -425,6 +431,7 @@ export interface CreateAgendaCitaPayload {
   prospectoEmail?: string | null
   notas?: string | null
   generarEnlace?: boolean
+  extraParticipantes?: ExtraParticipante[] | null
 }
 
 export async function createAgendaCita(payload: CreateAgendaCitaPayload & Record<string, unknown>): Promise<AgendaCita> {

@@ -55,8 +55,9 @@ export async function syncPlanificacionCita(options: {
   prospectoNombre: string | null
   citaId: number
   notas?: string | null
+  extraParticipantes?: Array<{ prospectoId?: number | null; nombre?: string | null }> | null
 }) {
-  const { supabase, agenteId, inicioIso, prospectoId, prospectoNombre, citaId, notas } = options
+  const { supabase, agenteId, inicioIso, prospectoId, prospectoNombre, citaId, notas, extraParticipantes } = options
   const meta = dayAndHourFromIso(inicioIso)
   if (!meta) return
   const { anio, semana, day, hour } = meta
@@ -74,6 +75,11 @@ export async function syncPlanificacionCita(options: {
   const blockNota = notas && notas.trim().length ? notas.trim() : null
   const estado: ProspectoEstado = 'con_cita'
 
+  // Extra participants (prospectos only; external guests without prospectoId are ignored)
+  const extras = (extraParticipantes ?? [])
+    .filter((ep) => ep.prospectoId != null || (ep.nombre && ep.nombre.trim()))
+    .map((ep) => ({ id: ep.prospectoId ?? null, nombre: ep.nombre ?? null }))
+
   const buildBlock = (): BloquePlanificacion => ({
     day,
     hour,
@@ -82,6 +88,7 @@ export async function syncPlanificacionCita(options: {
     prospecto_id: prospectoId ?? undefined,
     prospecto_nombre: prospectoNombre ?? undefined,
     prospecto_estado: estado,
+    participantes_extra: extras.length > 0 ? extras.map((e) => ({ id: e.id, nombre: e.nombre })) : undefined,
     notas: blockNota ?? undefined,
     confirmada: false,
     agenda_cita_id: citaId
@@ -101,28 +108,12 @@ export async function syncPlanificacionCita(options: {
   }
 
   const bloques = Array.isArray(plan.bloques) ? (plan.bloques as BloquePlanificacion[]) : []
-  let updated = false
-  const nextBlocks = bloques.map((raw) => {
-    if (!raw || typeof raw !== 'object') return raw
-    if (raw.day === day && raw.hour === hour && raw.activity === 'CITAS') {
-      updated = true
-      return {
-        ...raw,
-        origin: raw.origin ?? 'manual',
-        prospecto_id: prospectoId ?? raw.prospecto_id,
-        prospecto_nombre: prospectoNombre ?? raw.prospecto_nombre,
-        prospecto_estado: estado,
-        notas: blockNota ?? raw.notas,
-        confirmada: raw.confirmada ?? false,
-        agenda_cita_id: citaId
-      }
-    }
-    return raw
-  })
 
-  if (!updated) {
-    nextBlocks.push(buildBlock())
-  }
+  // Find any existing CITAS block tied to this cita; replace it with the updated single block
+  const otherBlocks = bloques.filter(
+    (b) => !(b && b.day === day && b.hour === hour && b.activity === 'CITAS' && b.agenda_cita_id === citaId)
+  )
+  const nextBlocks = [...otherBlocks, buildBlock()]
 
   await supabase
     .from('planificaciones')

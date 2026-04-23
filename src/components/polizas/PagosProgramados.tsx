@@ -43,6 +43,9 @@ export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPago
   const [omitiendo, setOmitiendo] = useState<number | null>(null)
   // Periodos enviados a aprobación (sólo para usuarios no-super)
   const [pendingApproval, setPendingApproval] = useState<Set<string>>(new Set())
+  // Multi-selección para marcar en bloque (solo super)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [showBulkModal, setShowBulkModal] = useState(false)
 
   const fetchPagos = useCallback(async () => {
     try {
@@ -54,6 +57,7 @@ export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPago
         const fetched: Pago[] = json.pagos || []
         console.log('[PagosProgramados] fetchPagos result estados:', fetched.map(p => `${p.periodo_mes}=${p.estado}`).join(', '))
         setPagos(fetched)
+        setSelectedIds(new Set()) // limpiar selección al recargar
       } else {
         console.error('Error cargando pagos:', json.error)
       }
@@ -144,6 +148,26 @@ export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPago
     return pago.estado
   }
 
+  const selectablePagos = pagos.filter(p => p.estado === 'pendiente' || p.estado === 'vencido')
+  const allSelected = selectablePagos.length > 0 && selectablePagos.every(p => selectedIds.has(p.id))
+
+  const handleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(selectablePagos.map(p => p.id)))
+    }
+  }
+
+  const handleSelectOne = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   if (loading) {
     return <div className="text-center py-4">Cargando pagos...</div>
   }
@@ -159,11 +183,42 @@ export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPago
   return (
     <div>
       <h5 className="mb-3">Pagos Programados</h5>
-      
+
+      {/* Barra de acción bulk (solo visible cuando hay selección y isSuper) */}
+      {isSuper && selectedIds.size > 0 && (
+        <div className="alert alert-info d-flex align-items-center justify-content-between py-2 px-3 mb-2">
+          <span className="small">
+            <i className="bi bi-check2-square me-1"></i>
+            <strong>{selectedIds.size}</strong> pago{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+          <div className="d-flex gap-2">
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setSelectedIds(new Set())}>
+              Deseleccionar
+            </button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => setShowBulkModal(true)}>
+              <i className="bi bi-check2-all me-1"></i>Marcar como pagados
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="table-responsive">
         <table className="table table-sm table-hover align-middle">
           <thead>
             <tr>
+              {isSuper && (
+                <th style={{ width: 36 }}>
+                  {selectablePagos.length > 0 && (
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={allSelected}
+                      onChange={handleSelectAll}
+                      title="Seleccionar todos"
+                    />
+                  )}
+                </th>
+              )}
               <th>Periodo</th>
               <th>Fecha Límite</th>
               <th className="text-end">Monto</th>
@@ -173,7 +228,19 @@ export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPago
           </thead>
           <tbody>
             {pagos.map((pago) => (
-              <tr key={pago.id}>
+              <tr key={pago.id} className={selectedIds.has(pago.id) ? 'table-active' : ''}>
+                {isSuper && (
+                  <td>
+                    {(pago.estado === 'pendiente' || pago.estado === 'vencido') && (
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={selectedIds.has(pago.id)}
+                        onChange={() => handleSelectOne(pago.id)}
+                      />
+                    )}
+                  </td>
+                )}
                 <td>
                   {localDate(pago.periodo_mes).toLocaleDateString('es-MX', { 
                     year: 'numeric', 
@@ -231,6 +298,21 @@ export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPago
         </table>
       </div>
 
+      {/* Modal bulk — marcar múltiples pagos como pagados */}
+      {showBulkModal && (
+        <BulkMarcarModal
+          polizaId={polizaId}
+          pagos={pagos.filter(p => selectedIds.has(p.id))}
+          onClose={() => setShowBulkModal(false)}
+          onSuccess={() => {
+            setShowBulkModal(false)
+            setSelectedIds(new Set())
+            void fetchPagos()
+            onPagoRegistrado?.()
+          }}
+        />
+      )}
+
       {/* Modal para marcar pago */}
       {showModal && selectedPago && (
         <ModalMarcarPago
@@ -276,7 +358,109 @@ export default function PagosProgramados({ polizaId, refreshKey, isSuper, onPago
   )
 }
 
-// Componente Modal para registrar pago
+// -----------------------------------------------------------------------
+// Componente BulkMarcarModal — marca múltiples pagos como pagados
+// -----------------------------------------------------------------------
+function BulkMarcarModal({
+  polizaId,
+  pagos,
+  onClose,
+  onSuccess,
+}: {
+  polizaId: string
+  pagos: Pago[]
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [fechaPago, setFechaPago] = useState(today)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const totalMonto = pagos.reduce((acc, p) => acc + (p.monto_programado || 0), 0)
+
+  const handleConfirm = async () => {
+    if (!fechaPago) { setError('Selecciona la fecha de pago'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/polizas/${polizaId}/pagos/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodos: pagos.map(p => p.periodo_mes),
+          fecha_pago: new Date(fechaPago).toISOString(),
+        }),
+      })
+      const j = await res.json() as { success?: boolean; marcados?: number; errores?: { periodo: string; error: string }[]; error?: string }
+      if (!res.ok || !j.success) {
+        setError(j.error ?? 'Error al registrar pagos')
+        return
+      }
+      if (j.errores && j.errores.length > 0) {
+        setError(`Se marcaron ${j.marcados} pago(s), pero hubo ${j.errores.length} error(es).`)
+        return
+      }
+      onSuccess()
+    } catch {
+      setError('Error de red')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Helper local
+  const ld = (s: string) => s.includes('T') || s.includes('Z') ? new Date(s) : new Date(s + 'T12:00:00')
+
+  return (
+    <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className="modal-dialog modal-dialog-scrollable">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title"><i className="bi bi-check2-all me-2"></i>Marcar pagos como pagados</h5>
+            <button type="button" className="btn-close" onClick={onClose} />
+          </div>
+          <div className="modal-body">
+            <div className="mb-3">
+              <label className="form-label">Fecha de pago</label>
+              <input
+                type="date"
+                className="form-control"
+                value={fechaPago}
+                onChange={e => setFechaPago(e.target.value)}
+                required
+              />
+            </div>
+            <p className="small text-muted mb-2">Se registrarán {pagos.length} pago(s) con el monto programado de cada uno:</p>
+            <ul className="list-group list-group-flush mb-3" style={{ maxHeight: 200, overflowY: 'auto' }}>
+              {pagos.map(p => (
+                <li key={p.id} className="list-group-item d-flex justify-content-between px-0 py-1 small">
+                  <span>{ld(p.periodo_mes).toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })}</span>
+                  <span className="text-muted">{formatCurrency(p.monto_programado)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="d-flex justify-content-between fw-semibold border-top pt-2 small">
+              <span>Total</span>
+              <span>{formatCurrency(totalMonto)}</span>
+            </div>
+            {error && <div className="alert alert-danger small py-1 mt-2 mb-0">{error}</div>}
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button type="button" className="btn btn-primary" onClick={handleConfirm} disabled={saving}>
+              {saving ? 'Guardando...' : `Confirmar ${pagos.length} pago(s)`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------
+// Componente Modal para registrar pago individual
+// -----------------------------------------------------------------------
 function ModalMarcarPago({ 
   pago, 
   isSuper,

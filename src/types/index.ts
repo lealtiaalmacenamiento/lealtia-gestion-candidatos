@@ -66,6 +66,17 @@ export interface Usuario {
   id_auth?: string
   is_desarrollador?: boolean
   codigo_agente?: string
+  foto_perfil_url?: string | null
+}
+
+/** Fondo de pantalla para Zoom */
+export interface ZoomFondo {
+  id: string
+  storage_path: string
+  public_url: string
+  uploaded_by: string | null
+  activo: boolean
+  created_at: string
 }
 
 export type IntegrationProviderKey = 'google' | 'zoom' | 'teams'
@@ -214,6 +225,11 @@ export interface Prospecto {
   updated_at?: string
 }
 
+export interface BloqueParticipanteExtra {
+  id?: number | null
+  nombre?: string | null
+}
+
 export interface BloquePlanificacion {
   day: number // 0=Lunes ISO? (usaremos 0=lunes..6=domingo para consistencia)
   hour: string // '05'..'23'
@@ -223,6 +239,7 @@ export interface BloquePlanificacion {
   prospecto_id?: number
   prospecto_nombre?: string
   prospecto_estado?: ProspectoEstado
+  participantes_extra?: BloqueParticipanteExtra[] // participantes adicionales de la misma cita
   notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
   confirmada?: boolean // para bloques tipo SMNYL/Cita
   agenda_cita_id?: number | null
