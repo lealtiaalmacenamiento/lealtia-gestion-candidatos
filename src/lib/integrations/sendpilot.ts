@@ -263,7 +263,16 @@ export async function getConversations(
 ): Promise<SPConversationsResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) })
   if (accountId) params.set('accountId', accountId)
-  return spFetch<SPConversationsResponse>('GET', `/inbox/conversations?${params.toString()}`)
+  try {
+    return await spFetch<SPConversationsResponse>('GET', `/inbox/conversations?${params.toString()}`)
+  } catch (err) {
+    // SP returns 500 when the requested page exceeds available data — treat as end of results
+    const msg = err instanceof Error ? err.message : ''
+    if (/→ 5\d\d:/.test(msg) || /→ 404:/.test(msg)) {
+      return { conversations: [], pagination: { page, limit, total: 0, totalPages: page - 1, hasMore: false } }
+    }
+    throw err
+  }
 }
 
 export async function getConversationMessages(

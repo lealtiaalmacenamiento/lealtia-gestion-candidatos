@@ -98,6 +98,8 @@ export default function InboxPage() {
       while (true) {
         const res = await fetch(`/api/sendpilot/inbox?page=${pg}&limit=50`, { cache: 'no-store' })
         if (!res.ok) {
+          // On pages > 1 a 502/500 means SP ran out of data — stop without error
+          if (pg > 1) break
           const d = await res.json() as { error?: string }
           throw new Error(d.error ?? `Error ${res.status}`)
         }
