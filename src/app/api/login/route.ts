@@ -10,6 +10,21 @@ export const runtime = 'nodejs'
 
 // Extrae access token de múltiples formatos posibles de cookies Supabase (array, objeto, raw)
 
+async function getSegmentNames(usuarioId: number): Promise<string[]> {
+  const admin = getServiceClient()
+  const { data } = await admin
+    .from('user_segments')
+    .select('segment:segments(name)')
+    .eq('usuario_id', usuarioId)
+  if (!data) return []
+  return data
+    .map((r: Record<string, unknown>) => {
+      const seg = r.segment as { name?: string } | null
+      return seg?.name ?? null
+    })
+    .filter((n): n is string => !!n)
+}
+
 export async function GET() {
   const cookieStore = await cookies()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -40,7 +55,8 @@ export async function GET() {
     .eq('activo', true)
     .maybeSingle()
   
-  return NextResponse.json({ ...usuarioBD, codigo_agente: agentCode?.code })
+  const segmentos = await getSegmentNames(usuarioBD.id).catch(() => [])
+  return NextResponse.json({ ...usuarioBD, codigo_agente: agentCode?.code, segmentos })
 }
 
 export async function POST(req: Request) {
@@ -80,7 +96,8 @@ export async function POST(req: Request) {
     .maybeSingle()
   
   await logAccion('login_ok', { usuario: usuarioBD.email })
-  const res = NextResponse.json({ ...usuarioBD, codigo_agente: agentCode?.code }, { headers: { 'Cache-Control': 'no-store' } })
+  const segmentos = await getSegmentNames(usuarioBD.id).catch(() => [])
+  const res = NextResponse.json({ ...usuarioBD, codigo_agente: agentCode?.code, segmentos }, { headers: { 'Cache-Control': 'no-store' } })
   res.cookies.set(SESSION_COOKIE_NAME, String(Date.now()), {
     ...SESSION_COOKIE_BASE,
     maxAge: SESSION_MAX_AGE_SECONDS

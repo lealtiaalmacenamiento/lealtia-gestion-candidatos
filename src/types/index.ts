@@ -67,6 +67,7 @@ export interface Usuario {
   is_desarrollador?: boolean
   codigo_agente?: string
   foto_perfil_url?: string | null
+  segmentos?: string[]
 }
 
 /** Fondo de pantalla para Zoom */
