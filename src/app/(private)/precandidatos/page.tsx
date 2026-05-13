@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import BasePage from '@/components/BasePage'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthProvider'
@@ -44,7 +45,22 @@ const ESTADO_BADGE: Record<Precandidato['estado'], string> = {
 }
 
 export default function PrecandidatosPage() {
-  const { user } = useAuth()
+  const { user, loadingUser } = useAuth()
+  const router = useRouter()
+
+  const esReclutador = user?.segmentos?.includes('reclutador') ?? false
+
+  useEffect(() => {
+    if (!loadingUser && user && !esReclutador) router.replace('/home')
+  }, [loadingUser, user, esReclutador, router])
+
+  if (loadingUser || (user && !esReclutador)) {
+    return (
+      <BasePage title="Precandidatos">
+        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
+      </BasePage>
+    )
+  }
 
   const [items, setItems] = useState<Precandidato[]>([])
   const [total, setTotal] = useState(0)

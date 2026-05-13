@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import BasePage from '@/components/BasePage'
 import { useAuth } from '@/context/AuthProvider'
 
@@ -31,7 +32,22 @@ function formatDate(iso: string) {
 }
 
 export default function InboxPage() {
-  useAuth()
+  const { user, loadingUser } = useAuth()
+  const router = useRouter()
+
+  const esReclutador = user?.segmentos?.includes('reclutador') ?? false
+
+  useEffect(() => {
+    if (!loadingUser && user && !esReclutador) router.replace('/home')
+  }, [loadingUser, user, esReclutador, router])
+
+  if (loadingUser || (user && !esReclutador)) {
+    return (
+      <BasePage title="Inbox LinkedIn">
+        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
+      </BasePage>
+    )
+  }
 
   const [threads, setThreads] = useState<Thread[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)

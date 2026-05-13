@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import BasePage from '@/components/BasePage'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthProvider'
@@ -22,8 +23,23 @@ const ESTADO_BADGE: Record<string, string> = {
 }
 
 export default function CampaniasPage() {
-  const { user } = useAuth()
+  const { user, loadingUser } = useAuth()
+  const router = useRouter()
   const isSuper = user?.rol === 'admin' || user?.rol === 'supervisor'
+
+  const esReclutador = user?.segmentos?.includes('reclutador') ?? false
+
+  useEffect(() => {
+    if (!loadingUser && user && !esReclutador) router.replace('/home')
+  }, [loadingUser, user, esReclutador, router])
+
+  if (loadingUser || (user && !esReclutador)) {
+    return (
+      <BasePage title="Campañas SendPilot">
+        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
+      </BasePage>
+    )
+  }
 
   const [items, setItems] = useState<Campana[]>([])
   const [loading, setLoading] = useState(true)

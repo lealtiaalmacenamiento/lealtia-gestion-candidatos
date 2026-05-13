@@ -498,8 +498,8 @@ export default function IntegracionesPage() {
         </div>
       )}
 
-      {/* ── SendPilot (admin/supervisor only) ────────────────────────────── */}
-      {!loading && !error && isSuper && (
+      {/* ── SendPilot (admin only) ────────────────────────────── */}
+      {!loading && !error && user?.rol === 'admin' && (
         <div className="mt-5">
           <h5 className="fw-semibold mb-3"><i className="bi bi-send-fill me-2 text-primary"></i>SendPilot (automatización LinkedIn)</h5>
           <div className="card shadow-sm border-0">
@@ -552,8 +552,8 @@ export default function IntegracionesPage() {
         </div>
       )}
 
-      {/* ── Cal.com (todos los usuarios) ──────────────────────────────── */}
-      {!loading && !error && (
+      {/* ── Cal.com (reclutador segment only) ──────────────────────────── */}
+      {!loading && !error && (user?.segmentos?.includes('reclutador') ?? false) && (
         <div className="mt-4 mb-5">
           <h5 className="fw-semibold mb-3"><i className="bi bi-calendar-check-fill me-2 text-primary"></i>Cal.com (agenda de entrevistas)</h5>
           <div className="card shadow-sm border-0">
