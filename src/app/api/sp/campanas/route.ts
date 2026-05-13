@@ -35,7 +35,7 @@ export async function GET() {
 
   // Enrich with pre-candidate counts per campaign
   const ids = (data || []).map(c => c.id)
-  let countMap: Record<string, number> = {}
+  const countMap: Record<string, number> = {}
   if (ids.length > 0) {
     const { data: counts } = await supabase
       .from('sp_precandidatos')

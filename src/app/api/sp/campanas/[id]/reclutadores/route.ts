@@ -25,7 +25,7 @@ export async function GET(_req: Request, context: RouteContext) {
 
   // Enrich with usuario info
   const authIds = (data || []).map(r => r.reclutador_id)
-  let usuariosMap: Record<string, { id: number; email: string; nombre: string | null }> = {}
+  const usuariosMap: Record<string, { id: number; email: string; nombre: string | null }> = {}
   if (authIds.length > 0) {
     const { data: usuarios } = await supabase
       .from('usuarios')

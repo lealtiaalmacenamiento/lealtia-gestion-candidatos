@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import {
   verifySendPilotSignature,

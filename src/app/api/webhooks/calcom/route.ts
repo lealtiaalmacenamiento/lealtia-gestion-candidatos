@@ -1,6 +1,5 @@
-import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
-import { verifyCalcomSignature, getCalcomApiKey } from '@/lib/integrations/calcom'
+import { verifyCalcomSignature } from '@/lib/integrations/calcom'
 import { normalizeLinkedInSlug } from '@/lib/integrations/sendpilot'
 import { sendMail } from '@/lib/mailer'
 
@@ -90,7 +89,6 @@ async function handleBookingCreated(
 
   const attendee = (payload.attendees as Record<string, unknown>[] | undefined)?.[0]
   const attendeeEmail: string | null = (attendee?.email as string) ?? null
-  const attendeeName: string | null = (attendee?.name as string) ?? null
 
   if (!bookingUid) return
 
@@ -157,7 +155,7 @@ async function handleBookingCreated(
     .ilike('linkedin_slug', linkedinSlug)
     .maybeSingle()
 
-  const spCita = await upsertSpCita(supabase, {
+  await upsertSpCita(supabase, {
     reclutador_id: reclutadorAuthId,
     campana_id: asignacion.campana_id,
     precandidato_id: precandidato?.id ?? null,

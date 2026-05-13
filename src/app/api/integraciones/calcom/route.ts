@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { getIntegrationToken } from '@/lib/integrationTokens'
-import { connectCalcom, disconnectCalcom, getCalcomApiKey } from '@/lib/integrations/calcom'
+import { connectCalcom, disconnectCalcom } from '@/lib/integrations/calcom'
 import { logAccion } from '@/lib/logger'
 
 export const runtime = 'nodejs'
