@@ -218,10 +218,10 @@ export default function InboxPage() {
         </button>
       </div>
 
-      <div className="row g-0 border rounded" style={{ height: 'calc(100vh - 220px)', overflow: 'hidden' }}>
+      <div className="row g-0 border rounded" style={{ height: 'calc(100vh - 220px)', overflow: 'hidden', minHeight: 0 }}>
 
         {/* Conversation list */}
-        <div className="col-12 col-md-4 border-end d-flex flex-column" style={{ overflow: 'hidden' }}>
+        <div className="col-12 col-md-4 border-end d-flex flex-column" style={{ overflow: 'hidden', minHeight: 0, height: '100%' }}>
           <div className="p-2 border-bottom bg-white">
             <div className="input-group input-group-sm">
               <span className="input-group-text border-end-0 bg-white">
@@ -238,7 +238,7 @@ export default function InboxPage() {
             </div>
           </div>
 
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
             {loading && !conversations.length && (
               <div className="text-center py-4"><div className="spinner-border spinner-border-sm text-secondary" /></div>
             )}
@@ -280,7 +280,7 @@ export default function InboxPage() {
         </div>
 
         {/* Messages panel */}
-        <div className="col-12 col-md-8 d-flex flex-column" style={{ overflow: 'hidden' }}>
+        <div className="col-12 col-md-8 d-flex flex-column" style={{ overflow: 'hidden', minHeight: 0, height: '100%' }}>
           {!selectedConv ? (
             <div className="d-flex align-items-center justify-content-center h-100 text-muted">
               <div className="text-center">
@@ -305,7 +305,7 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              <div className="flex-grow-1 p-3 d-flex flex-column gap-2" style={{ overflowY: 'auto', background: '#f8f9fa' }}>
+              <div className="flex-grow-1 p-3 d-flex flex-column gap-2" style={{ overflowY: 'auto', background: '#f8f9fa', minHeight: 0 }}>
                 {loadingMessages && <div className="text-center py-4"><div className="spinner-border spinner-border-sm text-secondary" /></div>}
                 {!loadingMessages && messages.length === 0 && (
                   <div className="text-muted text-center small py-4">Sin mensajes en esta conversación</div>
