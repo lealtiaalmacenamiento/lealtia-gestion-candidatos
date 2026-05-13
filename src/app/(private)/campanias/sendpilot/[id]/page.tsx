@@ -44,6 +44,16 @@ export default function CampanaDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [notif, setNotif] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
+  // Users for recruiter select
+  const [usuarios, setUsuarios] = useState<{ id_auth: string; nombre: string | null; email: string }[]>([])
+
+  useEffect(() => {
+    fetch('/api/usuarios', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.resolve([]))
+      .then((d: { id_auth: string; nombre: string | null; email: string }[]) => setUsuarios(d ?? []))
+      .catch(() => {})
+  }, [])
+
   // Event types for adding a recruiter
   const [eventTypes, setEventTypes] = useState<EventType[]>([])
   const [newReclutadorId, setNewReclutadorId] = useState('')
@@ -273,15 +283,20 @@ export default function CampanaDetailPage() {
                 {isSuper && (
                   <form className="row g-2 align-items-end" onSubmit={handleAddReclutador}>
                     <div className="col-12 col-md-4">
-                      <label className="form-label small">ID Auth del reclutador</label>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm"
+                      <label className="form-label small">Reclutador</label>
+                      <select
+                        className="form-select form-select-sm"
                         value={newReclutadorId}
                         onChange={e => setNewReclutadorId(e.target.value)}
-                        placeholder="UUID del usuario en auth.users"
                         required
-                      />
+                      >
+                        <option value="">— Seleccionar usuario —</option>
+                        {usuarios.filter(u => u.id_auth).map(u => (
+                          <option key={u.id_auth} value={u.id_auth!}>
+                            {u.nombre ?? u.email}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     {eventTypes.length > 0 && (
                       <div className="col-12 col-md-4">
