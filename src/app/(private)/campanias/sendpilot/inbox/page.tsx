@@ -45,6 +45,8 @@ export default function InboxPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [spErrors, setSpErrors] = useState<string[]>([])
+  const [syncing, setSyncing] = useState(false)
   const [campanas, setCampanas] = useState<Campana[]>([])
   const [selectedCampana, setSelectedCampana] = useState<string>('')
   const [selectedThread, setSelectedThread] = useState<Thread | null>(null)
@@ -62,21 +64,32 @@ export default function InboxPage() {
   const load = useCallback(async (cursor?: string) => {
     setLoading(true)
     setError(null)
+    setSpErrors([])
     try {
       const params = new URLSearchParams()
       if (selectedCampana) params.set('campana_id', selectedCampana)
       if (cursor) params.set('cursor', cursor)
       const res = await fetch(`/api/sendpilot/inbox?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) throw new Error(`Error ${res.status}`)
-      const data = await res.json() as { threads: Thread[]; nextCursor: string | null }
+      const data = await res.json() as { threads: Thread[]; nextCursor: string | null; errors?: string[] }
       setThreads(prev => cursor ? [...prev, ...(data.threads ?? [])] : (data.threads ?? []))
       setNextCursor(data.nextCursor)
+      if (data.errors?.length) setSpErrors(data.errors)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar inbox')
     } finally {
       setLoading(false)
     }
   }, [selectedCampana])
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true)
+    setThreads([])
+    setNextCursor(null)
+    setSelectedThread(null)
+    await load().catch(() => {})
+    setSyncing(false)
+  }, [load])
 
   useEffect(() => {
     setThreads([])
@@ -129,6 +142,20 @@ export default function InboxPage() {
       title="Inbox SendPilot"
       alert={notif ? { type: notif.type === 'error' ? 'danger' : 'success', message: notif.message, show: true } : undefined}
     >
+      <div className="d-flex justify-content-end mb-2">
+        <button
+          className="btn btn-outline-primary btn-sm"
+          onClick={handleSync}
+          disabled={syncing || loading}
+        >
+          {(syncing || loading) ? <><span className="spinner-border spinner-border-sm me-1" />Cargando...</> : <><i className="bi bi-arrow-clockwise me-1" />Sincronizar</>}
+        </button>
+      </div>
+      {spErrors.length > 0 && (
+        <div className="alert alert-warning small py-2">
+          <strong>Errores al consultar SP:</strong> {spErrors.join(' | ')}
+        </div>
+      )}
       <div className="row g-0" style={{ height: 'calc(100vh - 200px)' }}>
         {/* Thread list */}
         <div className="col-12 col-md-4 border-end" style={{ overflowY: 'auto' }}>

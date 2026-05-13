@@ -69,11 +69,15 @@ export async function GET(req: Request) {
     spCampaignIds.map(spId => getInbox(spId, cursor))
   )
 
+  const errors = results
+    .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    .map(r => r.reason instanceof Error ? r.reason.message : String(r.reason))
+
   const threads = results
     .flatMap(r => r.status === 'fulfilled' ? r.value.threads : [])
   const nextCursor = results
     .map(r => r.status === 'fulfilled' ? r.value.nextCursor : null)
     .find(c => c != null) ?? null
 
-  return NextResponse.json({ threads, nextCursor })
+  return NextResponse.json({ threads, nextCursor, errors: errors.length ? errors : undefined })
 }
