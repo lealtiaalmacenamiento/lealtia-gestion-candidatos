@@ -79,7 +79,7 @@ export interface ZoomFondo {
   created_at: string
 }
 
-export type IntegrationProviderKey = 'google' | 'zoom' | 'teams'
+export type IntegrationProviderKey = 'google' | 'zoom' | 'teams' | 'calcom' | 'sendpilot'
 export type ManualMeetingProvider = 'zoom' | 'teams'
 export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
 

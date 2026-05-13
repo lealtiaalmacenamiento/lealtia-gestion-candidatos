@@ -20,7 +20,11 @@ export default function Header() {
   const { title } = usePageTitle()
   // Navegación contextual por módulo
   // (Se removió navegación contextual, rol ya no utilizado)
-  const moduleLinks: { href: string; label: string; icon?: string; roles?: string[] }[] = []
+  const moduleLinks: { href: string; label: string; icon?: string; roles?: string[] }[] = [
+    { href: '/precandidatos', label: 'Precandidatos', icon: 'people-fill' },
+    { href: '/campanias/sendpilot', label: 'Campañas SP', icon: 'megaphone-fill' },
+    { href: '/campanias/sendpilot/inbox', label: 'Inbox LinkedIn', icon: 'chat-dots-fill' },
+  ]
   // Eliminamos prospectos/planificación del navbar; se mostrarán solo en el dashboard principal.
 
   return (

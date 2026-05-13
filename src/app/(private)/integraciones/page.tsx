@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import BasePage from '@/components/BasePage'
 import type { IntegrationProviderKey } from '@/types'
 import { providerLabel } from '@/lib/integrations/providerLabels'
+import { useAuth } from '@/context/AuthProvider'
 
 interface ManualStatus {
   settings: {
@@ -39,7 +40,10 @@ const PROVIDER_META: Record<IntegrationProviderKey, { icon: string; description:
   teams: {
     icon: 'bi-calendar3',
     description: 'Comparte tu sala de Microsoft Teams guardando un enlace personal.'
-  }
+  },
+  // calcom and sendpilot are managed via their own sections below, not the generic provider card loop
+  calcom: { icon: 'bi-calendar-check-fill', description: '' },
+  sendpilot: { icon: 'bi-send-fill', description: '' }
 }
 
 function formatExpire(expiresAt: string | null): string {
@@ -68,6 +72,22 @@ export default function IntegracionesPage() {
   const [zoomSaving, setZoomSaving] = useState(false)
   const [teamsForm, setTeamsForm] = useState({ meetingUrl: '', meetingId: '', meetingPassword: '' })
   const [teamsSaving, setTeamsSaving] = useState(false)
+
+  const { user } = useAuth()
+  const isSuper = user?.rol === 'admin' || user?.rol === 'supervisor'
+
+  // SendPilot state (org-level, admin/supervisor only)
+  const [spConnected, setSpConnected] = useState(false)
+  const [spForm, setSpForm] = useState({ apiKey: '', webhookSecret: '' })
+  const [spSaving, setSpSaving] = useState(false)
+  const [spDisconnecting, setSpDisconnecting] = useState(false)
+
+  // Cal.com state (per-user)
+  const [calConnected, setCalConnected] = useState(false)
+  const [calInfo, setCalInfo] = useState<{ organizer_email?: string; username?: string } | null>(null)
+  const [calApiKey, setCalApiKey] = useState('')
+  const [calSaving, setCalSaving] = useState(false)
+  const [calDisconnecting, setCalDisconnecting] = useState(false)
 
   const metaList = useMemo(() => PROVIDER_META, [])
 
@@ -110,7 +130,113 @@ export default function IntegracionesPage() {
       }
     }
     load().catch(() => {})
+
+    // Load SP status (admin/supervisor)
+    const loadSP = async () => {
+      try {
+        const res = await fetch('/api/integraciones/sendpilot', { cache: 'no-store' })
+        if (res.ok) {
+          const d = await res.json() as { connected: boolean }
+          setSpConnected(d.connected)
+        }
+      } catch { /* ignore */ }
+    }
+    loadSP().catch(() => {})
+
+    // Load Cal.com status (current user)
+    const loadCal = async () => {
+      try {
+        const res = await fetch('/api/integraciones/calcom', { cache: 'no-store' })
+        if (res.ok) {
+          const d = await res.json() as { connected: boolean; organizer_email?: string; username?: string }
+          setCalConnected(d.connected)
+          if (d.connected) setCalInfo({ organizer_email: d.organizer_email, username: d.username })
+        }
+      } catch { /* ignore */ }
+    }
+    loadCal().catch(() => {})
   }, [])
+
+  const handleSPSave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSpSaving(true)
+    setNotif(null)
+    try {
+      const res = await fetch('/api/integraciones/sendpilot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: spForm.apiKey.trim(), webhook_secret: spForm.webhookSecret.trim() || undefined })
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error || `Error ${res.status}`)
+      }
+      setSpConnected(true)
+      setSpForm(prev => ({ ...prev, apiKey: '' }))
+      setNotif({ type: 'success', message: 'SendPilot conectado correctamente.' })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'No se pudo guardar SendPilot' })
+    } finally {
+      setSpSaving(false)
+    }
+  }
+
+  const handleSPDisconnect = async () => {
+    setSpDisconnecting(true)
+    setNotif(null)
+    try {
+      const res = await fetch('/api/integraciones/sendpilot', { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      setSpConnected(false)
+      setNotif({ type: 'info', message: 'SendPilot desconectado.' })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error al desconectar SP' })
+    } finally {
+      setSpDisconnecting(false)
+    }
+  }
+
+  const handleCalcomSave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setCalSaving(true)
+    setNotif(null)
+    try {
+      const res = await fetch('/api/integraciones/calcom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: calApiKey.trim() })
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(d.error || `Error ${res.status}`)
+      }
+      const d = await res.json() as { organizer_email?: string; username?: string }
+      setCalConnected(true)
+      setCalInfo({ organizer_email: d.organizer_email, username: d.username })
+      setCalApiKey('')
+      setNotif({ type: 'success', message: 'Cal.com conectado correctamente.' })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'No se pudo conectar Cal.com' })
+    } finally {
+      setCalSaving(false)
+    }
+  }
+
+  const handleCalcomDisconnect = async () => {
+    setCalDisconnecting(true)
+    setNotif(null)
+    try {
+      const res = await fetch('/api/integraciones/calcom', { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      setCalConnected(false)
+      setCalInfo(null)
+      setNotif({ type: 'info', message: 'Cal.com desconectado.' })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error al desconectar Cal.com' })
+    } finally {
+      setCalDisconnecting(false)
+    }
+  }
 
   const handleDisconnect = async (provider: IntegrationProviderKey) => {
     setDisconnecting(provider)
@@ -228,7 +354,7 @@ export default function IntegracionesPage() {
       {!loading && error && <div className="alert alert-danger">{error}</div>}
       {!loading && !error && (
         <div className="row g-4">
-          {providers.map((provider) => {
+          {providers.filter(p => p.provider !== 'calcom' && p.provider !== 'sendpilot').map((provider) => {
             const meta = metaList[provider.provider]
             const isZoom = provider.provider === 'zoom'
             const isTeams = provider.provider === 'teams'
@@ -369,6 +495,105 @@ export default function IntegracionesPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ── SendPilot (admin/supervisor only) ────────────────────────────── */}
+      {!loading && !error && isSuper && (
+        <div className="mt-5">
+          <h5 className="fw-semibold mb-3"><i className="bi bi-send-fill me-2 text-primary"></i>SendPilot (automatización LinkedIn)</h5>
+          <div className="card shadow-sm border-0">
+            <div className="card-body d-flex flex-column gap-3">
+              <div className="d-flex align-items-center gap-2">
+                <span className={`badge ${spConnected ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'}`}>
+                  {spConnected ? 'Conectado' : 'Desconectado'}
+                </span>
+                <span className="small text-muted">Cuenta organizacional. Solo administradores pueden configurarla.</span>
+              </div>
+              <form className="d-flex flex-column gap-3" onSubmit={handleSPSave}>
+                <div className="form-floating">
+                  <input
+                    type="password"
+                    className="form-control"
+                    id="sp-api-key"
+                    value={spForm.apiKey}
+                    onChange={e => setSpForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                    placeholder="sp_live_..."
+                    autoComplete="new-password"
+                    required
+                  />
+                  <label htmlFor="sp-api-key">API Key de SendPilot</label>
+                </div>
+                <div className="form-floating">
+                  <input
+                    type="password"
+                    className="form-control"
+                    id="sp-webhook-secret"
+                    value={spForm.webhookSecret}
+                    onChange={e => setSpForm(prev => ({ ...prev, webhookSecret: e.target.value }))}
+                    placeholder="Secreto del webhook (opcional)"
+                    autoComplete="new-password"
+                  />
+                  <label htmlFor="sp-webhook-secret">Webhook Secret (opcional)</label>
+                </div>
+                <div className="d-flex gap-2">
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={spSaving}>
+                    {spSaving ? 'Guardando…' : spConnected ? 'Actualizar credenciales' : 'Conectar SendPilot'}
+                  </button>
+                  {spConnected && (
+                    <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleSPDisconnect} disabled={spDisconnecting}>
+                      {spDisconnecting ? 'Desconectando…' : 'Desconectar'}
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cal.com (todos los usuarios) ──────────────────────────────── */}
+      {!loading && !error && (
+        <div className="mt-4 mb-5">
+          <h5 className="fw-semibold mb-3"><i className="bi bi-calendar-check-fill me-2 text-primary"></i>Cal.com (agenda de entrevistas)</h5>
+          <div className="card shadow-sm border-0">
+            <div className="card-body d-flex flex-column gap-3">
+              <div className="d-flex align-items-center gap-2">
+                <span className={`badge ${calConnected ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'}`}>
+                  {calConnected ? 'Conectado' : 'Desconectado'}
+                </span>
+                {calConnected && calInfo && (
+                  <span className="small text-muted">{calInfo.organizer_email ?? calInfo.username}</span>
+                )}
+              </div>
+              {!calConnected ? (
+                <form className="d-flex flex-column gap-3" onSubmit={handleCalcomSave}>
+                  <div className="form-floating">
+                    <input
+                      type="password"
+                      className="form-control"
+                      id="calcom-api-key"
+                      value={calApiKey}
+                      onChange={e => setCalApiKey(e.target.value)}
+                      placeholder="cal_live_..."
+                      autoComplete="new-password"
+                      required
+                    />
+                    <label htmlFor="calcom-api-key">API Key de Cal.com</label>
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={calSaving}>
+                    {calSaving ? 'Conectando…' : 'Conectar Cal.com'}
+                  </button>
+                </form>
+              ) : (
+                <div className="d-flex gap-2">
+                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleCalcomDisconnect} disabled={calDisconnecting}>
+                    {calDisconnecting ? 'Desconectando…' : 'Desconectar Cal.com'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </BasePage>
