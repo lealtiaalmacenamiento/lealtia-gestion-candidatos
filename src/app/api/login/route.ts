@@ -20,7 +20,7 @@ async function getSegmentNames(usuarioId: number): Promise<string[]> {
   return data
     .map((r: Record<string, unknown>) => {
       const seg = r.segment as { name?: string } | null
-      return seg?.name ?? null
+      return seg?.name?.toLowerCase() ?? null
     })
     .filter((n): n is string => !!n)
 }
