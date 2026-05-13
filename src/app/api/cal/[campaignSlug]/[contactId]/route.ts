@@ -113,11 +113,17 @@ export async function GET(
     return new Response('URL de Cal.com no configurada para este reclutador', { status: 503 })
   }
 
-  // Build the final Cal.com URL with optional LinkedIn prefill
+  // Build the final Cal.com URL with LinkedIn prefill
+  // Use the field identifier from the campaign (lowercased to match Cal.com field slug)
   const finalUrl = new URL(calUrl)
-  if (precandidato?.linkedin_url) {
-    const identifier = campana.calcom_linkedin_identifier ?? 'LinkedIn'
-    finalUrl.searchParams.set(identifier, precandidato.linkedin_url)
+  const fieldKey = (campana.calcom_linkedin_identifier ?? 'linkedin').toLowerCase()
+
+  // Prefer the stored linkedin_url; fallback to reconstructing from the contactId in the URL
+  const linkedinValue = precandidato?.linkedin_url
+    ?? (isUuid ? null : `https://www.linkedin.com/in/${decodedId.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//, '')}`)
+
+  if (linkedinValue) {
+    finalUrl.searchParams.set(fieldKey, linkedinValue)
   }
 
   return NextResponse.redirect(finalUrl.toString(), { status: 302 })
