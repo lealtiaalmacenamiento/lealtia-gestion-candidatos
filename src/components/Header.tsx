@@ -19,16 +19,8 @@ export default function Header() {
 
   const { title } = usePageTitle()
 
-  const isReclutador = user?.segmentos?.includes('reclutador') ?? false
-
   // Navegación contextual por módulo
-  const moduleLinks: { href: string; label: string; icon?: string }[] = [
-    ...(isReclutador ? [
-      { href: '/precandidatos', label: 'Precandidatos', icon: 'people-fill' },
-      { href: '/campanias/sendpilot', label: 'Campañas SP', icon: 'megaphone-fill' },
-      { href: '/campanias/sendpilot/inbox', label: 'Inbox LinkedIn', icon: 'chat-dots-fill' },
-    ] : []),
-  ]
+  const moduleLinks: { href: string; label: string; icon?: string }[] = []
 
   return (
     <Navbar pageTitle={title && title.toLowerCase() !== 'dashboard' ? title : undefined}>
