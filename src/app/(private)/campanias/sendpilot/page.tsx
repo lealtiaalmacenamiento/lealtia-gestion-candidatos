@@ -33,14 +33,6 @@ export default function CampaniasPage() {
     if (!loadingUser && user && !esReclutador) router.replace('/home')
   }, [loadingUser, user, esReclutador, router])
 
-  if (loadingUser || (user && !esReclutador)) {
-    return (
-      <BasePage title="Campañas SendPilot">
-        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
-      </BasePage>
-    )
-  }
-
   const [items, setItems] = useState<Campana[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -115,6 +107,14 @@ export default function CampaniasPage() {
     const url = `${window.location.origin}/api/cal/${campana.sendpilot_campaign_id}/`
     void navigator.clipboard.writeText(url)
     setNotif({ type: 'success', message: 'Enlace base copiado al portapapeles.' })
+  }
+
+  if (loadingUser || !esReclutador) {
+    return (
+      <BasePage title="Campañas SendPilot">
+        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
+      </BasePage>
+    )
   }
 
   return (

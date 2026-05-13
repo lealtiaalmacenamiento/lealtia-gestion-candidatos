@@ -54,14 +54,6 @@ export default function PrecandidatosPage() {
     if (!loadingUser && user && !esReclutador) router.replace('/home')
   }, [loadingUser, user, esReclutador, router])
 
-  if (loadingUser || (user && !esReclutador)) {
-    return (
-      <BasePage title="Precandidatos">
-        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
-      </BasePage>
-    )
-  }
-
   const [items, setItems] = useState<Precandidato[]>([])
   const [total, setTotal] = useState(0)
   const [campanas, setCampanas] = useState<Campana[]>([])
@@ -119,6 +111,14 @@ export default function PrecandidatosPage() {
     acc[item.estado] = (acc[item.estado] ?? 0) + 1
     return acc
   }, {} as Record<string, number>)
+
+  if (loadingUser || !esReclutador) {
+    return (
+      <BasePage title="Precandidatos">
+        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
+      </BasePage>
+    )
+  }
 
   return (
     <BasePage title="Precandidatos">

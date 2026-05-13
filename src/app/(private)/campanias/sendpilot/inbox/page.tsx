@@ -41,14 +41,6 @@ export default function InboxPage() {
     if (!loadingUser && user && !esReclutador) router.replace('/home')
   }, [loadingUser, user, esReclutador, router])
 
-  if (loadingUser || (user && !esReclutador)) {
-    return (
-      <BasePage title="Inbox LinkedIn">
-        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
-      </BasePage>
-    )
-  }
-
   const [threads, setThreads] = useState<Thread[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -122,6 +114,14 @@ export default function InboxPage() {
     } finally {
       setSending(false)
     }
+  }
+
+  if (loadingUser || !esReclutador) {
+    return (
+      <BasePage title="Inbox LinkedIn">
+        <div className="text-center py-5"><div className="spinner-border text-primary" /></div>
+      </BasePage>
+    )
   }
 
   return (

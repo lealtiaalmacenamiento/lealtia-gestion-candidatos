@@ -74,7 +74,6 @@ export default function IntegracionesPage() {
   const [teamsSaving, setTeamsSaving] = useState(false)
 
   const { user } = useAuth()
-  const isSuper = user?.rol === 'admin' || user?.rol === 'supervisor'
 
   // SendPilot state (org-level, admin/supervisor only)
   const [spConnected, setSpConnected] = useState(false)
