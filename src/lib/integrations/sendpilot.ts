@@ -190,6 +190,112 @@ export async function updateLeadStatus(spContactId: string, status: string): Pro
   await spFetch<unknown>('PUT', `/leads/${spContactId}`, { status })
 }
 
+// ---------------------------------------------------------------------------
+// Conversations API (real SP endpoints)
+// ---------------------------------------------------------------------------
+
+export interface SPSender {
+  id: string
+  name: string
+  profileUrl?: string
+  status: string
+}
+
+export interface SPConversationParticipant {
+  id: string
+  name: string
+  profileUrl: string
+  profilePicture?: string
+}
+
+export interface SPConversation {
+  id: string
+  accountId: string
+  participants: SPConversationParticipant[]
+  lastMessage?: {
+    content: string
+    sentAt: string
+    direction: 'sent' | 'received'
+  }
+  lastActivityAt: string
+  unreadCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SPConversationsResponse {
+  conversations: SPConversation[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+    hasMore: boolean
+  }
+}
+
+export interface SPConversationMessage {
+  id: string
+  content: string
+  sender: { id: string; name: string; profileUrl: string }
+  recipient: { id: string; name: string; profileUrl: string }
+  direction: 'sent' | 'received'
+  sentAt: string
+  readStatus: 'read' | 'unread' | 'unknown'
+  contentType: string
+}
+
+export interface SPConversationMessagesResponse {
+  conversationId: string
+  messages: SPConversationMessage[]
+  pagination: { hasMore: boolean; continuationToken?: string }
+}
+
+export async function getSenders(): Promise<SPSender[]> {
+  const data = await spFetch<{ senders?: SPSender[] } | SPSender[]>('GET', '/senders')
+  return Array.isArray(data) ? data : (data as { senders?: SPSender[] }).senders ?? []
+}
+
+export async function getConversations(
+  accountId?: string,
+  page = 1,
+  limit = 50
+): Promise<SPConversationsResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+  if (accountId) params.set('accountId', accountId)
+  return spFetch<SPConversationsResponse>('GET', `/inbox/conversations?${params.toString()}`)
+}
+
+export async function getConversationMessages(
+  conversationId: string,
+  accountId: string,
+  limit = 50,
+  continuationToken?: string
+): Promise<SPConversationMessagesResponse> {
+  const params = new URLSearchParams({ accountId, limit: String(limit) })
+  if (continuationToken) params.set('continuationToken', continuationToken)
+  return spFetch<SPConversationMessagesResponse>(
+    'GET',
+    `/inbox/conversations/${conversationId}/messages?${params.toString()}`
+  )
+}
+
+export async function sendDirectMessage(
+  senderId: string,
+  recipientLinkedinUrl: string,
+  message: string,
+  leadId?: string
+): Promise<{ messageId: string; status?: string }> {
+  const body: Record<string, string> = { senderId, recipientLinkedinUrl, message }
+  if (leadId) body.leadId = leadId
+  return spFetch<{ messageId: string; status?: string }>('POST', '/inbox/send', body)
+}
+
+// ---------------------------------------------------------------------------
+// Legacy inbox helpers (kept for reference, replaced by Conversations API above)
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use getConversations() instead */
 export async function getInbox(
   campaignId: string,
   cursor?: string
@@ -199,6 +305,7 @@ export async function getInbox(
   return spFetch<SPInboxResponse>('GET', `/inbox?${params.toString()}`)
 }
 
+/** @deprecated Use sendDirectMessage() instead */
 export async function replyToThread(threadId: string, message: string): Promise<void> {
   await spFetch<unknown>('POST', `/inbox/${threadId}/reply`, { message })
 }

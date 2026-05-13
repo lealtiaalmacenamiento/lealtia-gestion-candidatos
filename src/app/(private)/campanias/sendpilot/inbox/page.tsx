@@ -5,22 +5,28 @@ import { useRouter } from 'next/navigation'
 import BasePage from '@/components/BasePage'
 import { useAuth } from '@/context/AuthProvider'
 
-interface Message {
+interface Participant {
   id: string
-  direction: 'sent' | 'received'
+  name: string
+  profileUrl: string
+  profilePicture?: string
+}
+
+interface Conversation {
+  id: string
+  accountId: string
+  participants: Participant[]
+  lastMessage?: { content: string; sentAt: string; direction: 'sent' | 'received' }
+  lastActivityAt: string
+  unreadCount: number
+}
+
+interface ConvMessage {
+  id: string
   content: string
+  direction: 'sent' | 'received'
   sentAt: string
-}
-
-interface Thread {
-  leadId: string
-  linkedinUrl: string
-  messages: Message[]
-}
-
-interface Campana {
-  id: string
-  nombre: string
+  readStatus: string
 }
 
 function formatDate(iso: string) {
@@ -41,85 +47,107 @@ export default function InboxPage() {
     if (!loadingUser && user && !esReclutador) router.replace('/home')
   }, [loadingUser, user, esReclutador, router])
 
-  const [threads, setThreads] = useState<Thread[]>([])
-  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [spErrors, setSpErrors] = useState<string[]>([])
   const [syncing, setSyncing] = useState(false)
-  const [campanas, setCampanas] = useState<Campana[]>([])
-  const [selectedCampana, setSelectedCampana] = useState<string>('')
-  const [selectedThread, setSelectedThread] = useState<Thread | null>(null)
+  const [notif, setNotif] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+
+  const [selectedConv, setSelectedConv] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<ConvMessage[]>([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
-  const [notif, setNotif] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
-  useEffect(() => {
-    fetch('/api/sp/campanas', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : Promise.resolve({ items: [] }))
-      .then((d: { items: Campana[] }) => setCampanas(d.items ?? []))
-      .catch(() => {})
-  }, [])
-
-  const load = useCallback(async (cursor?: string) => {
+  const loadConversations = useCallback(async (pg: number) => {
     setLoading(true)
     setError(null)
-    setSpErrors([])
     try {
-      const params = new URLSearchParams()
-      if (selectedCampana) params.set('campana_id', selectedCampana)
-      if (cursor) params.set('cursor', cursor)
-      const res = await fetch(`/api/sendpilot/inbox?${params.toString()}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error(`Error ${res.status}`)
-      const data = await res.json() as { threads: Thread[]; nextCursor: string | null; errors?: string[] }
-      setThreads(prev => cursor ? [...prev, ...(data.threads ?? [])] : (data.threads ?? []))
-      setNextCursor(data.nextCursor)
-      if (data.errors?.length) setSpErrors(data.errors)
+      const res = await fetch(`/api/sendpilot/inbox?page=${pg}&limit=50`, { cache: 'no-store' })
+      if (!res.ok) {
+        const d = await res.json() as { error?: string }
+        throw new Error(d.error ?? `Error ${res.status}`)
+      }
+      const data = await res.json() as {
+        conversations: Conversation[]
+        pagination: { hasMore: boolean; page: number }
+      }
+      setConversations(prev => pg === 1 ? (data.conversations ?? []) : [...prev, ...(data.conversations ?? [])])
+      setHasMore(data.pagination?.hasMore ?? false)
+      setPage(data.pagination?.page ?? pg)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar inbox')
     } finally {
       setLoading(false)
     }
-  }, [selectedCampana])
+  }, [])
+
+  useEffect(() => { loadConversations(1).catch(() => {}) }, [loadConversations])
 
   const handleSync = useCallback(async () => {
     setSyncing(true)
-    setThreads([])
-    setNextCursor(null)
-    setSelectedThread(null)
-    await load().catch(() => {})
+    setSelectedConv(null)
+    setMessages([])
+    await loadConversations(1).catch(() => {})
     setSyncing(false)
-  }, [load])
+  }, [loadConversations])
 
-  useEffect(() => {
-    setThreads([])
-    setNextCursor(null)
-    setSelectedThread(null)
-    load().catch(() => {})
-  }, [load])
+  const handleSelectConversation = useCallback(async (conv: Conversation) => {
+    setSelectedConv(conv)
+    setMessages([])
+    setReplyText('')
+    setLoadingMessages(true)
+    try {
+      const res = await fetch(
+        `/api/sendpilot/inbox/${conv.id}/messages?account_id=${encodeURIComponent(conv.accountId)}`,
+        { cache: 'no-store' }
+      )
+      if (!res.ok) {
+        const d = await res.json() as { error?: string }
+        throw new Error(d.error ?? `Error ${res.status}`)
+      }
+      const data = await res.json() as { messages: ConvMessage[] }
+      setMessages(data.messages ?? [])
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error al cargar mensajes' })
+    } finally {
+      setLoadingMessages(false)
+    }
+  }, [])
 
   const handleReply = async () => {
-    if (!selectedThread || !replyText.trim()) return
+    if (!selectedConv || !replyText.trim()) return
+    const recipientLinkedinUrl = selectedConv.participants[0]?.profileUrl
+    if (!recipientLinkedinUrl) {
+      setNotif({ type: 'error', message: 'No se encontró el perfil LinkedIn del destinatario' })
+      return
+    }
     setSending(true)
     setNotif(null)
     try {
-      const res = await fetch(`/api/sendpilot/inbox/${selectedThread.leadId}/reply`, {
+      const res = await fetch(`/api/sendpilot/inbox/${selectedConv.id}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: replyText.trim() })
+        body: JSON.stringify({
+          senderId: selectedConv.accountId,
+          recipientLinkedinUrl,
+          message: replyText.trim()
+        })
       })
       if (!res.ok) {
         const d = await res.json() as { error?: string }
         throw new Error(d.error ?? `Error ${res.status}`)
       }
-      // Optimistically append the sent message
-      const newMsg: Message = {
+      const newMsg: ConvMessage = {
         id: crypto.randomUUID(),
-        direction: 'sent',
         content: replyText.trim(),
-        sentAt: new Date().toISOString()
+        direction: 'sent',
+        sentAt: new Date().toISOString(),
+        readStatus: 'sent'
       }
-      setSelectedThread(prev => prev ? { ...prev, messages: [newMsg, ...prev.messages] } : prev)
+      setMessages(prev => [newMsg, ...prev])
       setReplyText('')
       setNotif({ type: 'success', message: 'Mensaje enviado.' })
     } catch (err) {
@@ -139,7 +167,7 @@ export default function InboxPage() {
 
   return (
     <BasePage
-      title="Inbox SendPilot"
+      title="Inbox LinkedIn"
       alert={notif ? { type: notif.type === 'error' ? 'danger' : 'success', message: notif.message, show: true } : undefined}
     >
       <div className="d-flex justify-content-end mb-2">
@@ -148,62 +176,54 @@ export default function InboxPage() {
           onClick={handleSync}
           disabled={syncing || loading}
         >
-          {(syncing || loading) ? <><span className="spinner-border spinner-border-sm me-1" />Cargando...</> : <><i className="bi bi-arrow-clockwise me-1" />Sincronizar</>}
+          {(syncing || loading)
+            ? <><span className="spinner-border spinner-border-sm me-1" />Cargando...</>
+            : <><i className="bi bi-arrow-clockwise me-1" />Sincronizar</>}
         </button>
       </div>
-      {spErrors.length > 0 && (
-        <div className="alert alert-warning small py-2">
-          <strong>Errores al consultar SP:</strong> {spErrors.join(' | ')}
-        </div>
-      )}
-      <div className="row g-0" style={{ height: 'calc(100vh - 200px)' }}>
-        {/* Thread list */}
-        <div className="col-12 col-md-4 border-end" style={{ overflowY: 'auto' }}>
-          <div className="p-2 border-bottom">
-            <select
-              className="form-select form-select-sm"
-              value={selectedCampana}
-              onChange={e => setSelectedCampana(e.target.value)}
-            >
-              <option value="">Todas las campañas</option>
-              {campanas.map(c => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
-          </div>
 
-          {loading && !threads.length && (
+      <div className="row g-0 border rounded" style={{ height: 'calc(100vh - 220px)', overflow: 'hidden' }}>
+        {/* Conversation list */}
+        <div className="col-12 col-md-4 border-end d-flex flex-column" style={{ overflowY: 'auto' }}>
+          {loading && !conversations.length && (
             <div className="text-center py-4"><div className="spinner-border spinner-border-sm" /></div>
           )}
           {error && <div className="alert alert-danger m-2 small">{error}</div>}
-
-          {threads.map(t => {
-            const lastMsg = t.messages[0]
+          {!loading && !error && conversations.length === 0 && (
+            <div className="text-muted text-center py-4 small">Sin conversaciones</div>
+          )}
+          {conversations.map(conv => {
+            const participant = conv.participants[0]
+            const last = conv.lastMessage
             return (
               <div
-                key={t.leadId}
-                className={`p-3 border-bottom cursor-pointer ${selectedThread?.leadId === t.leadId ? 'bg-primary-subtle' : 'hover-bg-light'}`}
+                key={conv.id}
+                className={`p-3 border-bottom ${selectedConv?.id === conv.id ? 'bg-primary-subtle' : ''}`}
                 style={{ cursor: 'pointer' }}
-                onClick={() => setSelectedThread(t)}
+                onClick={() => handleSelectConversation(conv).catch(() => {})}
               >
-                <div className="d-flex justify-content-between align-items-baseline">
-                  <div className="fw-semibold small text-truncate">{t.linkedinUrl}</div>
-                  {lastMsg && <div className="text-muted" style={{ fontSize: '0.7rem' }}>{formatDate(lastMsg.sentAt)}</div>}
+                <div className="d-flex justify-content-between align-items-baseline gap-1">
+                  <div className="fw-semibold small text-truncate">
+                    {participant?.name ?? '—'}
+                    {conv.unreadCount > 0 && (
+                      <span className="badge bg-primary ms-1" style={{ fontSize: '0.65rem' }}>{conv.unreadCount}</span>
+                    )}
+                  </div>
+                  {last && <div className="text-muted flex-shrink-0" style={{ fontSize: '0.7rem' }}>{formatDate(last.sentAt)}</div>}
                 </div>
-                {lastMsg && (
+                {last && (
                   <div className="small text-muted text-truncate">
-                    {lastMsg.direction === 'sent' ? 'Tú: ' : ''}{lastMsg.content}
+                    {last.direction === 'sent' ? 'Tú: ' : ''}{last.content}
                   </div>
                 )}
               </div>
             )
           })}
-
-          {nextCursor && (
+          {hasMore && (
             <div className="p-2 text-center">
               <button
                 className="btn btn-outline-secondary btn-sm"
-                onClick={() => load(nextCursor).catch(() => {})}
+                onClick={() => loadConversations(page + 1).catch(() => {})}
                 disabled={loading}
               >
                 {loading ? 'Cargando…' : 'Cargar más'}
@@ -212,28 +232,37 @@ export default function InboxPage() {
           )}
         </div>
 
-        {/* Conversation panel */}
-        <div className="col-12 col-md-8 d-flex flex-column" style={{ overflowY: 'auto' }}>
-          {!selectedThread && (
+        {/* Messages panel */}
+        <div className="col-12 col-md-8 d-flex flex-column" style={{ overflow: 'hidden' }}>
+          {!selectedConv && (
             <div className="d-flex align-items-center justify-content-center h-100 text-muted">
               Selecciona una conversación
             </div>
           )}
-          {selectedThread && (
+          {selectedConv && (
             <>
-              <div className="p-3 border-bottom">
-                <a href={`https://www.linkedin.com/in/${selectedThread.linkedinUrl}`} target="_blank" rel="noopener noreferrer" className="fw-semibold">
-                  <i className="bi bi-linkedin me-1"></i>
-                  {selectedThread.linkedinUrl}
+              <div className="p-3 border-bottom bg-light">
+                <div className="fw-semibold">{selectedConv.participants[0]?.name ?? '—'}</div>
+                <a
+                  href={selectedConv.participants[0]?.profileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="small text-muted"
+                >
+                  <i className="bi bi-linkedin me-1 text-primary"></i>
+                  {selectedConv.participants[0]?.profileUrl}
                 </a>
               </div>
 
               <div className="flex-grow-1 p-3 d-flex flex-column gap-2" style={{ overflowY: 'auto' }}>
-                {selectedThread.messages.slice().reverse().map(msg => (
-                  <div
-                    key={msg.id}
-                    className={`d-flex ${msg.direction === 'sent' ? 'justify-content-end' : 'justify-content-start'}`}
-                  >
+                {loadingMessages && (
+                  <div className="text-center py-3"><div className="spinner-border spinner-border-sm" /></div>
+                )}
+                {!loadingMessages && messages.length === 0 && (
+                  <div className="text-muted text-center small">Sin mensajes</div>
+                )}
+                {messages.slice().reverse().map(msg => (
+                  <div key={msg.id} className={`d-flex ${msg.direction === 'sent' ? 'justify-content-end' : 'justify-content-start'}`}>
                     <div
                       className={`rounded px-3 py-2 small ${msg.direction === 'sent' ? 'bg-primary text-white' : 'bg-light border'}`}
                       style={{ maxWidth: '75%' }}
@@ -260,13 +289,14 @@ export default function InboxPage() {
                       void handleReply()
                     }
                   }}
+                  disabled={sending}
                 />
                 <button
                   className="btn btn-primary btn-sm align-self-end"
-                  onClick={handleReply}
+                  onClick={() => void handleReply()}
                   disabled={sending || !replyText.trim()}
                 >
-                  {sending ? '…' : <i className="bi bi-send-fill"></i>}
+                  {sending ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-send-fill"></i>}
                 </button>
               </div>
             </>
@@ -275,4 +305,4 @@ export default function InboxPage() {
       </div>
     </BasePage>
   )
-}
+
