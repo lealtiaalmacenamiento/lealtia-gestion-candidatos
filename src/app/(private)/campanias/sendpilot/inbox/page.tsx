@@ -305,4 +305,4 @@ export default function InboxPage() {
       </div>
     </BasePage>
   )
-
+}
