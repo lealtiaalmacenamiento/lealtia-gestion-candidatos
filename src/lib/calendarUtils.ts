@@ -1,9 +1,14 @@
 /**
  * Utilidades para generar calendarios mensuales
  * Usado para visualizar etapas de candidatos en formato calendario
+ *
+ * NOTA: Todas las fechas de candidato se almacenan como UTC midnight (Date.UTC).
+ * Para evitar desfases de zona horaria (p. ej. CDMX UTC-6 haría que el 1 de septiembre
+ * apareciera como 31 de agosto) usamos getUTCDate/getUTCMonth/getUTCFullYear en todo
+ * el proceso de agrupación y comparación de días.
  */
 
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
+import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { CandidateEvent } from './candidatePhases'
 
@@ -26,13 +31,16 @@ export interface CalendarDay {
 }
 
 /**
- * Agrupa eventos por mes (YYYY-MM)
+ * Agrupa eventos por mes (YYYY-MM) usando UTC para evitar desfases de zona horaria.
  */
 export function groupEventsByMonth(events: CandidateEvent[]): Map<string, CandidateEvent[]> {
   const grouped = new Map<string, CandidateEvent[]>()
   
   for (const event of events) {
-    const monthKey = format(event.date, 'yyyy-MM')
+    // Usar UTC para que "1 sep 00:00 UTC" no se convierta en "31 ago" en CDMX (UTC-6)
+    const y = event.date.getUTCFullYear()
+    const m = event.date.getUTCMonth() + 1
+    const monthKey = `${y}-${String(m).padStart(2, '0')}`
     const existing = grouped.get(monthKey) || []
     existing.push(event)
     grouped.set(monthKey, existing)
@@ -43,26 +51,25 @@ export function groupEventsByMonth(events: CandidateEvent[]): Map<string, Candid
 
 /**
  * Genera estructura de calendario para un mes específico
- * con eventos marcados en los días correspondientes
+ * con eventos marcados en los días correspondientes.
+ * Opera en UTC para que las fechas de candidato (UTC midnight) no se desplacen.
  */
 export function generateMonthCalendar(
   year: number,
   month: number, // 0-11 (enero = 0)
   events: CandidateEvent[]
 ): MonthCalendarData {
-  const date = new Date(year, month, 1)
-  const monthKey = format(date, 'yyyy-MM')
-  const monthLabel = format(date, 'MMMM yyyy', { locale: es })
-  
-  const firstDay = startOfMonth(date)
-  const lastDay = endOfMonth(date)
-  
-  // Determinar día de la semana del primer día (0 = domingo, 1 = lunes, etc.)
-  const startDayOfWeek = getDay(firstDay)
-  
-  // Calcular días previos necesarios (para completar primera semana)
-  // Si el mes empieza en domingo (0), necesitamos 0 días previos
-  // Si empieza en lunes (1), necesitamos 1 día previo, etc.
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  // Etiqueta del mes en español — se crea con hora local (no importa hora, solo el nombre)
+  const monthLabel = format(new Date(year, month, 1), 'MMMM yyyy', { locale: es })
+
+  // Días en el mes (UTC)
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+
+  // Día de la semana del primer día en UTC (0 = domingo)
+  const startDayOfWeek = new Date(Date.UTC(year, month, 1)).getUTCDay()
+
+  // Celdas vacías antes del primer día (semanas L..D)
   const daysBeforeMonth = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1
   
   const weeks: CalendarWeek[] = []
@@ -79,21 +86,19 @@ export function generateMonthCalendar(
   }
   
   // Agregar todos los días del mes
-  const allDaysInMonth = eachDayOfInterval({ start: firstDay, end: lastDay })
-  
-  for (const dayDate of allDaysInMonth) {
-    const dayNum = dayDate.getDate()
-    
-    // Filtrar eventos de este día específico
-    const dayEvents = events.filter(e => {
-      return e.date.getFullYear() === dayDate.getFullYear() &&
-             e.date.getMonth() === dayDate.getMonth() &&
-             e.date.getDate() === dayDate.getDate()
-    })
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayDateUTC = new Date(Date.UTC(year, month, d))
+
+    // Comparar usando UTC para que los eventos (UTC midnight) coincidan con el día correcto
+    const dayEvents = events.filter(e =>
+      e.date.getUTCFullYear() === year &&
+      e.date.getUTCMonth() === month &&
+      e.date.getUTCDate() === d
+    )
     
     currentWeek.push({
-      date: dayDate,
-      day: dayNum,
+      date: dayDateUTC,
+      day: d,
       isCurrentMonth: true,
       events: dayEvents
     })
