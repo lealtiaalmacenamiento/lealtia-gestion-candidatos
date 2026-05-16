@@ -1,6 +1,8 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { getUDIValue, getUDIValueOrBefore } from '@/lib/udi'
+import { getUDIValueOrBefore } from '@/lib/udi'
+
+const TASA_INFLACION = 0.05
 
 // Tabla de primas anuales en UDIS por suma asegurada y rango de edad
 // Fuente: folleto oficial Inversión Mujer GNP
@@ -102,7 +104,9 @@ export default function VidaMujerSection() {
     await resolveAgent(code)
   }
 
-  function calcular(saUDI: number, rangoEdad: number, primaAnualUDI: number, udiHoy: number, udiAno20: number) {
+  const ANOS_DOTE = [5, 7, 9, 11, 13, 15, 17] as const
+
+  function calcular(saUDI: number, rangoEdad: number, primaAnualUDI: number, udiHoy: number, udiPorAno: Record<number, number>) {
     const primaAnualMXN = primaAnualUDI * udiHoy
     const primaMensualMXN = primaAnualMXN / 12
     const primaMensualUDI = primaAnualUDI / 12
@@ -114,11 +118,17 @@ export default function VidaMujerSection() {
     const pagoFinalUDI = saUDI * 0.80
     const totalRecibidoUDI = saUDI * 1.15
 
-    // Valor esperado en pesos usando UDI proyectada al año 20
-    const totalRecibidoMXN = totalRecibidoUDI * udiAno20
-    const doteMXN = saUDI * 0.05 * udiAno20  // valor esperado de cada dote
-    const pagoFinalMXN = pagoFinalUDI * udiAno20
-    const coberturaFallecimientoMXN = saUDI * udiHoy // al valor de hoy
+    // MXN por año usando la UDI proyectada para ese año específico
+    const doteMXNPorAno: Record<number, number> = {}
+    for (const ano of ANOS_DOTE) {
+      doteMXNPorAno[ano] = saUDI * 0.05 * (udiPorAno[ano] ?? udiHoy)
+    }
+    const pagoFinalMXN = pagoFinalUDI * (udiPorAno[20] ?? udiHoy)
+    const coberturaFallecimientoMXN = saUDI * udiHoy
+
+    // Total recibido = suma de cada pago con su UDI proyectada real
+    const totalRecibidoMXN =
+      ANOS_DOTE.reduce((sum, ano) => sum + doteMXNPorAno[ano], 0) + pagoFinalMXN
 
     return {
       rangoEdad,
@@ -129,7 +139,7 @@ export default function VidaMujerSection() {
       totalAportadoUDI,
       totalAportadoMXN,
       dotesUDI,
-      doteMXN,
+      doteMXNPorAno,
       pagoFinalUDI,
       pagoFinalMXN,
       totalRecibidoUDI,
@@ -137,11 +147,11 @@ export default function VidaMujerSection() {
       coberturaFallecimientoMXN,
       saUDI,
       udiHoy,
-      udiAno20,
+      udiPorAno,
     }
   }
 
-  const handleCotizar = async () => {
+  const handleCotizar = () => {
     if (!formData.edad || !formData.sa || !udiActual) return
     setLoading(true)
 
@@ -162,15 +172,13 @@ export default function VidaMujerSection() {
       return
     }
 
-    // Proyección UDI al año 20
-    const fechaAno20 = new Date()
-    fechaAno20.setFullYear(fechaAno20.getFullYear() + 20)
-    const fechaAno20Str = fechaAno20.toISOString().split('T')[0]
-    let udiProyectada = await getUDIValue(fechaAno20Str)
-    if (!udiProyectada) udiProyectada = await getUDIValueOrBefore(fechaAno20Str)
-    const udiAno20 = udiProyectada?.valor || udiActual
+    // Proyección UDI: UDI_actual × (1 + 5%)^(año - 1)  — fórmula Excel
+    const udiPorAno: Record<number, number> = {}
+    for (const ano of [5, 7, 9, 11, 13, 15, 17, 20]) {
+      udiPorAno[ano] = udiActual * Math.pow(1 + TASA_INFLACION, ano - 1)
+    }
 
-    setResultado(calcular(saUDI, rangoEdad, primaAnualUDI, udiActual, udiAno20))
+    setResultado(calcular(saUDI, rangoEdad, primaAnualUDI, udiActual, udiPorAno))
     setLoading(false)
   }
 
@@ -413,8 +421,8 @@ export default function VidaMujerSection() {
                       {formData.nombre ? `${formData.nombre}, aquí está tu plan ✨` : 'Tu plan Inversión Mujer ✨'}
                     </h5>
                     <p style={{ color: '#555', marginBottom: 0, fontSize: '0.93rem', lineHeight: 1.6 }}>
-                      Con una suma asegurada de <strong>{formatUDI(resultado.saUDI)}</strong> a los <strong>{resultado.rangoEdad} años</strong>,
-                      este es tu resumen. Pagas durante <strong>20 años</strong> y recibes pagos de regreso desde el 5.° año.
+                      Con una suma asegurada de <strong>{formatUDI(resultado.saUDI)}</strong> a tus <strong>{resultado.rangoEdad} años</strong>,
+                      este es tu resumen.
                     </p>
                   </div>
 
@@ -531,7 +539,7 @@ export default function VidaMujerSection() {
                             <span style={{ color: '#777' }}>Año {año}</span>
                             <span style={{ color: '#E59A5A', fontWeight: 600 }}>
                               {formatUDI(resultado.saUDI * 0.05)}
-                              <span style={{ color: '#aaa', fontWeight: 400, fontSize: '0.78rem', marginLeft: 4 }}>≈ {formatMoney(resultado.doteMXN)}</span>
+                              <span style={{ color: '#aaa', fontWeight: 400, fontSize: '0.78rem', marginLeft: 4 }}>≈ {formatMoney(resultado.doteMXNPorAno[año])}</span>
                             </span>
                           </div>
                         ))}
