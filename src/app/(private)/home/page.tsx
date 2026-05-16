@@ -32,6 +32,8 @@ const modules = [
   { key: 'historial', title: 'Historial de cambios', desc: 'Historial de cambios en Cliente y póliza', icon: 'journal-text', roles: ['supervisor','admin'], color: 'dark' },
   // Dashboard ejecutivo
   { key: 'admin/executive-dashboard', title: 'Centro de Control', desc: 'Dashboard ejecutivo: KPIs, funnel, leaderboards', icon: 'graph-up-arrow', roles: ['supervisor', 'admin'], color: 'primary' },
+  // Fondos Zoom
+  { key: 'fondos-zoom', title: 'Fondos para Zoom', desc: 'Descarga fondos personalizados para tus videollamadas', icon: 'camera-video', roles: ['viewer', 'supervisor', 'admin', 'agente', 'promotor'], color: 'info' },
   // Accesos rápidos
   { key: 'accesos-rapidos', title: 'Accesos rápidos', desc: 'Accesos a portales y plataformas externas', icon: 'link-45deg', roles: ['viewer', 'supervisor', 'admin', 'agente', 'promotor'], color: 'primary' },
 ];

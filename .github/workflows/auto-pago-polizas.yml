@@ -1,0 +1,54 @@
+name: Auto-pago de pólizas (cron diario)
+
+on:
+  schedule:
+    # 8:00 AM CDMX (UTC-6) = 14:00 UTC
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    # Permitir ejecución manual desde GitHub UI
+
+jobs:
+  auto-pago:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ejecutar cron auto-pago-polizas
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          SECRET: ${{ secrets.REPORTES_CRON_SECRET }}
+          BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${APP_URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
+          : "${SECRET:?Need REPORTES_CRON_SECRET secret}"
+
+          echo "🔄 Ejecutando auto-pago de pólizas..."
+
+          CURL_ARGS=(-s -w "\n%{http_code}" -X POST \
+            -H "x-cron-secret: ${SECRET}" \
+            -H "Content-Type: application/json")
+
+          if [ -n "${BYPASS_TOKEN:-}" ]; then
+            CURL_ARGS+=(-H "x-vercel-protection-bypass: ${BYPASS_TOKEN}")
+          fi
+
+          response=$(curl "${CURL_ARGS[@]}" "${APP_URL%/}/api/cron/auto-pago-polizas")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+
+          echo "📊 HTTP Status: $http_code"
+          echo "📋 Response: $body"
+
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Error: Falló el auto-pago de pólizas"
+            echo "$body"
+            exit 1
+          fi
+
+          echo "✅ Auto-pago ejecutado exitosamente"
+
+      - name: Notificar en caso de fallo
+        if: failure()
+        run: |
+          echo "⚠️ El cron de auto-pago de pólizas falló. Revisar logs."

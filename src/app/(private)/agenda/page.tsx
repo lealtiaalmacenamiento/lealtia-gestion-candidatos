@@ -198,7 +198,11 @@ export default function AgendaPage() {
   const [debouncedProspectQuery, setDebouncedProspectQuery] = useState('')
   const [showProspectSuggestions, setShowProspectSuggestions] = useState(false)
   const [highlightedProspectIndex, setHighlightedProspectIndex] = useState(-1)
-  const [selectedProspect, setSelectedProspect] = useState<AgendaProspectoOption | null>(null)
+  const [selectedProspectos, setSelectedProspectos] = useState<AgendaProspectoOption[]>([])
+  const [extraGuests, setExtraGuests] = useState<{ nombre: string; email: string }[]>([])
+  const [newGuestNombre, setNewGuestNombre] = useState('')
+  const [newGuestEmail, setNewGuestEmail] = useState('')
+  const [showExtraGuestForm, setShowExtraGuestForm] = useState(false)
   const [showConnectModal, setShowConnectModal] = useState(false)
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false)
   const [prospectEmailLocked, setProspectEmailLocked] = useState(false)
@@ -372,13 +376,14 @@ export default function AgendaPage() {
   }, [form.agenteId, form.supervisorId, form.inicio, form.fin])
 
   useEffect(() => {
-    if (!selectedProspect) {
+    const primary = selectedProspectos[0] ?? null
+    if (!primary) {
       setProspectEmailLocked(false)
       return
     }
-    const hasEmail = Boolean(selectedProspect.email && selectedProspect.email.trim().length > 0)
+    const hasEmail = Boolean(primary.email && primary.email.trim().length > 0)
     setProspectEmailLocked(hasEmail)
-  }, [selectedProspect])
+  }, [selectedProspectos])
 
   useEffect(() => {
     if (developers.length === 0) return
@@ -424,10 +429,19 @@ export default function AgendaPage() {
     }
   }, [showConnectModal])
 
+  // Reset prospect selection when the selected agent changes
+  useEffect(() => {
+    setSelectedProspectos([])
+    setExtraGuests([])
+    setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
+    setProspectEmailLocked(false)
+    setProspectQuery('')
+    setProspectOptionsError(null)
+  }, [form.agenteId])
+
+  // Load prospect options when agent or search query changes
   useEffect(() => {
     let cancelled = false
-    setSelectedProspect(null)
-    setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
     setProspectOptions([])
     setProspectOptionsError(null)
     if (!form.agenteId) {
@@ -617,21 +631,73 @@ export default function AgendaPage() {
   }
 
   function handleSelectProspect(option: AgendaProspectoOption) {
-    setSelectedProspect(option)
-    setForm((prev) => ({
-      ...prev,
-      prospectoId: String(option.id),
-      prospectoNombre: option.nombre || '',
-      prospectoEmail: option.email || ''
-    }))
+    if (selectedProspectos.some((p) => p.id === option.id)) {
+      setShowProspectSuggestions(false)
+      setProspectQuery('')
+      return
+    }
+    const newList = [...selectedProspectos, option]
+    setSelectedProspectos(newList)
+    if (newList.length === 1) {
+      setForm((prev) => ({
+        ...prev,
+        prospectoId: String(option.id),
+        prospectoNombre: option.nombre || '',
+        prospectoEmail: option.email || ''
+      }))
+      setProspectEmailLocked(Boolean(option.email))
+    }
+    setProspectQuery('')
+    setShowProspectSuggestions(false)
+  }
+
+  function handleRemoveProspect(id: number) {
+    const newList = selectedProspectos.filter((p) => p.id !== id)
+    setSelectedProspectos(newList)
+    if (newList.length === 0) {
+      setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
+      setProspectEmailLocked(false)
+    } else if (newList[0].id !== selectedProspectos[0]?.id) {
+      const newPrimary = newList[0]
+      setForm((prev) => ({
+        ...prev,
+        prospectoId: String(newPrimary.id),
+        prospectoNombre: newPrimary.nombre || '',
+        prospectoEmail: newPrimary.email || ''
+      }))
+      setProspectEmailLocked(Boolean(newPrimary.email))
+    }
+  }
+
+  function handleRemoveExtraGuest(idx: number) {
+    setExtraGuests((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function handleAddExtraGuest() {
+    const nombre = newGuestNombre.trim()
+    const email = newGuestEmail.trim()
+    if (!nombre || !email) {
+      setToast({ type: 'error', message: 'El nombre y correo del invitado son obligatorios.' })
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setToast({ type: 'error', message: 'El correo del invitado es inválido.' })
+      return
+    }
+    setExtraGuests((prev) => [...prev, { nombre, email }])
+    setNewGuestNombre('')
+    setNewGuestEmail('')
+    setShowExtraGuestForm(false)
   }
 
   // handleProspectSelectChange removed (was unused). Selection is handled
   // directly via `handleSelectProspect` from the suggestions list.
 
   function handleClearProspect() {
-    setSelectedProspect(null)
+    setSelectedProspectos([])
+    setExtraGuests([])
     setForm((prev) => ({ ...prev, prospectoId: '', prospectoNombre: '', prospectoEmail: '' }))
+    setProspectEmailLocked(false)
   }
 
   function handleConnectModalAction() {
@@ -683,7 +749,7 @@ export default function AgendaPage() {
     }
 
     if (!form.prospectoId.trim()) {
-      setToast({ type: 'error', message: 'Selecciona un prospecto existente antes de agendar.' })
+      setToast({ type: 'error', message: 'Selecciona al menos un prospecto existente antes de agendar.' })
       return
     }
     if (!form.prospectoNombre.trim()) {
@@ -706,6 +772,15 @@ export default function AgendaPage() {
       return
     }
 
+    const extraParticipantesList = [
+      ...selectedProspectos.slice(1).map((p) => ({
+        nombre: p.nombre || '',
+        email: p.email || '',
+        prospectoId: p.id
+      })),
+      ...extraGuests.map((g) => ({ nombre: g.nombre, email: g.email, prospectoId: null }))
+    ]
+
     const payload = {
       agenteId: Number(form.agenteId),
       supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
@@ -717,6 +792,7 @@ export default function AgendaPage() {
       prospectoId: prospectoIdValue,
       prospectoNombre: form.prospectoNombre.trim() || null,
       prospectoEmail: form.prospectoEmail.trim() || null,
+      extraParticipantes: extraParticipantesList.length > 0 ? extraParticipantesList : null,
       notas: form.notas.trim() || null
     }
 
@@ -724,7 +800,11 @@ export default function AgendaPage() {
     try {
       await createAgendaCita(payload)
       setToast({ type: 'success', message: 'Cita creada y notificada' })
-      setSelectedProspect(null)
+      setSelectedProspectos([])
+      setExtraGuests([])
+      setNewGuestNombre('')
+      setNewGuestEmail('')
+      setShowExtraGuestForm(false)
       const next = initialFormState()
       next.agenteId = form.agenteId
       next.supervisorId = form.supervisorId
@@ -943,21 +1023,59 @@ export default function AgendaPage() {
                 )}
 
                 <div className="col-12">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <label className="form-label small mb-0">Prospecto *</label>
-                    {selectedProspect && (
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <label className="form-label small mb-0">Prospectos e invitados *</label>
+                    {(selectedProspectos.length > 0 || extraGuests.length > 0) && (
                       <button type="button" className="btn btn-link btn-sm p-0" onClick={handleClearProspect}>
-                        Quitar selección
+                        Quitar todos
                       </button>
                     )}
                   </div>
+
+                  {/* Selected prospectos tags */}
+                  {selectedProspectos.length > 0 && (
+                    <div className="d-flex flex-wrap gap-1 mb-2" data-testid="agenda-selected-prospectos">
+                      {selectedProspectos.map((p, idx) => (
+                        <span key={p.id} className={`badge d-inline-flex align-items-center gap-1 ${idx === 0 ? 'text-bg-primary' : 'text-bg-info'}`}>
+                          {p.nombre || 'Sin nombre'}{idx === 0 ? ' (principal)' : ''}
+                          <button
+                            type="button"
+                            className="btn-close btn-close-white"
+                            style={{ fontSize: '0.6rem' }}
+                            aria-label={`Quitar ${p.nombre || 'prospecto'}`}
+                            onClick={() => handleRemoveProspect(p.id)}
+                          />
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Extra guests tags */}
+                  {extraGuests.length > 0 && (
+                    <div className="d-flex flex-wrap gap-1 mb-2" data-testid="agenda-extra-guests">
+                      {extraGuests.map((g, idx) => (
+                        <span key={idx} className="badge text-bg-secondary d-inline-flex align-items-center gap-1">
+                          {g.nombre} &lt;{g.email}&gt;
+                          <button
+                            type="button"
+                            className="btn-close btn-close-white"
+                            style={{ fontSize: '0.6rem' }}
+                            aria-label={`Quitar ${g.nombre}`}
+                            onClick={() => handleRemoveExtraGuest(idx)}
+                          />
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Prospect search */}
                   <div className="mb-2">
                     <div className="input-group input-group-sm">
                       <input
                         data-testid="agenda-prospect-search"
                         type="search"
                         className="form-control form-control-sm"
-                        placeholder="Buscar por nombre, email o teléfono"
+                        placeholder="Buscar prospecto por nombre, email o teléfono"
                         value={prospectQuery}
                         onChange={(e) => setProspectQuery(e.target.value)}
                         aria-label="Buscar prospecto"
@@ -992,8 +1110,8 @@ export default function AgendaPage() {
                         data-testid="agenda-prospect-combobox"
                         type="text"
                         className="form-control form-control-sm"
-                        placeholder={prospectOptionsLoading ? 'Cargando prospectos…' : 'Selecciona o busca un prospecto'}
-                        value={selectedProspect ? selectedProspect.nombre ?? '' : prospectQuery}
+                        placeholder={prospectOptionsLoading ? 'Cargando prospectos…' : 'Selecciona o busca un prospecto (puedes agregar varios)'}
+                        value={prospectQuery}
                         onChange={(e) => {
                           setProspectQuery(e.target.value)
                           setShowProspectSuggestions(true)
@@ -1024,7 +1142,6 @@ export default function AgendaPage() {
                         aria-busy={prospectOptionsLoading}
                       />
 
-                      {/* Show inline small spinner when loading so user understands to wait */}
                       {prospectOptionsLoading && (
                         <div className="small text-muted mt-1 d-flex align-items-center" aria-hidden>
                           <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
@@ -1033,7 +1150,6 @@ export default function AgendaPage() {
                       )}
                     </div>
 
-                    {/* If loading and no options yet, show a small skeleton list to improve perceived performance */}
                     {prospectOptionsLoading && (!prospectOptions || prospectOptions.length === 0) && (
                       <ul className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }} aria-hidden>
                         {[1, 2, 3].map((i) => (
@@ -1048,45 +1164,89 @@ export default function AgendaPage() {
 
                     {showProspectSuggestions && (prospectOptions && prospectOptions.length > 0) && (
                       <ul data-testid="agenda-prospect-options" id="prospect-suggestions-list" role="listbox" className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }}>
-                        {prospectOptions.map((option, idx) => (
-                          <li
-                            key={option.id}
-                            data-testid="agenda-prospect-option"
-                            data-prospect-id={option.id}
-                            role="option"
-                            aria-selected={highlightedProspectIndex === idx}
-                            className={`list-group-item list-group-item-action ${highlightedProspectIndex === idx ? 'active' : ''}`}
-                            onMouseDown={() => { handleSelectProspect(option); setShowProspectSuggestions(false) }}
-                            onMouseEnter={() => setHighlightedProspectIndex(idx)}
-                          >
-                            <div className="fw-semibold">{option.nombre || 'Sin nombre'}</div>
-                            <div className="small text-muted">{option.email || 'Sin correo'} · {option.telefono || ''}</div>
-                          </li>
-                        ))}
+                        {prospectOptions.map((option, idx) => {
+                          const alreadySelected = selectedProspectos.some((p) => p.id === option.id)
+                          return (
+                            <li
+                              key={option.id}
+                              data-testid="agenda-prospect-option"
+                              data-prospect-id={option.id}
+                              role="option"
+                              aria-selected={highlightedProspectIndex === idx}
+                              className={`list-group-item list-group-item-action ${highlightedProspectIndex === idx ? 'active' : ''} ${alreadySelected ? 'text-muted' : ''}`}
+                              onMouseDown={() => { handleSelectProspect(option); setShowProspectSuggestions(false) }}
+                              onMouseEnter={() => setHighlightedProspectIndex(idx)}
+                            >
+                              <div className="d-flex justify-content-between align-items-center">
+                                <div>
+                                  <div className="fw-semibold">{option.nombre || 'Sin nombre'}</div>
+                                  <div className="small text-muted">{option.email || 'Sin correo'} · {option.telefono || ''}</div>
+                                </div>
+                                {alreadySelected && <span className="badge text-bg-success badge-sm">Agregado</span>}
+                              </div>
+                            </li>
+                          )
+                        })}
                       </ul>
                     )}
                   </div>
-                  <div className="form-text">La lista incluye prospectos recientes y de semanas anteriores. Completa o corrige la información si hace falta.</div>
+
+                  <div className="form-text">La lista incluye prospectos recientes. Puedes agregar más de uno.</div>
                   {prospectOptionsLoading && <div className="text-muted small mt-1">Cargando prospectos…</div>}
                   {prospectOptionsError && <div className="text-danger small mt-1">{prospectOptionsError}</div>}
-                  {selectedProspect && (
-                    <div className="alert alert-success small mt-2 mb-0">
-                      <div className="d-flex flex-column">
-                        <span className="fw-semibold">{selectedProspect.nombre || 'Sin nombre registrado'}</span>
-                        <span>{selectedProspect.email || 'Sin correo'}</span>
-                        <span className="text-muted">Estado: {formatProspectEstado(selectedProspect.estado)}</span>
-                        {selectedProspect.fecha_cita && (
-                          <span className="text-muted">Última cita: {formatDateTime(selectedProspect.fecha_cita)}</span>
-                        )}
+
+                  {/* Add external guest */}
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      className="btn btn-link btn-sm px-0"
+                      onClick={() => setShowExtraGuestForm((v) => !v)}
+                    >
+                      {showExtraGuestForm ? '− Cancelar invitado externo' : '+ Agregar invitado externo'}
+                    </button>
+                    {showExtraGuestForm && (
+                      <div className="row g-2 mt-1 align-items-end">
+                        <div className="col-md-4">
+                          <label className="form-label small mb-1">Nombre</label>
+                          <input
+                            data-testid="agenda-guest-nombre"
+                            className="form-control form-control-sm"
+                            placeholder="Nombre del invitado"
+                            value={newGuestNombre}
+                            onChange={(e) => setNewGuestNombre(e.target.value)}
+                          />
+                        </div>
+                        <div className="col-md-5">
+                          <label className="form-label small mb-1">Correo *</label>
+                          <input
+                            data-testid="agenda-guest-email"
+                            type="email"
+                            className="form-control form-control-sm"
+                            placeholder="correo@ejemplo.com"
+                            value={newGuestEmail}
+                            onChange={(e) => setNewGuestEmail(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddExtraGuest() } }}
+                          />
+                        </div>
+                        <div className="col-md-3">
+                          <button
+                            data-testid="agenda-guest-add"
+                            type="button"
+                            className="btn btn-outline-primary btn-sm w-100"
+                            onClick={handleAddExtraGuest}
+                          >
+                            Agregar
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 <input type="hidden" value={form.prospectoId} readOnly />
 
                 <div className="col-md-6">
-                  <label className="form-label small">Nombre del prospecto *</label>
+                  <label className="form-label small">Nombre del prospecto principal *</label>
                   <input
                     data-testid="agenda-prospect-name"
                     className="form-control form-control-sm"
@@ -1097,7 +1257,7 @@ export default function AgendaPage() {
                   />
                 </div>
                 <div className="col-md-6">
-                  <label className="form-label small">Correo del prospecto *</label>
+                  <label className="form-label small">Correo del prospecto principal *</label>
                   <input
                     data-testid="agenda-prospect-email"
                     className="form-control form-control-sm"
@@ -1310,8 +1470,17 @@ export default function AgendaPage() {
                                   {block.fecha && block.fin ? formatTimeRange(block.fecha, block.fin) : `${block.hour}:00`}
                                 </td>
                                 <td className="small">
-                                  {block.prospecto_nombre || 'Sin prospecto'}
+                                  <div>{block.prospecto_nombre || 'Sin prospecto'}</div>
                                   {block.prospecto_id != null && <div className="text-muted">ID #{block.prospecto_id}</div>}
+                                  {block.participantes_extra && block.participantes_extra.length > 0 && (
+                                    <div className="text-muted mt-1">
+                                      {block.participantes_extra.map((ep, i) => (
+                                        <div key={i}>
+                                          + {ep.nombre || 'Sin nombre'}{ep.id != null ? ` (ID #${ep.id})` : ''}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="small">
                                   <span className="badge text-bg-light border">{formatProspectEstado(block.prospecto_estado)}</span>

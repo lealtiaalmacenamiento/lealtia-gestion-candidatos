@@ -25,6 +25,12 @@ function normalizeProvider(value: unknown): MeetingProvider {
   return 'google_meet'
 }
 
+type ExtraParticipante = {
+  nombre?: string | null
+  email?: string | null
+  prospectoId?: number | null
+}
+
 type CreateCitaBody = {
   prospectoId?: number | string | null
   agenteId: number
@@ -38,6 +44,7 @@ type CreateCitaBody = {
   prospectoNombre?: string | null
   prospectoEmail?: string | null
   notas?: string | null
+  extraParticipantes?: ExtraParticipante[] | null
 }
 
 export async function GET(req: Request) {
@@ -357,6 +364,13 @@ async function createAgendaCitaHandler(req: Request) {
   let meetingIdForEmail: string | null = null
   let meetingPasswordForEmail: string | null = null
 
+  // Parse and validate extraParticipantes
+  const extraParticipantesList: ExtraParticipante[] = Array.isArray((payload as CreateCitaBody).extraParticipantes)
+    ? ((payload as CreateCitaBody).extraParticipantes as ExtraParticipante[]).filter(
+        (p): p is ExtraParticipante => p !== null && typeof p === 'object'
+      )
+    : []
+
   if (provider === 'zoom' || provider === 'teams') {
     if (!googleIntegrationRecord) {
       return NextResponse.json({ error: 'Conecta Google Calendar en Integraciones antes de agendar sesiones de Zoom o Teams.' }, { status: 400 })
@@ -450,16 +464,29 @@ async function createAgendaCitaHandler(req: Request) {
     agente.email || null,
     supervisorRecord?.email || null,
     actor.email || null,
-    prospectoEmail || null
+    prospectoEmail || null,
+    ...extraParticipantesList.map((p) => p.email || null)
   ].filter((value): value is string => Boolean(value && value.includes('@')))))
 
-  const summary = prospectoNombre ? `Cita con ${prospectoNombre}` : 'Cita agenda Lealtia'
+  const allProspectoNames = [
+    prospectoNombre,
+    ...extraParticipantesList.map((p) => (typeof p.nombre === 'string' && p.nombre.trim() ? p.nombre.trim() : null))
+  ].filter((n): n is string => Boolean(n))
+  const summary = allProspectoNames.length > 0 ? `Cita con ${allProspectoNames.join(', ')}` : 'Cita agenda Lealtia'
   const baseDescriptionParts: string[] = []
   if (notas) {
     baseDescriptionParts.push(notas)
   }
   if (prospectoNombre) {
     baseDescriptionParts.push(`Prospecto: ${prospectoNombre}`)
+  }
+  if (extraParticipantesList.length > 0) {
+    const extraLines = extraParticipantesList
+      .map((p) => [p.nombre, p.email].filter(Boolean).join(' — '))
+      .filter(Boolean)
+    if (extraLines.length > 0) {
+      baseDescriptionParts.push(`Participantes adicionales:\n${extraLines.map((l) => `• ${l}`).join('\n')}`)
+    }
   }
   if (actor.email) {
     baseDescriptionParts.push(`Programada por: ${actor.email}`)
@@ -625,6 +652,19 @@ async function createAgendaCitaHandler(req: Request) {
     } catch {}
   }
 
+  // Update additional prospect records
+  for (const ep of extraParticipantesList) {
+    const epId = ep.prospectoId != null ? Number(ep.prospectoId) : null
+    if (epId != null && Number.isFinite(epId) && epId > 0) {
+      try {
+        await supabase
+          .from('prospectos')
+          .update({ cita_creada: true, fecha_cita: inicioIso, estado: 'con_cita' })
+          .eq('id', epId)
+      } catch {}
+    }
+  }
+
   try {
     await syncPlanificacionCita({
       supabase,
@@ -633,7 +673,11 @@ async function createAgendaCitaHandler(req: Request) {
       prospectoId,
       prospectoNombre,
       citaId: created.id,
-      notas
+      notas,
+      extraParticipantes: extraParticipantesList.map((ep) => ({
+        prospectoId: ep.prospectoId != null ? Number(ep.prospectoId) : null,
+        nombre: ep.nombre ?? null
+      }))
     })
   } catch (err) {
     // Log error para debugging pero no fallar la creación de la cita
@@ -698,6 +742,9 @@ async function createAgendaCitaHandler(req: Request) {
       '<ul>',
       `<li><strong>Prospecto:</strong> ${prospectoNombre || 'Sin nombre registrado'}</li>`,
       `<li><strong>Correo del prospecto:</strong> ${prospectoEmail || 'Sin correo capturado'}</li>`,
+      extraParticipantesList.length > 0
+        ? `<li><strong>Participantes adicionales:</strong> ${extraParticipantesList.map((p) => [p.nombre, p.email].filter(Boolean).join(' — ')).join('; ')}</li>`
+        : '',
       `<li><strong>Horario:</strong> ${inicioLocal} - ${finLocal}</li>`,
       `<li><strong>Zona horaria:</strong> ${timezone}</li>`,
       `<li><strong>Plataforma:</strong> ${providerLabel}</li>`,
@@ -717,6 +764,9 @@ async function createAgendaCitaHandler(req: Request) {
       '',
       `Prospecto: ${prospectoNombre || 'Sin nombre registrado'}`,
       `Correo del prospecto: ${prospectoEmail || 'Sin correo capturado'}`,
+      extraParticipantesList.length > 0
+        ? `Participantes adicionales: ${extraParticipantesList.map((p) => [p.nombre, p.email].filter(Boolean).join(' — ')).join('; ')}`
+        : null,
       `Horario: ${inicioLocal} - ${finLocal}`,
       `Zona horaria: ${timezone}`,
       `Plataforma: ${providerLabel}`,

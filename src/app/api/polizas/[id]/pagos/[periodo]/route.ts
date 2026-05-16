@@ -2,12 +2,24 @@
 export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/supabaseAdmin'
+import { getUsuarioSesion } from '@/lib/auth'
+import { isSuperRole } from '@/lib/roles'
 import { logAccion } from '@/lib/logger'
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; periodo: string }> }
 ) {
+  // Verificar autenticación y autorización
+  const usuario = await getUsuarioSesion(request.headers)
+  if (!usuario) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  }
+  const canActDirect = isSuperRole(usuario.rol) || Boolean(usuario.is_desarrollador)
+  if (!canActDirect) {
+    return NextResponse.json({ error: 'No autorizado. Solo supervisores y desarrolladores comerciales pueden registrar pagos directamente.' }, { status: 403 })
+  }
+
   const resolvedParams = await params
   const polizaId = resolvedParams.id
   const periodoMes = resolvedParams.periodo // Formato esperado: YYYY-MM-DD (primer día del mes)

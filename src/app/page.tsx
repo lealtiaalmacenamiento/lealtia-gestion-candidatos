@@ -2,6 +2,7 @@
 import Hero from '@/components/landing/Hero'
 import AboutSection from '@/components/landing/AboutSection'
 import QuoteSection from '@/components/landing/QuoteSection'
+import VidaMujerSection from '@/components/landing/VidaMujerSection'
 import WhyLealtia from '@/components/landing/WhyLealtia'
 import BecomeAgent from '@/components/landing/BecomeAgent'
 import RecruitmentForm from '@/components/landing/RecruitmentForm'
@@ -22,6 +23,7 @@ export default function Home() {
       <AboutSection />
       <WhyLealtia />
       <QuoteSection />
+      <VidaMujerSection />
       <BecomeAgent />
       <RecruitmentForm />
       <EmotionalSection />

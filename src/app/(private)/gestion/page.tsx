@@ -44,6 +44,7 @@ type Poliza = {
   dia_pago?: number|null
   meses_check?: Record<string, boolean>|null
   meses_montos?: Record<string, number|null>|null
+  auto_pago?: boolean|null
 }
 
 function normalizeDateInput(value?: string | null): string | null {
@@ -115,6 +116,8 @@ export default function GestionPage() {
   const dialog = useDialog()
   const role = (user?.rol || '').toLowerCase()
   const isSuper = ['supervisor','super_usuario','supervisor','admin'].includes(role)
+  const isDesarrollador = Boolean(user?.is_desarrollador)
+  const canActDirect = isSuper || isDesarrollador
   const agentDisplayName = (user?.nombre && user.nombre.trim()) ? user.nombre.trim() : (user?.email || 'tu asesor')
 
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -1124,7 +1127,7 @@ export default function GestionPage() {
                       // Recargar datos siempre y volver a la lista
                       await load()
                       if (view !== 'list') setView('list')
-                    } catch (e) {
+                    } catch {
                       await dialog.alert('Error al mover cliente')
                     } finally {
                       setSubmittingMove(false)
@@ -1506,8 +1509,34 @@ export default function GestionPage() {
           </div>
 
           <div className="mt-2">
+            {/* Toggle auto-pago (solo super/desarrolladores) */}
+            {canActDirect && (
+              <div className="form-check form-switch mb-2">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="autoPagoSwitch"
+                  checked={Boolean(editPoliza.auto_pago)}
+                  onChange={async (e) => {
+                    const nextVal = e.target.checked
+                    setEditPoliza({ ...editPoliza, auto_pago: nextVal })
+                    try {
+                      await fetch(`/api/polizas/${editPoliza.id}/auto-pago`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ auto_pago: nextVal }),
+                      })
+                    } catch { /* ignorar: ya se mostró en el estado local */ }
+                  }}
+                />
+                <label className="form-check-label small" htmlFor="autoPagoSwitch">
+                  <i className="bi bi-robot me-1"></i>
+                  Auto-pago: marcará los pagos pendientes como pagados automáticamente al llegar su fecha de pago
+                </label>
+              </div>
+            )}
             <strong className="small">Calendario de pagos</strong>
-            <PagosProgramados polizaId={editPoliza.id} refreshKey={pagosRefreshKey} isSuper={isSuper} />
+            <PagosProgramados polizaId={editPoliza.id} refreshKey={pagosRefreshKey} isSuper={canActDirect} />
           </div>
           <div className="mt-3 d-flex justify-content-end gap-2">
             <button className="btn btn-sm btn-secondary" onClick={()=>setEditPoliza(null)}>Cancelar</button>
@@ -1536,63 +1565,6 @@ function emptyAsUndef(v?: string|null) { const s = (v||'').trim(); return s ? s 
 function formatMoney(v: number, moneda?: string|null) {
   try { return (moneda ? (moneda + ' ') : '$') + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } catch { return (moneda? moneda+' ':'$') + v.toFixed(2) }
 }
-function generateMonthKeys(poliza?: { fecha_emision?: string|null; fecha_renovacion?: string|null; periodicidad_pago?: string|null }, fallbackMonths = 24) {
-  const map: Record<string, number> = { mensual: 1, trimestral: 3, semestral: 6, anual: 12 }
-  const norm = poliza?.periodicidad_pago ? normalizePeriodicidadValue(poliza.periodicidad_pago) : null
-  const step = map[norm || ''] || 1
-
-  const parseMonthStart = (value?: string|null): Date | null => {
-    if (!value) return null
-    const d = new Date(value)
-    if (Number.isNaN(d.valueOf())) return null
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-  }
-
-  const start = parseMonthStart(poliza?.fecha_emision)
-  const end = parseMonthStart(poliza?.fecha_renovacion)
-
-  const keys: string[] = []
-  // Fallback: si no hay fechas, mantener comportamiento previo (enero 2025 en adelante)
-  if (!start) {
-    const fallbackStart = new Date(Date.UTC(2025, 0, 1))
-    for (let i=0;i<fallbackMonths;i++) {
-      const d = new Date(Date.UTC(fallbackStart.getUTCFullYear(), fallbackStart.getUTCMonth() + i, 1))
-      const y = d.getUTCFullYear()
-      const m = String(d.getUTCMonth()+1).padStart(2,'0')
-      keys.push(`${y}-${m}`)
-    }
-    return keys
-  }
-
-  // Si no hay fecha de renovación, generar un año por defecto usando la periodicidad (inclusive)
-  const computedEnd = end || new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + (fallbackMonths-1), 1))
-
-  const guardMax = 120 // evita loops infinitos
-  for (let i = 0; i < guardMax; i++) {
-    const current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + (i * step), 1))
-    // Si hay fecha de renovación real, no incluir ese mes como pago (end es exclusivo)
-    if (end && current >= computedEnd) break
-    // Si es fallback (sin renovación), incluir hasta computedEnd inclusive
-    if (!end && current > computedEnd) break
-    const y = current.getUTCFullYear()
-    const m = String(current.getUTCMonth()+1).padStart(2,'0')
-    keys.push(`${y}-${m}`)
-  }
-  return keys
-}
-
-function defaultMontoPeriodo(poliza?: { prima_input?: number|null; periodicidad_pago?: string|null }) {
-  if (!poliza || typeof poliza.prima_input !== 'number' || !Number.isFinite(poliza.prima_input)) return null
-  const norm = poliza.periodicidad_pago ? normalizePeriodicidadValue(poliza.periodicidad_pago) : null
-  const map: Record<string, number> = { mensual: 12, trimestral: 4, semestral: 2, anual: 1 }
-  const divisor = map[norm || ''] || 1
-  return Number((poliza.prima_input / divisor).toFixed(2))
-}
-function shortMonthHeader(key: string) {
-  const [y,m] = key.split('-')
-  return `${m}/${y.slice(2)}`
-}
-
 // Helpers para hipervínculos
 function normalizePhoneMx(raw: string): string {
   // Quitar todo excepto dígitos

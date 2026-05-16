@@ -135,7 +135,6 @@ export async function POST(
       return renDate
     })()
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.info('[pagos_generar] periodicidad:', poliza.periodicidad_pago, 'emision:', poliza.fecha_emision, 'renovacion:', (poliza as any).fecha_renovacion, 'endDate:', endDate.toISOString())
 
     const baseFechaPrimerPago = new Date(Date.UTC(startYear, startMonth, 1))

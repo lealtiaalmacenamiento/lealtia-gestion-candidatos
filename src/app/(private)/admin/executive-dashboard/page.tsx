@@ -296,7 +296,6 @@ function PolizasTipoSection({ tipos }: { tipos: Array<{ tipo: string; count: num
         {tipos.length > 0 && (
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <Pie data={tipos} dataKey="count" nameKey="tipo" cx="50%" cy="50%" outerRadius={70} label={(entry: any) => `${entry.tipo}: ${entry.count}`}>
                 {tipos.map((_, i) => (
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -490,7 +489,7 @@ export default function ExecutiveDashboardPage() {
   const toggleLine = (line: TrendLine) =>
     setVisibleLines(prev => {
       const next = new Set(prev)
-      next.has(line) ? next.delete(line) : next.add(line)
+      if (next.has(line)) { next.delete(line) } else { next.add(line) }
       return next
     })
 

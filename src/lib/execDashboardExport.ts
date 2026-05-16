@@ -55,7 +55,6 @@ export interface ExecDashboardExportData {
   topClientes:     Array<{ nombre: string; asesor: string; polizas_activas: number; valor_total: number }>
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function exportExecDashboardPDF(doc: any, autoTable: (...args: any[]) => any, data: ExecDashboardExportData) {
   const PAGE_W   = doc.internal.pageSize.getWidth()  as number
   const PAGE_H   = doc.internal.pageSize.getHeight() as number
@@ -96,7 +95,6 @@ export async function exportExecDashboardPDF(doc: any, autoTable: (...args: any[
       margin: { left: MARGIN, right: MARGIN },
       ...opts,
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     y = (doc as any).lastAutoTable?.finalY ?? y
   }
 

@@ -14,6 +14,7 @@ type Usuario = {
   rol: string;
   activo: boolean;
   must_change_password?: boolean;
+  foto_perfil_url?: string | null;
 };
 
 export default function UsuariosPage() {
@@ -46,6 +47,7 @@ export default function UsuariosPage() {
                     <th>Rol</th>
                     <th>Activo</th>
                     <th>Debe cambiar password</th>
+                    <th>Foto perfil</th>
                     <th className="col-actions">Acciones</th>
                   </tr>
                 </thead>
@@ -63,6 +65,12 @@ export default function UsuariosPage() {
                       <td>{displayRol}</td>
                       <td>{u.activo ? 'Sí' : 'No'}</td>
                       <td>{u.must_change_password ? 'Sí' : 'No'}</td>
+                      <td className="text-center">
+                        {u.foto_perfil_url
+                          ? <span className="badge bg-success"><i className="bi bi-check-lg me-1"></i>Sí</span>
+                          : <span className="badge bg-secondary"><i className="bi bi-x-lg me-1"></i>No</span>
+                        }
+                      </td>
                       <td className="p-1">
                         <div className="d-flex flex-column flex-sm-row stack-actions gap-1">
                           <Link href={`/usuarios/${u.id}`} className="btn btn-primary btn-sm flex-fill">Editar</Link>

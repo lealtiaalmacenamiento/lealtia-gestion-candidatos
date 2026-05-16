@@ -343,7 +343,6 @@ export function buildProspectoPPREmail(opts: {
   const subject = `Nuevo prospecto PPR desde landing - ${opts.nombreProspecto}`
   const year = new Date().getFullYear()
   const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
-  const LOGIN_URL = resolveLoginUrl()
   
   const planNombre = opts.plan === '65' ? '65 años' : opts.plan === '15' ? '15 años' : '10 años'
 
@@ -403,6 +402,90 @@ Años de pago: ${opts.añosPago}
 
 Estado: Pendiente
 Origen: Landing page - simulador PPR
+
+© ${year} Lealtia`
+
+  return { subject, html, text }
+}
+
+export function buildProspectoVidaMujerEmail(opts: {
+  nombreProspecto: string
+  edad: number
+  email: string
+  telefono: string
+  sumaAseguradaUDI: number
+  primaAnualMXN: string
+  totalRecibidoMXN: string
+  totalRecibidoUDI: number
+  nombreAgente: string
+}) {
+  const subject = `Nueva prospecto Inversión Mujer desde landing - ${opts.nombreProspecto}`
+  const year = new Date().getFullYear()
+  const LOGO_URL = process.env.MAIL_LOGO_LIGHT_URL || process.env.MAIL_LOGO_URL || 'https://via.placeholder.com/140x50?text=Lealtia'
+  const LOGIN_URL = resolveLoginUrl()
+  const saFormatted = new Intl.NumberFormat('es-MX').format(opts.sumaAseguradaUDI)
+  const totalUDIFormatted = new Intl.NumberFormat('es-MX').format(opts.totalRecibidoUDI)
+
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+    <div style="background-color:#2F5D7C;color:#fff;padding:16px;text-align:center">
+      <span style="display:inline-block;background:#ffffff;padding:6px 10px;border-radius:6px;margin-bottom:8px">
+        <img src="${LOGO_URL}" alt="Lealtia" style="max-height:40px;display:block;margin:auto" />
+      </span>
+      <h2 style="margin:0;font-size:20px;">Nueva Prospecto — Inversión Mujer</h2>
+    </div>
+    <div style="padding:24px;background-color:#fff;">
+      <p>Hola <strong>${opts.nombreAgente}</strong>,</p>
+      <p>Se ha registrado una nueva prospecto desde el simulador de Inversión Mujer:</p>
+
+      <div style="background-color:#F9F8FF;padding:16px;border-radius:6px;margin:16px 0;border-left:4px solid #8E8AB5">
+        <h3 style="margin:0 0 12px 0;color:#2F5D7C;font-size:16px;">Datos de la prospecto</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:6px 0;"><strong>Nombre:</strong></td><td style="padding:6px 0;">${opts.nombreProspecto}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Edad:</strong></td><td style="padding:6px 0;">${opts.edad} años</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Email:</strong></td><td style="padding:6px 0;">${opts.email}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Teléfono:</strong></td><td style="padding:6px 0;">${opts.telefono}</td></tr>
+        </table>
+      </div>
+
+      <div style="background-color:#FFF8F3;padding:16px;border-radius:6px;margin:16px 0;border-left:4px solid #E59A5A">
+        <h3 style="margin:0 0 12px 0;color:#E59A5A;font-size:16px;">Cotización Inversión Mujer</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:6px 0;"><strong>Suma asegurada:</strong></td><td style="padding:6px 0;">${saFormatted} UDIs</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Prima anual estimada:</strong></td><td style="padding:6px 0;">${opts.primaAnualMXN}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Total recibido (115%):</strong></td><td style="padding:6px 0;">${totalUDIFormatted} UDIs ≈ ${opts.totalRecibidoMXN}</td></tr>
+          <tr><td style="padding:6px 0;"><strong>Vigencia:</strong></td><td style="padding:6px 0;">20 años</td></tr>
+        </table>
+      </div>
+
+      <p style="margin-top:20px;"><strong>Estado:</strong> Pendiente</p>
+      <p><strong>Origen:</strong> Landing page - simulador Inversión Mujer</p>
+      <p style="text-align:center;margin-top:20px;">
+        <a href="${LOGIN_URL}" style="background:#2F5D7C;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
+          Ver en el sistema
+        </a>
+      </p>
+    </div>
+    <div style="background-color:#f4f4f4;color:#555;font-size:12px;padding:16px;text-align:center;line-height:1.4">
+      <p>© ${year} Lealtia — Todos los derechos reservados</p>
+      <p>Este mensaje es confidencial y para uso exclusivo del destinatario.</p>
+    </div>
+  </div>`
+
+  const text = `Nueva prospecto de Inversión Mujer
+
+Nombre: ${opts.nombreProspecto}
+Edad: ${opts.edad} años
+Email: ${opts.email}
+Teléfono: ${opts.telefono}
+
+Suma asegurada: ${saFormatted} UDIs
+Prima anual estimada: ${opts.primaAnualMXN}
+Total recibido (115%): ${totalUDIFormatted} UDIs ≈ ${opts.totalRecibidoMXN}
+Vigencia: 20 años
+
+Estado: Pendiente
+Origen: Landing page - simulador Inversión Mujer
 
 © ${year} Lealtia`
 
