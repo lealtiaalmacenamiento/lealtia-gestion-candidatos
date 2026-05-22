@@ -239,7 +239,7 @@ Prima mensual estimada: ${primaMensual}`
 
       await sendMail({
         to: [emailAgente, body.email].filter(Boolean).join(','),
-        bcc: supervisorEmails,
+        cc: supervisorEmails,
         subject: emailContent.subject,
         html: emailContent.html,
         text: emailContent.text
