@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       try {
         await sendMail({
           to: emailDestino,
-          bcc: ccEmails.length ? ccEmails : undefined,
+          cc: ccEmails.length ? ccEmails : undefined,
           subject,
           html,
           text,
@@ -137,8 +137,7 @@ export async function POST(req: Request) {
 
       const nombre = [c.primer_nombre, c.segundo_nombre, c.primer_apellido].filter(Boolean).join(' ')
       const { subject, html, text } = buildCumpleanosEmail({ nombre, tipo: 'cliente' })
-      // BCC: supervisores (ocultos al cliente y al asesor)
-      // CC: asesor del cliente (visible)
+      // CC: asesor del cliente + supervisores
       const asesorEmail = c.asesor_id ? (asesorEmailMap[c.asesor_id] || null) : null
       if (dryRun) {
         results.push({ tipo: 'cliente', nombre, email: c.correo, ok: true, dry: true })
@@ -147,8 +146,7 @@ export async function POST(req: Request) {
       try {
         await sendMail({
           to: c.correo,
-          cc: asesorEmail || undefined,
-          bcc: ccEmails.length ? ccEmails : undefined,
+          cc: [asesorEmail, ...(ccEmails.length ? ccEmails : [])].filter(Boolean).join(',') || undefined,
           subject,
           html,
           text,
