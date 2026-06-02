@@ -3,6 +3,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { getCampaigns } from '@/lib/integrations/sendpilot'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
+import { syncLeadsForCampaign } from '@/lib/sp-leads-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,8 +12,11 @@ const supabase = ensureAdminClient()
 /**
  * POST /api/sp/campanas/sync
  * Fetches all campaigns from SendPilot and upserts them into sp_campanas.
- * Only imports campaigns not already present (matched by sendpilot_campaign_id).
- * Returns { inserted, total }.
+ * - Inserts new campaigns
+ * - Updates nombre/estado of existing ones
+ * - Marks campaigns no longer in SP as existe_en_sp=false
+ * - Syncs leads for all active SP campaigns
+ * Returns { inserted, updated, removed, total, leadsInserted, leadsUpdated }.
  */
 export async function POST() {
   const actor = await getUsuarioSesion()
@@ -32,39 +36,132 @@ export async function POST() {
   }
 
   if (!spCampaigns.length) {
-    return NextResponse.json({ inserted: 0, total: 0 })
+    return NextResponse.json({ inserted: 0, updated: 0, removed: 0, total: 0, leadsInserted: 0, leadsUpdated: 0 })
   }
 
-  // Get existing sendpilot_campaign_ids to avoid duplicates
+  function mapEstado(status: string): string {
+    if (['active', 'started'].includes(status)) return 'activa'
+    if (status === 'paused') return 'pausada'
+    if (status === 'completed') return 'terminada'
+    return 'pausada' // draft y cualquier otro → pausada
+  }
+
+  // Load existing records for upsert logic
   const { data: existing } = await supabase
     .from('sp_campanas')
-    .select('sendpilot_campaign_id')
+    .select('id, sendpilot_campaign_id, nombre, estado')
 
-  const existingIds = new Set((existing ?? []).map(r => r.sendpilot_campaign_id))
+  const existingMap = new Map((existing ?? []).map(r => [r.sendpilot_campaign_id, r]))
+  const spIdSet = new Set(spCampaigns.map(c => c.id))
 
   const toInsert = spCampaigns
-    .filter(c => !existingIds.has(c.id))
+    .filter(c => !existingMap.has(c.id))
     .map(c => ({
       nombre: c.name,
       sendpilot_campaign_id: c.id,
-      estado: ['active', 'started'].includes(c.status) ? 'activa'
-            : c.status === 'paused' ? 'pausada'
-            : c.status === 'completed' ? 'terminada'
-            : 'pausada', // draft y cualquier otro → pausada
+      estado: mapEstado(c.status),
+      existe_en_sp: true,
+      sp_sender_ids: c.linkedInSenderIds ?? [],
+      sp_analytics: {
+        totalLeads: c.totalLeads ?? 0,
+        connectionsSent: c.connectionsSent ?? 0,
+        messagesSent: c.messagesSent ?? 0,
+        repliesReceived: c.repliesReceived ?? 0,
+      },
     }))
 
+  // Update existing campaigns that changed name, status, or existe_en_sp flag
+  const toUpdate = spCampaigns
+    .filter(c => {
+      const row = existingMap.get(c.id)
+      if (!row) return false
+      return row.nombre !== c.name || row.estado !== mapEstado(c.status)
+    })
+
   let inserted = 0
+  let updated = 0
+  let removed = 0
+
   if (toInsert.length > 0) {
     const { error } = await supabase.from('sp_campanas').insert(toInsert)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     inserted = toInsert.length
   }
 
+  for (const c of toUpdate) {
+    const row = existingMap.get(c.id)!
+    await supabase
+      .from('sp_campanas')
+      .update({
+        nombre: c.name,
+        estado: mapEstado(c.status),
+        existe_en_sp: true,
+        sp_sender_ids: c.linkedInSenderIds ?? [],
+        sp_analytics: {
+          totalLeads: c.totalLeads ?? 0,
+          connectionsSent: c.connectionsSent ?? 0,
+          messagesSent: c.messagesSent ?? 0,
+          repliesReceived: c.repliesReceived ?? 0,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+    updated++
+  }
+
+  // Re-mark all SP campaigns as existing (covers ones that were previously marked removed)
+  // Also refresh analytics even if name/estado didn't change
+  const unchangedSpCampaigns = spCampaigns
+    .filter(c => existingMap.has(c.id) && !toUpdate.some(u => u.id === c.id))
+  for (const c of unchangedSpCampaigns) {
+    const row = existingMap.get(c.id)!
+    await supabase.from('sp_campanas').update({
+      existe_en_sp: true,
+      sp_sender_ids: c.linkedInSenderIds ?? [],
+      sp_analytics: {
+        totalLeads: c.totalLeads ?? 0,
+        connectionsSent: c.connectionsSent ?? 0,
+        messagesSent: c.messagesSent ?? 0,
+        repliesReceived: c.repliesReceived ?? 0,
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', row.id)
+  }
+
+  // Mark campaigns no longer in SP
+  const removedRows = (existing ?? []).filter(r => !spIdSet.has(r.sendpilot_campaign_id))
+  if (removedRows.length > 0) {
+    await supabase
+      .from('sp_campanas')
+      .update({ existe_en_sp: false, updated_at: new Date().toISOString() })
+      .in('id', removedRows.map(r => r.id))
+    removed = removedRows.length
+  }
+
+  // Re-read inserted rows so we have their UUIDs for lead sync
+  const { data: allRows } = await supabase
+    .from('sp_campanas')
+    .select('id, sendpilot_campaign_id')
+    .in('sendpilot_campaign_id', spCampaigns.map(c => c.id))
+
+  const rowBySp = new Map((allRows ?? []).map(r => [r.sendpilot_campaign_id, r.id]))
+
+  // Sync leads for all SP campaigns
+  let leadsInserted = 0
+  let leadsUpdated = 0
+  for (const c of spCampaigns) {
+    const campanaId = rowBySp.get(c.id)
+    if (!campanaId) continue
+    const result = await syncLeadsForCampaign(campanaId, c.id)
+    leadsInserted += result.inserted
+    leadsUpdated += result.updated
+  }
+
   await logAccion('sp_campanas_sync', {
     usuario: actor.email,
     tabla_afectada: 'sp_campanas',
-    snapshot: { inserted, total: spCampaigns.length }
+    snapshot: { inserted, updated, removed, total: spCampaigns.length, leadsInserted, leadsUpdated }
   }).catch(() => {})
 
-  return NextResponse.json({ inserted, total: spCampaigns.length })
+  return NextResponse.json({ inserted, updated, removed, total: spCampaigns.length, leadsInserted, leadsUpdated })
 }

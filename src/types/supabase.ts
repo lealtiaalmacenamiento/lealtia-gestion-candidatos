@@ -165,6 +165,8 @@ export interface Database {
           sendpilot_campaign_id: string
           calcom_linkedin_identifier: string
           estado: 'activa' | 'pausada' | 'terminada'
+          existe_en_sp: boolean
+          sp_analytics: { totalLeads: number; connectionsSent: number; messagesSent: number; repliesReceived: number } | null
           created_at: string
           updated_at: string
         };
@@ -175,6 +177,8 @@ export interface Database {
           sendpilot_campaign_id: string
           calcom_linkedin_identifier?: string
           estado?: 'activa' | 'pausada' | 'terminada'
+          existe_en_sp?: boolean
+          sp_analytics?: { totalLeads: number; connectionsSent: number; messagesSent: number; repliesReceived: number } | null
           created_at?: string
           updated_at?: string
         };
@@ -185,6 +189,8 @@ export interface Database {
           sendpilot_campaign_id?: string
           calcom_linkedin_identifier?: string
           estado?: 'activa' | 'pausada' | 'terminada'
+          existe_en_sp?: boolean
+          sp_analytics?: { totalLeads: number; connectionsSent: number; messagesSent: number; repliesReceived: number } | null
           created_at?: string
           updated_at?: string
         };

@@ -113,6 +113,11 @@ export interface SPCampaign {
   id: string
   name: string
   status: string
+  totalLeads?: number
+  connectionsSent?: number
+  messagesSent?: number
+  repliesReceived?: number
+  linkedInSenderIds?: string[]
 }
 
 export interface SPLeadInput {
@@ -156,6 +161,10 @@ export interface SPInboxResponse {
 export async function getCampaigns(): Promise<SPCampaign[]> {
   const data = await spFetch<{ campaigns?: SPCampaign[] } | SPCampaign[]>('GET', '/campaigns')
   return Array.isArray(data) ? data : (data as { campaigns?: SPCampaign[] }).campaigns ?? []
+}
+
+export async function getCampaignDetail(campaignId: string): Promise<SPCampaign> {
+  return spFetch<SPCampaign>('GET', `/campaigns/${campaignId}`)
 }
 
 export async function getLeads(
@@ -234,6 +243,13 @@ export interface SPConversationsResponse {
   }
 }
 
+export interface SPAttachment {
+  type: 'file' | 'img' | 'video' | 'voice' | 'linkedin_post' | string
+  url: string
+  name?: string
+  size?: number
+}
+
 export interface SPConversationMessage {
   id: string
   content: string
@@ -243,6 +259,7 @@ export interface SPConversationMessage {
   sentAt: string
   readStatus: 'read' | 'unread' | 'unknown'
   contentType: string
+  attachments?: SPAttachment[]
 }
 
 export interface SPConversationMessagesResponse {

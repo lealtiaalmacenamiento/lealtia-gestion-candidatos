@@ -2,6 +2,7 @@
 import './globals.css'; // Contiene bootstrap + bootstrap-icons
 import { AuthProvider } from '@/context/AuthProvider'
 import { PageTitleProvider } from '@/context/PageTitleContext'
+import { ThemeProvider } from '@/context/ThemeContext'
 import React from 'react';
 import { ConditionalFooter } from '@/components/ConditionalFooter'
 import { DialogProvider } from '@/components/ui/DialogProvider'
@@ -19,9 +20,11 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="es" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
-  {/* Favicon principal (.ico) */}
-  <link rel="icon" href="/favicon.ico" sizes="any" />
+        {/* Favicon principal (.ico) */}
+        <link rel="icon" href="/favicon.ico" sizes="any" />
         <meta name="theme-color" content="#072E40" />
+        {/* Anti-FOUC: aplica tema antes de que el CSS cargue */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('theme')||'light';document.documentElement.setAttribute('data-bs-theme',t);if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();` }} />
       </head>
       <body>
         {showBanner && (
@@ -35,6 +38,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             {bannerLabel}
           </div>
         )}
+        <ThemeProvider>
         <AuthProvider>
           <PageTitleProvider>
             <DialogProvider>
@@ -47,6 +51,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             </DialogProvider>
           </PageTitleProvider>
         </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

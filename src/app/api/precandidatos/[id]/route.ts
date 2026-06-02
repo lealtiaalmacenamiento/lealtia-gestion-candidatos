@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
+import { updateLeadStatus } from '@/lib/integrations/sendpilot'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +11,18 @@ type RouteContext = { params: Promise<{ id: string }> }
 const supabase = ensureAdminClient()
 
 const VALID_ESTADOS = ['en_secuencia', 'respondio', 'link_enviado', 'cita_agendada', 'promovido', 'descartado'] as const
+
+/** Maps CRM estado → SP customLeadStatus string */
+function mapCrmToSpStatus(estado: string): string {
+  switch (estado) {
+    case 'respondio':    return 'Interested'
+    case 'link_enviado': return 'Meeting booked'
+    case 'cita_agendada':
+    case 'promovido':    return 'Meeting complete'
+    case 'descartado':   return 'Not Interested'
+    default:             return 'Lead'
+  }
+}
 
 export async function GET(_req: Request, context: RouteContext) {
   const actor = await getUsuarioSesion()
@@ -71,20 +84,23 @@ export async function PATCH(req: Request, context: RouteContext) {
   }
 
   const update: Record<string, unknown> = {}
+  let spContactId: string | null = null
+
   if (body.estado !== undefined) {
     if (!(VALID_ESTADOS as readonly string[]).includes(body.estado)) {
       return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
     }
-    // Prevent regressing from promovido
+    // Prevent regressing from promovido; also fetch sp_contact_id for SP push
     const { data: current } = await supabase
       .from('sp_precandidatos')
-      .select('estado')
+      .select('estado, sp_contact_id')
       .eq('id', id)
       .maybeSingle()
     if (current?.estado === 'promovido' && body.estado !== 'promovido') {
       return NextResponse.json({ error: 'No se puede revertir un precandidato promovido' }, { status: 409 })
     }
     update.estado = body.estado
+    spContactId = current?.sp_contact_id ?? null
   }
   if (body.notas !== undefined) update.notas = body.notas
   if (body.reclutador_id !== undefined) update.reclutador_id = body.reclutador_id
@@ -104,6 +120,11 @@ export async function PATCH(req: Request, context: RouteContext) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Push estado change to SendPilot (best-effort, non-blocking)
+  if (body.estado && spContactId) {
+    updateLeadStatus(spContactId, mapCrmToSpStatus(body.estado)).catch(() => {})
+  }
 
   await logAccion('sp_precandidato_updated', { snapshot: { id, update } })
   return NextResponse.json(data)

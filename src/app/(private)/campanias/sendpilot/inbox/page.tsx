@@ -27,14 +27,21 @@ interface ConvMessage {
   direction: 'sent' | 'received'
   sentAt: string
   readStatus: string
+  contentType?: string
+  attachments?: Array<{ type: string; url: string; name?: string; size?: number }>
 }
 
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('es-MX', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'America/Mexico_City'
-  }).format(new Date(iso))
+interface Sender {
+  id: string
+  name: string
+  profileUrl?: string
+  status: string
+}
+
+interface Campaign {
+  id: string
+  name: string
+  status: string
 }
 
 function normalizeLinkedinUrl(url: string): string {
@@ -42,6 +49,15 @@ function normalizeLinkedinUrl(url: string): string {
   if (url.startsWith('http')) return url
   if (url.startsWith('in/')) return `https://www.linkedin.com/${url}`
   return `https://www.linkedin.com/in/${url}`
+}
+
+function normalizeName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function Avatar({ name, picture, size = 36 }: { name: string; picture?: string; size?: number }) {
@@ -66,6 +82,103 @@ function Avatar({ name, picture, size = 36 }: { name: string; picture?: string; 
   )
 }
 
+function formatShort(iso: string) {
+  return new Intl.DateTimeFormat('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(iso))
+}
+
+function proxyUrl(attUrl: string): string {
+  return `/api/sendpilot/attachment?url=${encodeURIComponent(attUrl)}`
+}
+
+function AttachmentBubble({ att, isSent, participantProfileUrl }: {
+  att: { type: string; url: string; name?: string; size?: number }
+  isSent: boolean
+  participantProfileUrl?: string
+}) {
+  const dimColor = isSent ? 'rgba(255,255,255,0.75)' : '#6c757d'
+  const borderColor = isSent ? 'rgba(255,255,255,0.3)' : '#dee2e6'
+
+  if (!att.url) {
+    // SP received a file/voice but doesn't expose the URL — link to LinkedIn so they can view it
+    const icon = att.type === 'voice' ? 'bi-mic' : 'bi-paperclip'
+    const label = att.type === 'voice' ? 'Nota de voz' : 'Archivo adjunto'
+    const liUrl = participantProfileUrl
+      ? `https://www.linkedin.com/messaging/`
+      : 'https://www.linkedin.com/messaging/'
+    return (
+      <div className="mt-1">
+        <a href={liUrl} target="_blank" rel="noopener noreferrer"
+          className="d-inline-flex align-items-center gap-1 small text-decoration-none fst-italic"
+          style={{ color: dimColor }}>
+          <i className={`bi ${icon}`} />
+          {label} · ver en
+          <i className="bi bi-linkedin ms-1" />
+          LinkedIn
+          <i className="bi bi-box-arrow-up-right" style={{ fontSize: '0.65rem' }} />
+        </a>
+      </div>
+    )
+  }
+
+  if (att.type === 'linkedin_post') {
+    return (
+      <div className="mt-1">
+        <a href={att.url} target="_blank" rel="noopener noreferrer"
+          className="d-inline-flex align-items-center gap-1 small text-decoration-none"
+          style={{ color: isSent ? '#cfe2ff' : '#0a66c2' }}>
+          <i className="bi bi-linkedin" />
+          Ver publicación de LinkedIn
+          <i className="bi bi-box-arrow-up-right" style={{ fontSize: '0.65rem' }} />
+        </a>
+      </div>
+    )
+  }
+
+  if (att.type === 'img') {
+    return (
+      <div className="mt-1">
+        <a href={proxyUrl(att.url)} target="_blank" rel="noopener noreferrer">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={proxyUrl(att.url)} alt="Imagen adjunta"
+            style={{ maxWidth: 220, maxHeight: 180, borderRadius: 8, border: `1px solid ${borderColor}`, display: 'block' }}
+            onError={e => {
+              const el = e.currentTarget as HTMLImageElement
+              el.style.display = 'none'
+              const p = el.parentElement
+              if (p) p.innerHTML = `<span class="small fst-italic" style="color:${dimColor}">🖼 Imagen (no disponible)</span>`
+            }}
+          />
+        </a>
+      </div>
+    )
+  }
+
+  if (att.type === 'video') {
+    return (
+      <div className="mt-1">
+        <video controls style={{ maxWidth: 260, borderRadius: 8, border: `1px solid ${borderColor}` }}>
+          <source src={proxyUrl(att.url)} />
+          <a href={proxyUrl(att.url)} target="_blank" rel="noopener noreferrer"
+            className="small" style={{ color: dimColor }}>▶ Ver video</a>
+        </video>
+      </div>
+    )
+  }
+
+  // file / unknown with url
+  const sizeLabel = att.size ? ` · ${(att.size / 1024).toFixed(0)} KB` : ''
+  return (
+    <div className="mt-1">
+      <a href={proxyUrl(att.url)} download={att.name ?? true} target="_blank" rel="noopener noreferrer"
+        className="d-inline-flex align-items-center gap-2 px-2 py-1 rounded small text-decoration-none"
+        style={{ background: borderColor, color: isSent ? '#fff' : '#212529' }}>
+        <i className="bi bi-file-earmark-arrow-down" />
+        <span>{att.name ?? 'Descargar archivo'}{sizeLabel}</span>
+      </a>
+    </div>
+  )
+}
+
 export default function InboxPage() {
   const { user, loadingUser } = useAuth()
   const router = useRouter()
@@ -77,18 +190,104 @@ export default function InboxPage() {
     if (!loadingUser && user && !esReclutador) router.replace('/home')
   }, [loadingUser, user, esReclutador, router])
 
+  // ── Conversations ──────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [notif, setNotif] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // ── Filter meta ────────────────────────────────
+  const [senders, setSenders] = useState<Sender[]>([])
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [filtersOpen, setFiltersOpen] = useState(false)
+
+  // ── Active filters ─────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterSender, setFilterSender] = useState('')
+  const [filterCampaign, setFilterCampaign] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  // campaign leads: name set + sender IDs for matching
+  // (SP uses URN-based profileUrls in conversations, incompatible with slug-based
+  // URLs on leads — match by normalized first+last name)
+  const [campaignNames, setCampaignNames] = useState<Set<string> | null>(null)
+  const [campaignSenderIds, setCampaignSenderIds] = useState<string[]>([])
+  const [loadingCampaignLeads, setLoadingCampaignLeads] = useState(false)
+
+  // ── Selected conversation ──────────────────────
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<ConvMessage[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
 
+  // ── Load campaigns + senders on mount ──────────
+  useEffect(() => {
+    fetch('/api/sendpilot/campaigns', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : { campaigns: [] })
+      .then((d: { campaigns: Campaign[] }) => setCampaigns(d.campaigns ?? []))
+      .catch(() => {})
+  }, [])
+
+  // ── Resolve sender names from messages ──────────────────────────────────
+  // SP sets sender.name = "Me"; the recruiter's real name is in recipient.name of sent messages.
+  // We try multiple conversations per accountId until we find one with a sent message.
+  useEffect(() => {
+    if (!conversations.length) return
+
+    // Group all convIds per accountId, sent-lastMessage ones first
+    const accountConvsMap = new Map<string, string[]>()
+    for (const c of conversations) {
+      const list = accountConvsMap.get(c.accountId) ?? []
+      if (c.lastMessage?.direction === 'sent') list.unshift(c.id)
+      else list.push(c.id)
+      accountConvsMap.set(c.accountId, list)
+    }
+
+    const resolve = async () => {
+      const derived: Sender[] = await Promise.all(
+        [...accountConvsMap.entries()].map(async ([accountId, convIds], i) => {
+          for (const convId of convIds) {
+            try {
+              const res = await fetch(
+                `/api/sendpilot/inbox/${convId}/messages?account_id=${encodeURIComponent(accountId)}`,
+                { cache: 'no-store' }
+              )
+              if (!res.ok) continue
+              const data = await res.json() as { messages: Array<{ direction: string; recipient: { name: string } }> }
+              const sentMsg = data.messages?.find(m => m.direction === 'sent')
+              if (sentMsg?.recipient?.name) {
+                return { id: accountId, name: sentMsg.recipient.name, status: 'active' }
+              }
+            } catch { /* try next */ }
+          }
+          return { id: accountId, name: `Perfil LinkedIn ${i + 1}`, status: 'active' }
+        })
+      )
+      setSenders(derived)
+    }
+    resolve().catch(() => {})
+  }, [conversations])
+
+  // ── When campaign filter changes, load its leads ─
+  // Uses name matching (normalized) + sender account ID to accurately identify
+  // which conversations belong to a campaign. SP API doesn't filter conversations
+  // by campaignId server-side (the parameter is silently ignored).
+  useEffect(() => {
+    if (!filterCampaign) { setCampaignNames(null); setCampaignSenderIds([]); return }
+    setLoadingCampaignLeads(true)
+    fetch(`/api/sendpilot/campaign-leads?id=${encodeURIComponent(filterCampaign)}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : { names: [], senderIds: [] })
+      .then((d: { names?: string[]; senderIds?: string[] }) => {
+        setCampaignNames(new Set(d.names ?? []))
+        setCampaignSenderIds(d.senderIds ?? [])
+      })
+      .catch(() => { setCampaignNames(null); setCampaignSenderIds([]) })
+      .finally(() => setLoadingCampaignLeads(false))
+  }, [filterCampaign])
+
+  // ── Load all conversations ────────────────────
   const loadConversations = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -98,7 +297,6 @@ export default function InboxPage() {
       while (true) {
         const res = await fetch(`/api/sendpilot/inbox?page=${pg}&limit=50`, { cache: 'no-store' })
         if (!res.ok) {
-          // On pages > 1 a 502/500 means SP ran out of data — stop without error
           if (pg > 1) break
           const d = await res.json() as { error?: string }
           throw new Error(d.error ?? `Error ${res.status}`)
@@ -109,7 +307,8 @@ export default function InboxPage() {
         pg++
         if (pg > 20) break
       }
-      setConversations(all)
+      const deduped = Array.from(new Map(all.map(c => [c.id, c])).values())
+      setConversations(deduped)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar inbox')
     } finally {
@@ -127,6 +326,7 @@ export default function InboxPage() {
     setSyncing(false)
   }, [loadConversations])
 
+  // ── Load messages for a conversation ──────────
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setSelectedConv(conv)
     setMessages([])
@@ -150,10 +350,9 @@ export default function InboxPage() {
     }
   }, [])
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
+  // ── Send reply ─────────────────────────────────
   const handleReply = async () => {
     if (!selectedConv || !replyText.trim()) return
     const recipientLinkedinUrl = selectedConv.participants[0]?.profileUrl
@@ -173,11 +372,10 @@ export default function InboxPage() {
         const d = await res.json() as { error?: string }
         throw new Error(d.error ?? `Error ${res.status}`)
       }
-      const newMsg: ConvMessage = {
+      setMessages(prev => [...prev, {
         id: crypto.randomUUID(), content: replyText.trim(),
         direction: 'sent', sentAt: new Date().toISOString(), readStatus: 'sent'
-      }
-      setMessages(prev => [...prev, newMsg])
+      }])
       setReplyText('')
     } catch (err) {
       setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error al enviar' })
@@ -186,13 +384,41 @@ export default function InboxPage() {
     }
   }
 
-  const q = searchQuery.toLowerCase().trim()
-  const filteredConvs = q
-    ? conversations.filter(c =>
-        c.participants.some(p => p.name.toLowerCase().includes(q)) ||
-        (c.lastMessage?.content.toLowerCase().includes(q) ?? false)
-      )
-    : conversations
+  // ── Active filter count ────────────────────────
+  const activeFilters = [filterSender, filterCampaign, filterDateFrom, filterDateTo].filter(Boolean).length
+
+  const clearFilters = () => {
+    setFilterSender('')
+    setFilterCampaign('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+  }
+
+  // ── Apply all filters ──────────────────────────
+  const filteredConvs = conversations.filter(c => {
+    const q = searchQuery.toLowerCase().trim()
+    if (q) {
+      const nameMatch = c.participants.some(p => p.name.toLowerCase().includes(q))
+      const msgMatch = c.lastMessage?.content.toLowerCase().includes(q) ?? false
+      if (!nameMatch && !msgMatch) return false
+    }
+    if (filterSender && c.accountId !== filterSender) return false
+    if (filterCampaign && campaignNames !== null) {
+      // Match by sender account AND normalized participant name
+      const senderMatch = campaignSenderIds.length === 0 || campaignSenderIds.includes(c.accountId)
+      const partName = normalizeName(c.participants[0]?.name ?? '')
+      if (!senderMatch || !campaignNames.has(partName)) return false
+    }
+    if (filterDateFrom) {
+      if (new Date(c.lastActivityAt) < new Date(filterDateFrom)) return false
+    }
+    if (filterDateTo) {
+      const to = new Date(filterDateTo)
+      to.setHours(23, 59, 59, 999)
+      if (new Date(c.lastActivityAt) > to) return false
+    }
+    return true
+  })
 
   if (loadingUser || !esReclutador) {
     return (
@@ -207,10 +433,28 @@ export default function InboxPage() {
       title="Inbox LinkedIn"
       alert={notif ? { type: notif.type === 'error' ? 'danger' : 'success', message: notif.message, show: true } : undefined}
     >
-      <div className="d-flex justify-content-between align-items-center mb-2 gap-2">
-        <span className="text-muted small">
-          {loading ? 'Cargando conversaciones…' : `${conversations.length} conversación${conversations.length !== 1 ? 'es' : ''}`}
-        </span>
+      {/* ── Top bar ── */}
+      <div className="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+        <div className="d-flex align-items-center gap-2">
+          <span className="text-muted small">
+            {loading ? 'Cargando…' : `${filteredConvs.length} de ${conversations.length} conversación${conversations.length !== 1 ? 'es' : ''}`}
+          </span>
+          <button
+            className={`btn btn-sm ${filtersOpen ? 'btn-primary' : 'btn-outline-secondary'}`}
+            onClick={() => setFiltersOpen(o => !o)}
+          >
+            <i className="bi bi-funnel me-1" />
+            Filtros
+            {activeFilters > 0 && (
+              <span className="badge bg-danger ms-1" style={{ fontSize: '0.65rem' }}>{activeFilters}</span>
+            )}
+          </button>
+          {activeFilters > 0 && (
+            <button className="btn btn-sm btn-link text-danger p-0" onClick={clearFilters}>
+              <i className="bi bi-x-circle me-1" />Limpiar
+            </button>
+          )}
+        </div>
         <button className="btn btn-outline-primary btn-sm" onClick={handleSync} disabled={syncing || loading}>
           {(syncing || loading)
             ? <><span className="spinner-border spinner-border-sm me-1" />Cargando...</>
@@ -218,9 +462,48 @@ export default function InboxPage() {
         </button>
       </div>
 
+      {/* ── Filter panel ── */}
+      {filtersOpen && (
+        <div className="card mb-2 border-primary-subtle">
+          <div className="card-body py-2 px-3">
+            <div className="row g-2 align-items-end">
+              <div className="col-12 col-sm-6 col-md-3">
+                <label className="form-label form-label-sm text-muted mb-1">Perfil LinkedIn (sender)</label>
+                <select className="form-select form-select-sm" value={filterSender} onChange={e => setFilterSender(e.target.value)}>
+                  <option value="">Todos</option>
+                  {senders.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-12 col-sm-6 col-md-3">
+                <label className="form-label form-label-sm text-muted mb-1">
+                  Campaña
+                  {loadingCampaignLeads && <span className="spinner-border spinner-border-sm ms-1" style={{ width: 10, height: 10 }} />}
+                </label>
+                <select className="form-select form-select-sm" value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)}>
+                  <option value="">Todas</option>
+                  {campaigns.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-6 col-md-3">
+                <label className="form-label form-label-sm text-muted mb-1">Desde</label>
+                <input type="date" className="form-control form-control-sm" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
+              </div>
+              <div className="col-6 col-md-3">
+                <label className="form-label form-label-sm text-muted mb-1">Hasta</label>
+                <input type="date" className="form-control form-control-sm" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="row g-0 border rounded" style={{ height: 'calc(100vh - 220px)', overflow: 'hidden', minHeight: 0 }}>
 
-        {/* Conversation list */}
+        {/* ─── Conversation list ─── */}
         <div className="col-12 col-md-4 border-end d-flex flex-column" style={{ overflow: 'hidden', minHeight: 0, height: '100%' }}>
           <div className="p-2 border-bottom bg-white">
             <div className="input-group input-group-sm">
@@ -245,7 +528,7 @@ export default function InboxPage() {
             {error && <div className="alert alert-danger m-2 small">{error}</div>}
             {!loading && !error && filteredConvs.length === 0 && (
               <div className="text-muted text-center py-4 small">
-                {searchQuery ? 'Sin resultados' : 'Sin conversaciones'}
+                {searchQuery || activeFilters > 0 ? 'Sin resultados con los filtros actuales' : 'Sin conversaciones'}
               </div>
             )}
             {filteredConvs.map(conv => {
@@ -265,11 +548,11 @@ export default function InboxPage() {
                           <span className="badge bg-primary ms-1" style={{ fontSize: '0.6rem' }}>{conv.unreadCount}</span>
                         )}
                       </div>
-                      {last && <div className="text-muted flex-shrink-0" style={{ fontSize: '0.68rem' }}>{formatDate(last.sentAt)}</div>}
+                      {last && <div className="text-muted flex-shrink-0" style={{ fontSize: '0.68rem' }}>{formatShort(last.sentAt)}</div>}
                     </div>
                     {last && (
                       <div className="text-truncate text-muted" style={{ fontSize: '0.78rem' }}>
-                        {last.direction === 'sent' ? 'Tú: ' : ''}{last.content}
+                        {last.direction === 'sent' ? 'Tú: ' : ''}{last.content || '📎 Adjunto'}
                       </div>
                     )}
                   </div>
@@ -279,7 +562,7 @@ export default function InboxPage() {
           </div>
         </div>
 
-        {/* Messages panel */}
+        {/* ─── Messages panel ─── */}
         <div className="col-12 col-md-8 d-flex flex-column" style={{ overflow: 'hidden', minHeight: 0, height: '100%' }}>
           {!selectedConv ? (
             <div className="d-flex align-items-center justify-content-center h-100 text-muted">
@@ -330,7 +613,15 @@ export default function InboxPage() {
                         )}
                         <div className={`rounded-3 px-3 py-2 small shadow-sm ${msg.direction === 'sent' ? 'bg-primary text-white' : 'bg-white border'}`}
                           style={{ maxWidth: '72%' }}>
-                          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
+                          {(msg.content || !msg.attachments?.length) && (
+                            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                              {msg.content || <span className="fst-italic opacity-75">(sin texto)</span>}
+                            </div>
+                          )}
+                          {msg.attachments?.map((att, ai) => (
+                            <AttachmentBubble key={ai} att={att} isSent={msg.direction === 'sent'}
+                              participantProfileUrl={selectedConv.participants[0]?.profileUrl} />
+                          ))}
                           <div className={`mt-1 text-end ${msg.direction === 'sent' ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '0.65rem' }}>
                             {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(msg.sentAt))}
                             {msg.direction === 'sent' && (

@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthProvider'
 import { usePageTitle } from '@/context/PageTitleContext'
 import Link from 'next/link'
 import NotificacionesDropdown from './layout/NotificacionesDropdown'
+import ThemeToggle from './ui/ThemeToggle'
 
 export default function Header() {
   const { user } = useAuth()
@@ -29,6 +30,7 @@ export default function Header() {
           {/* Grupo de badges usuario/rol */}
           <div className="d-flex flex-wrap align-items-center gap-2 user-meta-group">
             <NotificacionesDropdown />
+            <ThemeToggle />
             <span
               className="inline-flex align-items-center gap-2 bg-white text-[#072e40] px-3 py-1 rounded-pill small fw-semibold shadow-sm border border-white/60"
               title={`Usuario: ${user.email}`}

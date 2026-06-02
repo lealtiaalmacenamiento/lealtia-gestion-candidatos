@@ -33,6 +33,15 @@ interface EventType {
   schedulingUrl: string
 }
 
+interface SecuenciaPaso {
+  id: string
+  campana_id: string
+  paso: number
+  dias_espera: number
+  mensaje: string
+  activo: boolean
+}
+
 export default function CampanaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -152,6 +161,81 @@ export default function CampanaDetailPage() {
       setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error al sincronizar leads' })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  // ── Secuencia de recuperación ──────────────────
+  const [pasos, setPasos] = useState<SecuenciaPaso[]>([])
+  const [editingPaso, setEditingPaso] = useState<SecuenciaPaso | null>(null)
+  const [newPasoMsg, setNewPasoMsg] = useState('')
+  const [newPasoDias, setNewPasoDias] = useState(3)
+  const [savingPaso, setSavingPaso] = useState(false)
+  const [deletingPasoId, setDeletingPasoId] = useState<string | null>(null)
+
+  const loadPasos = useCallback(async () => {
+    const res = await fetch(`/api/sp/campanas/${id}/secuencia`, { cache: 'no-store' })
+    if (res.ok) {
+      const d = await res.json() as { pasos: SecuenciaPaso[] }
+      setPasos(d.pasos ?? [])
+    }
+  }, [id])
+
+  useEffect(() => { loadPasos().catch(() => {}) }, [loadPasos])
+
+  const handleAddPaso = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPasoMsg.trim()) return
+    setSavingPaso(true)
+    setNotif(null)
+    try {
+      const nextPaso = (pasos.at(-1)?.paso ?? 0) + 1
+      const res = await fetch(`/api/sp/campanas/${id}/secuencia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paso: nextPaso, dias_espera: newPasoDias, mensaje: newPasoMsg.trim() }),
+      })
+      if (!res.ok) { const d = await res.json() as { error?: string }; throw new Error(d.error) }
+      setNewPasoMsg('')
+      setNewPasoDias(3)
+      await loadPasos()
+      setNotif({ type: 'success', message: 'Paso agregado.' })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error' })
+    } finally {
+      setSavingPaso(false)
+    }
+  }
+
+  const handleUpdatePaso = async (paso: SecuenciaPaso) => {
+    setSavingPaso(true)
+    setNotif(null)
+    try {
+      const res = await fetch(`/api/sp/campanas/${id}/secuencia/${paso.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dias_espera: paso.dias_espera, mensaje: paso.mensaje }),
+      })
+      if (!res.ok) { const d = await res.json() as { error?: string }; throw new Error(d.error) }
+      setEditingPaso(null)
+      await loadPasos()
+      setNotif({ type: 'success', message: 'Paso actualizado.' })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error' })
+    } finally {
+      setSavingPaso(false)
+    }
+  }
+
+  const handleDeletePaso = async (pasoId: string) => {
+    setDeletingPasoId(pasoId)
+    try {
+      await fetch(`/api/sp/campanas/${id}/secuencia/${pasoId}`, { method: 'DELETE' })
+      await loadPasos()
+      setNotif({ type: 'success', message: 'Paso eliminado.' })
+    } catch (err) {
+      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error' })
+    } finally {
+      setDeletingPasoId(null)
     }
   }
 
@@ -326,6 +410,131 @@ export default function CampanaDetailPage() {
                     <div className="col-auto">
                       <button type="submit" className="btn btn-primary btn-sm" disabled={addingReclutador}>
                         {addingReclutador ? 'Agregando…' : 'Agregar'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* Secuencia de recuperación */}
+          <div className="col-12">
+            <div className="card border-0 shadow-sm">
+              <div className="card-body">
+                <h6 className="fw-semibold mb-1">Secuencia de recuperación (CRM)</h6>
+                <p className="text-muted small mb-3">
+                  Si SendPilot se traba, el CRM enviará automáticamente el siguiente mensaje de la secuencia
+                  cuando pasen los días configurados desde el último mensaje saliente.
+                  Usa <code>{'{nombre}'}</code> para el primer nombre y <code>{'{cal_url}'}</code> para el enlace de agenda del candidato.
+                </p>
+
+                {pasos.length === 0 && (
+                  <p className="text-muted small">No hay pasos configurados.</p>
+                )}
+
+                <ul className="list-group list-group-flush mb-3">
+                  {pasos.map(p => (
+                    <li key={p.id} className="list-group-item px-0">
+                      {editingPaso?.id === p.id ? (
+                        <div className="row g-2 align-items-end">
+                          <div className="col-12 col-md-1">
+                            <label className="form-label small">Paso</label>
+                            <input type="number" className="form-control form-control-sm" value={editingPaso.paso} readOnly />
+                          </div>
+                          <div className="col-6 col-md-2">
+                            <label className="form-label small">Días espera</label>
+                            <input
+                              type="number" min={1} className="form-control form-control-sm"
+                              value={editingPaso.dias_espera}
+                              onChange={e => setEditingPaso(prev => prev ? { ...prev, dias_espera: Number(e.target.value) } : prev)}
+                            />
+                          </div>
+                          <div className="col-12 col-md-6">
+                            <label className="form-label small">Mensaje</label>
+                            <textarea
+                              className="form-control form-control-sm" rows={2}
+                              value={editingPaso.mensaje}
+                              onChange={e => setEditingPaso(prev => prev ? { ...prev, mensaje: e.target.value } : prev)}
+                            />
+                          </div>
+                          <div className="col-auto d-flex gap-2">
+                            <button
+                              className="btn btn-primary btn-sm" disabled={savingPaso}
+                              onClick={() => handleUpdatePaso(editingPaso)}
+                            >
+                              {savingPaso ? '…' : 'Guardar'}
+                            </button>
+                            <button className="btn btn-outline-secondary btn-sm" onClick={() => setEditingPaso(null)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="d-flex justify-content-between align-items-start gap-2">
+                          <div style={{ minWidth: 0 }}>
+                            <div className="small fw-semibold">
+                              Paso {p.paso} — espera {p.dias_espera} día{p.dias_espera !== 1 ? 's' : ''}
+                              {!p.activo && <span className="badge bg-secondary ms-2">Inactivo</span>}
+                            </div>
+                            {/* Template source */}
+                            <div className="small text-muted mt-1" style={{ whiteSpace: 'pre-wrap', maxWidth: 600 }}>{p.mensaje}</div>
+                            {/* Preview with variables resolved */}
+                            <div className="mt-2 p-2 rounded border bg-light" style={{ maxWidth: 600 }}>
+                              <div className="text-muted small mb-1" style={{ fontSize: '0.7rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Preview</div>
+                              <div className="small" style={{ whiteSpace: 'pre-wrap' }}>
+                                {p.mensaje
+                                  .replace(/\{nombre\}/gi, 'María')
+                                  .replace(/\{cal_url\}/gi, campana
+                                    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/cal/${campana.sendpilot_campaign_id}/<contactId>`
+                                    : '{cal_url}'
+                                  )
+                                }
+                              </div>
+                            </div>
+                          </div>
+                          {isSuper && (
+                            <div className="d-flex gap-1 flex-shrink-0">
+                              <button className="btn btn-outline-secondary btn-sm" onClick={() => setEditingPaso(p)}>
+                                <i className="bi bi-pencil" />
+                              </button>
+                              <button
+                                className="btn btn-outline-danger btn-sm"
+                                disabled={deletingPasoId === p.id}
+                                onClick={() => handleDeletePaso(p.id)}
+                              >
+                                {deletingPasoId === p.id ? '…' : <i className="bi bi-trash" />}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+
+                {isSuper && !editingPaso && (
+                  <form className="row g-2 align-items-end" onSubmit={handleAddPaso}>
+                    <div className="col-6 col-md-2">
+                      <label className="form-label small">Días espera</label>
+                      <input
+                        type="number" min={1} className="form-control form-control-sm"
+                        value={newPasoDias}
+                        onChange={e => setNewPasoDias(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="col-12 col-md-7">
+                      <label className="form-label small">Mensaje</label>
+                      <textarea
+                        className="form-control form-control-sm" rows={2}
+                        placeholder={`Hola {nombre}, quería asegurarme de que recibiste mi mensaje...`}
+                        value={newPasoMsg}
+                        onChange={e => setNewPasoMsg(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="col-auto">
+                      <button type="submit" className="btn btn-outline-primary btn-sm" disabled={savingPaso}>
+                        {savingPaso ? '…' : '+ Agregar paso'}
                       </button>
                     </div>
                   </form>

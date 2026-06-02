@@ -19,6 +19,8 @@ export async function GET() {
       sendpilot_campaign_id,
       calcom_linkedin_identifier,
       estado,
+      existe_en_sp,
+      sp_analytics,
       created_at,
       updated_at,
       sp_campana_reclutadores (

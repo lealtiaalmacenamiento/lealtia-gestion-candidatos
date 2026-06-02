@@ -1,0 +1,22 @@
+name: SP Sequence Recovery
+
+on:
+  schedule:
+    - cron: '0 15 * * *' # 9am CDMX (UTC-6)
+  workflow_dispatch:
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sp-sequence-recovery
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          : "${APP_URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
+          : "${CRON_SECRET:?Need CRON_SECRET secret}"
+          curl -sS -X GET "${APP_URL%/}/api/cron/sp-sequence-recovery" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -w '\nHTTP %{http_code}\n'

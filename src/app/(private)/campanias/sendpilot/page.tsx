@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import BasePage from '@/components/BasePage'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthProvider'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts'
 
 interface Campana {
   id: string
@@ -12,6 +15,13 @@ interface Campana {
   sendpilot_campaign_id: string
   calcom_linkedin_identifier: string
   estado: 'activa' | 'pausada' | 'terminada'
+  existe_en_sp: boolean
+  sp_analytics: {
+    totalLeads: number
+    connectionsSent: number
+    messagesSent: number
+    repliesReceived: number
+  } | null
   precandidatos_activos: number
   created_at: string
 }
@@ -86,13 +96,21 @@ export default function CampaniasPage() {
     setNotif(null)
     try {
       const res = await fetch('/api/sp/campanas/sync', { method: 'POST' })
-      const d = await res.json() as { inserted?: number; total?: number; error?: string }
+      const d = await res.json() as { inserted?: number; updated?: number; removed?: number; total?: number; leadsInserted?: number; leadsUpdated?: number; error?: string }
       if (!res.ok) throw new Error(d.error ?? `Error ${res.status}`)
+      const parts: string[] = []
+      if (d.inserted) parts.push(`${d.inserted} campaña(s) importada(s)`)
+      if (d.updated) parts.push(`${d.updated} campaña(s) actualizada(s)`)
+      if (d.removed) parts.push(`${d.removed} campaña(s) ya no encontrada(s) en SP`)
+      const leadParts: string[] = []
+      if (d.leadsInserted) leadParts.push(`${d.leadsInserted} leads nuevos`)
+      if (d.leadsUpdated) leadParts.push(`${d.leadsUpdated} leads actualizados`)
+      if (leadParts.length) parts.push(leadParts.join(', '))
       setNotif({
         type: 'success',
-        message: d.inserted === 0
-          ? `Todo sincronizado. ${d.total} campaña(s) ya estaban registradas.`
-          : `Se importaron ${d.inserted} campaña(s) nueva(s) de SendPilot.`
+        message: parts.length
+          ? parts.join(' · ') + '.'
+          : `Todo al día. ${d.total} campaña(s) sincronizada(s).`
       })
       await load()
     } catch (err) {
@@ -135,6 +153,31 @@ export default function CampaniasPage() {
       )}
       {loading && <div className="text-center py-4"><div className="spinner-border" /></div>}
       {!loading && error && <div className="alert alert-danger">{error}</div>}
+      {!loading && !error && items.some(c => c.sp_analytics) && (
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-body">
+            <h6 className="text-muted mb-3 small text-uppercase fw-semibold">Métricas por campaña (SendPilot)</h6>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={items
+                  .filter(c => c.sp_analytics)
+                  .map(c => ({
+                    name: c.nombre.length > 22 ? c.nombre.slice(0, 20) + '…' : c.nombre,
+                    Mensajes: c.sp_analytics!.messagesSent,
+                  }))}
+                margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
+                barCategoryGap="30%"
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                <Tooltip />
+                <Bar dataKey="Mensajes" fill="#0d6efd" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
       {!loading && !error && (
         <div className="table-responsive">
           <table className="table table-sm table-hover align-middle">
@@ -144,13 +187,14 @@ export default function CampaniasPage() {
                 <th>ID SendPilot</th>
                 <th>Estado</th>
                 <th className="text-center">Precandidatos</th>
+                <th className="text-center" title="Mensajes enviados (SendPilot)">Mensajes SP</th>
                 {isSuper && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={isSuper ? 5 : 4} className="text-center text-muted py-4">
+                  <td colSpan={isSuper ? 6 : 5} className="text-center text-muted py-4">
                     No hay campañas. Se crean automáticamente vía webhook o manualmente.
                   </td>
                 </tr>
@@ -159,6 +203,9 @@ export default function CampaniasPage() {
                 <tr key={campana.id}>
                   <td className="fw-semibold">
                     <Link href={`/campanias/sendpilot/${campana.id}`}>{campana.nombre}</Link>
+                    {campana.existe_en_sp === false && (
+                      <span className="badge bg-danger-subtle text-danger ms-2 small fw-normal">No encontrada en SP</span>
+                    )}
                   </td>
                   <td><code className="small">{campana.sendpilot_campaign_id}</code></td>
                   <td>
@@ -167,6 +214,7 @@ export default function CampaniasPage() {
                     </span>
                   </td>
                   <td className="text-center">{campana.precandidatos_activos}</td>
+                  <td className="text-center">{campana.sp_analytics?.messagesSent ?? <span className="text-muted">—</span>}</td>
                   {isSuper && (
                     <td>
                       <div className="d-flex gap-1 flex-wrap">
