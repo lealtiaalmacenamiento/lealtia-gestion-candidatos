@@ -42,12 +42,14 @@ export async function syncLeadsForCampaign(
   const existingIds = new Set((existing ?? []).map((r: { sp_contact_id: string }) => r.sp_contact_id))
 
   // Upsert all leads — idempotent thanks to UNIQUE(campana_id, sp_contact_id)
+  const spIds = new Set(allLeads.map(l => l.id))
   const allRows = allLeads.map(l => ({
     campana_id: campanaId,
     sp_contact_id: l.id,
     nombre: [l.firstName, l.lastName].filter(Boolean).join(' ') || l.linkedinUrl,
     linkedin_url: l.linkedinUrl,
     estado: mapEstado(l.status),
+    existe_en_sp: true,
   }))
 
   const { error: upsertError, data: upserted } = await supabase
@@ -56,6 +58,16 @@ export async function syncLeadsForCampaign(
     .select('id, sp_contact_id')
 
   if (upsertError) return { error: upsertError.message, inserted: 0, updated: 0 }
+
+  // Mark existe_en_sp = false for leads no longer in SP (preserves estado and history)
+  const removedIds = [...existingIds].filter(id => !spIds.has(id))
+  if (removedIds.length > 0) {
+    await supabase
+      .from('sp_precandidatos')
+      .update({ existe_en_sp: false, updated_at: new Date().toISOString() })
+      .eq('campana_id', campanaId)
+      .in('sp_contact_id', removedIds)
+  }
 
   // Approximate inserted vs updated based on existing ids
   const newIds = new Set((upserted ?? []).map((r: { sp_contact_id: string }) => r.sp_contact_id))

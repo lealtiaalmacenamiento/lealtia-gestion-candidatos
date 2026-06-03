@@ -52,11 +52,12 @@ export async function GET(_req: Request, context: RouteContext) {
     }
   }
 
-  // Precandidato counts by estado
+  // Precandidato counts by estado (only leads still in SP)
   const { data: preStats } = await supabase
     .from('sp_precandidatos')
     .select('estado')
     .eq('campana_id', id)
+    .eq('existe_en_sp', true)
   const stats: Record<string, number> = {}
   for (const row of preStats || []) {
     stats[row.estado] = (stats[row.estado] ?? 0) + 1

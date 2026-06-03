@@ -44,7 +44,7 @@ export async function GET() {
         .from('sp_precandidatos')
         .select('*', { count: 'exact', head: true })
         .eq('campana_id', campanaId)
-        .neq('estado', 'descartado')
+        .eq('existe_en_sp', true)
       countMap[campanaId] = count ?? 0
     }
   }
