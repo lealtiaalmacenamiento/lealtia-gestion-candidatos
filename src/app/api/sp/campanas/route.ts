@@ -35,19 +35,17 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Enrich with pre-candidate counts per campaign
+  // Enrich with pre-candidate counts per campaign using aggregate
   const ids = (data || []).map(c => c.id)
   const countMap: Record<string, number> = {}
   if (ids.length > 0) {
-    const { data: counts } = await supabase
-      .from('sp_precandidatos')
-      .select('campana_id')
-      .in('campana_id', ids)
-      .neq('estado', 'descartado')
-    if (counts) {
-      for (const row of counts) {
-        countMap[row.campana_id] = (countMap[row.campana_id] ?? 0) + 1
-      }
+    for (const campanaId of ids) {
+      const { count } = await supabase
+        .from('sp_precandidatos')
+        .select('*', { count: 'exact', head: true })
+        .eq('campana_id', campanaId)
+        .neq('estado', 'descartado')
+      countMap[campanaId] = count ?? 0
     }
   }
 
