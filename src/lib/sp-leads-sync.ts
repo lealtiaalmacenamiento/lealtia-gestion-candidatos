@@ -1,4 +1,4 @@
-import { getLeads } from '@/lib/integrations/sendpilot'
+import { getLeads, normalizeLinkedInSlug } from '@/lib/integrations/sendpilot'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 
 const supabase = ensureAdminClient()
@@ -48,6 +48,7 @@ export async function syncLeadsForCampaign(
     sp_contact_id: l.id,
     nombre: [l.firstName, l.lastName].filter(Boolean).join(' ') || l.linkedinUrl,
     linkedin_url: l.linkedinUrl,
+    linkedin_slug: normalizeLinkedInSlug(l.linkedinUrl),
     estado: mapEstado(l.status),
     existe_en_sp: true,
   }))

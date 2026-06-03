@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac, timingSafeEqual, randomBytes } from 'crypto'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { decrypt, type EncryptedPayload } from '@/lib/encryption'
 import { upsertIntegrationToken } from '@/lib/integrationTokens'
@@ -146,7 +146,9 @@ export async function registerCalcomWebhook(
   apiKey: string,
   callbackUrl: string
 ): Promise<CalcomWebhookCreated> {
-  const data = await calFetch<{ status: string; data: CalcomWebhookCreated }>(
+  // Always generate a secret so HMAC verification works
+  const secret = randomBytes(32).toString('hex')
+  const data = await calFetch<{ status: string; data: CalcomWebhookCreated & { secret?: string | null } }>(
     'POST',
     '/webhooks',
     apiKey,
@@ -154,10 +156,12 @@ export async function registerCalcomWebhook(
     {
       subscriberUrl: callbackUrl,
       active: true,
-      triggers: ['BOOKING_CREATED', 'BOOKING_CANCELLED', 'BOOKING_RESCHEDULED']
+      triggers: ['BOOKING_CREATED', 'BOOKING_CANCELLED', 'BOOKING_RESCHEDULED'],
+      secret
     }
   )
-  return data.data
+  // Cal.com may echo back the secret or leave it null; fall back to what we sent
+  return { id: data.data.id, secret: data.data.secret ?? secret }
 }
 
 /**

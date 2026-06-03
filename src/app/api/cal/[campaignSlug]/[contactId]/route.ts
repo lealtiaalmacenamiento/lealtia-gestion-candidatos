@@ -35,6 +35,7 @@ export async function GET(
   // Try to find pre-candidate:
   // 1. By UUID (used in auto-reply from webhook)
   // 2. By linkedin_slug (used when SP injects {{linkedinIdentifier}} merge tag)
+  // 3. By sp_contact_id (used when cron builds cal_url with the internal SP id)
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contactId)
   const decodedId = decodeURIComponent(contactId)
 
@@ -56,13 +57,25 @@ export async function GET(
       slug = u.pathname.replace(/^\/in\//, '').split('?')[0].toLowerCase()
     } catch { /* use raw value */ }
 
-    const { data } = await supabase
+    // Try by linkedin_slug first
+    const { data: bySlug } = await supabase
       .from('sp_precandidatos')
       .select('id, linkedin_url, reclutador_id, campana_id')
       .eq('campana_id', campana.id)
       .ilike('linkedin_slug', slug)
       .maybeSingle()
-    precandidato = data
+    precandidato = bySlug
+
+    // Fallback: search by sp_contact_id (cron builds cal_url with internal SP id)
+    if (!precandidato) {
+      const { data: bySpId } = await supabase
+        .from('sp_precandidatos')
+        .select('id, linkedin_url, reclutador_id, campana_id')
+        .eq('campana_id', campana.id)
+        .eq('sp_contact_id', decodedId)
+        .maybeSingle()
+      precandidato = bySpId
+    }
   }
 
   // Determine the recruiter: either the one assigned to this pre-candidate,
