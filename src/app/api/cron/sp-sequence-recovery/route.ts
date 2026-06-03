@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   // Get all active campaigns
   const { data: campanas } = await supabase
     .from('sp_campanas')
-    .select('id, nombre, sp_sender_ids')
+    .select('id, nombre, sendpilot_campaign_id, sp_sender_ids')
     .eq('estado', 'activa')
 
   if (!campanas?.length) return NextResponse.json({ sent, skipped, errors })
