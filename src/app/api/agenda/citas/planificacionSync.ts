@@ -121,6 +121,72 @@ export async function syncPlanificacionCita(options: {
     .eq('id', plan.id)
 }
 
+// ---------------------------------------------------------------------------
+// SP (SendPilot Cal.com) booking sync
+// ---------------------------------------------------------------------------
+
+export async function syncPlanificacionSpCita(options: {
+  supabase: SupabaseClient
+  reclutadorAuthId: string // UUID from usuarios.id_auth
+  inicioIso: string
+  precandidatoNombre: string | null
+  spCitaId: string // UUID from sp_citas.id
+}) {
+  const { supabase, reclutadorAuthId, inicioIso, precandidatoNombre, spCitaId } = options
+
+  // Resolve integer usuario id (used as agente_id in planificaciones)
+  const { data: usuario } = await supabase
+    .from('usuarios')
+    .select('id')
+    .eq('id_auth', reclutadorAuthId)
+    .maybeSingle()
+  if (!usuario?.id) return
+
+  const meta = dayAndHourFromIso(inicioIso)
+  if (!meta) return
+  const { anio, semana, day, hour } = meta
+
+  const { data: plan } = await supabase
+    .from('planificaciones')
+    .select('id,bloques')
+    .eq('agente_id', usuario.id)
+    .eq('semana_iso', semana)
+    .eq('anio', anio)
+    .maybeSingle()
+
+  const buildBlock = (): BloquePlanificacion => ({
+    day,
+    hour,
+    activity: 'CITAS',
+    origin: 'auto',
+    prospecto_nombre: precandidatoNombre ?? undefined,
+    confirmada: false,
+    sp_cita_id: spCitaId,
+    notas: 'Agendado vía SendPilot / Cal.com'
+  })
+
+  if (!plan) {
+    await supabase.from('planificaciones').insert({
+      agente_id: usuario.id,
+      semana_iso: semana,
+      anio,
+      bloques: [buildBlock()],
+      prima_anual_promedio: 0,
+      porcentaje_comision: 0,
+      updated_at: new Date().toISOString()
+    })
+    return
+  }
+
+  const bloques = Array.isArray(plan.bloques) ? (plan.bloques as BloquePlanificacion[]) : []
+  // Replace existing block for same sp_cita_id if present
+  const otherBlocks = bloques.filter((b) => !b.sp_cita_id || b.sp_cita_id !== spCitaId)
+  await supabase
+    .from('planificaciones')
+    .update({ bloques: [...otherBlocks, buildBlock()], updated_at: new Date().toISOString() })
+    .eq('id', plan.id)
+}
+
 export async function detachPlanificacionCita(options: {
   supabase: SupabaseClient
   agenteId: number

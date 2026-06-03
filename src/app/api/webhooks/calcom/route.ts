@@ -2,6 +2,7 @@ import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { verifyCalcomSignature } from '@/lib/integrations/calcom'
 import { normalizeLinkedInSlug } from '@/lib/integrations/sendpilot'
 import { sendMail } from '@/lib/mailer'
+import { syncPlanificacionSpCita } from '@/app/api/agenda/citas/planificacionSync'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -155,7 +156,7 @@ async function handleBookingCreated(
     .ilike('linkedin_slug', linkedinSlug)
     .maybeSingle()
 
-  await upsertSpCita(supabase, {
+  const spCitaId = await upsertSpCita(supabase, {
     reclutador_id: reclutadorAuthId,
     campana_id: asignacion.campana_id,
     precandidato_id: precandidato?.id ?? null,
@@ -164,6 +165,20 @@ async function handleBookingCreated(
     fin,
     meeting_url: videoCallUrl
   })
+
+  // Sync to planificacion semanal
+  if (spCitaId) {
+    const nombre = precandidato
+      ? [precandidato.nombre, precandidato.apellido].filter(Boolean).join(' ')
+      : null
+    await syncPlanificacionSpCita({
+      supabase,
+      reclutadorAuthId,
+      inicioIso: inicio,
+      precandidatoNombre: nombre,
+      spCitaId
+    }).catch(() => {})
+  }
 
   if (precandidato) {
     // Update pre-candidate state and booking UID

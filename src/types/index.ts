@@ -244,6 +244,7 @@ export interface BloquePlanificacion {
   notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
   confirmada?: boolean // para bloques tipo SMNYL/Cita
   agenda_cita_id?: number | null
+  sp_cita_id?: string | null // UUID de sp_citas (Cal.com vía SendPilot)
 }
 
 export interface PlanificacionSemana {

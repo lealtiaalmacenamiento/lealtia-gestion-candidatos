@@ -316,7 +316,7 @@ export default function PlanificacionPage(){
                     if(blk.activity==='SMNYL') titleParts.push(`Cita${blk.confirmada ? ' confirmada' : ''}`.trim())
                     if(blk.activity==='CITAS') {
                       titleParts.push(`Cita agenda${blk.confirmada ? ' confirmada' : ' por confirmar'}`)
-                      titleParts.push('Sincronizada desde agenda interna')
+                      titleParts.push(blk.sp_cita_id ? 'Agendada vía SendPilot / Cal.com' : 'Sincronizada desde agenda interna')
                     }
                     if(blk.prospecto_nombre) titleParts.push(`Prospecto: ${blk.prospecto_nombre}`)
                     if(blk.prospecto_estado) titleParts.push(`Estado: ${blk.prospecto_estado}`)
