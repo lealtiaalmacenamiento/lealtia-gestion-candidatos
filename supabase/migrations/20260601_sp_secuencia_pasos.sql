@@ -20,3 +20,30 @@ CREATE TABLE IF NOT EXISTS sp_secuencia_pasos (
 
 CREATE INDEX IF NOT EXISTS sp_secuencia_pasos_campana_idx
   ON sp_secuencia_pasos(campana_id) WHERE activo = true;
+
+-- =============================================================================
+-- Deduplicar sp_precandidatos: eliminar filas duplicadas por (campana_id, sp_contact_id)
+-- conservando sólo la fila más reciente (mayor created_at) de cada par.
+-- Esto corrige inserciones repetidas causadas por el bug de sendpilot_contact_id.
+-- =============================================================================
+DELETE FROM sp_precandidatos
+WHERE id IN (
+  SELECT id FROM (
+    SELECT id,
+           ROW_NUMBER() OVER (
+             PARTITION BY campana_id, sp_contact_id
+             ORDER BY created_at DESC
+           ) AS rn
+    FROM sp_precandidatos
+    WHERE sp_contact_id IS NOT NULL
+  ) ranked
+  WHERE rn > 1
+);
+
+-- Añadir UNIQUE constraint para evitar duplicados futuros
+ALTER TABLE sp_precandidatos
+  DROP CONSTRAINT IF EXISTS sp_precandidatos_campana_contact_unique;
+
+ALTER TABLE sp_precandidatos
+  ADD CONSTRAINT sp_precandidatos_campana_contact_unique
+  UNIQUE (campana_id, sp_contact_id);

@@ -41,40 +41,26 @@ export async function syncLeadsForCampaign(
 
   const existingIds = new Set((existing ?? []).map((r: { sp_contact_id: string }) => r.sp_contact_id))
 
-  const toInsert = allLeads
-    .filter(l => !existingIds.has(l.id))
-    .map(l => ({
-      campana_id: campanaId,
-      sp_contact_id: l.id,
-      nombre: [l.firstName, l.lastName].filter(Boolean).join(' ') || l.linkedinUrl,
-      linkedin_url: l.linkedinUrl,
-      estado: mapEstado(l.status),
-    }))
+  // Upsert all leads — idempotent thanks to UNIQUE(campana_id, sp_contact_id)
+  const allRows = allLeads.map(l => ({
+    campana_id: campanaId,
+    sp_contact_id: l.id,
+    nombre: [l.firstName, l.lastName].filter(Boolean).join(' ') || l.linkedinUrl,
+    linkedin_url: l.linkedinUrl,
+    estado: mapEstado(l.status),
+  }))
 
-  const toUpdate = allLeads.filter(l => existingIds.has(l.id))
+  const { error: upsertError, data: upserted } = await supabase
+    .from('sp_precandidatos')
+    .upsert(allRows, { onConflict: 'campana_id,sp_contact_id', ignoreDuplicates: false })
+    .select('id, sp_contact_id')
 
-  let inserted = 0
-  let updateCount = 0
+  if (upsertError) return { error: upsertError.message, inserted: 0, updated: 0 }
 
-  if (toInsert.length > 0) {
-    const { error } = await supabase.from('sp_precandidatos').insert(toInsert)
-    if (error) return { error: error.message, inserted: 0, updated: 0 }
-    inserted = toInsert.length
-  }
-
-  for (const l of toUpdate) {
-    await supabase
-      .from('sp_precandidatos')
-      .update({
-        nombre: [l.firstName, l.lastName].filter(Boolean).join(' ') || l.linkedinUrl,
-        linkedin_url: l.linkedinUrl,
-        estado: mapEstado(l.status),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('campana_id', campanaId)
-      .eq('sp_contact_id', l.id)
-    updateCount++
-  }
+  // Approximate inserted vs updated based on existing ids
+  const newIds = new Set((upserted ?? []).map((r: { sp_contact_id: string }) => r.sp_contact_id))
+  const inserted = [...newIds].filter(id => !existingIds.has(id)).length
+  const updateCount = allLeads.length - inserted
 
   return { inserted, updated: updateCount }
 }
