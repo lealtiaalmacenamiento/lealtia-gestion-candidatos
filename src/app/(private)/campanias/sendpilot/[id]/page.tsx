@@ -426,7 +426,6 @@ export default function CampanaDetailPage() {
                   <h6 className="fw-semibold mb-0">Secuencia de recuperación (CRM)</h6>
                   {campana.stats['sp_secuencia_terminada'] !== undefined && (
                     <span
-                      className="badge fw-normal"
                       className="badge fw-normal bg-warning-subtle text-warning-emphasis"
                       title="Leads en los que SP agotó su secuencia y el CRM continuará el seguimiento">
                       {campana.stats['sp_secuencia_terminada'] ?? 0} SP finalizado
