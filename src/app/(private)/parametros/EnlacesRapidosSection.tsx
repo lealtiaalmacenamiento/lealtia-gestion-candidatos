@@ -176,7 +176,7 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
   };
 
   return (
-    <section className="border rounded p-3 bg-white shadow-sm">
+    <section className="border rounded p-3 bg-body shadow-sm">
       {/* Encabezado */}
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <button
@@ -202,7 +202,7 @@ export default function EnlacesRapidosSection({ onNotify }: Props) {
       {open && (
         <div className="mt-3">
           {/* Nombre del módulo */}
-          <div className="mb-3 p-3 bg-light rounded border">
+          <div className="mb-3 p-3 bg-body-secondary rounded border">
             <label className="form-label small fw-semibold mb-1">Nombre del módulo en inicio</label>
             <div className="d-flex gap-2 align-items-center">
               <span className="text-muted small me-1">Actual: <strong>{titulo}</strong></span>

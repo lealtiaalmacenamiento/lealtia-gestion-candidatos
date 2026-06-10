@@ -405,7 +405,7 @@ export default function ParametrosClient(){
           <EnlacesRapidosSection onNotify={(msg, type) => setNotif({ msg, type })} />
 
           {/* FASE 5: Campañas */}
-          <section className="border rounded p-3 bg-white shadow-sm">
+          <section className="border rounded p-3 bg-body shadow-sm">
             <CampaignsSection onNotify={(msg, type) => setNotif({ msg, type })} />
           </section>
 
@@ -416,12 +416,12 @@ export default function ParametrosClient(){
           <ProductTypesSection onNotify={(msg, type) => setNotif({ msg, type })} />
 
           {/* Configuración de puntos por tipo de producto */}
-          <section className="border rounded p-3 bg-white shadow-sm">
+          <section className="border rounded p-3 bg-body shadow-sm">
             <PuntosThresholdsSection onNotif={(msg, type) => setNotif({ msg, type })} />
           </section>
 
           {/* Sección FICHA CANDIDATO */}
-          <section className="border rounded p-3 bg-white shadow-sm">
+          <section className="border rounded p-3 bg-body shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <div className="d-flex align-items-center gap-2">
                 <button type="button" onClick={()=>setOpenFicha(o=>!o)} aria-expanded={openFicha} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
@@ -528,7 +528,7 @@ export default function ParametrosClient(){
               </>
             )}
           </section>
-          <section className="border rounded p-3 bg-white shadow-sm">
+          <section className="border rounded p-3 bg-body shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenProductos(o=>!o)} aria-expanded={openProductos} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
                 <i className={`bi bi-caret-${openProductos? 'down':'right'}-fill`}></i>
@@ -540,7 +540,7 @@ export default function ParametrosClient(){
             </div>
             {openProductos && (
               <div className="mt-3">
-                <div className="border rounded p-2 mb-3 bg-light">
+                <div className="border rounded p-2 mb-3 bg-body-secondary">
                   <div className="row g-2 align-items-end">
                     <div className="col-12 col-md-3">
                       <label className="form-label small mb-1">Nombre comercial</label>
@@ -714,7 +714,7 @@ export default function ParametrosClient(){
               </div>
             )}
           </section>
-          <section className="border rounded p-3 bg-white shadow-sm">
+          <section className="border rounded p-3 bg-body shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenMes(o=>!o)} aria-expanded={openMes} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
                 <i className={`bi bi-caret-${openMes? 'down':'right'}-fill`}></i>
@@ -760,7 +760,7 @@ export default function ParametrosClient(){
             )}
           </section>
 
-          <section className="border rounded p-3 bg-white shadow-sm">
+          <section className="border rounded p-3 bg-body shadow-sm">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <button type="button" onClick={()=>setOpenEfc(o=>!o)} aria-expanded={openEfc} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
                 <i className={`bi bi-caret-${openEfc? 'down':'right'}-fill`}></i>
@@ -813,7 +813,7 @@ export default function ParametrosClient(){
           </section>
         </div>
       )}
-      <section className="border rounded p-3 bg-white shadow-sm mt-4">
+      <section className="border rounded p-3 bg-body shadow-sm mt-4">
         <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <button type="button" onClick={()=>setOpenFase2(o=>!o)} aria-expanded={openFase2} className="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-2">
             <i className={`bi bi-caret-${openFase2? 'down':'right'}-fill`}></i>
