@@ -1,6 +1,6 @@
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { verifyCalcomSignature } from '@/lib/integrations/calcom'
-import { normalizeLinkedInSlug } from '@/lib/integrations/sendpilot'
+import { normalizeLinkedInSlug, updateLeadStatus } from '@/lib/integrations/sendpilot'
 import { sendMail } from '@/lib/mailer'
 import { syncPlanificacionSpCita } from '@/app/api/agenda/citas/planificacionSync'
 
@@ -204,6 +204,39 @@ async function handleBookingCreated(
       }
     })
 
+    // Discard duplicate records of the same person in other campaigns.
+    // Preserves history — marks as 'descartado' rather than deleting.
+    if (linkedinSlug) {
+      const { data: otrosDuplicados } = await supabase
+        .from('sp_precandidatos')
+        .select('id, campana_id')
+        .eq('linkedin_slug', linkedinSlug)
+        .neq('id', precandidato.id)
+        .not('estado', 'in', '("promovido","descartado")')
+
+      if (otrosDuplicados?.length) {
+        const ids = otrosDuplicados.map(r => r.id)
+        await supabase
+          .from('sp_precandidatos')
+          .update({ estado: 'descartado', updated_at: new Date().toISOString() })
+          .in('id', ids)
+
+        await supabase.from('sp_actividades').insert(
+          otrosDuplicados.map(r => ({
+            precandidato_id: r.id,
+            campana_id: r.campana_id,
+            tipo: 'sp_estado_cambiado',
+            metadata: {
+              old_status: null,
+              new_status: 'descartado',
+              razon: 'agendo_otra_campana',
+              campana_activa_id: asignacion!.campana_id
+            }
+          }))
+        )
+      }
+    }
+
     // Notify recruiter: in-app + email
     await notifyReclutador(supabase, reclutadorAuthId, precandidato, bookingUid, inicio)
   }
@@ -234,17 +267,63 @@ async function handleBookingCancelled(
     .eq('id', cita.id)
 
   if (cita.precandidato_id) {
-    // Revert state to link_enviado (they did click the link; SP can follow up)
-    await supabase
+    // Fetch current precandidato state — we need it to decide what to do
+    const { data: pre } = await supabase
       .from('sp_precandidatos')
-      .update({ estado: 'link_enviado', calcom_booking_uid: null, updated_at: new Date().toISOString() })
+      .select('estado, sp_contact_id')
       .eq('id', cita.precandidato_id)
+      .maybeSingle()
+
+    // Check if there are other future confirmed citas remaining
+    const { data: remaining } = await supabase
+      .from('sp_citas')
+      .select('id, calcom_booking_uid, inicio')
+      .eq('precandidato_id', cita.precandidato_id)
+      .eq('estado', 'confirmada')
+      .neq('id', cita.id)
+      .gt('inicio', new Date().toISOString())   // only future citas count
+      .order('inicio', { ascending: true })
+      .limit(1)
+
+    const hasFutureCitas = (remaining?.length ?? 0) > 0
+
+    if (hasFutureCitas) {
+      // Still has a future cita — always safe to just update the booking uid pointer
+      await supabase
+        .from('sp_precandidatos')
+        .update({
+          calcom_booking_uid: remaining![0].calcom_booking_uid,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', cita.precandidato_id)
+    } else if (pre?.estado === 'cita_agendada') {
+      // No future citas AND still in cita_agendada → revert so SP can follow up
+      await supabase
+        .from('sp_precandidatos')
+        .update({ estado: 'link_enviado', calcom_booking_uid: null, updated_at: new Date().toISOString() })
+        .eq('id', cita.precandidato_id)
+      // Sync revert back to SP (best-effort)
+      if (pre.sp_contact_id) {
+        updateLeadStatus(pre.sp_contact_id as string, 'Meeting booked').catch(() => {})
+      }
+    } else {
+      // State is promovido, descartado, or manually changed — don't touch estado,
+      // just clear the stale booking uid
+      await supabase
+        .from('sp_precandidatos')
+        .update({ calcom_booking_uid: null, updated_at: new Date().toISOString() })
+        .eq('id', cita.precandidato_id)
+    }
 
     await supabase.from('sp_actividades').insert({
       precandidato_id: cita.precandidato_id,
       campana_id: cita.campana_id,
       tipo: 'cita_cancelada',
-      metadata: { calcom_booking_uid: bookingUid }
+      metadata: {
+        calcom_booking_uid: bookingUid,
+        precandidato_estado: pre?.estado ?? null,
+        remaining_citas: remaining?.length ?? 0
+      }
     })
   }
 }

@@ -510,14 +510,14 @@ useEffect(() => {
                           className={tdClass} 
                           title={col.key==='proceso' ? rawProceso : undefined}
                           style={isHighlighted ? { 
-                            backgroundColor: '#cfe2ff', 
-                            color: '#084298', 
+                            backgroundColor: 'var(--bs-primary-bg-subtle)', 
+                            color: 'var(--bs-primary-text-emphasis)', 
                             fontWeight: '600',
-                            borderLeft: col.key === 'id_candidato' ? '4px solid #0d6efd' : undefined,
-                            borderRight: col.key === (columns[columns.length - 1]?.key ?? '') ? '4px solid #0d6efd' : undefined
+                            borderLeft: col.key === 'id_candidato' ? '4px solid var(--bs-primary)' : undefined,
+                            borderRight: col.key === (columns[columns.length - 1]?.key ?? '') ? '4px solid var(--bs-primary)' : undefined
                           } : undefined}
                         >
-                          <div className="d-flex flex-column gap-1" style={isHighlighted ? { color: '#084298' } : undefined}>
+                          <div className="d-flex flex-column gap-1" style={isHighlighted ? { color: 'var(--bs-primary-text-emphasis)' } : undefined}>
                             <Cell v={display} />
                             {isEtapa && (
                               <label className="small d-flex align-items-center gap-2">
@@ -734,20 +734,20 @@ const styles = `
     z-index: 10;
   }
   .highlight-row td {
-    background-color: #cfe2ff !important;
-    color: #084298 !important;
-    border-top: 2px solid #0d6efd !important;
-    border-bottom: 2px solid #0d6efd !important;
+    background-color: var(--bs-primary-bg-subtle) !important;
+    color: var(--bs-primary-text-emphasis) !important;
+    border-top: 2px solid var(--bs-primary) !important;
+    border-bottom: 2px solid var(--bs-primary) !important;
     font-weight: 600 !important;
   }
   .highlight-row td:first-child {
-    border-left: 4px solid #0d6efd !important;
+    border-left: 4px solid var(--bs-primary) !important;
   }
   .highlight-row td:last-child {
-    border-right: 4px solid #0d6efd !important;
+    border-right: 4px solid var(--bs-primary) !important;
   }
   .highlight-row td span {
-    color: #084298 !important;
+    color: var(--bs-primary-text-emphasis) !important;
   }
 `
 

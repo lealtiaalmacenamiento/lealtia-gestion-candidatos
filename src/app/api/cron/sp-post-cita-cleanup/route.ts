@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
+import { updateLeadStatus } from '@/lib/integrations/sendpilot'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -17,7 +18,8 @@ export const maxDuration = 60
  */
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
-  const expectedAuth = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : undefined
+  const secret = process.env.REPORTES_CRON_SECRET || process.env.CRON_SECRET
+  const expectedAuth = secret ? `Bearer ${secret}` : undefined
   if (expectedAuth && authHeader !== expectedAuth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -28,7 +30,7 @@ export async function GET(request: Request) {
   // Find all precandidatos in cita_agendada
   const { data: candidates, error: fetchError } = await supabase
     .from('sp_precandidatos')
-    .select('id, campana_id')
+    .select('id, campana_id, sp_contact_id')
     .eq('estado', 'cita_agendada')
 
   if (fetchError) {
@@ -73,6 +75,11 @@ export async function GET(request: Request) {
       tipo: 'cita_expirada',
       metadata: { reverted_by: 'cron/sp-post-cita-cleanup', at: now }
     })
+
+    // Sync revert back to SP (best-effort)
+    if (pre.sp_contact_id) {
+      updateLeadStatus(pre.sp_contact_id, 'Meeting booked').catch(() => {})
+    }
 
     reverted++
   }

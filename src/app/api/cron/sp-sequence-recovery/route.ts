@@ -10,14 +10,20 @@ const supabase = ensureAdminClient()
 /**
  * GET /api/cron/sp-sequence-recovery
  *
- * Detects leads stuck in 'en_secuencia' state and sends the next configured
- * recovery step via SendPilot's direct message API.
+ * CRM backup for the SendPilot outreach sequence.
+ * For every lead still in 'en_secuencia', checks which sequence steps SP has
+ * already sent (tracked via sp_mensaje_enviado → metadata.sequenceStep) and
+ * which the CRM has already sent (crm_secuencia_enviado → metadata.paso).
+ * If the next uncovered step is overdue, the CRM sends it via SP's direct
+ * message API — acting as a fallback when SP misses a step (paused, rate-
+ * limited, or sequence exhausted early with DONE).
  *
- * Logic per lead:
- *  1. Count CRM steps already sent (tipo = 'crm_secuencia_enviado')
- *  2. Find the next paso in sp_secuencia_pasos (indexed by crm steps count)
- *  3. Check if (today - last outbound activity) >= paso.dias_espera
- *  4. If yes: interpolate {nombre} and send via SP, log activity
+ * Algorithm per lead:
+ *  1. Build coveredSteps = {SP sequenceStep numbers} ∪ {CRM paso numbers}
+ *  2. Find nextPaso = first paso in sp_secuencia_pasos not in coveredSteps
+ *  3. Check (today - lastOutbound) >= nextPaso.dias_espera
+ *     – lastOutbound falls back to lead.created_at when no activities exist
+ *  4. If overdue: interpolate + send + log crm_secuencia_enviado
  */
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
@@ -58,10 +64,12 @@ export async function GET(request: Request) {
       continue
     }
 
-    // Get all leads in sequence for this campaign
+    // CRM acts as fallback for ALL leads in 'en_secuencia' — not only those where
+    // SP has finished (sp_secuencia_terminada). This allows the CRM to cover any
+    // step that SP missed, regardless of whether SP reported DONE.
     const { data: leads } = await supabase
       .from('sp_precandidatos')
-      .select('id, nombre, apellido, linkedin_url, sp_contact_id')
+      .select('id, nombre, apellido, linkedin_url, sp_contact_id, created_at')
       .eq('campana_id', campana.id)
       .eq('estado', 'en_secuencia')
 
@@ -73,25 +81,34 @@ export async function GET(request: Request) {
       // Get all outbound activities for this lead, newest first
       const { data: actividades } = await supabase
         .from('sp_actividades')
-        .select('tipo, created_at')
+        .select('tipo, created_at, metadata')
         .eq('precandidato_id', lead.id)
         .in('tipo', ['sp_conexion_enviada', 'sp_mensaje_enviado', 'crm_secuencia_enviado'])
         .order('created_at', { ascending: false })
 
-      // How many CRM recovery steps have already been sent
-      const crmStepsSent = (actividades ?? []).filter(a => a.tipo === 'crm_secuencia_enviado').length
-
-      // All recovery steps sent — lead has received the full CRM sequence
-      if (crmStepsSent >= pasos.length) { skipped++; continue }
-
-      const nextPaso = pasos[crmStepsSent]
-
-      // Check if enough days have passed since the last outbound message
-      const lastOutbound = actividades?.[0]?.created_at
-      if (lastOutbound) {
-        const daysSince = (now.getTime() - new Date(lastOutbound).getTime()) / (1000 * 60 * 60 * 24)
-        if (daysSince < nextPaso.dias_espera) { skipped++; continue }
+      // Build the set of steps already covered:
+      //   - SP steps: sp_mensaje_enviado → metadata.sequenceStep (1-based, matches paso)
+      //   - CRM steps: crm_secuencia_enviado → metadata.paso
+      const coveredSteps = new Set<number>()
+      for (const a of actividades ?? []) {
+        if (a.tipo === 'sp_mensaje_enviado') {
+          const step = Number((a.metadata as Record<string, unknown>)?.sequenceStep)
+          if (!isNaN(step) && step > 0) coveredSteps.add(step)
+        } else if (a.tipo === 'crm_secuencia_enviado') {
+          const paso = Number((a.metadata as Record<string, unknown>)?.paso)
+          if (!isNaN(paso) && paso > 0) coveredSteps.add(paso)
+        }
       }
+
+      // Find the first uncovered step
+      const nextPaso = pasos.find(p => !coveredSteps.has(p.paso))
+      if (!nextPaso) { skipped++; continue }  // all steps covered
+
+      // Timing check: days since last outbound activity.
+      // Falls back to lead.created_at when there are no activities yet (step 1 scenario).
+      const lastOutboundStr = (actividades ?? [])[0]?.created_at ?? lead.created_at
+      const daysSince = (now.getTime() - new Date(lastOutboundStr).getTime()) / (1000 * 60 * 60 * 24)
+      if (daysSince < nextPaso.dias_espera) { skipped++; continue }
 
       // Interpolate template variables:
       //   {nombre}   → first name

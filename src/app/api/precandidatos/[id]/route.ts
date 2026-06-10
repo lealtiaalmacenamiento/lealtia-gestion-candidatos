@@ -56,6 +56,12 @@ export async function GET(_req: Request, context: RouteContext) {
     return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
   }
 
+  // Authorization: reclutadores can only view their own precandidatos
+  if (!['admin', 'supervisor'].includes(actor.rol ?? '') &&
+      precandidatoRes.data.reclutador_id !== actor.id_auth) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  }
+
   return NextResponse.json({
     ...precandidatoRes.data,
     actividades: actividadesRes.data ?? [],
@@ -68,6 +74,18 @@ export async function PATCH(req: Request, context: RouteContext) {
   if (!actor) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const { id } = await context.params
+
+  // Authorization: reclutadores can only update their own precandidatos
+  if (!['admin', 'supervisor'].includes(actor.rol ?? '')) {
+    const { data: ownership } = await supabase
+      .from('sp_precandidatos')
+      .select('reclutador_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (!ownership || ownership.reclutador_id !== actor.id_auth) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    }
+  }
 
   let body: {
     estado?: string

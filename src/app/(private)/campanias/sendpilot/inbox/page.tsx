@@ -51,6 +51,20 @@ function normalizeLinkedinUrl(url: string): string {
   return `https://www.linkedin.com/in/${url}`
 }
 
+/** Extract the slug from a LinkedIn URL for matching against DB linkedin_slug. Returns null for URNs. */
+function normalizeLinkedinSlug(url: string): string | null {
+  if (!url || url.startsWith('urn:')) return null
+  try {
+    const u = url.includes('://') ? new URL(url) : new URL('https://www.linkedin.com/in/' + url)
+    const parts = u.pathname.split('/').filter(Boolean)
+    const inIdx = parts.indexOf('in')
+    const slug = inIdx >= 0 ? parts[inIdx + 1] : parts[0]
+    return slug ? slug.toLowerCase() : null
+  } catch {
+    return null
+  }
+}
+
 function normalizeName(s: string): string {
   return s
     .toLowerCase()
@@ -208,17 +222,17 @@ export default function InboxPage() {
   const [filterCampaign, setFilterCampaign] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
-  // campaign leads: name set + sender IDs for matching
-  // (SP uses URN-based profileUrls in conversations, incompatible with slug-based
-  // URLs on leads — match by normalized first+last name)
+  // campaign leads: slug set (primary) + name set (fallback for URN-based profileUrls)
   const [campaignNames, setCampaignNames] = useState<Set<string> | null>(null)
-  const [campaignSenderIds, setCampaignSenderIds] = useState<string[]>([])
+  const [campaignSlugs, setCampaignSlugs] = useState<Set<string> | null>(null)
   const [loadingCampaignLeads, setLoadingCampaignLeads] = useState(false)
 
   // ── Selected conversation ──────────────────────
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<ConvMessage[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+  const [messagesContinuationToken, setMessagesContinuationToken] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -271,50 +285,66 @@ export default function InboxPage() {
   }, [conversations])
 
   // ── When campaign filter changes, load its leads ─
-  // Uses name matching (normalized) + sender account ID to accurately identify
-  // which conversations belong to a campaign. SP API doesn't filter conversations
-  // by campaignId server-side (the parameter is silently ignored).
+  // Primary match: linkedin_slug vs normalized participant profileUrl
+  // Fallback:       normalized lead nombre vs participant name (for URN-based profileUrls)
   useEffect(() => {
-    if (!filterCampaign) { setCampaignNames(null); setCampaignSenderIds([]); return }
+    if (!filterCampaign) { setCampaignNames(null); setCampaignSlugs(null); return }
     setLoadingCampaignLeads(true)
     fetch(`/api/sendpilot/campaign-leads?id=${encodeURIComponent(filterCampaign)}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : { names: [], senderIds: [] })
-      .then((d: { names?: string[]; senderIds?: string[] }) => {
+      .then(r => r.ok ? r.json() : { names: [], slugs: [] })
+      .then((d: { names?: string[]; slugs?: string[] }) => {
         setCampaignNames(new Set(d.names ?? []))
-        setCampaignSenderIds(d.senderIds ?? [])
+        setCampaignSlugs(new Set(d.slugs ?? []))
       })
-      .catch(() => { setCampaignNames(null); setCampaignSenderIds([]) })
+      .catch(() => { setCampaignNames(null); setCampaignSlugs(null) })
       .finally(() => setLoadingCampaignLeads(false))
   }, [filterCampaign])
 
-  // ── Load all conversations ────────────────────
+  // ── Conversations pagination ───────────────────
+  const [convsPage, setConvsPage] = useState(1)
+  const [convsHasMore, setConvsHasMore] = useState(false)
+  const [loadingMoreConvs, setLoadingMoreConvs] = useState(false)
+
+  // ── Load first page of conversations ─────────
   const loadConversations = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const all: Conversation[] = []
-    let pg = 1
     try {
-      while (true) {
-        const res = await fetch(`/api/sendpilot/inbox?page=${pg}&limit=50`, { cache: 'no-store' })
-        if (!res.ok) {
-          if (pg > 1) break
-          const d = await res.json() as { error?: string }
-          throw new Error(d.error ?? `Error ${res.status}`)
-        }
-        const data = await res.json() as { conversations: Conversation[]; pagination: { hasMore: boolean } }
-        all.push(...(data.conversations ?? []))
-        if (!data.pagination?.hasMore) break
-        pg++
-        if (pg > 20) break
+      const res = await fetch('/api/sendpilot/inbox?page=1&limit=50', { cache: 'no-store' })
+      if (!res.ok) {
+        const d = await res.json() as { error?: string }
+        throw new Error(d.error ?? `Error ${res.status}`)
       }
-      const deduped = Array.from(new Map(all.map(c => [c.id, c])).values())
-      setConversations(deduped)
+      const data = await res.json() as { conversations: Conversation[]; pagination: { hasMore: boolean } }
+      setConversations(data.conversations ?? [])
+      setConvsHasMore(data.pagination?.hasMore ?? false)
+      setConvsPage(1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar inbox')
     } finally {
       setLoading(false)
     }
   }, [])
+
+  const loadMoreConversations = useCallback(async () => {
+    if (loadingMoreConvs || !convsHasMore) return
+    setLoadingMoreConvs(true)
+    const nextPage = convsPage + 1
+    try {
+      const res = await fetch(`/api/sendpilot/inbox?page=${nextPage}&limit=50`, { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as { conversations: Conversation[]; pagination: { hasMore: boolean } }
+      setConversations(prev => {
+        const map = new Map(prev.map(c => [c.id, c]))
+        for (const c of data.conversations ?? []) map.set(c.id, c)
+        return Array.from(map.values())
+      })
+      setConvsHasMore(data.pagination?.hasMore ?? false)
+      setConvsPage(nextPage)
+    } catch { /* silent */ } finally {
+      setLoadingMoreConvs(false)
+    }
+  }, [convsPage, convsHasMore, loadingMoreConvs])
 
   useEffect(() => { loadConversations().catch(() => {}) }, [loadConversations])
 
@@ -330,6 +360,7 @@ export default function InboxPage() {
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setSelectedConv(conv)
     setMessages([])
+    setMessagesContinuationToken(null)
     setReplyText('')
     setLoadingMessages(true)
     try {
@@ -341,14 +372,31 @@ export default function InboxPage() {
         const d = await res.json() as { error?: string }
         throw new Error(d.error ?? `Error ${res.status}`)
       }
-      const data = await res.json() as { messages: ConvMessage[] }
+      const data = await res.json() as { messages: ConvMessage[]; pagination?: { hasMore: boolean; continuationToken?: string } }
       setMessages((data.messages ?? []).slice().reverse())
+      setMessagesContinuationToken(data.pagination?.continuationToken ?? null)
     } catch (err) {
       setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error al cargar mensajes' })
     } finally {
       setLoadingMessages(false)
     }
   }, [])
+
+  // ── Load older messages ────────────────────────
+  const handleLoadOlderMessages = useCallback(async () => {
+    if (!selectedConv || !messagesContinuationToken || loadingOlderMessages) return
+    setLoadingOlderMessages(true)
+    try {
+      const url = `/api/sendpilot/inbox/${selectedConv.id}/messages?account_id=${encodeURIComponent(selectedConv.accountId)}&continuationToken=${encodeURIComponent(messagesContinuationToken)}`
+      const res = await fetch(url, { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as { messages: ConvMessage[]; pagination?: { hasMore: boolean; continuationToken?: string } }
+      setMessages(prev => [...(data.messages ?? []).slice().reverse(), ...prev])
+      setMessagesContinuationToken(data.pagination?.continuationToken ?? null)
+    } catch { /* silent */ } finally {
+      setLoadingOlderMessages(false)
+    }
+  }, [selectedConv, messagesContinuationToken, loadingOlderMessages])
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
@@ -403,11 +451,17 @@ export default function InboxPage() {
       if (!nameMatch && !msgMatch) return false
     }
     if (filterSender && c.accountId !== filterSender) return false
-    if (filterCampaign && campaignNames !== null) {
-      // Match by sender account AND normalized participant name
-      const senderMatch = campaignSenderIds.length === 0 || campaignSenderIds.includes(c.accountId)
-      const partName = normalizeName(c.participants[0]?.name ?? '')
-      if (!senderMatch || !campaignNames.has(partName)) return false
+    if (filterCampaign && (campaignSlugs !== null || campaignNames !== null)) {
+      const profileUrl = c.participants[0]?.profileUrl ?? ''
+      // Primary: match by linkedin slug (works when SP returns URL-based profileUrls)
+      const slug = normalizeLinkedinSlug(profileUrl)
+      if (campaignSlugs !== null && campaignSlugs.size > 0 && slug && campaignSlugs.has(slug)) {
+        // slug match ✔ — include this conversation
+      } else {
+        // Fallback: match by normalized participant name (handles URN-based profileUrls)
+        const partName = normalizeName(c.participants[0]?.name ?? '')
+        if (!campaignNames?.has(partName)) return false
+      }
     }
     if (filterDateFrom) {
       if (new Date(c.lastActivityAt) < new Date(filterDateFrom)) return false
@@ -559,6 +613,18 @@ export default function InboxPage() {
                 </div>
               )
             })}
+            {convsHasMore && (
+              <div className="text-center py-2">
+                <button
+                  className="btn btn-sm btn-outline-secondary"
+                  disabled={loadingMoreConvs}
+                  onClick={() => loadMoreConversations().catch(() => {})}>
+                  {loadingMoreConvs
+                    ? <><span className="spinner-border spinner-border-sm me-1" />Cargando...</>
+                    : 'Cargar más conversaciones'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -590,6 +656,18 @@ export default function InboxPage() {
 
               <div className="flex-grow-1 p-3 d-flex flex-column gap-2" style={{ overflowY: 'auto', background: '#f8f9fa', minHeight: 0 }}>
                 {loadingMessages && <div className="text-center py-4"><div className="spinner-border spinner-border-sm text-secondary" /></div>}
+                {!loadingMessages && messagesContinuationToken && (
+                  <div className="text-center pb-1">
+                    <button
+                      className="btn btn-sm btn-outline-secondary"
+                      disabled={loadingOlderMessages}
+                      onClick={() => handleLoadOlderMessages().catch(() => {})}>
+                      {loadingOlderMessages
+                        ? <><span className="spinner-border spinner-border-sm me-1" />Cargando...</>
+                        : <><i className="bi bi-arrow-up-circle me-1" />Mensajes anteriores</>}
+                    </button>
+                  </div>
+                )}
                 {!loadingMessages && messages.length === 0 && (
                   <div className="text-muted text-center small py-4">Sin mensajes en esta conversación</div>
                 )}

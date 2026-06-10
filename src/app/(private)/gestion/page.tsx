@@ -807,7 +807,7 @@ export default function GestionPage() {
                         </button>
                       </h2>
                       {expanded && (
-                        <div className="accordion-body p-2" style={{ background: '#f8fafc' }}>
+                        <div className="accordion-body p-2 bg-body-secondary">
                           <div className="table-responsive small">
                             <table className="table table-sm table-striped align-middle mb-0">
                               <thead>

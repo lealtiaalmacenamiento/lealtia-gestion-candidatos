@@ -195,7 +195,7 @@ function FunnelSection({ steps }: { steps: Array<{ key: string; label: string; c
                     {s.count} <span className="text-muted">({s.porcentaje.toFixed(0)}%)</span>
                   </span>
                 </div>
-                <div className="rounded" style={{ height: 10, backgroundColor: '#e9ecef' }}>
+                <div className="rounded" style={{ height: 10, backgroundColor: 'var(--bs-secondary-bg)' }}>
                   <div className="rounded" style={{
                     height: 10,
                     width: `${widthPct}%`,

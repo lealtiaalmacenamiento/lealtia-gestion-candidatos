@@ -23,6 +23,7 @@ export async function GET(_req: Request, context: RouteContext) {
       sendpilot_campaign_id,
       calcom_linkedin_identifier,
       estado,
+      sp_sender_ids,
       created_at,
       updated_at,
       sp_campana_reclutadores (
@@ -62,6 +63,14 @@ export async function GET(_req: Request, context: RouteContext) {
   for (const row of preStats || []) {
     stats[row.estado] = (stats[row.estado] ?? 0) + 1
   }
+
+  // Count leads where SP exhausted its sequence
+  const { count: spTerminadoCount } = await supabase
+    .from('sp_precandidatos')
+    .select('id', { count: 'exact', head: true })
+    .eq('campana_id', id)
+    .eq('sp_secuencia_terminada', true)
+  stats['sp_secuencia_terminada'] = spTerminadoCount ?? 0
 
   return NextResponse.json({
     ...data,

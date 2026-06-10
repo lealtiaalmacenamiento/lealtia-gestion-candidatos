@@ -84,6 +84,7 @@ async function handleEvent(
       await handleMessageSent(supabase, eventId, data)
       break
     case 'lead.status.changed':
+    case 'lead.updated':
       await handleLeadStatusChanged(supabase, eventId, data)
       break
     case 'campaign.started':
@@ -135,7 +136,7 @@ async function handleConnectionSent(
     ? parseSpLinkedinUrl(rawLinkedinUrl)
     : { linkedin_url: null, linkedin_urn: null, linkedin_slug: null }
 
-  // Check for existing pre-candidate (idempotent by sp_contact_id)
+  // Check for existing pre-candidate — primary key: (campana_id, sp_contact_id)
   let precandidatoId: string | null = null
   if (spContactId) {
     const { data: existing } = await supabase
@@ -149,9 +150,36 @@ async function handleConnectionSent(
     }
   }
 
+  // Secondary dedup by linkedin_slug: SP may add the same person twice with different leadIds.
+  // If found, adopt the new sp_contact_id so future webhooks route correctly.
+  if (!precandidatoId && parsed.linkedin_slug) {
+    const { data: existingBySlug } = await supabase
+      .from('sp_precandidatos')
+      .select('id, sp_contact_id')
+      .eq('campana_id', campanaId)
+      .eq('linkedin_slug', parsed.linkedin_slug)
+      .maybeSingle()
+    if (existingBySlug) {
+      precandidatoId = existingBySlug.id
+      // Update sp_contact_id to the new one so future webhooks with this leadId resolve correctly
+      if (spContactId && existingBySlug.sp_contact_id !== spContactId) {
+        await supabase
+          .from('sp_precandidatos')
+          .update({ sp_contact_id: spContactId, updated_at: new Date().toISOString() })
+          .eq('id', precandidatoId)
+      }
+    }
+  }
+
   if (!precandidatoId) {
     // Round-robin recruiter assignment
     const reclutadorId = await assignReclutador(supabase, campanaId)
+
+    if (reclutadorId === null) {
+      // No active recruiters in this campaign — log and skip to avoid orphaned records
+      console.warn('[webhook/sendpilot] No active recruiters for campaign, skipping precandidato creation', { campanaId, spContactId })
+      return
+    }
 
     const { data: nuevo, error } = await supabase
       .from('sp_precandidatos')
@@ -238,6 +266,18 @@ async function handleContactResponded(
       .maybeSingle()
 
     if (campana?.sendpilot_campaign_id) {
+      // CAS update: only advance if still en_secuencia or respondio.
+      // The first concurrent webhook to execute this wins and sends the reply;
+      // any duplicate webhook sees 0 rows updated and exits cleanly.
+      const { data: claimed } = await supabase
+        .from('sp_precandidatos')
+        .update({ estado: 'link_enviado', updated_at: new Date().toISOString() })
+        .eq('id', precandidato.id)
+        .in('estado', ['en_secuencia', 'respondio'])
+        .select('id')
+
+      if (!claimed?.length) return  // Another webhook already advanced the state — skip
+
       const calLink = `${APP_URL}/api/cal/${campana.sendpilot_campaign_id}/${precandidato.id}`
       const nombre = (precandidato.nombre ?? '').split(' ')[0] || ''
       const message = `¡Qué bueno conectar${ nombre ? `, ${nombre}` : ''}! Te comparto mi agenda para que elijas el horario que más te convenga:\n\n${calLink}\n\nSon 20 minutos, sin compromiso. Tú decides.`
@@ -245,12 +285,6 @@ async function handleContactResponded(
       await replyToThread(threadId, message).catch(err =>
         console.error('[webhook/sendpilot] Auto-reply failed', { threadId, err })
       )
-
-      // Mark as link_enviado since we just sent the link
-      await supabase
-        .from('sp_precandidatos')
-        .update({ estado: 'link_enviado', updated_at: new Date().toISOString() })
-        .eq('id', precandidato.id)
 
       await insertActividad(supabase, precandidato.id, precandidato.campana_id, null, 'sp_link_enviado', {
         auto_reply: true,
@@ -276,6 +310,26 @@ async function handleMessageSent(
   if (!precandidato) return
 
   await insertActividad(supabase, precandidato.id, precandidato.campana_id, eventId, 'sp_mensaje_enviado', data)
+
+  // SP provides senderId in message.sent payload — use it to keep sp_sender_ids up to date
+  // without needing a manual sync or inbox detection.
+  const senderId = (data.senderId ?? data.sender_id) as string | undefined
+  if (senderId && precandidato.campana_id) {
+    const { data: campana } = await supabase
+      .from('sp_campanas')
+      .select('id, sp_sender_ids')
+      .eq('id', precandidato.campana_id)
+      .maybeSingle()
+    if (campana) {
+      const existing: string[] = (campana.sp_sender_ids as string[]) ?? []
+      if (!existing.includes(senderId)) {
+        await supabase
+          .from('sp_campanas')
+          .update({ sp_sender_ids: [...existing, senderId], updated_at: new Date().toISOString() })
+          .eq('id', campana.id)
+      }
+    }
+  }
 }
 
 async function handleLeadStatusChanged(
@@ -295,23 +349,50 @@ async function handleLeadStatusChanged(
   if (!precandidato) return
 
   let newEstado: string | null = null
-  if (newStatus.toLowerCase() === LINK_ENVIADO_STATUS.toLowerCase()) {
+  const statusLower = newStatus.toLowerCase()
+  if (statusLower === LINK_ENVIADO_STATUS.toLowerCase()) {
     newEstado = 'link_enviado'
-  } else if (newStatus.toLowerCase() === 'not_interested' || newStatus.toLowerCase() === 'not interested') {
+  } else if (statusLower === 'not_interested' || statusLower === 'not interested') {
     newEstado = 'descartado'
   }
 
+  // SP status DONE = sequence exhausted without reply — flag for CRM recovery sequence
+  const spSecuenciaTerminada = statusLower === 'done'
+
+  // Build the DB update
+  const dbUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() }
+
   if (newEstado) {
+    const estadosOrden = ['en_secuencia', 'respondio', 'link_enviado', 'cita_agendada', 'promovido', 'descartado']
+    const currentIdx = estadosOrden.indexOf(precandidato.estado)
+    const newIdx = estadosOrden.indexOf(newEstado)
+    // Only advance the state, never regress. For 'descartado', never discard a promoted candidate via webhook.
+    const canApply =
+      newEstado === 'descartado'
+        ? precandidato.estado !== 'promovido'
+        : newIdx > currentIdx
+    if (canApply) dbUpdate.estado = newEstado
+  }
+
+  if (spSecuenciaTerminada) {
+    // Only flag when still in_secuencia — no point flagging a lead that already responded
+    if (precandidato.estado === 'en_secuencia') {
+      dbUpdate.sp_secuencia_terminada = true
+    }
+  }
+
+  if (Object.keys(dbUpdate).length > 1) {  // more than just updated_at
     await supabase
       .from('sp_precandidatos')
-      .update({ estado: newEstado, updated_at: new Date().toISOString() })
+      .update(dbUpdate)
       .eq('id', precandidato.id)
   }
 
   await insertActividad(supabase, precandidato.id, precandidato.campana_id, eventId, 'sp_estado_cambiado', {
     old_status: precandidato.estado,
     new_status: newStatus,
-    mapped_to: newEstado
+    mapped_to: newEstado,
+    sp_secuencia_terminada: spSecuenciaTerminada || undefined
   })
 }
 

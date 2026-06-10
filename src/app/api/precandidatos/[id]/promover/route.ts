@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
+import { updateLeadStatus } from '@/lib/integrations/sendpilot'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,8 +83,13 @@ export async function POST(req: Request, context: RouteContext) {
     .eq('id', id)
 
   if (updateError) {
-    // Don't rollback candidato insert – it's a separate record; just log
+    // The candidato was created but the precandidato status couldn't be updated.
+    // Return a 500 so the caller knows there's an inconsistency instead of silently succeeding.
     console.error('[promover] Failed to update sp_precandidatos:', updateError.message)
+    return NextResponse.json(
+      { error: 'Candidato creado pero no se pudo marcar el precandidato como promovido. Contacte al administrador.', candidato_id },
+      { status: 500 }
+    )
   }
 
   // Log activity
@@ -96,6 +102,11 @@ export async function POST(req: Request, context: RouteContext) {
   })
 
   await logAccion('sp_precandidato_promovido', { snapshot: { precandidato_id: id, candidato_id } })
+
+  // Push estado change to SendPilot (best-effort)
+  if (pre.sp_contact_id) {
+    updateLeadStatus(pre.sp_contact_id, 'Meeting complete').catch(() => {})
+  }
 
   return NextResponse.json({ candidato_id }, { status: 201 })
 }

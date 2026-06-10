@@ -19,12 +19,13 @@ export async function GET(req: Request) {
   const estado = url.searchParams.get('estado') as Estado | null
   const q = url.searchParams.get('q')?.trim().toLowerCase()
   const reclutadorPropio = url.searchParams.get('propios') === '1'
+  const spSecuenciaTerminada = url.searchParams.get('sp_secuencia_terminada') === '1'
   const limitParam = url.searchParams.get('limit')
   const offsetParam = url.searchParams.get('offset')
 
   let query = supabase
     .from('sp_precandidatos')
-    .select('id,campana_id,reclutador_id,sp_contact_id,nombre,apellido,linkedin_url,email,empresa,cargo,estado,calcom_booking_uid,candidato_id,notas,created_at,updated_at', { count: 'exact' })
+    .select('id,campana_id,reclutador_id,sp_contact_id,nombre,apellido,linkedin_url,email,empresa,cargo,estado,sp_secuencia_terminada,calcom_booking_uid,candidato_id,notas,created_at,updated_at', { count: 'exact' })
     .order('created_at', { ascending: false })
 
   if (campana_id) query = query.eq('campana_id', campana_id)
@@ -33,6 +34,9 @@ export async function GET(req: Request) {
   }
   if (reclutadorPropio && actor.id_auth) {
     query = query.eq('reclutador_id', actor.id_auth)
+  }
+  if (spSecuenciaTerminada) {
+    query = query.eq('sp_secuencia_terminada', true)
   }
   if (q) {
     query = query.or(`nombre.ilike.%${q}%,apellido.ilike.%${q}%,email.ilike.%${q}%,empresa.ilike.%${q}%`)

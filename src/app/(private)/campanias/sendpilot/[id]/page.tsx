@@ -23,6 +23,7 @@ interface Campana {
   calcom_linkedin_identifier: string
   estado: 'activa' | 'pausada' | 'inactiva'
   stats: Record<string, number>
+  sp_sender_ids: string[]
   sp_campana_reclutadores: Reclutador[]
 }
 
@@ -421,12 +422,29 @@ export default function CampanaDetailPage() {
           <div className="col-12">
             <div className="card border-0 shadow-sm">
               <div className="card-body">
-                <h6 className="fw-semibold mb-1">Secuencia de recuperación (CRM)</h6>
-                <p className="text-muted small mb-3">
-                  Si SendPilot se traba, el CRM enviará automáticamente el siguiente mensaje de la secuencia
-                  cuando pasen los días configurados desde el último mensaje saliente.
-                  Usa <code>{'{nombre}'}</code> para el primer nombre y <code>{'{cal_url}'}</code> para el enlace de agenda del candidato.
+                <div className="d-flex align-items-start justify-content-between mb-1 gap-2 flex-wrap">
+                  <h6 className="fw-semibold mb-0">Secuencia de recuperación (CRM)</h6>
+                  {campana.stats['sp_secuencia_terminada'] !== undefined && (
+                    <span
+                      className="badge fw-normal"
+                      className="badge fw-normal bg-warning-subtle text-warning-emphasis"
+                      title="Leads en los que SP agotó su secuencia y el CRM continuará el seguimiento">
+                      {campana.stats['sp_secuencia_terminada'] ?? 0} SP finalizado
+                    </span>
+                  )}
+                </div>
+                <p className="text-muted small mb-2">
+                  Configura los mismos mensajes y tiempos que en SendPilot. Si SP no envía un paso
+                  a tiempo (pausada, límite de tasa, o secuencia agotada), el CRM lo enviará
+                  automáticamente como respaldo. Usa <code>{'{nombre}'}</code> para el primer nombre
+                  y <code>{'{cal_url}'}</code> para el enlace de agenda.
                 </p>
+                {(!campana.sp_sender_ids || campana.sp_sender_ids.length === 0) && (
+                  <div className="alert alert-warning py-2 small mb-3">
+                    <i className="bi bi-exclamation-triangle me-1" />
+                    Sin cuenta de LinkedIn configurada. Sincroniza las campañas para detectarla automáticamente desde el inbox.
+                  </div>
+                )}
 
                 {pasos.length === 0 && (
                   <p className="text-muted small">No hay pasos configurados.</p>
@@ -479,7 +497,7 @@ export default function CampanaDetailPage() {
                             {/* Template source */}
                             <div className="small text-muted mt-1" style={{ whiteSpace: 'pre-wrap', maxWidth: 600 }}>{p.mensaje}</div>
                             {/* Preview with variables resolved */}
-                            <div className="mt-2 p-2 rounded border bg-light" style={{ maxWidth: 600 }}>
+                            <div className="mt-2 p-2 rounded border bg-body-secondary" style={{ maxWidth: 600 }}>
                               <div className="text-muted small mb-1" style={{ fontSize: '0.7rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Preview</div>
                               <div className="small" style={{ whiteSpace: 'pre-wrap' }}>
                                 {p.mensaje

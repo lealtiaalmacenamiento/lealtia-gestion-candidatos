@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
-import { getCampaigns } from '@/lib/integrations/sendpilot'
+import { getCampaigns, getConversations, normalizeLinkedInSlug } from '@/lib/integrations/sendpilot'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
 import { syncLeadsForCampaign } from '@/lib/sp-leads-sync'
@@ -96,7 +96,6 @@ export async function POST() {
         nombre: c.name,
         estado: mapEstado(c.status),
         existe_en_sp: true,
-        sp_sender_ids: c.linkedInSenderIds ?? [],
         sp_analytics: {
           totalLeads: c.totalLeads ?? 0,
           connectionsSent: c.connectionsSent ?? 0,
@@ -117,7 +116,6 @@ export async function POST() {
     const row = existingMap.get(c.id)!
     await supabase.from('sp_campanas').update({
       existe_en_sp: true,
-      sp_sender_ids: c.linkedInSenderIds ?? [],
       sp_analytics: {
         totalLeads: c.totalLeads ?? 0,
         connectionsSent: c.connectionsSent ?? 0,
@@ -157,11 +155,78 @@ export async function POST() {
     leadsUpdated += result.updated
   }
 
+  // --- Auto-detect sp_sender_ids from inbox conversations ---
+  let sendersDetected = 0
+  try {
+    // Fetch inbox pages (conversations are independent of getSenders — don't couple them)
+    const firstPage = await getConversations(undefined, 1, 50)
+    const allConvs = [...firstPage.conversations]
+    let hasMore = firstPage.pagination.hasMore
+    for (let page = 2; page <= 10 && hasMore; page++) {
+      const nextPage = await getConversations(undefined, page, 50)
+      allConvs.push(...nextPage.conversations)
+      hasMore = nextPage.pagination.hasMore
+    }
+
+    // Build slug → campana_id lookup from leads already in DB
+    const { data: precandidatos } = await supabase
+      .from('sp_precandidatos')
+      .select('linkedin_slug, campana_id')
+      .not('linkedin_slug', 'is', null)
+      .not('campana_id', 'is', null)
+
+    const slugToCampanaId = new Map<string, string>(
+      (precandidatos ?? []).map(r => [r.linkedin_slug as string, r.campana_id as string])
+    )
+
+    // Map campana_id → Set<accountId> by matching conversation participants to leads
+    const campanaSenders = new Map<string, Set<string>>()
+    const allAccountIds = new Set<string>()
+    for (const conv of allConvs) {
+      if (!conv.accountId) continue
+      allAccountIds.add(conv.accountId)
+      const profileUrl = conv.participants?.[0]?.profileUrl
+      if (!profileUrl) continue
+      const slug = normalizeLinkedInSlug(profileUrl)
+      if (!slug) continue
+      const campanaId = slugToCampanaId.get(slug)
+      if (!campanaId) continue
+      if (!campanaSenders.has(campanaId)) campanaSenders.set(campanaId, new Set())
+      campanaSenders.get(campanaId)!.add(conv.accountId)
+    }
+
+    // Write detected senders per campaign
+    for (const [campanaId, senderSet] of campanaSenders) {
+      await supabase
+        .from('sp_campanas')
+        .update({ sp_sender_ids: Array.from(senderSet), updated_at: new Date().toISOString() })
+        .eq('id', campanaId)
+      sendersDetected++
+    }
+
+    // Fallback: if only 1 unique accountId across all conversations, assign it to unmatched campaigns.
+    // This avoids depending on the /senders endpoint (which SP may not expose).
+    if (allAccountIds.size === 1) {
+      const [singleId] = allAccountIds
+      const detectedIds = new Set(campanaSenders.keys())
+      const withoutSenders = (allRows ?? []).filter(r => !detectedIds.has(r.id)).map(r => r.id)
+      if (withoutSenders.length > 0) {
+        await supabase
+          .from('sp_campanas')
+          .update({ sp_sender_ids: [singleId], updated_at: new Date().toISOString() })
+          .in('id', withoutSenders)
+        sendersDetected += withoutSenders.length
+      }
+    }
+  } catch (err) {
+    console.warn('[sp/campanas/sync] sender detection failed:', err instanceof Error ? err.message : String(err))
+  }
+
   await logAccion('sp_campanas_sync', {
     usuario: actor.email,
     tabla_afectada: 'sp_campanas',
-    snapshot: { inserted, updated, removed, total: spCampaigns.length, leadsInserted, leadsUpdated }
+    snapshot: { inserted, updated, removed, total: spCampaigns.length, leadsInserted, leadsUpdated, sendersDetected }
   }).catch(() => {})
 
-  return NextResponse.json({ inserted, updated, removed, total: spCampaigns.length, leadsInserted, leadsUpdated })
+  return NextResponse.json({ inserted, updated, removed, total: spCampaigns.length, leadsInserted, leadsUpdated, sendersDetected })
 }
