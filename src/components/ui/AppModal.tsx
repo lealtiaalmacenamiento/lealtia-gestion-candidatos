@@ -19,7 +19,7 @@ export function AppModal({ title, icon='info-circle-fill', children, footer, onC
     <div className="app-modal" role={role} aria-modal="true" aria-labelledby="appModalTitle">
       <div className="app-modal-content" style={{maxWidth:width}}>
         <div className="app-modal-header">
-          <span className="d-inline-flex align-items-center justify-content-center bg-white text-primary rounded-circle" style={{width:32,height:32}}>
+          <span className="d-inline-flex align-items-center justify-content-center bg-primary-subtle text-primary rounded-circle" style={{width:32,height:32}}>
             <i className={`bi bi-${icon}`}></i>
           </span>
           <h6 id="appModalTitle">{title}</h6>

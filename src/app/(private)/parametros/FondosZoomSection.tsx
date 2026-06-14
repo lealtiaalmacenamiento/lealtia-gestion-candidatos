@@ -101,7 +101,7 @@ export default function FondosZoomSection({ onNotify }: Props) {
   }
 
   return (
-    <section className="border rounded p-3 bg-white shadow-sm">
+    <section className="border rounded p-3 bg-body shadow-sm">
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <button
           type="button"
@@ -137,12 +137,12 @@ export default function FondosZoomSection({ onNotify }: Props) {
 
           {/* Preview del archivo seleccionado */}
           {preview && (
-            <div className="border rounded p-3 mb-3 bg-light d-flex align-items-start gap-3">
+            <div className="border rounded p-3 mb-3 bg-body-secondary d-flex align-items-start gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={preview}
                 alt="Preview fondo"
-                style={{ width: 160, height: 90, objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }}
+                style={{ width: 160, height: 90, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--bs-border-color)' }}
               />
               <div>
                 <p className="small mb-1 fw-semibold">{selectedFile?.name}</p>

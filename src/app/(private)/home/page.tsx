@@ -5,6 +5,7 @@ import Link from 'next/link';
 import FullScreenLoader from '@/components/ui/FullScreenLoader';
 import { normalizeRole } from '@/lib/roles';
 import NotificacionesDropdown from '@/components/layout/NotificacionesDropdown';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 const modules = [
   { key: 'candidatos/nuevo', title: 'Registrar candidato', desc: 'Alta de un nuevo candidato', icon: 'person-plus', roles: ['supervisor', 'admin'], color: 'primary' },
@@ -84,6 +85,8 @@ export default function HomeDashboard() {
   if (loadingUser) return <FullScreenLoader text="Cargando sesión..." />;
   if (!user) return <FullScreenLoader text="Redirigiendo a inicio de sesión..." />;
 
+  const esReclutador = user.segmentos?.includes('reclutador') ?? false
+
   let role = (user?.rol || '').toLowerCase();
   const normalizedRole = normalizeRole(user?.rol);
   if (normalizedRole) role = normalizedRole;
@@ -119,6 +122,7 @@ export default function HomeDashboard() {
           </span>
           <div className="ms-auto d-flex align-items-center gap-2">
             <NotificacionesDropdown />
+            <ThemeToggle />
             <button className="border border-white text-white px-4 py-1 rounded-pill bg-transparent hover:bg-white hover:text-[#072e40] transition small fw-medium btn btn-sm" onClick={handleLogout} disabled={loggingOut}>
               {loggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
             </button>
@@ -163,6 +167,36 @@ export default function HomeDashboard() {
                 </div>
               )}  
         </div>
+
+        {/* ── Módulo SendPilot (solo reclutador) ── */}
+        {esReclutador && (
+          <>
+            <h5 className="mt-5 mb-3">Reclutamiento SendPilot</h5>
+            <div className="row g-3">
+              {[
+                { key: 'precandidatos', title: 'Precandidatos', desc: 'Embudo de pre-candidatos SP', icon: 'people-fill', color: 'primary' },
+                { key: 'campanias/sendpilot', title: 'Campañas SP', desc: 'Dashboard de campañas SendPilot', icon: 'megaphone-fill', color: 'success' },
+                { key: 'campanias/sendpilot/inbox', title: 'Inbox LinkedIn', desc: 'Mensajes centralizados de LinkedIn', icon: 'chat-dots-fill', color: 'info' },
+              ].map((m, idx) => (
+                <div className="col-sm-6 col-lg-4" key={m.key}>
+                  <div className={`card h-100 dash-module dash-anim stagger-${idx+1} border-0 shadow-sm dash-border-${m.color}`}>
+                    <div className="card-body d-flex flex-column">
+                      <div className="d-flex align-items-start mb-2 gap-2">
+                        <span className={`dash-ico text-${m.color}`}><i className={`bi bi-${m.icon}`}></i></span>
+                        <h6 className="card-title mb-0 fw-semibold flex-grow-1">{m.title}</h6>
+                      </div>
+                      <p className="text-muted small mb-3 flex-grow-1">{m.desc}</p>
+                      <div className="mt-auto d-flex justify-content-between align-items-center">
+                        <Link href={`/${m.key}`} className={`btn btn-sm btn-${m.color} px-3`}>Abrir</Link>
+                        <span className="chevron ms-2 text-muted"><i className="bi bi-arrow-right-short fs-5"></i></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </>
   );

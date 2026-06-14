@@ -10,6 +10,9 @@
 @import 'bootstrap-icons/font/bootstrap-icons.css';
 @import "tailwindcss/utilities";
 
+/* ===== Tailwind v4: variante dark basada en clase ===== */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ===== Variables personalizadas ===== */
 :root {
   --primary: #072e40;
@@ -23,6 +26,37 @@
   --color-secondary: #6b7280;
   --color-danger: #dc2626;
   --color-success: #16a34a;
+  /* card/surface */
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;
+  --color-border: #dee2e6;
+}
+
+/* ===== Modo oscuro: override de variables ===== */
+html.dark {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  --color-bg: #0f172a;
+  --color-text: #e2e8f0;
+  --color-primary: #60a5fa;
+  --color-primary-dark: #93c5fd;
+  --color-secondary: #94a3b8;
+  --color-danger: #f87171;
+  --color-success: #4ade80;
+  --color-surface: #1e293b;
+  --color-surface-2: #273549;
+  --color-border: #334155;
+}
+
+/* ===== Transición suave al cambiar tema ===== */
+html, html *, html *::before, html *::after {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+/* Excepciones: animaciones y elementos que no deben transicionar */
+html .app-modal, html .app-modal-content,
+html [class*="fade-in"], html [class*="dash-anim"],
+html [class*="alert-animated"] {
+  transition: none !important;
 }
 
 /* ===== Reset básico ===== */
@@ -188,6 +222,73 @@ button { cursor:pointer; border:none; border-radius:4px; padding:0.4rem 0.8rem; 
 @media (max-width:991.98px) { /* stack inside collapse */
   .module-nav-link { width:100%; justify-content:flex-start; font-size:.8rem; }
   .user-meta-group { width:100%; }
+}
+
+/* ===== DARK MODE — overrides para clases custom ===== */
+
+/* body / base */
+html.dark body { background-color: var(--color-bg); color: var(--color-text); }
+
+/* Tablas sticky */
+html.dark .table-sticky .sticky-col { background: #1e293b; }
+html.dark .table-sticky thead .sticky-col { background: #0f172a; color: #e2e8f0; }
+html.dark .table-sticky tbody .sticky-col { background: #1e293b; }
+html.dark .table-sticky thead th { background: #0f172a; color: #e2e8f0; }
+
+/* Dashboard modules */
+html.dark .dash-module { background: linear-gradient(135deg, #1e293b, #162032); color: var(--color-text); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+html.dark .dash-module:hover { box-shadow: 0 10px 18px -6px rgba(0,0,0,.45), 0 4px 8px -2px rgba(0,0,0,.25) !important; }
+
+/* App modal */
+html.dark .app-modal-content { background: #1e293b; color: #e2e8f0; }
+html.dark .app-modal-body { color: #e2e8f0; }
+
+/* Soft buttons */
+html.dark .btn-soft-warning { background: #3b2a00; border-color: #6b4d00; color: #fde68a; }
+html.dark .btn-soft-warning:hover { background: #4a3500; }
+html.dark .btn-soft-secondary { background: #1e293b; border-color: #334155; color: #cbd5e1; }
+html.dark .btn-soft-secondary:hover { background: #273549; }
+
+/* Badge mail */
+html.dark .app-badge-mail { background: #0c2033; color: #7dd3fc; border-color: #1e4d6e; }
+
+/* Status messages */
+html.dark .app-status-msg.success { color: #4ade80; }
+html.dark .app-status-msg.error { color: #f87171; }
+
+/* Login card */
+html.dark .app-auth-card { background: #1e293b !important; border-color: #334155 !important; color: #e2e8f0; }
+html.dark .app-auth-card h2, html.dark .app-auth-card p { color: #e2e8f0; }
+
+/* ===== Animación del icono del toggle de tema ===== */
+@keyframes theme-icon-spin {
+  from { opacity: 0; transform: rotate(-90deg) scale(0.6); }
+  to   { opacity: 1; transform: rotate(0deg) scale(1); }
+}
+.theme-icon-enter {
+  animation: theme-icon-spin 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Botón del toggle de tema en la navbar */
+.theme-toggle-btn {
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 10px;
+  color: #fff;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+  padding: 0;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.theme-toggle-btn:hover {
+  background: rgba(255,255,255,.25);
+  box-shadow: 0 0 0 3px rgba(255,255,255,.15);
+  transform: scale(1.08);
 }
 
 

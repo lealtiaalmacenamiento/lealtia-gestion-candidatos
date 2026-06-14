@@ -1154,9 +1154,9 @@ export default function AgendaPage() {
                       <ul className="list-group mt-1" style={{ maxHeight: 200, overflowY: 'auto' }} aria-hidden>
                         {[1, 2, 3].map((i) => (
                           <li key={i} className="list-group-item">
-                            <div style={{ background: '#e9ecef', height: 12, width: '60%', borderRadius: 4 }} />
+                            <div className="bg-secondary-subtle" style={{ height: 12, width: '60%', borderRadius: 4 }} />
                             <div style={{ height: 8 }} />
-                            <div style={{ background: '#f8f9fa', height: 10, width: '40%', borderRadius: 4 }} />
+                            <div className="bg-body-secondary" style={{ height: 10, width: '40%', borderRadius: 4 }} />
                           </li>
                         ))}
                       </ul>

@@ -4,7 +4,7 @@ const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   `connect-src 'self' ${supabaseUrl} ${supabaseUrl.replace('https://', 'wss://')} https://*.supabase.co`,
-  `img-src 'self' data: blob: ${supabaseUrl} https://*.supabase.co https://lh3.googleusercontent.com https://*.googleusercontent.com`,
+  `img-src 'self' data: blob: ${supabaseUrl} https://*.supabase.co https://lh3.googleusercontent.com https://*.googleusercontent.com https://sendpilotstorage.blob.core.windows.net`,
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'"
 ].join('; ')

@@ -17,7 +17,7 @@ export const metadata = {
 
 export default function Home() {
   return (
-    <div className="landing-page">
+    <div className="landing-page" data-bs-theme="light">
       <LandingNav />
       <Hero />
       <AboutSection />

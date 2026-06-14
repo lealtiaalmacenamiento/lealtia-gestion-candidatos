@@ -2,13 +2,14 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { ensureAdminClient } from './supabaseAdmin'
 import { decrypt, encrypt, type EncryptedPayload } from './encryption'
 
-export type IntegrationProvider = 'google' | 'zoom' | 'teams'
+export type IntegrationProvider = 'google' | 'zoom' | 'teams' | 'calcom' | 'sendpilot'
 
 export interface StoredIntegrationToken {
   accessToken: string
   refreshToken?: string | null
   expiresAt?: string | null
   scopes?: string[] | null
+  meta?: Record<string, unknown> | null
 }
 
 const TABLE = 'tokens_integracion'
@@ -37,6 +38,7 @@ interface TokenRow {
   refresh_token: string | null
   expires_at: string | null
   scopes: string[] | null
+  meta: Record<string, unknown> | null
 }
 
 export async function upsertIntegrationToken(
@@ -47,6 +49,7 @@ export async function upsertIntegrationToken(
     refreshToken?: string | null
     expiresAt?: string | null
     scopes?: string[] | null
+    meta?: Record<string, unknown> | null
   }
 ): Promise<{ error: PostgrestError | null }> {
   const supabase = ensureAdminClient()
@@ -57,6 +60,7 @@ export async function upsertIntegrationToken(
     refresh_token: pack(token.refreshToken || null),
     expires_at: token.expiresAt ?? null,
     scopes: token.scopes ?? null,
+    meta: token.meta ?? null,
     updated_at: new Date().toISOString()
   }
   const { error } = await supabase
@@ -91,7 +95,7 @@ export async function getIntegrationToken(
   const supabase = ensureAdminClient()
   const { data, error } = await supabase
     .from(TABLE)
-    .select('access_token, refresh_token, expires_at, scopes')
+    .select('access_token, refresh_token, expires_at, scopes, meta')
     .eq('usuario_id', usuarioId)
     .eq('proveedor', proveedor)
     .maybeSingle<TokenRow>()
@@ -124,10 +128,28 @@ export async function getIntegrationToken(
       accessToken: unpack(data.access_token) || '',
       refreshToken: unpack(data.refresh_token),
       expiresAt: data.expires_at,
-      scopes: data.scopes
+      scopes: data.scopes,
+      meta: data.meta ?? null
     },
     error: null
   }
+}
+
+/**
+ * Partial-update of the meta jsonb column only (leaves other token fields untouched).
+ */
+export async function updateIntegrationTokenMeta(
+  usuarioId: string,
+  proveedor: IntegrationProvider,
+  meta: Record<string, unknown>
+): Promise<{ error: PostgrestError | null }> {
+  const supabase = ensureAdminClient()
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ meta, updated_at: new Date().toISOString() })
+    .eq('usuario_id', usuarioId)
+    .eq('proveedor', proveedor)
+  return { error }
 }
 
 export async function removeIntegrationToken(

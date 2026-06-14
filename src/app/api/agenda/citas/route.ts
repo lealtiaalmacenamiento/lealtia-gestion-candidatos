@@ -211,11 +211,79 @@ export async function GET(req: Request) {
       externalEventId: cita.external_event_id,
       estado: cita.estado,
       createdAt: cita.created_at,
-      updatedAt: cita.updated_at
-    } as AgendaCita
+      updatedAt: cita.updated_at,
+      tipo: 'agenda' as const
+    } as AgendaCita & { tipo: 'agenda' }
   })
 
-  return NextResponse.json({ citas: result })
+  // Optionally include sp_citas (Cal.com bookings from SP automation)
+  const incluirSP = url.searchParams.get('incluirSP') === '1' || url.searchParams.get('incluirSP') === 'true'
+  let spCitas: Array<AgendaCita & { tipo: 'sp' }> = []
+
+  if (incluirSP) {
+    let spQuery = supabase
+      .from('sp_citas')
+      .select('id,precandidato_id,reclutador_id,campana_id,calcom_booking_uid,inicio,fin,meeting_url,estado,notas,created_at,updated_at')
+      .order('inicio', { ascending: true })
+
+    if (agenteAuthId) spQuery = spQuery.eq('reclutador_id', agenteAuthId)
+    if (desdeParam) spQuery = spQuery.gte('inicio', desdeParam)
+    if (hastaParam) spQuery = spQuery.lte('inicio', hastaParam)
+    if (estadoParam === 'confirmada' || estadoParam === 'cancelada') {
+      spQuery = spQuery.eq('estado', estadoParam)
+    }
+    if (limit && Number.isFinite(limit) && limit > 0) spQuery = spQuery.limit(limit)
+
+    const { data: spRows } = await spQuery
+
+    // Resolve reclutador nombres for sp_citas
+    const spAuthIds = new Set<string>()
+    for (const row of spRows || []) spAuthIds.add(row.reclutador_id)
+    const spUsuariosMap = new Map<string, { id: number; email: string; nombre: string | null }>()
+    if (spAuthIds.size > 0) {
+      const { data: spUsuarios } = await supabase
+        .from('usuarios')
+        .select('id,email,nombre,id_auth')
+        .in('id_auth', Array.from(spAuthIds))
+      for (const u of spUsuarios || []) {
+        if (u.id_auth) spUsuariosMap.set(u.id_auth, { id: u.id, email: u.email, nombre: u.nombre ?? null })
+      }
+    }
+
+    spCitas = (spRows || []).map(row => {
+      const reclutador = spUsuariosMap.get(row.reclutador_id)
+      return {
+        id: row.id,
+        prospectoId: null,
+        prospectoNombre: null,
+        prospectoEmail: null,
+        agente: {
+          id: reclutador?.id ?? null,
+          idAuth: row.reclutador_id,
+          email: reclutador?.email ?? null,
+          nombre: reclutador?.nombre ?? null
+        },
+        supervisor: null,
+        inicio: row.inicio,
+        fin: row.fin,
+        meetingUrl: row.meeting_url,
+        meetingProvider: 'google_meet' as MeetingProvider, // Cal.com meetings don't have a MeetingProvider enum; render agnostically
+        externalEventId: row.calcom_booking_uid,
+        estado: row.estado,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        tipo: 'sp' as const,
+        // SP-specific metadata
+        spMeta: {
+          precandidatoId: row.precandidato_id,
+          campanaId: row.campana_id,
+          notas: row.notas
+        }
+      } as AgendaCita & { tipo: 'sp' }
+    })
+  }
+
+  return NextResponse.json({ citas: [...result, ...spCitas] })
 }
 
 async function createAgendaCitaHandler(req: Request) {

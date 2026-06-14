@@ -176,7 +176,7 @@ export default function AdminCampaignsView() {
   return (
     <BasePage title="Campañas" alert={notif ? { type: notif.type, message: notif.message, show: true } : undefined}>
       <div className="d-flex flex-column gap-4">
-        <div className="border rounded p-3 bg-white shadow-sm">
+        <div className="border rounded p-3 bg-body shadow-sm">
           <div className="row g-3 align-items-end">
             <div className="col-12 col-md-3">
               <label className="form-label small mb-1">Buscar</label>
@@ -220,7 +220,7 @@ export default function AdminCampaignsView() {
 
         <div className="row g-3">
           <div className="col-12 col-md-4">
-            <div className="border rounded p-3 bg-white h-100 shadow-sm">
+            <div className="border rounded p-3 bg-body h-100 shadow-sm">
               <div className="small text-muted text-uppercase mb-1">Campañas visibles</div>
               <div className="fs-4 fw-semibold">{filteredCampaigns.length}</div>
             </div>
@@ -228,7 +228,7 @@ export default function AdminCampaignsView() {
           <div className="col-12 col-md-4">
             <button
               type="button"
-              className="border rounded p-3 bg-white h-100 shadow-sm w-100 text-start btn btn-link text-decoration-none"
+              className="border rounded p-3 bg-body h-100 shadow-sm w-100 text-start btn btn-link text-decoration-none"
               onClick={() => setShowParticipantsModal('eligible')}
               disabled={loadingProgress || aggregateProgress.eligible === 0}
               style={{ cursor: aggregateProgress.eligible > 0 ? 'pointer' : 'default' }}
@@ -237,7 +237,7 @@ export default function AdminCampaignsView() {
                 <i className="bi bi-people me-1"></i>
                 Participantes elegibles
               </div>
-              <div className="fs-4 fw-semibold d-flex align-items-center gap-2 text-dark">
+              <div className="fs-4 fw-semibold d-flex align-items-center gap-2">
                 {loadingProgress ? (
                   <span className="spinner-border spinner-border-sm text-primary" role="status">
                     <span className="visually-hidden">Cargando…</span>
@@ -253,7 +253,7 @@ export default function AdminCampaignsView() {
           <div className="col-12 col-md-4">
             <button
               type="button"
-              className="border rounded p-3 bg-white h-100 shadow-sm w-100 text-start btn btn-link text-decoration-none"
+              className="border rounded p-3 bg-body h-100 shadow-sm w-100 text-start btn btn-link text-decoration-none"
               onClick={() => setShowParticipantsModal('completed')}
               disabled={loadingProgress || aggregateProgress.completed === 0}
               style={{ cursor: aggregateProgress.completed > 0 ? 'pointer' : 'default' }}

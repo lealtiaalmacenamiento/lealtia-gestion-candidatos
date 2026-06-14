@@ -112,7 +112,7 @@ export default function AgentCampaignsView() {
   return (
     <BasePage title="Campañas">
       <div className="d-flex flex-column gap-4">
-        <div className="border rounded p-3 bg-white shadow-sm">
+        <div className="border rounded p-3 bg-body shadow-sm">
           <div className="row g-3 align-items-end">
             <div className="col-12 col-md-8">
               <label className="form-label small mb-1" htmlFor="campaign-search">Buscar</label>

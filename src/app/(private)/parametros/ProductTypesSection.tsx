@@ -201,7 +201,7 @@ Confirma para desactivarlo.`
   });
 
   return (
-    <section className="border rounded p-3 bg-white shadow-sm">
+    <section className="border rounded p-3 bg-body shadow-sm">
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <button
           type="button"

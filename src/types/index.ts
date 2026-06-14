@@ -67,6 +67,7 @@ export interface Usuario {
   is_desarrollador?: boolean
   codigo_agente?: string
   foto_perfil_url?: string | null
+  segmentos?: string[]
 }
 
 /** Fondo de pantalla para Zoom */
@@ -79,7 +80,7 @@ export interface ZoomFondo {
   created_at: string
 }
 
-export type IntegrationProviderKey = 'google' | 'zoom' | 'teams'
+export type IntegrationProviderKey = 'google' | 'zoom' | 'teams' | 'calcom' | 'sendpilot'
 export type ManualMeetingProvider = 'zoom' | 'teams'
 export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
 
@@ -243,6 +244,7 @@ export interface BloquePlanificacion {
   notas?: string // para bloque manual PROSPECCION o SMNYL (motivo)
   confirmada?: boolean // para bloques tipo SMNYL/Cita
   agenda_cita_id?: number | null
+  sp_cita_id?: string | null // UUID de sp_citas (Cal.com vía SendPilot)
 }
 
 export interface PlanificacionSemana {

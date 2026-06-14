@@ -59,12 +59,15 @@ export async function middleware(req: NextRequest) {
     '/api/cron/refresh-cancelaciones',
     '/api/cron/clean-campaign-cache',
     '/api/cron/update-udi',
-    '/api/cron/cumpleanos'
+    '/api/cron/cumpleanos',
+    '/api/cron/sp-sequence-recovery',
   ])
+  // Rutas con prefijo público (no se pueden listar estáticamente)
+  const isPublicPrefix = url.pathname.startsWith('/api/cal/')
   // Si viene el secreto de cron (header o query), tratarlo como solicitud de cron
   const hasCronSecret = !!req.headers.get('x-cron-secret') || !!url.searchParams.get('secret')
   const isAsset = url.pathname.startsWith('/_next/') || url.pathname.startsWith('/favicon') || url.pathname.startsWith('/public/') || url.pathname.match(/\.(jpg|jpeg|png|gif|svg|webp|ico|css|js)$/i)
-  const isPublic = publicPaths.has(url.pathname) || isAsset || isCronRequest || hasCronSecret
+  const isPublic = publicPaths.has(url.pathname) || isPublicPrefix || isAsset || isCronRequest || hasCronSecret
 
   // Para asegurar autorización del Cron aunque el header no llegue, reescribimos agregando el secret como query interno
   if ((url.pathname === '/api/market/sync' || url.pathname === '/api/reports/prospectos-daily-changes') && (isCronRequest || hasCronSecret)) {
