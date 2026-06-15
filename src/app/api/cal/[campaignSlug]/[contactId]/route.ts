@@ -94,7 +94,21 @@ export async function GET(
   }
 
   if (!reclutadorId) {
-    return new Response('Sin reclutador asignado a esta campaña', { status: 503 })
+    // Extra diagnostics to help identify the configuration gap
+    const { data: anyRec } = await supabase
+      .from('sp_campana_reclutadores')
+      .select('reclutador_id, activo')
+      .eq('campana_id', campana.id)
+      .limit(5)
+    const precandidatoFound = !!precandidato
+    const msg = [
+      `Sin reclutador asignado a esta campaña (id: ${campana.id})`,
+      `precandidato encontrado: ${precandidatoFound}`,
+      precandidato ? `precandidato.reclutador_id: ${precandidato.reclutador_id ?? 'null'}` : '',
+      `filas en sp_campana_reclutadores: ${anyRec?.length ?? 0}`,
+      anyRec?.length ? `(activo: ${anyRec.map(r => r.activo).join(', ')})` : '— tabla vacía para esta campaña',
+    ].filter(Boolean).join(' | ')
+    return new Response(msg, { status: 503 })
   }
 
   // Get recruiter's Cal.com scheduling URL + event type for this campaign
