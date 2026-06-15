@@ -118,12 +118,18 @@ export async function GET(request: Request) {
         skipped++; continue
       }
 
-      // Timing check: days since last outbound activity.
-      // Falls back to lead.created_at when there are no activities yet (step 1 scenario).
-      const lastOutboundStr = (actividades ?? [])[0]?.created_at ?? lead.created_at
+      // Timing check: days since last sequence message (sp_mensaje_enviado or crm_secuencia_enviado).
+      // sp_conexion_enviada is intentionally excluded — its created_at reflects when the webhook
+      // was processed by the CRM, not when SP actually sent the connection, so using it would
+      // incorrectly reset the timer to near-zero whenever a connection webhook arrives late.
+      // Falls back to lead.created_at when no sequence messages exist yet (step 1 scenario).
+      const lastSequenceMsg = (actividades ?? []).find(
+        a => a.tipo === 'sp_mensaje_enviado' || a.tipo === 'crm_secuencia_enviado'
+      )
+      const lastOutboundStr = lastSequenceMsg?.created_at ?? lead.created_at
       const daysSince = (now.getTime() - new Date(lastOutboundStr).getTime()) / (1000 * 60 * 60 * 24)
       if (daysSince < nextPaso.dias_espera) {
-        const msg = `SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last outbound (${lastOutboundStr})`
+        const msg = `SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last sequence msg (${lastOutboundStr})`
         console.log(`[cron/sp-sequence-recovery] ${msg}`)
         details.push(msg)
         skipped++; continue
