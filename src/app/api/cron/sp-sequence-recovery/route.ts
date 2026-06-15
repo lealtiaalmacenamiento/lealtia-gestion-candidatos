@@ -76,7 +76,11 @@ export async function GET(request: Request) {
     if (!leads?.length) continue
 
     for (const lead of leads) {
-      if (!lead.linkedin_url) { skipped++; continue }
+      const leadLabel = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.trim() || lead.id
+      if (!lead.linkedin_url) {
+        console.log(`[cron/sp-sequence-recovery] SKIP ${leadLabel} — no linkedin_url`)
+        skipped++; continue
+      }
 
       // Get all outbound activities for this lead, newest first
       const { data: actividades } = await supabase
@@ -102,13 +106,19 @@ export async function GET(request: Request) {
 
       // Find the first uncovered step
       const nextPaso = pasos.find(p => !coveredSteps.has(p.paso))
-      if (!nextPaso) { skipped++; continue }  // all steps covered
+      if (!nextPaso) {
+        console.log(`[cron/sp-sequence-recovery] SKIP ${leadLabel} — all steps covered (covered: [${[...coveredSteps].join(',')}])`)
+        skipped++; continue
+      }
 
       // Timing check: days since last outbound activity.
       // Falls back to lead.created_at when there are no activities yet (step 1 scenario).
       const lastOutboundStr = (actividades ?? [])[0]?.created_at ?? lead.created_at
       const daysSince = (now.getTime() - new Date(lastOutboundStr).getTime()) / (1000 * 60 * 60 * 24)
-      if (daysSince < nextPaso.dias_espera) { skipped++; continue }
+      if (daysSince < nextPaso.dias_espera) {
+        console.log(`[cron/sp-sequence-recovery] SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last outbound (${lastOutboundStr})`)
+        skipped++; continue
+      }
 
       // Interpolate template variables:
       //   {nombre}   → first name
