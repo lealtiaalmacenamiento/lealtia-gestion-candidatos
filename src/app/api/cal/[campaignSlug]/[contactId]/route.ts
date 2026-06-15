@@ -151,7 +151,13 @@ export async function GET(
     ?? (isUuid ? null : `https://www.linkedin.com/in/${decodedId.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//, '')}`)
 
   if (linkedinValue) {
-    finalUrl.searchParams.set(fieldKey, linkedinValue)
+    // Decode first to avoid double-encoding: stored values may already contain %C3%AD etc.
+    // searchParams.set() will re-encode them correctly once.
+    try {
+      finalUrl.searchParams.set(fieldKey, decodeURIComponent(linkedinValue))
+    } catch {
+      finalUrl.searchParams.set(fieldKey, linkedinValue)
+    }
   }
 
   return NextResponse.redirect(finalUrl.toString(), { status: 302 })
