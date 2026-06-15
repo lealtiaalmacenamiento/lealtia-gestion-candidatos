@@ -61,6 +61,7 @@ export async function middleware(req: NextRequest) {
     '/api/cron/update-udi',
     '/api/cron/cumpleanos',
     '/api/cron/sp-sequence-recovery',
+    '/api/cron/sp-post-cita-cleanup',
   ])
   // Rutas con prefijo público (no se pueden listar estáticamente)
   const isPublicPrefix = url.pathname.startsWith('/api/cal/')

@@ -36,6 +36,7 @@ export async function GET(request: Request) {
   let sent = 0
   let skipped = 0
   let errors = 0
+  const details: string[] = []
 
   // Get all active campaigns
   const { data: campanas } = await supabase
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
     .select('id, nombre, sendpilot_campaign_id, sp_sender_ids')
     .eq('estado', 'activa')
 
-  if (!campanas?.length) return NextResponse.json({ sent, skipped, errors })
+  if (!campanas?.length) return NextResponse.json({ sent, skipped, errors, details })
 
   for (const campana of campanas) {
     // Get active sequence steps ordered by paso
@@ -59,7 +60,9 @@ export async function GET(request: Request) {
     const senderIds = (campana.sp_sender_ids as string[]) ?? []
     const senderId = senderIds[0]
     if (!senderId) {
-      console.warn(`[cron/sp-sequence-recovery] Campaña "${campana.nombre}" sin sp_sender_ids — sincroniza la campaña desde SP primero`)
+      const warnMsg = `Campaña "${campana.nombre}" sin sp_sender_ids — sincroniza la campaña desde SP primero`
+      console.warn(`[cron/sp-sequence-recovery] ${warnMsg}`)
+      details.push(`SKIP campaña: ${warnMsg}`)
       skipped++
       continue
     }
@@ -76,7 +79,13 @@ export async function GET(request: Request) {
     if (!leads?.length) continue
 
     for (const lead of leads) {
-      if (!lead.linkedin_url) { skipped++; continue }
+      const leadLabel = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.trim() || lead.id
+      if (!lead.linkedin_url) {
+        const msg = `SKIP ${leadLabel} — no linkedin_url`
+        console.log(`[cron/sp-sequence-recovery] ${msg}`)
+        details.push(msg)
+        skipped++; continue
+      }
 
       // Get all outbound activities for this lead, newest first
       const { data: actividades } = await supabase
@@ -102,13 +111,35 @@ export async function GET(request: Request) {
 
       // Find the first uncovered step
       const nextPaso = pasos.find(p => !coveredSteps.has(p.paso))
-      if (!nextPaso) { skipped++; continue }  // all steps covered
+      if (!nextPaso) {
+        const msg = `SKIP ${leadLabel} — all steps covered (covered: [${[...coveredSteps].join(',')}])`
+        console.log(`[cron/sp-sequence-recovery] ${msg}`)
+        details.push(msg)
+        skipped++; continue
+      }
 
-      // Timing check: days since last outbound activity.
-      // Falls back to lead.created_at when there are no activities yet (step 1 scenario).
-      const lastOutboundStr = (actividades ?? [])[0]?.created_at ?? lead.created_at
-      const daysSince = (now.getTime() - new Date(lastOutboundStr).getTime()) / (1000 * 60 * 60 * 24)
-      if (daysSince < nextPaso.dias_espera) { skipped++; continue }
+      // Timing check: days since last sequence message (sp_mensaje_enviado or crm_secuencia_enviado).
+      // sp_conexion_enviada is intentionally excluded — its created_at reflects when the webhook
+      // was processed by the CRM, not when SP actually sent the connection, so using it would
+      // incorrectly reset the timer to near-zero whenever a connection webhook arrives late.
+      //
+      // For paso 1 with no prior sequence messages: skip the timing gate entirely.
+      // The CRM has no reliable "connection sent at" timestamp (only the webhook arrival time),
+      // so we cannot know how long ago SP actually sent the connection. If paso 1 is uncovered
+      // we send it immediately — that is the whole point of the recovery job.
+      const lastSequenceMsg = (actividades ?? []).find(
+        a => a.tipo === 'sp_mensaje_enviado' || a.tipo === 'crm_secuencia_enviado'
+      )
+      if (lastSequenceMsg) {
+        const daysSince = (now.getTime() - new Date(lastSequenceMsg.created_at).getTime()) / (1000 * 60 * 60 * 24)
+        if (daysSince < nextPaso.dias_espera) {
+          const msg = `SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last sequence msg (${lastSequenceMsg.created_at})`
+          console.log(`[cron/sp-sequence-recovery] ${msg}`)
+          details.push(msg)
+          skipped++; continue
+        }
+      }
+      // else: no prior sequence messages → paso 1, send immediately regardless of dias_espera
 
       // Interpolate template variables:
       //   {nombre}   → first name
@@ -134,14 +165,18 @@ export async function GET(request: Request) {
           },
         })
 
-        console.log(`[cron/sp-sequence-recovery] Sent paso ${nextPaso.paso} to lead ${lead.id} (${lead.nombre})`)
+        const msg = `SENT paso ${nextPaso.paso} to ${leadLabel}`
+        console.log(`[cron/sp-sequence-recovery] ${msg}`)
+        details.push(msg)
         sent++
       } catch (err) {
-        console.error(`[cron/sp-sequence-recovery] Error sending to lead ${lead.id}`, err)
+        const msg = `ERROR sending to ${leadLabel}: ${err instanceof Error ? err.message : String(err)}`
+        console.error(`[cron/sp-sequence-recovery] ${msg}`)
+        details.push(msg)
         errors++
       }
     }
   }
 
-  return NextResponse.json({ sent, skipped, errors, ts: now.toISOString() })
+  return NextResponse.json({ sent, skipped, errors, details, ts: now.toISOString() })
 }

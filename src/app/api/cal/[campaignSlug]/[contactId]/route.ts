@@ -94,7 +94,21 @@ export async function GET(
   }
 
   if (!reclutadorId) {
-    return new Response('Sin reclutador asignado a esta campaña', { status: 503 })
+    // Extra diagnostics to help identify the configuration gap
+    const { data: anyRec } = await supabase
+      .from('sp_campana_reclutadores')
+      .select('reclutador_id, activo')
+      .eq('campana_id', campana.id)
+      .limit(5)
+    const precandidatoFound = !!precandidato
+    const msg = [
+      `Sin reclutador asignado a esta campaña (id: ${campana.id})`,
+      `precandidato encontrado: ${precandidatoFound}`,
+      precandidato ? `precandidato.reclutador_id: ${precandidato.reclutador_id ?? 'null'}` : '',
+      `filas en sp_campana_reclutadores: ${anyRec?.length ?? 0}`,
+      anyRec?.length ? `(activo: ${anyRec.map(r => r.activo).join(', ')})` : '— tabla vacía para esta campaña',
+    ].filter(Boolean).join(' | ')
+    return new Response(msg, { status: 503 })
   }
 
   // Get recruiter's Cal.com scheduling URL + event type for this campaign
@@ -127,16 +141,23 @@ export async function GET(
   }
 
   // Build the final Cal.com URL with LinkedIn prefill
-  // Use the field identifier from the campaign (lowercased to match Cal.com field slug)
+  // The field identifier is case-sensitive in Cal.com — use it exactly as stored.
+  // Default 'LinkedIn-URL' matches the confirmed identifier for edgar-zamarripa and paola-pecina.
   const finalUrl = new URL(calUrl)
-  const fieldKey = (campana.calcom_linkedin_identifier ?? 'linkedin').toLowerCase()
+  const fieldKey = campana.calcom_linkedin_identifier ?? 'LinkedIn-URL'
 
   // Prefer the stored linkedin_url; fallback to reconstructing from the contactId in the URL
   const linkedinValue = precandidato?.linkedin_url
     ?? (isUuid ? null : `https://www.linkedin.com/in/${decodedId.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//, '')}`)
 
   if (linkedinValue) {
-    finalUrl.searchParams.set(fieldKey, linkedinValue)
+    // Decode first to avoid double-encoding: stored values may already contain %C3%AD etc.
+    // searchParams.set() will re-encode them correctly once.
+    try {
+      finalUrl.searchParams.set(fieldKey, decodeURIComponent(linkedinValue))
+    } catch {
+      finalUrl.searchParams.set(fieldKey, linkedinValue)
+    }
   }
 
   return NextResponse.redirect(finalUrl.toString(), { status: 302 })

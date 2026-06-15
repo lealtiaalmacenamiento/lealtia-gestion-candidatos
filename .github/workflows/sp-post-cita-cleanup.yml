@@ -13,10 +13,21 @@ jobs:
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
         run: |
           set -euo pipefail
           : "${APP_URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
           : "${CRON_SECRET:?Need CRON_SECRET secret}"
-          curl -sS -X GET "${APP_URL%/}/api/cron/sp-post-cita-cleanup" \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            -w '\nHTTP %{http_code}\n'
+
+          CURL_ARGS=(-sS -o /tmp/cron_response.txt -w '%{http_code}' -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}")
+
+          if [ -n "${BYPASS_TOKEN:-}" ]; then
+            CURL_ARGS+=(-H "x-vercel-protection-bypass: ${BYPASS_TOKEN}")
+          fi
+
+          HTTP_STATUS=$(curl "${CURL_ARGS[@]}" "${APP_URL%/}/api/cron/sp-post-cita-cleanup")
+          cat /tmp/cron_response.txt
+          echo ""
+          echo "HTTP ${HTTP_STATUS}"
+          [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]
