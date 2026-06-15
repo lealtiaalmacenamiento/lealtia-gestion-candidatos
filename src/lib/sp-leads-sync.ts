@@ -71,7 +71,10 @@ export async function syncLeadsForCampaign(
     }))
     const { error: insertError } = await supabase
       .from('sp_precandidatos')
-      .insert(toInsert)
+      .upsert(toInsert, {
+        onConflict: 'campana_id,sp_contact_id',
+        ignoreDuplicates: true,   // preserve CRM-owned estado if already exists
+      })
     if (insertError) return { error: insertError.message, inserted: 0, updated: 0 }
     inserted = newLeads.length
   }
