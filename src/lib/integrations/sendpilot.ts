@@ -184,11 +184,11 @@ export async function getLeads(
 }
 
 export async function pauseCampaign(spCampaignId: string): Promise<void> {
-  await spFetch<unknown>('POST', `/campaigns/${spCampaignId}/pause`)
+  await spFetch<unknown>('PATCH', `/campaigns/${spCampaignId}`, { action: 'pause' })
 }
 
 export async function resumeCampaign(spCampaignId: string): Promise<void> {
-  await spFetch<unknown>('POST', `/campaigns/${spCampaignId}/resume`)
+  await spFetch<unknown>('PATCH', `/campaigns/${spCampaignId}`, { action: 'resume' })
 }
 
 export async function addLead(campaignId: string, lead: SPLeadInput): Promise<SPLead> {
