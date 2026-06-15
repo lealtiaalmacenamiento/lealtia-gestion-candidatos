@@ -142,9 +142,9 @@ export async function GET(
 
   // Build the final Cal.com URL with LinkedIn prefill
   // The field identifier is case-sensitive in Cal.com — use it exactly as stored.
-  // Default 'LinkedIn' matches the confirmed identifier for edgar-zamarripa and paola-pecina.
+  // Default 'LinkedIn-URL' matches the confirmed identifier for edgar-zamarripa and paola-pecina.
   const finalUrl = new URL(calUrl)
-  const fieldKey = campana.calcom_linkedin_identifier ?? 'LinkedIn'
+  const fieldKey = campana.calcom_linkedin_identifier ?? 'LinkedIn-URL'
 
   // Prefer the stored linkedin_url; fallback to reconstructing from the contactId in the URL
   const linkedinValue = precandidato?.linkedin_url
