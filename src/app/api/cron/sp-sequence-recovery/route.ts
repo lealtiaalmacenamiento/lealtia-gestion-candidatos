@@ -122,18 +122,24 @@ export async function GET(request: Request) {
       // sp_conexion_enviada is intentionally excluded — its created_at reflects when the webhook
       // was processed by the CRM, not when SP actually sent the connection, so using it would
       // incorrectly reset the timer to near-zero whenever a connection webhook arrives late.
-      // Falls back to lead.created_at when no sequence messages exist yet (step 1 scenario).
+      //
+      // For paso 1 with no prior sequence messages: skip the timing gate entirely.
+      // The CRM has no reliable "connection sent at" timestamp (only the webhook arrival time),
+      // so we cannot know how long ago SP actually sent the connection. If paso 1 is uncovered
+      // we send it immediately — that is the whole point of the recovery job.
       const lastSequenceMsg = (actividades ?? []).find(
         a => a.tipo === 'sp_mensaje_enviado' || a.tipo === 'crm_secuencia_enviado'
       )
-      const lastOutboundStr = lastSequenceMsg?.created_at ?? lead.created_at
-      const daysSince = (now.getTime() - new Date(lastOutboundStr).getTime()) / (1000 * 60 * 60 * 24)
-      if (daysSince < nextPaso.dias_espera) {
-        const msg = `SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last sequence msg (${lastOutboundStr})`
-        console.log(`[cron/sp-sequence-recovery] ${msg}`)
-        details.push(msg)
-        skipped++; continue
+      if (lastSequenceMsg) {
+        const daysSince = (now.getTime() - new Date(lastSequenceMsg.created_at).getTime()) / (1000 * 60 * 60 * 24)
+        if (daysSince < nextPaso.dias_espera) {
+          const msg = `SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last sequence msg (${lastSequenceMsg.created_at})`
+          console.log(`[cron/sp-sequence-recovery] ${msg}`)
+          details.push(msg)
+          skipped++; continue
+        }
       }
+      // else: no prior sequence messages → paso 1, send immediately regardless of dias_espera
 
       // Interpolate template variables:
       //   {nombre}   → first name
