@@ -115,13 +115,12 @@ export async function GET(request: Request) {
       mensaje: string
     }
     const sendTasks: SendTask[] = []
+    // Aggregate skip reasons for this campaign — reported as a single summary line
+    const skipReasons: Record<string, number> = {}
+    const countSkip = (reason: string) => { skipReasons[reason] = (skipReasons[reason] ?? 0) + 1; skipped++ }
 
     for (const lead of leads) {
-      const leadLabel = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.trim() || lead.id
-      if (!lead.linkedin_url) {
-        pushDetail(`SKIP ${leadLabel} — no linkedin_url`)
-        skipped++; continue
-      }
+      if (!lead.linkedin_url) { countSkip('no_linkedin_url'); continue }
 
       const actividades = actividadesByLead.get(lead.id) ?? []
 
@@ -141,10 +140,7 @@ export async function GET(request: Request) {
 
       // Find the first uncovered step
       const nextPaso = pasos.find(p => !coveredSteps.has(p.paso))
-      if (!nextPaso) {
-        pushDetail(`SKIP ${leadLabel} — all steps covered (covered: [${[...coveredSteps].join(',')}])`)
-        skipped++; continue
-      }
+      if (!nextPaso) { countSkip('all_steps_covered'); continue }
 
       // Timing check: days since last sequence message (sp_mensaje_enviado or crm_secuencia_enviado).
       // sp_conexion_enviada is intentionally excluded — its created_at reflects when the webhook
@@ -160,10 +156,7 @@ export async function GET(request: Request) {
       )
       if (lastSequenceMsg) {
         const daysSince = (now.getTime() - new Date(lastSequenceMsg.created_at).getTime()) / (1000 * 60 * 60 * 24)
-        if (daysSince < nextPaso.dias_espera) {
-          pushDetail(`SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last sequence msg (${lastSequenceMsg.created_at})`)
-          skipped++; continue
-        }
+        if (daysSince < nextPaso.dias_espera) { countSkip(`waiting_paso${nextPaso.paso}_${nextPaso.dias_espera}d`); continue }
       }
       // else: no prior sequence messages → paso 1, send immediately regardless of dias_espera
 
@@ -171,13 +164,13 @@ export async function GET(request: Request) {
       // For bulk-imported leads SP may not have sent (or had accepted) the connection request yet.
       // Paso 2+ implies paso 1 was already delivered successfully, so the connection exists.
       if (nextPaso.paso === 1 && !actividades.some(a => a.tipo === 'sp_conexion_enviada')) {
-        pushDetail(`SKIP ${leadLabel} — paso 1 requires accepted LinkedIn connection (no sp_conexion_enviada)`)
-        skipped++; continue
+        countSkip('paso1_no_connection_yet'); continue
       }
 
       // Interpolate template variables:
       //   {nombre}   → first name
       //   {cal_url}  → Cal.com scheduling link for this lead
+      const leadLabel = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.trim() || lead.id
       const nombre = [lead.nombre, lead.apellido].filter(Boolean).join(' ').split(' ')[0] || ''
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://lealtiagestiondev.vercel.app'
       const calUrl = `${baseUrl}/api/cal/${campana.sendpilot_campaign_id}/${lead.sp_contact_id ?? ''}`
@@ -186,6 +179,12 @@ export async function GET(request: Request) {
         .replace(/\{cal_url\}/gi, calUrl)
 
       sendTasks.push({ lead, leadLabel, nextPaso, mensaje })
+    }
+
+    // Emit one summary line per campaign instead of one line per skipped lead
+    if (Object.keys(skipReasons).length > 0) {
+      const summary = Object.entries(skipReasons).map(([r, n]) => `${r}:${n}`).join(', ')
+      pushDetail(`[${campana.nombre}] skipped ${Object.values(skipReasons).reduce((a, b) => a + b, 0)} — ${summary}`)
     }
 
     // --- Phase 2: fire sends in parallel (batches of 3, global cap applied) ---
