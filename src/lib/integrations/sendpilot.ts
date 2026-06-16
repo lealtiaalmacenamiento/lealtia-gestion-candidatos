@@ -83,9 +83,10 @@ export async function getSendPilotWebhookSecret(): Promise<string | null> {
 async function spFetch<T>(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
-  body?: unknown
+  body?: unknown,
+  preloadedApiKey?: string
 ): Promise<T> {
-  const apiKey = await getSendPilotApiKey()
+  const apiKey = preloadedApiKey ?? await getSendPilotApiKey()
   if (!apiKey) throw new Error('SendPilot: API key no configurada')
 
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -310,11 +311,12 @@ export async function sendDirectMessage(
   senderId: string,
   recipientLinkedinUrl: string,
   message: string,
-  leadId?: string
+  leadId?: string,
+  apiKey?: string
 ): Promise<{ messageId: string; status?: string }> {
   const body: Record<string, string> = { senderId, recipientLinkedinUrl, message }
   if (leadId) body.leadId = leadId
-  return spFetch<{ messageId: string; status?: string }>('POST', '/inbox/send', body)
+  return spFetch<{ messageId: string; status?: string }>('POST', '/inbox/send', body, apiKey)
 }
 
 // ---------------------------------------------------------------------------

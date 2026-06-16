@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
-import { sendDirectMessage } from '@/lib/integrations/sendpilot'
+import { sendDirectMessage, getSendPilotApiKey } from '@/lib/integrations/sendpilot'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -37,6 +37,12 @@ export async function GET(request: Request) {
   let skipped = 0
   let errors = 0
   const details: string[] = []
+  const DETAILS_CAP = 200
+  const pushDetail = (msg: string) => { if (details.length < DETAILS_CAP) details.push(msg) }
+
+  // Pre-fetch SP API key once — avoids one DB round-trip per send (getSendPilotApiKey
+  // is called inside spFetch, so without this we'd make N hidden queries).
+  const spApiKey = await getSendPilotApiKey() ?? undefined
 
   // Get all active campaigns
   const { data: campanas } = await supabase
@@ -96,12 +102,19 @@ export async function GET(request: Request) {
       actividadesByLead.get(key)!.push(a)
     }
 
+    // --- Phase 1: decide who needs a send (pure in-memory, no I/O) ---
+    type SendTask = {
+      lead: (typeof leads)[number]
+      leadLabel: string
+      nextPaso: (typeof pasos)[number]
+      mensaje: string
+    }
+    const sendTasks: SendTask[] = []
+
     for (const lead of leads) {
       const leadLabel = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.trim() || lead.id
       if (!lead.linkedin_url) {
-        const msg = `SKIP ${leadLabel} — no linkedin_url`
-        console.log(`[cron/sp-sequence-recovery] ${msg}`)
-        details.push(msg)
+        pushDetail(`SKIP ${leadLabel} — no linkedin_url`)
         skipped++; continue
       }
 
@@ -124,9 +137,7 @@ export async function GET(request: Request) {
       // Find the first uncovered step
       const nextPaso = pasos.find(p => !coveredSteps.has(p.paso))
       if (!nextPaso) {
-        const msg = `SKIP ${leadLabel} — all steps covered (covered: [${[...coveredSteps].join(',')}])`
-        console.log(`[cron/sp-sequence-recovery] ${msg}`)
-        details.push(msg)
+        pushDetail(`SKIP ${leadLabel} — all steps covered (covered: [${[...coveredSteps].join(',')}])`)
         skipped++; continue
       }
 
@@ -145,9 +156,7 @@ export async function GET(request: Request) {
       if (lastSequenceMsg) {
         const daysSince = (now.getTime() - new Date(lastSequenceMsg.created_at).getTime()) / (1000 * 60 * 60 * 24)
         if (daysSince < nextPaso.dias_espera) {
-          const msg = `SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last sequence msg (${lastSequenceMsg.created_at})`
-          console.log(`[cron/sp-sequence-recovery] ${msg}`)
-          details.push(msg)
+          pushDetail(`SKIP ${leadLabel} — paso ${nextPaso.paso} needs ${nextPaso.dias_espera}d, only ${daysSince.toFixed(1)}d since last sequence msg (${lastSequenceMsg.created_at})`)
           skipped++; continue
         }
       }
@@ -163,30 +172,35 @@ export async function GET(request: Request) {
         .replace(/\{nombre\}/gi, nombre)
         .replace(/\{cal_url\}/gi, calUrl)
 
-      try {
-        await sendDirectMessage(senderId, lead.linkedin_url, mensaje)
+      sendTasks.push({ lead, leadLabel, nextPaso, mensaje })
+    }
 
-        await supabase.from('sp_actividades').insert({
-          precandidato_id: lead.id,
-          campana_id: campana.id,
-          tipo: 'crm_secuencia_enviado',
-          metadata: {
-            paso: nextPaso.paso,
-            paso_id: nextPaso.id,
-            sender_id: senderId,
-          },
+    // --- Phase 2: fire sends in parallel (batches of 5) ---
+    // Uses pre-fetched spApiKey to skip one DB query per send.
+    const CONCURRENCY = 5
+    for (let i = 0; i < sendTasks.length; i += CONCURRENCY) {
+      await Promise.allSettled(
+        sendTasks.slice(i, i + CONCURRENCY).map(async ({ lead, leadLabel, nextPaso, mensaje }) => {
+          try {
+            await sendDirectMessage(senderId, lead.linkedin_url!, mensaje, undefined, spApiKey)
+            await supabase.from('sp_actividades').insert({
+              precandidato_id: lead.id,
+              campana_id: campana.id,
+              tipo: 'crm_secuencia_enviado',
+              metadata: { paso: nextPaso.paso, paso_id: nextPaso.id, sender_id: senderId },
+            })
+            const msg = `SENT paso ${nextPaso.paso} to ${leadLabel}`
+            console.log(`[cron/sp-sequence-recovery] ${msg}`)
+            pushDetail(msg)
+            sent++
+          } catch (err) {
+            const msg = `ERROR sending to ${leadLabel}: ${err instanceof Error ? err.message : String(err)}`
+            console.error(`[cron/sp-sequence-recovery] ${msg}`)
+            pushDetail(msg)
+            errors++
+          }
         })
-
-        const msg = `SENT paso ${nextPaso.paso} to ${leadLabel}`
-        console.log(`[cron/sp-sequence-recovery] ${msg}`)
-        details.push(msg)
-        sent++
-      } catch (err) {
-        const msg = `ERROR sending to ${leadLabel}: ${err instanceof Error ? err.message : String(err)}`
-        console.error(`[cron/sp-sequence-recovery] ${msg}`)
-        details.push(msg)
-        errors++
-      }
+      )
     }
   }
 
