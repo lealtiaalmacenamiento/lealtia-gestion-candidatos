@@ -40,6 +40,11 @@ export async function GET(request: Request) {
   const DETAILS_CAP = 200
   const pushDetail = (msg: string) => { if (details.length < DETAILS_CAP) details.push(msg) }
 
+  // Global daily message budget: SP sender is capped at 100 messages/day by LinkedIn.
+  // Cap total sends per cron run to 75, leaving a 25-message safety margin.
+  // The cron runs hourly so the backlog drains at ~75/hour (all excess leads carry over to next run).
+  const MAX_SENDS_PER_RUN = 75
+
   // Pre-fetch SP API key once — avoids one DB round-trip per send (getSendPilotApiKey
   // is called inside spFetch, so without this we'd make N hidden queries).
   const spApiKey = await getSendPilotApiKey() ?? undefined
@@ -162,6 +167,14 @@ export async function GET(request: Request) {
       }
       // else: no prior sequence messages → paso 1, send immediately regardless of dias_espera
 
+      // Guard for paso 1: LinkedIn direct messages require a 1st-degree connection.
+      // For bulk-imported leads SP may not have sent (or had accepted) the connection request yet.
+      // Paso 2+ implies paso 1 was already delivered successfully, so the connection exists.
+      if (nextPaso.paso === 1 && !actividades.some(a => a.tipo === 'sp_conexion_enviada')) {
+        pushDetail(`SKIP ${leadLabel} — paso 1 requires accepted LinkedIn connection (no sp_conexion_enviada)`)
+        skipped++; continue
+      }
+
       // Interpolate template variables:
       //   {nombre}   → first name
       //   {cal_url}  → Cal.com scheduling link for this lead
@@ -175,13 +188,19 @@ export async function GET(request: Request) {
       sendTasks.push({ lead, leadLabel, nextPaso, mensaje })
     }
 
-    // --- Phase 2: fire sends in parallel (batches of 20) ---
-    // Uses pre-fetched spApiKey to skip one DB query per send.
-    // Concurrency=20: worst case 533 leads → ceil(533/20)=27 batches × ~3s = ~81s (well under maxDuration=300).
-    const CONCURRENCY = 20
-    for (let i = 0; i < sendTasks.length; i += CONCURRENCY) {
+    // --- Phase 2: fire sends in parallel (batches of 3, global cap applied) ---
+    // Concurrency=3 avoids hammering SP's API.
+    // Global budget (MAX_SENDS_PER_RUN=75) is shared across all campaigns in this run.
+    const CONCURRENCY = 3
+    const remainingBudget = Math.max(0, MAX_SENDS_PER_RUN - sent)
+    const cappedTasks = sendTasks.slice(0, remainingBudget)
+    if (sendTasks.length > remainingBudget) {
+      pushDetail(`CAP: ${sendTasks.length} eligible sends, budget allows ${remainingBudget} more this run (${sent} already sent)`)
+    }
+
+    for (let i = 0; i < cappedTasks.length; i += CONCURRENCY) {
       await Promise.allSettled(
-        sendTasks.slice(i, i + CONCURRENCY).map(async ({ lead, leadLabel, nextPaso, mensaje }) => {
+        cappedTasks.slice(i, i + CONCURRENCY).map(async ({ lead, leadLabel, nextPaso, mensaje }) => {
           try {
             await sendDirectMessage(senderId, lead.linkedin_url!, mensaje, undefined, spApiKey)
             await supabase.from('sp_actividades').insert({
