@@ -78,6 +78,24 @@ export async function GET(request: Request) {
 
     if (!leads?.length) continue
 
+    // Batch-fetch all outbound activities for all leads in this campaign at once
+    // to avoid N+1 queries (one per lead).
+    const leadIds = leads.map(l => l.id)
+    const { data: todasActividades } = await supabase
+      .from('sp_actividades')
+      .select('precandidato_id, tipo, created_at, metadata')
+      .in('precandidato_id', leadIds)
+      .in('tipo', ['sp_conexion_enviada', 'sp_mensaje_enviado', 'crm_secuencia_enviado'])
+      .order('created_at', { ascending: false })
+
+    // Index by precandidato_id for O(1) lookup
+    const actividadesByLead = new Map<string, typeof todasActividades>()
+    for (const a of todasActividades ?? []) {
+      const key = a.precandidato_id as string
+      if (!actividadesByLead.has(key)) actividadesByLead.set(key, [])
+      actividadesByLead.get(key)!.push(a)
+    }
+
     for (const lead of leads) {
       const leadLabel = `${lead.nombre ?? ''} ${lead.apellido ?? ''}`.trim() || lead.id
       if (!lead.linkedin_url) {
@@ -87,19 +105,13 @@ export async function GET(request: Request) {
         skipped++; continue
       }
 
-      // Get all outbound activities for this lead, newest first
-      const { data: actividades } = await supabase
-        .from('sp_actividades')
-        .select('tipo, created_at, metadata')
-        .eq('precandidato_id', lead.id)
-        .in('tipo', ['sp_conexion_enviada', 'sp_mensaje_enviado', 'crm_secuencia_enviado'])
-        .order('created_at', { ascending: false })
+      const actividades = actividadesByLead.get(lead.id) ?? []
 
       // Build the set of steps already covered:
       //   - SP steps: sp_mensaje_enviado → metadata.sequenceStep (1-based, matches paso)
       //   - CRM steps: crm_secuencia_enviado → metadata.paso
       const coveredSteps = new Set<number>()
-      for (const a of actividades ?? []) {
+      for (const a of actividades) {
         if (a.tipo === 'sp_mensaje_enviado') {
           const step = Number((a.metadata as Record<string, unknown>)?.sequenceStep)
           if (!isNaN(step) && step > 0) coveredSteps.add(step)
@@ -127,7 +139,7 @@ export async function GET(request: Request) {
       // The CRM has no reliable "connection sent at" timestamp (only the webhook arrival time),
       // so we cannot know how long ago SP actually sent the connection. If paso 1 is uncovered
       // we send it immediately — that is the whole point of the recovery job.
-      const lastSequenceMsg = (actividades ?? []).find(
+      const lastSequenceMsg = actividades.find(
         a => a.tipo === 'sp_mensaje_enviado' || a.tipo === 'crm_secuencia_enviado'
       )
       if (lastSequenceMsg) {
