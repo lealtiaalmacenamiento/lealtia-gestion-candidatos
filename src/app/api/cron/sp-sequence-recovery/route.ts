@@ -175,9 +175,10 @@ export async function GET(request: Request) {
       sendTasks.push({ lead, leadLabel, nextPaso, mensaje })
     }
 
-    // --- Phase 2: fire sends in parallel (batches of 5) ---
+    // --- Phase 2: fire sends in parallel (batches of 20) ---
     // Uses pre-fetched spApiKey to skip one DB query per send.
-    const CONCURRENCY = 5
+    // Concurrency=20: worst case 533 leads → ceil(533/20)=27 batches × ~3s = ~81s (well under maxDuration=300).
+    const CONCURRENCY = 20
     for (let i = 0; i < sendTasks.length; i += CONCURRENCY) {
       await Promise.allSettled(
         sendTasks.slice(i, i + CONCURRENCY).map(async ({ lead, leadLabel, nextPaso, mensaje }) => {
