@@ -1,6 +1,3 @@
--- Agrega fecha_nacimiento al SET de apply_cliente_update
--- Antes no se persistía al aprobar una solicitud de cambio de cliente.
-
 CREATE OR REPLACE FUNCTION public.apply_cliente_update(p_request_id uuid)
   RETURNS void
   LANGUAGE plpgsql

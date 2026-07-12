@@ -4,7 +4,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
-import { crearUsuarioAgenteAuto, ensureAgentCodeForUsuario, buildCodigoAgente } from '@/lib/autoAgente'
+import { crearUsuarioAgenteAuto, normalizeCodigoAgente, setManualAgentCode } from '@/lib/autoAgente'
 import type { Candidato } from '@/types'
 import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
@@ -52,7 +52,26 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const { id } = await context.params
   const { data, error } = await supabase.from('candidatos').select('*').eq('id_candidato', id).single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  let codigoAgente: string | null = null
+  if (data?.email_agente) {
+    const { data: usuarioAg } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('email', String(data.email_agente).trim().toLowerCase())
+      .maybeSingle()
+    if (usuarioAg?.id) {
+      const { data: codeRow } = await supabase
+        .from('agent_codes')
+        .select('code')
+        .eq('agente_id', usuarioAg.id)
+        .eq('activo', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      codigoAgente = codeRow?.code ?? null
+    }
+  }
+  return NextResponse.json({ ...data, codigo_agente: codigoAgente })
 }
 
 export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -63,7 +82,17 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const existente = await supabase.from('candidatos').select('*').eq('id_candidato', id).single()
   if (existente.error) return NextResponse.json({ error: existente.error.message }, { status: 500 })
 
-  const body: CandidatoParcial = sanitizeCandidatoPayload(await req.json() as CandidatoParcial)
+  const raw = await req.json() as CandidatoParcial
+  const hasCodigoAgente = Object.prototype.hasOwnProperty.call(raw || {}, 'codigo_agente')
+  let codigoAgente: string | null = null
+  if (hasCodigoAgente) {
+    try {
+      codigoAgente = normalizeCodigoAgente((raw as Candidato).codigo_agente)
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Código de agente inválido' }, { status: 400 })
+    }
+  }
+  const body: CandidatoParcial = sanitizeCandidatoPayload(raw)
   if ('mes_conexion' in body) {
     ;(body as any).mes_conexion = normalizeMesConexion((body as any).mes_conexion)
   }
@@ -209,6 +238,28 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   if (typeof mesConexion !== 'undefined') {
     ;(body as any).mes_conexion = mesConexion
   }
+  // Validar el código antes de guardar otros cambios para evitar una edición parcial
+  // cuando ese código ya pertenece a otro agente.
+  if (hasCodigoAgente && codigoAgente) {
+    const emailAgenteFinal = String(
+      body.email_agente ||
+      existenteData.email_agente ||
+      ''
+    ).trim().toLowerCase()
+    if (!emailAgenteFinal) {
+      return NextResponse.json({ error: 'Captura el correo del agente antes de asignar un código' }, { status: 400 })
+    }
+    const [{ data: targetUser }, { data: ownerCode }] = await Promise.all([
+      supabase.from('usuarios').select('id').eq('email', emailAgenteFinal).maybeSingle(),
+      supabase.from('agent_codes').select('agente_id').eq('code', codigoAgente).maybeSingle()
+    ])
+    if (!targetUser?.id) {
+      return NextResponse.json({ error: 'No se pudo vincular el código con el usuario agente' }, { status: 409 })
+    }
+    if (ownerCode?.agente_id && Number(ownerCode.agente_id) !== Number(targetUser.id)) {
+      return NextResponse.json({ error: 'El código de agente ya está asignado a otro usuario' }, { status: 409 })
+    }
+  }
   // Remover campos meta de cliente que no existen en la tabla antes de actualizar
   const _uncheckMeta = (body as any)._etapa_uncheck
   if (typeof (body as any)._etapa_uncheck !== 'undefined') {
@@ -223,39 +274,32 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Intentar (re)generar código de agente si hay email + CT + nombre
-  try {
-    const candActualizado = data as any
-    const emailAgenteFinal = (candActualizado?.email_agente || (existenteData as any).email_agente || (body as any).email_agente || '').toString().trim().toLowerCase()
-    const ctFinal = candActualizado?.ct ?? (body as any).ct ?? (existenteData as any).ct
-    const nombreFinal = candActualizado?.candidato ?? (body as any).candidato ?? (existenteData as any).candidato
-    if (emailAgenteFinal && ctFinal && nombreFinal) {
+  // El código solo cambia cuando el usuario envía explícitamente el campo.
+  if (hasCodigoAgente) {
+    const candActualizado = data as CandidatoParcial
+    const emailAgenteFinal = String(
+      candActualizado?.email_agente ||
+      existenteData.email_agente ||
+      ''
+    ).trim().toLowerCase()
+    if (!emailAgenteFinal && codigoAgente) {
+      return NextResponse.json({ error: 'Captura el correo del agente antes de asignar un código' }, { status: 400 })
+    }
+    if (emailAgenteFinal) {
       const { data: userAg } = await supabase
         .from('usuarios')
         .select('id')
         .eq('email', emailAgenteFinal)
         .maybeSingle()
-      if ((userAg as any)?.id) {
-        // Si el CT cambió, desactivar el código antiguo antes de generar el nuevo
-        const ctAnterior = (existenteData as any).ct
-        if (body.ct && ctAnterior && body.ct !== ctAnterior) {
-          const nombreAnterior = (existenteData as any).candidato || nombreFinal
-          const codigoAntiguo = buildCodigoAgente(nombreAnterior, ctAnterior)
-          if (codigoAntiguo) {
-            await supabase
-              .from('agent_codes')
-              .update({ activo: false })
-              .eq('code', codigoAntiguo)
-              .eq('agente_id', (userAg as any).id)
-          }
-        }
-        const codeRes = await ensureAgentCodeForUsuario({ usuarioId: (userAg as any).id, nombre: nombreFinal, ct: ctFinal })
-        if (codeRes.code || codeRes.error) {
-          agenteMeta = { ...(agenteMeta || {}), agent_code: codeRes }
-        }
-      }
+      const codeRes = await setManualAgentCode({
+        usuarioId: userAg?.id,
+        nombre: candActualizado?.candidato || existenteData.candidato,
+        code: codigoAgente
+      })
+      if (codeRes.error) return NextResponse.json({ error: codeRes.error }, { status: 409 })
+      agenteMeta = { ...(agenteMeta || {}), agent_code: codeRes }
     }
-  } catch {/* best-effort */}
+  }
 
   // Sincronizar nombre del usuario agente si existe y se cambió el nombre del candidato original usado para crearlo
   try {
@@ -294,7 +338,9 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     }
   } catch { /* ignore logging errors */ }
 
-  const responsePayload = agenteMeta ? { ...data, _agente_meta: agenteMeta } : data
+  const responsePayload = agenteMeta
+    ? { ...data, codigo_agente: codigoAgente, _agente_meta: agenteMeta }
+    : data
   return NextResponse.json(responsePayload)
 }
 

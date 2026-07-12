@@ -31,7 +31,7 @@ interface EventType {
   id: number
   slug: string
   title: string
-  schedulingUrl: string
+  bookingUrl?: string
 }
 
 interface SecuenciaPaso {
@@ -92,7 +92,9 @@ export default function CampanaDetailPage() {
   useEffect(() => {
     fetch('/api/integraciones/calcom/event-types', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.resolve([]))
-      .then((d: EventType[]) => setEventTypes(d ?? []))
+      .then((d: { eventTypes?: EventType[] } | EventType[]) =>
+        setEventTypes(Array.isArray(d) ? d : d.eventTypes ?? [])
+      )
       .catch(() => {})
   }, [])
 
@@ -244,7 +246,7 @@ export default function CampanaDetailPage() {
   const handleEventTypeChange = (etId: number) => {
     setNewEventTypeId(etId)
     const et = eventTypes.find(e => e.id === etId)
-    if (et) setNewSchedulingUrl(et.schedulingUrl)
+    if (et) setNewSchedulingUrl(et.bookingUrl || '')
   }
 
   const redirectBase = typeof window !== 'undefined'

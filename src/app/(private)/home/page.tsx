@@ -19,6 +19,7 @@ const modules = [
   { key: 'prospectos', title: 'Prospectos', desc: 'Gestión semanal de prospectos', icon: 'people-fill', roles: ['agente','supervisor','admin'], color: 'info' },
   { key: 'planificacion', title: 'Planificación', desc: 'Bloques de actividades y citas', icon: 'calendar-week', roles: ['agente','supervisor','admin'], color: 'primary' },
   { key: 'agenda', title: 'Agenda interna', desc: 'Agendar citas y gestionar desarrolladores', icon: 'calendar-event', roles: ['supervisor','admin','agente'], color: 'secondary' },
+  { key: 'cuestionarios', title: 'Cuestionarios', desc: 'Genera enlaces personalizados para prospectos', icon: 'ui-checks-grid', roles: ['supervisor','admin','agente'], color: 'success' },
   // Gestión unificada (CRUD + dispara solicitudes)
   { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['supervisor','admin','agente'], color: 'primary' },
   // Fase 5: Campañas

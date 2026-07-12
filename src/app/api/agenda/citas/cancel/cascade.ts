@@ -6,6 +6,8 @@ import { buildCitaCancelacionEmail, sendMail } from '@/lib/mailer'
 import { getZoomManualSettings, getTeamsManualSettings } from '@/lib/zoomManual'
 import type { MeetingProvider } from '@/types'
 import { detachPlanificacionCita } from '../planificacionSync'
+import { cancelCalcomBooking, getCalcomApiKey } from '@/lib/integrations/calcom'
+import { notifyAgendaCitaEvent } from '@/lib/agendaNotifications'
 
 export type CancelCascadeOrigin = 'agenda' | 'planificacion' | 'calendar'
 
@@ -70,11 +72,17 @@ export async function cancelAgendaCitaCascade(options: CancelAgendaCascadeOption
 
   if (!options.skipRemote && cita.external_event_id) {
     try {
-      await cancelRemoteMeeting(cita.agente_id, 'google_meet', cita.external_event_id)
+      if (provider === 'calcom') {
+        const apiKey = await getCalcomApiKey(cita.agente_id)
+        if (!apiKey) throw new Error('La cuenta de Cal.com del agente no está conectada')
+        await cancelCalcomBooking(apiKey, cita.external_event_id, motiveFromOrigin(options.origin, options.motivo) || undefined)
+      } else {
+        await cancelRemoteMeeting(cita.agente_id, 'google_meet', cita.external_event_id)
+      }
       try {
         await supabase.from('logs_integracion').insert({
           usuario_id: cita.agente_id,
-          proveedor: 'google_meet',
+          proveedor: provider === 'calcom' ? 'calcom' : 'google_meet',
           operacion: 'cancel_cita_remote',
           nivel: 'info',
           detalle: {
@@ -88,7 +96,7 @@ export async function cancelAgendaCitaCascade(options: CancelAgendaCascadeOption
       try {
         await supabase.from('logs_integracion').insert({
           usuario_id: cita.agente_id,
-          proveedor: 'google_meet',
+          proveedor: provider === 'calcom' ? 'calcom' : 'google_meet',
           operacion: 'cancel_cita_remote',
           nivel: 'error',
           detalle: {
@@ -118,6 +126,15 @@ export async function cancelAgendaCitaCascade(options: CancelAgendaCascadeOption
         .from('prospectos')
         .update({ cita_creada: false, fecha_cita: null, estado: 'seguimiento' })
         .eq('id', cita.prospecto_id)
+    } catch {}
+  }
+
+  if (cita.external_event_id) {
+    try {
+      await supabase
+        .from('questionnaire_submissions')
+        .update({ estado: 'cancelado', updated_at: new Date().toISOString() })
+        .eq('cal_booking_uid', cita.external_event_id)
     } catch {}
   }
 
@@ -250,6 +267,17 @@ export async function cancelAgendaCitaCascade(options: CancelAgendaCascadeOption
       } catch {}
     }
   }
+
+  try {
+    await notifyAgendaCitaEvent(supabase, {
+      citaId: Number(cita.id),
+      event: 'cancelled',
+      previousStart: cita.inicio,
+      bookingUid: cita.external_event_id || null,
+      actorEmail,
+      email: false
+    })
+  } catch {}
 
   try {
     await logAccion('cancelar_cita', {

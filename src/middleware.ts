@@ -6,42 +6,10 @@ import { SESSION_COOKIE_BASE, SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS, SESSION_M
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-  // Permitir Cron de Vercel y rutas públicas de reportes sin sesión
-  const isCronRequest = !!req.headers.get('x-vercel-cron') || (req.headers.get('user-agent')||'').toLowerCase().includes('vercel-cron')
-  const projectRef = process.env.SUPABASE_PROJECT_REF
-    || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https:\/\//,'').split('.')[0]
-    || 'missing_project_ref'
-  const access = req.cookies.get('sb-access-token')?.value
-  const composite = req.cookies.get(`sb-${projectRef}-auth-token`)?.value
-  // Consideramos válida la sesión si existe la cookie compuesta (nuevo flujo) O la cookie access (flujo antiguo)
-  const session = (composite || access) ? { token: true } : null
-  const sessionIssuedValue = req.cookies.get(SESSION_COOKIE_NAME)?.value ?? null
-  const sessionIssuedAt = parseSessionIssued(sessionIssuedValue)
-  if (session) {
-    // Carga perezosa sólo en runtime server (no edge) para evitar warnings de Node APIs
-    if (process.env.NEXT_RUNTIME !== 'edge') {
-      import('@/lib/logger').then(m => m.logAccion('middleware_session_cookie', {})).catch(() => {})
-    }
-    const now = Date.now()
-    const expired = !sessionIssuedAt || now - sessionIssuedAt > SESSION_MAX_AGE_MS
-    if (expired) {
-      const redirectUrl = new URL('/login', req.url)
-      const redirect = NextResponse.redirect(redirectUrl)
-      expireSessionCookies(redirect, req, projectRef)
-      return redirect
-    }
-    res.cookies.set(SESSION_COOKIE_NAME, String(now), {
-      ...SESSION_COOKIE_BASE,
-      maxAge: SESSION_MAX_AGE_SECONDS
-    })
-  }
-  if (!session && sessionIssuedAt != null) {
-    expireSessionCookies(res, req, projectRef)
-  }
-
   const url = req.nextUrl
   const isApi = url.pathname.startsWith('/api/')
-
+  // Permitir Cron de Vercel y rutas públicas de reportes sin sesión
+  const isCronRequest = !!req.headers.get('x-vercel-cron') || (req.headers.get('user-agent')||'').toLowerCase().includes('vercel-cron')
   // Rutas públicas
   const publicPaths = new Set([
     '/', '/login', '/api/login', '/api/logout', '/politica-privacidad',
@@ -64,12 +32,54 @@ export async function middleware(req: NextRequest) {
     '/api/cron/sp-post-cita-cleanup',
   ])
   // Rutas con prefijo público (no se pueden listar estáticamente)
-  const isPublicPrefix = url.pathname.startsWith('/api/cal/')
+  const isPublicPrefix =
+    url.pathname.startsWith('/api/cal/') ||
+    url.pathname.startsWith('/api/public/cuestionarios/') ||
+    url.pathname.startsWith('/ppr/')
   // Si viene el secreto de cron (header o query), tratarlo como solicitud de cron
   const hasCronSecret = !!req.headers.get('x-cron-secret') || !!url.searchParams.get('secret')
   const isAsset = url.pathname.startsWith('/_next/') || url.pathname.startsWith('/favicon') || url.pathname.startsWith('/public/') || url.pathname.match(/\.(jpg|jpeg|png|gif|svg|webp|ico|css|js)$/i)
   const isPublic = publicPaths.has(url.pathname) || isPublicPrefix || isAsset || isCronRequest || hasCronSecret
-
+  const projectRef = process.env.SUPABASE_PROJECT_REF
+    || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https:\/\//,'').split('.')[0]
+    || 'missing_project_ref'
+  const access = req.cookies.get('sb-access-token')?.value
+  const composite = req.cookies.get(`sb-${projectRef}-auth-token`)?.value
+  // Consideramos válida la sesión si existe la cookie compuesta (nuevo flujo) O la cookie access (flujo antiguo)
+  let session: { token: true } | null = (composite || access) ? { token: true } : null
+  const sessionIssuedValue = req.cookies.get(SESSION_COOKIE_NAME)?.value ?? null
+  const sessionIssuedAt = parseSessionIssued(sessionIssuedValue)
+  if (session) {
+    // Carga perezosa sólo en runtime server (no edge) para evitar warnings de Node APIs
+    if (process.env.NEXT_RUNTIME !== 'edge') {
+      import('@/lib/logger').then(m => m.logAccion('middleware_session_cookie', {})).catch(() => {})
+    }
+    const now = Date.now()
+    const expired = !sessionIssuedAt || now - sessionIssuedAt > SESSION_MAX_AGE_MS
+    if (expired) {
+      session = null
+      expireSessionCookies(res, req, projectRef)
+      if (!isPublic) {
+        if (isApi) {
+          const unauthenticated = NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+          expireSessionCookies(unauthenticated, req, projectRef)
+          return unauthenticated
+        }
+        const redirectUrl = new URL('/login', req.url)
+        const redirect = NextResponse.redirect(redirectUrl)
+        expireSessionCookies(redirect, req, projectRef)
+        return redirect
+      }
+    } else {
+      res.cookies.set(SESSION_COOKIE_NAME, String(now), {
+        ...SESSION_COOKIE_BASE,
+        maxAge: SESSION_MAX_AGE_SECONDS
+      })
+    }
+  }
+  if (!session && sessionIssuedAt != null) {
+    expireSessionCookies(res, req, projectRef)
+  }
   // Para asegurar autorización del Cron aunque el header no llegue, reescribimos agregando el secret como query interno
   if ((url.pathname === '/api/market/sync' || url.pathname === '/api/reports/prospectos-daily-changes') && (isCronRequest || hasCronSecret)) {
     const alreadyHas = url.searchParams.get('secret')

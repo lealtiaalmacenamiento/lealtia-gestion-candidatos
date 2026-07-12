@@ -4,7 +4,7 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { normalizeDateFields } from '@/lib/dateUtils'
 import { calcularDerivados } from '@/lib/proceso'
-import { crearUsuarioAgenteAuto, ensureAgentCodeForUsuario } from '@/lib/autoAgente'
+import { crearUsuarioAgenteAuto, normalizeCodigoAgente, setManualAgentCode } from '@/lib/autoAgente'
 import { sanitizeCandidatoPayload } from '@/lib/sanitize'
 
 // Forzar runtime Node.js (necesario para nodemailer / auth admin)
@@ -108,7 +108,7 @@ export async function GET(req: Request) {
 async function enrichCandidatoWithPolizas(candidato: any): Promise<any> {
   if (!candidato.email_agente) {
     // Si no tiene email_agente, retornar sin modificar
-    return candidato
+    return { ...candidato, codigo_agente: null }
   }
   
   const email = candidato.email_agente.toLowerCase()
@@ -116,14 +116,24 @@ async function enrichCandidatoWithPolizas(candidato: any): Promise<any> {
   // Buscar usuario por email para obtener id_auth
   const { data: usuario } = await supabase
     .from('usuarios')
-    .select('id_auth')
+    .select('id, id_auth')
     .eq('email', email)
     .eq('activo', true)
     .maybeSingle()
   
+  const { data: agentCode } = usuario?.id
+    ? await supabase
+        .from('agent_codes')
+        .select('code')
+        .eq('agente_id', usuario.id)
+        .eq('activo', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null }
+
   if (!usuario?.id_auth) {
-    // Usuario no existe o no tiene id_auth, retornar sin modificar
-    return candidato
+    return { ...candidato, codigo_agente: agentCode?.code ?? null }
   }
   
   // Obtener pólizas del agente agrupadas por tipo de producto
@@ -154,7 +164,8 @@ async function enrichCandidatoWithPolizas(candidato: any): Promise<any> {
   return {
     ...candidato,
     seg_gmm: Number(seg_gmm.toFixed(1)), // GMM permite 0.5
-    seg_vida: Math.round(seg_vida) // VI solo enteros
+    seg_vida: Math.round(seg_vida), // VI solo enteros
+    codigo_agente: agentCode?.code ?? null
   }
 }
 
@@ -166,29 +177,44 @@ async function enrichCandidatosWithPolizas(candidatos: any[]): Promise<any[]> {
   
   // Obtener todos los emails de agentes únicos
   const emails = [...new Set(candidatos.map(c => c.email_agente).filter(Boolean).map(e => e.toLowerCase()))]
-  if (!emails.length) return candidatos
+  if (!emails.length) return candidatos.map(candidato => ({ ...candidato, codigo_agente: null }))
   
   // Buscar usuarios por emails
   const { data: usuarios } = await supabase
     .from('usuarios')
-    .select('id_auth, email')
+    .select('id, id_auth, email')
     .in('email', emails)
     .eq('activo', true)
   
-  if (!usuarios?.length) return candidatos
-  
+  if (!usuarios?.length) return candidatos.map(candidato => ({ ...candidato, codigo_agente: null }))
+
   const emailToIdAuth = new Map(usuarios.map(u => [u.email.toLowerCase(), u.id_auth]))
+  const emailToUserId = new Map(usuarios.map(u => [u.email.toLowerCase(), u.id]))
   const idAuthList = usuarios.map(u => u.id_auth).filter(Boolean)
-  
-  if (!idAuthList.length) return candidatos
+
+  const { data: agentCodes } = await supabase
+    .from('agent_codes')
+    .select('code, agente_id, created_at')
+    .in('agente_id', usuarios.map(u => u.id))
+    .eq('activo', true)
+    .order('created_at', { ascending: false })
+  const codeByUserId = new Map<number, string>()
+  for (const row of agentCodes || []) {
+    const userId = Number(row.agente_id)
+    if (!codeByUserId.has(userId)) codeByUserId.set(userId, row.code)
+  }
   
   // Obtener todas las pólizas de estos agentes
-  const { data: polizas } = await supabase
-    .from('polizas')
-    .select('puntos_actuales, producto_parametros!inner(product_types!inner(code)), clientes!inner(asesor_id, activo)')
-    .in('clientes.asesor_id', idAuthList)
-    .eq('clientes.activo', true)
-    .eq('estatus', 'EN_VIGOR')
+  let polizas: any[] = []
+  if (idAuthList.length > 0) {
+    const { data } = await supabase
+      .from('polizas')
+      .select('puntos_actuales, producto_parametros!inner(product_types!inner(code)), clientes!inner(asesor_id, activo)')
+      .in('clientes.asesor_id', idAuthList)
+      .eq('clientes.activo', true)
+      .eq('estatus', 'EN_VIGOR')
+    polizas = data || []
+  }
   
   // Agrupar puntos por id_auth y tipo de producto
   const puntosMap = new Map<string, { gmm: number; vi: number }>()
@@ -214,19 +240,21 @@ async function enrichCandidatosWithPolizas(candidatos: any[]): Promise<any[]> {
   
   // Enriquecer candidatos
   return candidatos.map(candidato => {
-    if (!candidato.email_agente) return candidato
+    if (!candidato.email_agente) return { ...candidato, codigo_agente: null }
     
     const email = candidato.email_agente.toLowerCase()
     const idAuth = emailToIdAuth.get(email)
+    const codigoAgente = codeByUserId.get(Number(emailToUserId.get(email))) ?? null
     
-    if (!idAuth) return candidato
+    if (!idAuth) return { ...candidato, codigo_agente: codigoAgente }
     
     const puntos = puntosMap.get(idAuth) || { gmm: 0, vi: 0 }
     
     return {
       ...candidato,
       seg_gmm: Number(puntos.gmm.toFixed(1)),
-      seg_vida: Math.round(puntos.vi)
+      seg_vida: Math.round(puntos.vi),
+      codigo_agente: codigoAgente
     }
   })
 }
@@ -237,6 +265,15 @@ export async function POST(req: Request) {
   if (!usuario.activo) return NextResponse.json({ error: 'Usuario inactivo' }, { status: 403 })
 
   const raw = await req.json()
+  const hasCodigoAgente = Object.prototype.hasOwnProperty.call(raw || {}, 'codigo_agente')
+  let codigoAgente: string | null = null
+  if (hasCodigoAgente) {
+    try {
+      codigoAgente = normalizeCodigoAgente(raw.codigo_agente)
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Código de agente inválido' }, { status: 400 })
+    }
+  }
   const body = sanitizeCandidatoPayload(raw)
   body.mes_conexion = normalizeMesConexion(raw?.mes_conexion ?? body?.mes_conexion)
   const emailAgenteRaw: unknown = body.email_agente
@@ -331,8 +368,11 @@ export async function POST(req: Request) {
   if (r.error) console.warn('[api/candidatos] usuario agente no creado:', r.error)
   }
 
-  // 1b) Generar código de agente a partir de nombre + CT (si aplican)
-  if (emailAgente && body.ct) {
+  // 1b) Asignar únicamente el código capturado por el usuario.
+  if (hasCodigoAgente && codigoAgente && !emailAgente) {
+    return NextResponse.json({ error: 'Captura el correo del agente antes de asignar un código' }, { status: 400 })
+  }
+  if (hasCodigoAgente && emailAgente) {
     const { data: usuarioAg } = await supabase
       .from('usuarios')
       .select('id')
@@ -340,10 +380,9 @@ export async function POST(req: Request) {
       .maybeSingle()
     const usuarioId = agenteMeta.usuarioId || (usuarioAg as any)?.id
     if (usuarioId) {
-      const codigoRes = await ensureAgentCodeForUsuario({ usuarioId, nombre: body.candidato, ct: body.ct })
-      if (codigoRes.code || codigoRes.error) {
-        (agenteMeta as any).agent_code = codigoRes
-      }
+      const codigoRes = await setManualAgentCode({ usuarioId, nombre: body.candidato, code: codigoAgente })
+      if (codigoRes.error) return NextResponse.json({ error: codigoRes.error }, { status: 409 })
+      ;(agenteMeta as any).agent_code = codigoRes
     }
   }
 
@@ -365,5 +404,5 @@ export async function POST(req: Request) {
 
   // 3) Responder incluyendo meta de agente (no rompe consumidores existentes)
   if (agenteMeta.passwordTemporal) delete agenteMeta.passwordTemporal
-  return NextResponse.json({ ...data, _agente_meta: agenteMeta })
+  return NextResponse.json({ ...data, codigo_agente: codigoAgente, _agente_meta: agenteMeta })
 }

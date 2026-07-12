@@ -8,6 +8,7 @@ import {
   getAgendaDevelopers,
   createAgendaCita,
   cancelAgendaCita,
+  rescheduleAgendaCita,
   getAgendaCitas,
   getAgendaSlots,
   searchAgendaProspectos
@@ -17,7 +18,8 @@ import type { AgendaBusySlot, AgendaCita, AgendaDeveloper, AgendaSlotsResponse, 
 const providerLabels: Record<string, string> = {
   google_meet: 'Google Meet',
   zoom: 'Zoom personal',
-  teams: 'Microsoft Teams'
+  teams: 'Microsoft Teams',
+  calcom: 'Cal.com'
 }
 
 const slotSourceLabels: Record<'calendar' | 'agenda' | 'planificacion', string> = {
@@ -30,6 +32,7 @@ const meetingProviderLabels: Record<string, string> = {
   google_meet: 'Google Meet',
   zoom: 'Zoom',
   teams: 'Microsoft Teams',
+  calcom: 'Cal.com',
   google: 'Google Calendar'
 }
 
@@ -62,7 +65,8 @@ type AgendaFormState = {
   supervisorId: string
   inicio: string
   fin: string
-  meetingProvider: 'google_meet' | 'zoom' | 'teams'
+  meetingProvider: 'google_meet' | 'zoom' | 'teams' | 'calcom'
+  calEventTypeId: string
   meetingUrl: string
   prospectoId: string
   prospectoNombre: string
@@ -88,6 +92,7 @@ function initialFormState(): AgendaFormState {
     inicio: formatLocalInputValue(start),
     fin: formatLocalInputValue(end),
     meetingProvider: 'google_meet',
+    calEventTypeId: '',
     meetingUrl: '',
     prospectoId: '',
     prospectoNombre: '',
@@ -182,6 +187,7 @@ export default function AgendaPage() {
   const [form, setForm] = useState<AgendaFormState>(() => initialFormState())
   const [creating, setCreating] = useState(false)
   const [cancelingId, setCancelingId] = useState<number | null>(null)
+  const [reschedulingId, setReschedulingId] = useState<number | null>(null)
 
   const [citas, setCitas] = useState<AgendaCita[]>([])
   const [loadingCitas, setLoadingCitas] = useState(false)
@@ -204,6 +210,8 @@ export default function AgendaPage() {
   const [newGuestEmail, setNewGuestEmail] = useState('')
   const [showExtraGuestForm, setShowExtraGuestForm] = useState(false)
   const [showConnectModal, setShowConnectModal] = useState(false)
+  const [calEventTypes, setCalEventTypes] = useState<Array<{ id: number; title: string; lengthInMinutes: number; bookingUrl?: string }>>([])
+  const [calEventsLoading, setCalEventsLoading] = useState(false)
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false)
   const [prospectEmailLocked, setProspectEmailLocked] = useState(false)
   const selectedAgente = useMemo(() => {
@@ -221,6 +229,9 @@ export default function AgendaPage() {
     }
     if (selectedAgente.tokens.includes('teams')) {
       providers.push({ value: 'teams', label: 'Microsoft Teams' })
+    }
+    if (selectedAgente.tokens.includes('calcom')) {
+      providers.push({ value: 'calcom', label: 'Evento de Cal.com' })
     }
     return providers
   }, [selectedAgente])
@@ -246,6 +257,32 @@ export default function AgendaPage() {
       }))
     }
   }, [availableProviders, form.meetingProvider, selectedAgente])
+
+  useEffect(() => {
+    if (!selectedAgente?.tokens.includes('calcom')) {
+      setCalEventTypes([])
+      setForm(prev => ({ ...prev, calEventTypeId: '' }))
+      return
+    }
+    let cancelled = false
+    setCalEventsLoading(true)
+    fetch(`/api/integraciones/calcom/event-types?usuario_id=${selectedAgente.id}`, { cache: 'no-store' })
+      .then(async response => {
+        const json = await response.json()
+        if (!response.ok) throw new Error(json.error || 'No se pudieron cargar los eventos de Cal.com')
+        if (!cancelled) setCalEventTypes(json.eventTypes || [])
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setCalEventTypes([])
+          setToast({ type: 'error', message: error instanceof Error ? error.message : 'No se pudieron cargar los eventos de Cal.com' })
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCalEventsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [selectedAgente])
 
   useEffect(() => {
     if (!authorized) return
@@ -373,7 +410,7 @@ export default function AgendaPage() {
 
   useEffect(() => {
     setHasCheckedAvailability(false)
-  }, [form.agenteId, form.supervisorId, form.inicio, form.fin])
+  }, [form.agenteId, form.supervisorId, form.inicio, form.fin, form.meetingProvider, form.calEventTypeId])
 
   useEffect(() => {
     const primary = selectedProspectos[0] ?? null
@@ -547,6 +584,31 @@ export default function AgendaPage() {
     setSlotsLoading(true)
     setSlotsError(null)
     try {
+      if (form.meetingProvider === 'calcom') {
+        const eventTypeId = Number(form.calEventTypeId)
+        if (!Number.isFinite(eventTypeId)) {
+          throw new Error('Selecciona un evento de Cal.com')
+        }
+        const calParams = new URLSearchParams({
+          usuario_id: String(agenteIdNumeric),
+          event_type_id: String(eventTypeId),
+          start: rangeStartIso,
+          end: rangeEndIso,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Mexico_City'
+        })
+        const calResponse = await fetch(`/api/integraciones/calcom/slots?${calParams}`, { cache: 'no-store' })
+        const calJson = await calResponse.json()
+        if (!calResponse.ok) throw new Error(calJson.error || 'No se pudo consultar Cal.com')
+        const availableStarts = Object.values(calJson.slots || {})
+          .flatMap(value => Array.isArray(value) ? value : [])
+          .map((slot: { start?: string }) => slot.start)
+          .filter((start: string | undefined): start is string => Boolean(start))
+          .map(start => new Date(start).getTime())
+        const requestedStart = new Date(inicioIso).getTime()
+        if (!availableStarts.some((start: number) => Math.abs(start - requestedStart) < 60_000)) {
+          throw new Error('El horario seleccionado no está disponible en Cal.com')
+        }
+      }
       const data = await getAgendaSlots(ids, { desde: rangeStartIso, hasta: rangeEndIso })
       setSlots(data)
       const eventStartBound = safeTimestamp(inicioIso)
@@ -731,9 +793,15 @@ export default function AgendaPage() {
     }
 
     const isGoogleMeet = form.meetingProvider === 'google_meet'
+    const isCalcom = form.meetingProvider === 'calcom'
     const trimmedMeetingUrl = form.meetingUrl.trim()
 
-    if (isGoogleMeet) {
+    if (isCalcom) {
+      if (!form.calEventTypeId) {
+        setToast({ type: 'error', message: 'Selecciona un evento de Cal.com.' })
+        return
+      }
+    } else if (isGoogleMeet) {
       if (!selectedAgente?.tokens.includes('google')) {
         setToast({ type: 'error', message: 'Conecta Google Calendar en Integraciones antes de agendar.' })
         setShowConnectModal(true)
@@ -787,8 +855,9 @@ export default function AgendaPage() {
       inicio: inicioIso,
       fin: finIso,
   meetingProvider: form.meetingProvider,
-  meetingUrl: isGoogleMeet ? null : trimmedMeetingUrl || null,
-  generarEnlace: isGoogleMeet,
+  meetingUrl: (isGoogleMeet || isCalcom) ? null : trimmedMeetingUrl || null,
+  generarEnlace: isGoogleMeet || isCalcom,
+      calEventTypeId: isCalcom ? Number(form.calEventTypeId) : null,
       prospectoId: prospectoIdValue,
       prospectoNombre: form.prospectoNombre.trim() || null,
       prospectoEmail: form.prospectoEmail.trim() || null,
@@ -809,6 +878,7 @@ export default function AgendaPage() {
       next.agenteId = form.agenteId
       next.supervisorId = form.supervisorId
       next.meetingProvider = form.meetingProvider
+      next.calEventTypeId = form.calEventTypeId
       next.prospectoEmail = ''
       setForm(next)
       setSlots(null)
@@ -838,6 +908,28 @@ export default function AgendaPage() {
       setToast({ type: 'error', message: err instanceof Error ? err.message : 'No se pudo cancelar la cita' })
     } finally {
       setCancelingId(null)
+    }
+  }
+
+  async function handleRescheduleCita(cita: AgendaCita) {
+    const current = formatLocalInputValue(new Date(cita.inicio))
+    const value = window.prompt('Nueva fecha y hora (AAAA-MM-DDTHH:mm)', current)
+    if (!value) return
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      setToast({ type: 'error', message: 'La nueva fecha no es válida' })
+      return
+    }
+    const reason = window.prompt('Motivo de reprogramación (opcional)', '') || undefined
+    setReschedulingId(cita.id)
+    try {
+      await rescheduleAgendaCita(cita.id, parsed.toISOString(), reason)
+      setToast({ type: 'success', message: 'Cita reprogramada' })
+      await loadCitas()
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'No se pudo reprogramar la cita' })
+    } finally {
+      setReschedulingId(null)
     }
   }
 
@@ -961,6 +1053,39 @@ export default function AgendaPage() {
                     ))}
                   </select>
                 </div>
+                {form.meetingProvider === 'calcom' && (
+                  <div className="col-md-6">
+                    <label className="form-label small">Evento de Cal.com *</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={form.calEventTypeId}
+                      disabled={calEventsLoading}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        const selected = calEventTypes.find(item => item.id === Number(value))
+                        setForm(prev => {
+                          if (!selected?.lengthInMinutes) return { ...prev, calEventTypeId: value }
+                          const start = new Date(prev.inicio)
+                          const end = new Date(start.getTime() + selected.lengthInMinutes * 60_000)
+                          return {
+                            ...prev,
+                            calEventTypeId: value,
+                            fin: formatLocalInputValue(end)
+                          }
+                        })
+                        setHasCheckedAvailability(false)
+                      }}
+                    >
+                      <option value="">{calEventsLoading ? 'Cargando…' : 'Seleccionar evento…'}</option>
+                      {calEventTypes.map(event => (
+                        <option key={event.id} value={event.id}>
+                          {event.title}{event.lengthInMinutes ? ` · ${event.lengthInMinutes} min` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="form-text">La plataforma de reunión será la configurada en este evento.</div>
+                  </div>
+                )}
                 {selectedAgente && availableProviders.length === 0 && (
                   <div className="col-12">
                     <div className="alert alert-warning small mb-0">
@@ -1537,15 +1662,27 @@ export default function AgendaPage() {
                           {cita.prospectoNombre && <div className="small">Prospecto: {cita.prospectoNombre}</div>}
                           {cita.prospectoEmail && <div className="small text-muted">Correo prospecto: {cita.prospectoEmail}</div>}
                         </div>
-                        <button
-                          data-testid="agenda-cita-cancel"
-                          type="button"
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => handleCancelCita(cita)}
-                          disabled={cancelingId === cita.id}
-                        >
-                          {cancelingId === cita.id ? 'Cancelando…' : 'Cancelar'}
-                        </button>
+                        <div className="d-flex gap-2">
+                          {cita.meetingProvider === 'calcom' && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => handleRescheduleCita(cita)}
+                              disabled={reschedulingId === cita.id || cancelingId === cita.id}
+                            >
+                              {reschedulingId === cita.id ? 'Reprogramando…' : 'Reprogramar'}
+                            </button>
+                          )}
+                          <button
+                            data-testid="agenda-cita-cancel"
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => handleCancelCita(cita)}
+                            disabled={cancelingId === cita.id || reschedulingId === cita.id}
+                          >
+                            {cancelingId === cita.id ? 'Cancelando…' : 'Cancelar'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}

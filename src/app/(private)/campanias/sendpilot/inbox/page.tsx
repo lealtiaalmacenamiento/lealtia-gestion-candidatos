@@ -80,6 +80,7 @@ function Avatar({ name, picture, size = 36 }: { name: string; picture?: string; 
   const color = colors[(name.charCodeAt(0) ?? 0) % colors.length]
   if (picture) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img src={picture} alt={name} width={size} height={size}
         style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
         onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />

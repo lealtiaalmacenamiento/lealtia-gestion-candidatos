@@ -40,6 +40,7 @@ export interface Candidato {
   inicio_escuela_fundamental?: string
   // Nuevo: email del agente (candidato) para creación de usuario
   email_agente?: string
+  codigo_agente?: string | null
   // Estado de completado por etapa (MES/EFC) con metadatos de usuario/fecha
   etapas_completadas?: {
     [etapa: string]: { completed: boolean; by?: { email?: string; nombre?: string }; at?: string }
@@ -82,7 +83,7 @@ export interface ZoomFondo {
 
 export type IntegrationProviderKey = 'google' | 'zoom' | 'teams' | 'calcom' | 'sendpilot'
 export type ManualMeetingProvider = 'zoom' | 'teams'
-export type MeetingProvider = 'google_meet' | 'zoom' | 'teams'
+export type MeetingProvider = 'google_meet' | 'zoom' | 'teams' | 'calcom'
 
 export interface ManualMeetingSettings {
   meetingUrl: string
@@ -206,6 +207,70 @@ export interface Parametro {
   actualizado_en?: string | null
 }
 
+export type QuestionnaireQuestionType =
+  | 'texto'
+  | 'texto_largo'
+  | 'email'
+  | 'telefono'
+  | 'numero'
+  | 'fecha'
+  | 'seleccion'
+  | 'multiple'
+  | 'booleano'
+
+export interface QuestionnaireQuestion {
+  id: string
+  etiqueta: string
+  tipo: QuestionnaireQuestionType
+  semantica: 'nombre' | 'email' | 'telefono' | 'edad' | 'otro'
+  requerida: boolean
+  placeholder?: string
+  opciones?: string[]
+}
+
+export interface QuestionnaireSection {
+  id: string
+  titulo: string
+  descripcion?: string
+  preguntas: QuestionnaireQuestion[]
+}
+
+export interface Questionnaire {
+  id: string
+  slug: string
+  titulo: string
+  descripcion?: string | null
+  secciones: QuestionnaireSection[]
+  activo: boolean
+  requiere_ppr: boolean
+  version: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface QuestionnaireLink {
+  id: string
+  token: string
+  questionnaire_id: string
+  questionnaire_version: number
+  agente_id: number
+  agent_code: string
+  cal_event_type_id?: number | null
+  cal_event_title?: string | null
+  cal_booking_url?: string | null
+  views_count?: number
+  stats?: {
+    responses: number
+    simulations: number
+    bookings: number
+  }
+  activo: boolean
+  expires_at?: string | null
+  created_at: string
+  questionnaire?: Pick<Questionnaire, 'titulo' | 'slug'> | null
+  agente?: { nombre?: string | null; email?: string | null } | null
+}
+
 /* ===== Fase 2: Prospectos y Planificación ===== */
 export type ProspectoEstado = 'pendiente' | 'seguimiento' | 'con_cita' | 'descartado' | 'ya_es_cliente'
 
@@ -245,6 +310,10 @@ export interface BloquePlanificacion {
   confirmada?: boolean // para bloques tipo SMNYL/Cita
   agenda_cita_id?: number | null
   sp_cita_id?: string | null // UUID de sp_citas (Cal.com vía SendPilot)
+  inicio_iso?: string | null
+  fin_iso?: string | null
+  hora_inicio?: string | null
+  hora_fin?: string | null
 }
 
 export interface PlanificacionSemana {

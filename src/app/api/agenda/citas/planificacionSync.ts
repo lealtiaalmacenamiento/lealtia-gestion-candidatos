@@ -4,7 +4,7 @@ import type { BloquePlanificacion, ProspectoEstado } from '@/types'
 
 const PLANIFICACION_TZ = process.env.AGENDA_TZ || 'America/Mexico_City'
 
-function parseTimezoneComponents(date: Date): { zonedDate: Date; hour: string } | null {
+function parseTimezoneComponents(date: Date): { zonedDate: Date; hour: string; minute: string; time: string } | null {
   try {
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: PLANIFICACION_TZ,
@@ -28,23 +28,25 @@ function parseTimezoneComponents(date: Date): { zonedDate: Date; hour: string } 
       return null
     }
     const zonedDate = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
-    return { zonedDate, hour: hour.toString().padStart(2, '0') }
+    const hourText = hour.toString().padStart(2, '0')
+    const minuteText = minute.toString().padStart(2, '0')
+    return { zonedDate, hour: hourText, minute: minuteText, time: `${hourText}:${minuteText}` }
   } catch {
     return null
   }
 }
 
-function dayAndHourFromIso(iso: string): { day: number; hour: string; anio: number; semana: number } | null {
+export function planificacionMetaFromIso(iso: string): { day: number; hour: string; minute: string; time: string; anio: number; semana: number } | null {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return null
   const parsed = parseTimezoneComponents(date)
   if (!parsed) return null
-  const { zonedDate, hour } = parsed
+  const { zonedDate, hour, minute, time } = parsed
   const { anio, semana } = obtenerSemanaIso(zonedDate)
   const semanaInfo = semanaDesdeNumero(anio, semana)
   const diffMs = zonedDate.getTime() - semanaInfo.inicio.getTime()
   const day = Math.max(0, Math.min(6, Math.floor(diffMs / 86400000)))
-  return { day, hour, anio, semana }
+  return { day, hour, minute, time, anio, semana }
 }
 
 export async function syncPlanificacionCita(options: {
@@ -54,13 +56,15 @@ export async function syncPlanificacionCita(options: {
   prospectoId: number | null
   prospectoNombre: string | null
   citaId: number
+  finIso?: string | null
   notas?: string | null
   extraParticipantes?: Array<{ prospectoId?: number | null; nombre?: string | null }> | null
 }) {
-  const { supabase, agenteId, inicioIso, prospectoId, prospectoNombre, citaId, notas, extraParticipantes } = options
-  const meta = dayAndHourFromIso(inicioIso)
+  const { supabase, agenteId, inicioIso, prospectoId, prospectoNombre, citaId, finIso, notas, extraParticipantes } = options
+  const meta = planificacionMetaFromIso(inicioIso)
   if (!meta) return
   const { anio, semana, day, hour } = meta
+  const endMeta = finIso ? planificacionMetaFromIso(finIso) : null
 
   const { data: plan, error: planError } = await supabase
     .from('planificaciones')
@@ -91,7 +95,11 @@ export async function syncPlanificacionCita(options: {
     participantes_extra: extras.length > 0 ? extras.map((e) => ({ id: e.id, nombre: e.nombre })) : undefined,
     notas: blockNota ?? undefined,
     confirmada: false,
-    agenda_cita_id: citaId
+    agenda_cita_id: citaId,
+    inicio_iso: inicioIso,
+    fin_iso: finIso ?? null,
+    hora_inicio: meta.time,
+    hora_fin: endMeta?.time ?? null
   })
 
   if (!plan) {
@@ -111,7 +119,7 @@ export async function syncPlanificacionCita(options: {
 
   // Find any existing CITAS block tied to this cita; replace it with the updated single block
   const otherBlocks = bloques.filter(
-    (b) => !(b && b.day === day && b.hour === hour && b.activity === 'CITAS' && b.agenda_cita_id === citaId)
+    (b) => !(b && b.activity === 'CITAS' && b.origin === 'auto' && b.agenda_cita_id === citaId)
   )
   const nextBlocks = [...otherBlocks, buildBlock()]
 
@@ -142,7 +150,7 @@ export async function syncPlanificacionSpCita(options: {
     .maybeSingle()
   if (!usuario?.id) return
 
-  const meta = dayAndHourFromIso(inicioIso)
+  const meta = planificacionMetaFromIso(inicioIso)
   if (!meta) return
   const { anio, semana, day, hour } = meta
 
@@ -162,6 +170,8 @@ export async function syncPlanificacionSpCita(options: {
     prospecto_nombre: precandidatoNombre ?? undefined,
     confirmada: false,
     sp_cita_id: spCitaId,
+    inicio_iso: inicioIso,
+    hora_inicio: meta.time,
     notas: 'Agendado vía SendPilot / Cal.com'
   })
 
@@ -194,7 +204,7 @@ export async function detachPlanificacionCita(options: {
   citaId: number
 }) {
   const { supabase, agenteId, inicioIso, citaId } = options
-  const meta = dayAndHourFromIso(inicioIso)
+  const meta = planificacionMetaFromIso(inicioIso)
   if (!meta) return
   const { anio, semana } = meta
 
@@ -210,21 +220,13 @@ export async function detachPlanificacionCita(options: {
 
   const bloques = Array.isArray(plan.bloques) ? (plan.bloques as BloquePlanificacion[]) : []
   let changed = false
-  const nextBlocks = bloques.map((raw) => {
-    if (!raw || typeof raw !== 'object') return raw
+  const nextBlocks = bloques.filter((raw) => {
+    if (!raw || typeof raw !== 'object') return true
     if (raw.agenda_cita_id === citaId) {
       changed = true
-      const clone: BloquePlanificacion = {
-        ...raw,
-        confirmada: false,
-        agenda_cita_id: null,
-        prospecto_estado: raw.prospecto_estado && raw.prospecto_estado !== 'con_cita' ? raw.prospecto_estado : 'seguimiento',
-        prospecto_id: raw.prospecto_id,
-        prospecto_nombre: raw.prospecto_nombre
-      }
-      return clone
+      return false
     }
-    return raw
+    return true
   })
 
   if (!changed) return
@@ -233,4 +235,31 @@ export async function detachPlanificacionCita(options: {
     .from('planificaciones')
     .update({ bloques: nextBlocks, updated_at: new Date().toISOString() })
     .eq('id', plan.id)
+}
+
+export async function detachPlanificacionSpCita(options: {
+  supabase: SupabaseClient
+  spCitaId: string
+}) {
+  const { supabase, spCitaId } = options
+  if (!spCitaId) return
+
+  const { data: plans, error } = await supabase
+    .from('planificaciones')
+    .select('id,bloques')
+    .contains('bloques', [{ sp_cita_id: spCitaId }])
+
+  if (error || !plans?.length) return
+
+  await Promise.all(
+    plans.map(async (plan) => {
+      const bloques = Array.isArray(plan.bloques) ? (plan.bloques as BloquePlanificacion[]) : []
+      const nextBlocks = bloques.filter((block) => block?.sp_cita_id !== spCitaId)
+      if (nextBlocks.length === bloques.length) return
+      await supabase
+        .from('planificaciones')
+        .update({ bloques: nextBlocks, updated_at: new Date().toISOString() })
+        .eq('id', plan.id)
+    })
+  )
 }

@@ -938,7 +938,11 @@ export default function ProspectosPage(){
               <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
               <td>{p.email ? <a href={`mailto:${p.email}`}>{p.email}</a> : ''}</td>
               <td>{p.telefono? (()=>{ const digits = p.telefono.replace(/[^0-9]/g,''); if(!digits) return p.telefono; const withCode = digits.length===10? '52'+digits : digits; const waUrl = 'https://wa.me/'+withCode; return <a href={waUrl} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp">{p.telefono}</a>; })(): ''}</td>
-              <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
+              <td style={{maxWidth:360}}>
+                <div className="small" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 96, overflowY: 'auto' }}>
+                  {p.notas || ''}
+                </div>
+              </td>
               <td>{ESTADO_LABEL[p.estado]}</td>
               <td className="text-end">
                 {p.estado === 'ya_es_cliente' ? <span className="badge bg-success">Convertido</span> : <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>}
@@ -983,7 +987,11 @@ export default function ProspectosPage(){
                 <td><span className={'d-inline-block px-2 py-1 rounded '+ESTADO_CLASSES[p.estado]}>{p.nombre}</span></td>
                 <td>{p.email ? <a href={`mailto:${p.email}`}>{p.email}</a> : ''}</td>
                 <td>{p.telefono? (()=>{ const digits = p.telefono.replace(/[^0-9]/g,''); if(!digits) return p.telefono; const withCode = digits.length===10? '52'+digits : digits; const waUrl = 'https://wa.me/'+withCode; return <a href={waUrl} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp">{p.telefono}</a>; })(): ''}</td>
-                <td style={{maxWidth:260}} className="text-truncate" title={p.notas||''}>{p.notas||''}</td>
+                <td style={{maxWidth:360}}>
+                  <div className="small" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 96, overflowY: 'auto' }}>
+                    {p.notas || ''}
+                  </div>
+                </td>
                 <td>{ESTADO_LABEL[p.estado]}</td>
                 <td className="text-end">
                   {p.estado === 'ya_es_cliente' ? <span className="badge bg-success">Convertido</span> : <button type="button" className="btn btn-sm btn-outline-primary" onClick={()=>openEdit(p)}>Editar</button>}
@@ -1034,7 +1042,13 @@ export default function ProspectosPage(){
             )}
             <div className="col-12">
               <label className="form-label small">Notas</label>
-              <input className="form-control" value={editForm.notas} onChange={e=>setEditForm(f=>({...f,notas:e.target.value}))} />
+              <textarea
+                className="form-control"
+                rows={8}
+                value={editForm.notas}
+                onChange={e=>setEditForm(f=>({...f,notas:e.target.value}))}
+                style={{ whiteSpace: 'pre-wrap', resize: 'vertical' }}
+              />
             </div>
           </div>
           <div className="d-flex justify-content-end gap-2 mt-3">

@@ -8,6 +8,10 @@ export function providerLabel(provider: IntegrationProviderKey): string {
       return 'Zoom personal'
     case 'teams':
       return 'Microsoft Teams'
+    case 'calcom':
+      return 'Cal.com'
+    case 'sendpilot':
+      return 'SendPilot'
     default:
       return provider
   }
