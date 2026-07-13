@@ -1,4 +1,5 @@
 import Image from 'next/image'
+import Link from 'next/link'
 import LoginForm from '@/components/LoginForm'
 // import BasePage from '@/components/BasePage';
 
@@ -17,10 +18,21 @@ export default function LoginPage() {
               priority
             />
           </div>
-          <h2 className="mt-2">Bienvenido</h2>
-          <p className="text-muted">Ingresa tus credenciales para acceder</p>
+          <h2 className="mt-2">Portal de asesores Lealtia</h2>
+          <p className="text-muted mb-2">Ingresa tus credenciales para acceder</p>
+          <p className="small text-muted mb-0">
+            Acceso autorizado para asesores y equipo operativo de Lealtia. Desde este portal se
+            gestionan citas, seguimiento de prospectos y sincronizacion de agenda con Google
+            Calendar cuando el usuario lo autoriza.
+          </p>
         </div>
         <LoginForm />
+        <div className="text-center small text-muted mt-4">
+          Al acceder aceptas los{' '}
+          <Link href="/terminos-servicio">Terminos de Servicio</Link>
+          {' '}y la{' '}
+          <Link href="/politica-privacidad">Politica de Privacidad</Link>.
+        </div>
       </div>
     </div>
   );

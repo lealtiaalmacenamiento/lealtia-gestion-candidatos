@@ -12,7 +12,7 @@ export async function middleware(req: NextRequest) {
   const isCronRequest = !!req.headers.get('x-vercel-cron') || (req.headers.get('user-agent')||'').toLowerCase().includes('vercel-cron')
   // Rutas públicas
   const publicPaths = new Set([
-    '/', '/login', '/api/login', '/api/logout', '/politica-privacidad',
+    '/', '/login', '/api/login', '/api/logout', '/politica-privacidad', '/terminos-servicio',
     // Endpoints usados por Cron/diagnóstico
     '/api/reports/prospectos-daily-changes',
     '/api/market/sync',
