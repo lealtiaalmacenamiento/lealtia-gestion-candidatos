@@ -27,6 +27,7 @@ export interface PublicQuestionnaireLink {
     id: number
     id_auth: string | null
     nombre: string | null
+    email: string | null
   }
 }
 
@@ -47,7 +48,7 @@ export async function resolvePublicQuestionnaireLink(token: string): Promise<{
       questionnaire_snapshot,
       cal_event_type_id,cal_event_title,cal_booking_url,views_count,activo,expires_at,
       questionnaire:questionnaires(id,slug,titulo,descripcion,secciones,activo,requiere_ppr,version),
-      agente:usuarios(id,id_auth,nombre)
+      agente:usuarios(id,id_auth,nombre,email)
     `)
     .eq('token', token)
     .maybeSingle()

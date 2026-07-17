@@ -7,21 +7,15 @@ import type { IntegrationProviderKey } from '@/types'
 import { providerLabel } from '@/lib/integrations/providerLabels'
 import { useAuth } from '@/context/AuthProvider'
 
-interface ManualStatus {
-  settings: {
-    meetingUrl: string
-    meetingId?: string | null
-    meetingPassword?: string | null
-  } | null
-  legacy: boolean
-}
-
 interface ProviderStatus {
   provider: IntegrationProviderKey
   connected: boolean
   expiresAt: string | null
   scopes: string[] | null
-  manual?: ManualStatus
+  manual?: {
+    settings: { meetingUrl?: string; meetingId?: string | null; meetingPassword?: string | null } | null
+    legacy?: boolean
+  }
 }
 
 interface StatusResponse {
@@ -31,15 +25,15 @@ interface StatusResponse {
 const PROVIDER_META: Record<IntegrationProviderKey, { icon: string; description: string; doc?: string }> = {
   google: {
     icon: 'bi-google',
-    description: 'Sincroniza Google Calendar y genera enlaces de Google Meet automáticamente.'
+    description: 'Sincroniza Google Calendar para disponibilidad y evitar empalmes.'
   },
   zoom: {
     icon: 'bi-camera-video-fill',
-    description: 'Guarda tu enlace personal de Zoom para compartirlo al agendar.'
+    description: ''
   },
   teams: {
     icon: 'bi-calendar3',
-    description: 'Comparte tu sala de Microsoft Teams guardando un enlace personal.'
+    description: ''
   },
   // calcom and sendpilot are managed via their own sections below, not the generic provider card loop
   calcom: { icon: 'bi-calendar-check-fill', description: '' },
@@ -360,7 +354,7 @@ export default function IntegracionesPage() {
       {!loading && error && <div className="alert alert-danger">{error}</div>}
       {!loading && !error && (
         <div className="row g-4">
-          {providers.filter(p => p.provider !== 'calcom' && p.provider !== 'sendpilot').map((provider) => {
+          {providers.filter(p => p.provider === 'google').map((provider) => {
             const meta = metaList[provider.provider]
             const isZoom = provider.provider === 'zoom'
             const isTeams = provider.provider === 'teams'

@@ -27,13 +27,6 @@ interface Campana {
   sp_campana_reclutadores: Reclutador[]
 }
 
-interface EventType {
-  id: number
-  slug: string
-  title: string
-  bookingUrl?: string
-}
-
 interface SecuenciaPaso {
   id: string
   campana_id: string
@@ -64,11 +57,7 @@ export default function CampanaDetailPage() {
       .catch(() => {})
   }, [])
 
-  // Event types for adding a recruiter
-  const [eventTypes, setEventTypes] = useState<EventType[]>([])
   const [newReclutadorId, setNewReclutadorId] = useState('')
-  const [newEventTypeId, setNewEventTypeId] = useState<number | null>(null)
-  const [newSchedulingUrl, setNewSchedulingUrl] = useState('')
   const [addingReclutador, setAddingReclutador] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
 
@@ -88,16 +77,6 @@ export default function CampanaDetailPage() {
 
   useEffect(() => { load().catch(() => {}) }, [load])
 
-  // Load current user's Cal.com event types
-  useEffect(() => {
-    fetch('/api/integraciones/calcom/event-types', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : Promise.resolve([]))
-      .then((d: { eventTypes?: EventType[] } | EventType[]) =>
-        setEventTypes(Array.isArray(d) ? d : d.eventTypes ?? [])
-      )
-      .catch(() => {})
-  }, [])
-
   const handleAddReclutador = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newReclutadorId.trim()) return
@@ -108,9 +87,7 @@ export default function CampanaDetailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          reclutador_id: newReclutadorId.trim(),
-          calcom_event_type_id: newEventTypeId,
-          calcom_scheduling_url: newSchedulingUrl.trim() || null
+          reclutador_id: newReclutadorId.trim()
         })
       })
       if (!res.ok) {
@@ -119,8 +96,6 @@ export default function CampanaDetailPage() {
       }
       setNotif({ type: 'success', message: 'Reclutador agregado.' })
       setNewReclutadorId('')
-      setNewEventTypeId(null)
-      setNewSchedulingUrl('')
       await load()
     } catch (err) {
       setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error' })
@@ -240,13 +215,6 @@ export default function CampanaDetailPage() {
     } finally {
       setDeletingPasoId(null)
     }
-  }
-
-  // Auto-fill scheduling URL when an event type is selected
-  const handleEventTypeChange = (etId: number) => {
-    setNewEventTypeId(etId)
-    const et = eventTypes.find(e => e.id === etId)
-    if (et) setNewSchedulingUrl(et.bookingUrl || '')
   }
 
   const redirectBase = typeof window !== 'undefined'
@@ -385,30 +353,10 @@ export default function CampanaDetailPage() {
                         ))}
                       </select>
                     </div>
-                    {eventTypes.length > 0 && (
-                      <div className="col-12 col-md-4">
-                        <label className="form-label small">Event type Cal.com</label>
-                        <select
-                          className="form-select form-select-sm"
-                          value={newEventTypeId ?? ''}
-                          onChange={e => handleEventTypeChange(Number(e.target.value))}
-                        >
-                          <option value="">— Seleccionar —</option>
-                          {eventTypes.map(et => (
-                            <option key={et.id} value={et.id}>{et.title}</option>
-                          ))}
-                        </select>
+                    <div className="col-12 col-md-5">
+                      <div className="alert alert-info small mb-0 py-2">
+                        Se usará el evento predeterminado de Cal.com configurado en Integraciones para el reclutador seleccionado.
                       </div>
-                    )}
-                    <div className="col-12 col-md-3">
-                      <label className="form-label small">URL Cal.com</label>
-                      <input
-                        type="url"
-                        className="form-control form-control-sm"
-                        value={newSchedulingUrl}
-                        onChange={e => setNewSchedulingUrl(e.target.value)}
-                        placeholder="https://cal.com/..."
-                      />
                     </div>
                     <div className="col-auto">
                       <button type="submit" className="btn btn-primary btn-sm" disabled={addingReclutador}>

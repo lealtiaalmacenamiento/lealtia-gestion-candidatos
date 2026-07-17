@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getUsuarioSesion } from '@/lib/auth'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
-import { getCalcomApiKey, getCalcomEventTypes } from '@/lib/integrations/calcom'
+import { resolveCalcomDefaultEventType } from '@/lib/integrations/calcom'
 import { logAccion } from '@/lib/logger'
 
 export const runtime = 'nodejs'
@@ -11,7 +11,6 @@ export const dynamic = 'force-dynamic'
 
 const createLinkSchema = z.object({
   questionnaire_id: z.string().uuid(),
-  cal_event_type_id: z.number().int().positive(),
   agente_id: z.number().int().positive().optional(),
   expires_at: z.string().datetime().nullable().optional()
 })
@@ -131,15 +130,12 @@ export async function POST(req: NextRequest) {
   }
   if (!targetAgent.id_auth) return NextResponse.json({ error: 'El agente no tiene identidad de acceso' }, { status: 409 })
 
-  const apiKey = await getCalcomApiKey(targetAgent.id_auth)
-  if (!apiKey) return NextResponse.json({ error: 'El agente seleccionado no ha conectado Cal.com' }, { status: 409 })
-  let eventTypes
+  let eventType
   try {
-    eventTypes = await getCalcomEventTypes(apiKey)
+    eventType = (await resolveCalcomDefaultEventType(targetAgent.id_auth)).eventType
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudieron consultar los eventos de Cal.com' }, { status: 502 })
   }
-  const eventType = eventTypes.find(event => event.id === parsed.data.cal_event_type_id)
   if (!eventType) return NextResponse.json({ error: 'El evento seleccionado ya no está disponible en tu cuenta de Cal.com' }, { status: 409 })
 
   const token = randomBytes(24).toString('base64url')

@@ -16,9 +16,6 @@ import {
 import type { AgendaBusySlot, AgendaCita, AgendaDeveloper, AgendaSlotsResponse, AgendaProspectoOption, AgendaPlanificacionSummary } from '@/types'
 
 const providerLabels: Record<string, string> = {
-  google_meet: 'Google Meet',
-  zoom: 'Zoom personal',
-  teams: 'Microsoft Teams',
   calcom: 'Cal.com'
 }
 
@@ -29,9 +26,6 @@ const slotSourceLabels: Record<'calendar' | 'agenda' | 'planificacion', string> 
 }
 
 const meetingProviderLabels: Record<string, string> = {
-  google_meet: 'Google Meet',
-  zoom: 'Zoom',
-  teams: 'Microsoft Teams',
   calcom: 'Cal.com',
   google: 'Google Calendar'
 }
@@ -60,6 +54,11 @@ type PlanRow = { plan: AgendaPlanificacionSummary; block: AgendaPlanificacionSum
 
 type ToastState = { type: 'success' | 'error'; message: string } | null
 
+type CalcomSlotOption = {
+  start: string
+  end?: string | null
+}
+
 type AgendaFormState = {
   agenteId: string
   supervisorId: string
@@ -81,6 +80,34 @@ function formatLocalInputValue(date: Date): string {
   return local.toISOString().slice(0, 16)
 }
 
+function flattenCalcomSlots(raw: unknown): CalcomSlotOption[] {
+  if (!raw || typeof raw !== 'object') return []
+  return Object.values(raw as Record<string, unknown>)
+    .flatMap(value => Array.isArray(value) ? value : [])
+    .map((slot): CalcomSlotOption | null => {
+      if (!slot || typeof slot !== 'object') return null
+      const record = slot as Record<string, unknown>
+      const start = typeof record.start === 'string'
+        ? record.start
+        : typeof record.time === 'string'
+          ? record.time
+          : typeof record.startTime === 'string'
+            ? record.startTime
+            : null
+      if (!start) return null
+      return {
+        start,
+        end: typeof record.end === 'string'
+          ? record.end
+          : typeof record.endTime === 'string'
+            ? record.endTime
+            : null
+      }
+    })
+    .filter((slot): slot is CalcomSlotOption => Boolean(slot))
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+}
+
 function initialFormState(): AgendaFormState {
   const start = new Date()
   start.setMinutes(0, 0, 0)
@@ -91,7 +118,7 @@ function initialFormState(): AgendaFormState {
     supervisorId: '',
     inicio: formatLocalInputValue(start),
     fin: formatLocalInputValue(end),
-    meetingProvider: 'google_meet',
+    meetingProvider: 'calcom',
     calEventTypeId: '',
     meetingUrl: '',
     prospectoId: '',
@@ -109,6 +136,7 @@ function isoFromLocalInput(value: string): string | null {
 }
 
 const CDMX_TIME_ZONE = 'America/Mexico_City' as const
+const CALCOM_LOOKAHEAD_DAYS = 14
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso)
@@ -129,6 +157,12 @@ function formatTimeRange(inicioIso: string, finIso: string): string {
 
 const dateFormatter = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeZone: CDMX_TIME_ZONE })
 const timeFormatter = new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: CDMX_TIME_ZONE })
+const slotDateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: CDMX_TIME_ZONE
+})
 
 function formatDateOnly(iso: string | null | undefined): string | null {
   if (!iso) return null
@@ -170,6 +204,22 @@ function safeTimestamp(iso?: string | null): number | null {
   return Number.isNaN(ms) ? null : ms
 }
 
+function calcomSlotDateKey(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10)
+  return slotDateKeyFormatter.format(date)
+}
+
+function formatCalcomSlotTimeLabel(slot: CalcomSlotOption): string {
+  const start = new Date(slot.start)
+  const end = slot.end ? new Date(slot.end) : null
+  if (Number.isNaN(start.getTime())) return slot.start
+  if (end && !Number.isNaN(end.getTime())) {
+    return `${timeFormatter.format(start)} - ${timeFormatter.format(end)}`
+  }
+  return timeFormatter.format(start)
+}
+
 function slotHasSource(slot: AgendaBusySlot, source: 'calendar' | 'agenda' | 'planificacion'): boolean {
   if (slot.source === source) return true
   return Boolean(slot.sourceDetails?.some((detail) => detail.source === source))
@@ -195,6 +245,9 @@ export default function AgendaPage() {
   const [slots, setSlots] = useState<AgendaSlotsResponse | null>(null)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [slotsError, setSlotsError] = useState<string | null>(null)
+  const [calcomSlotOptions, setCalcomSlotOptions] = useState<CalcomSlotOption[]>([])
+  const [selectedCalcomDate, setSelectedCalcomDate] = useState<string | null>(null)
+  const [hasSelectedCalcomSlot, setHasSelectedCalcomSlot] = useState(false)
 
   const [toast, setToast] = useState<ToastState>(null)
   const [prospectOptions, setProspectOptions] = useState<AgendaProspectoOption[]>([])
@@ -210,28 +263,43 @@ export default function AgendaPage() {
   const [newGuestEmail, setNewGuestEmail] = useState('')
   const [showExtraGuestForm, setShowExtraGuestForm] = useState(false)
   const [showConnectModal, setShowConnectModal] = useState(false)
-  const [calEventTypes, setCalEventTypes] = useState<Array<{ id: number; title: string; lengthInMinutes: number; bookingUrl?: string }>>([])
-  const [calEventsLoading, setCalEventsLoading] = useState(false)
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false)
   const [prospectEmailLocked, setProspectEmailLocked] = useState(false)
   const selectedAgente = useMemo(() => {
     if (!form.agenteId) return null
     return developers.find((dev) => String(dev.id) === form.agenteId) ?? null
   }, [developers, form.agenteId])
+  const selectedCalcomEvent = useMemo(() => {
+    if (!selectedAgente?.calcomDefaultEventTypeId) return null
+    return {
+      id: selectedAgente.calcomDefaultEventTypeId,
+      title: selectedAgente.calcomDefaultEventTitle || 'Evento predeterminado de Cal.com',
+      bookingUrl: selectedAgente.calcomDefaultBookingUrl || null
+    }
+  }, [selectedAgente])
+  const calcomSlotsByDate = useMemo(() => {
+    const groups = new Map<string, CalcomSlotOption[]>()
+    for (const slot of calcomSlotOptions) {
+      const key = calcomSlotDateKey(slot.start)
+      const current = groups.get(key) || []
+      current.push(slot)
+      groups.set(key, current)
+    }
+    return Array.from(groups.entries()).map(([date, slotsForDate]) => ({
+      date,
+      label: formatDateOnly(slotsForDate[0]?.start) || date,
+      slots: slotsForDate
+    }))
+  }, [calcomSlotOptions])
+  const visibleCalcomSlots = useMemo(() => {
+    if (!selectedCalcomDate) return calcomSlotsByDate[0]?.slots || []
+    return calcomSlotsByDate.find(group => group.date === selectedCalcomDate)?.slots || []
+  }, [calcomSlotsByDate, selectedCalcomDate])
   const availableProviders = useMemo(() => {
     if (!selectedAgente) return [] as Array<{ value: AgendaFormState['meetingProvider']; label: string }>
     const providers: Array<{ value: AgendaFormState['meetingProvider']; label: string }> = []
-    if (selectedAgente.tokens.includes('google')) {
-      providers.push({ value: 'google_meet', label: 'Google Meet' })
-    }
-    if (selectedAgente.tokens.includes('zoom')) {
-      providers.push({ value: 'zoom', label: 'Zoom personal' })
-    }
-    if (selectedAgente.tokens.includes('teams')) {
-      providers.push({ value: 'teams', label: 'Microsoft Teams' })
-    }
-    if (selectedAgente.tokens.includes('calcom')) {
-      providers.push({ value: 'calcom', label: 'Evento de Cal.com' })
+    if (selectedAgente.tokens.includes('calcom') && selectedAgente.calcomDefaultEventTypeId) {
+      providers.push({ value: 'calcom', label: 'Cal.com' })
     }
     return providers
   }, [selectedAgente])
@@ -239,50 +307,30 @@ export default function AgendaPage() {
   // was computed previously but is unused. Removed to avoid lint warnings.
 
   useEffect(() => {
-    if (!selectedAgente) return
+    if (!selectedAgente) {
+      setCalcomSlotOptions([])
+      setSelectedCalcomDate(null)
+      setHasSelectedCalcomSlot(false)
+      return
+    }
+    setCalcomSlotOptions([])
+    setSelectedCalcomDate(null)
+    setHasSelectedCalcomSlot(false)
     if (availableProviders.length === 0) {
       setForm((prev) => {
-        if (prev.meetingProvider === 'google_meet') {
+        if (prev.meetingProvider === 'calcom' && prev.calEventTypeId === '') {
           return prev
         }
-        return { ...prev, meetingProvider: 'google_meet' }
+        return { ...prev, meetingProvider: 'calcom', calEventTypeId: '' }
       })
       return
     }
-    if (!availableProviders.some((provider) => provider.value === form.meetingProvider)) {
-      const nextProvider = availableProviders[0]
-      setForm((prev) => ({
-        ...prev,
-        meetingProvider: nextProvider.value
-      }))
-    }
-  }, [availableProviders, form.meetingProvider, selectedAgente])
-
-  useEffect(() => {
-    if (!selectedAgente?.tokens.includes('calcom')) {
-      setCalEventTypes([])
-      setForm(prev => ({ ...prev, calEventTypeId: '' }))
-      return
-    }
-    let cancelled = false
-    setCalEventsLoading(true)
-    fetch(`/api/integraciones/calcom/event-types?usuario_id=${selectedAgente.id}`, { cache: 'no-store' })
-      .then(async response => {
-        const json = await response.json()
-        if (!response.ok) throw new Error(json.error || 'No se pudieron cargar los eventos de Cal.com')
-        if (!cancelled) setCalEventTypes(json.eventTypes || [])
-      })
-      .catch(error => {
-        if (!cancelled) {
-          setCalEventTypes([])
-          setToast({ type: 'error', message: error instanceof Error ? error.message : 'No se pudieron cargar los eventos de Cal.com' })
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCalEventsLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [selectedAgente])
+    setForm((prev) => ({
+      ...prev,
+      meetingProvider: 'calcom',
+      calEventTypeId: selectedAgente.calcomDefaultEventTypeId ? String(selectedAgente.calcomDefaultEventTypeId) : ''
+    }))
+  }, [availableProviders.length, selectedAgente])
 
   useEffect(() => {
     if (!authorized) return
@@ -292,50 +340,6 @@ export default function AgendaPage() {
     }
     bootstrap().catch(() => {})
   }, [authorized])
-
-  useEffect(() => {
-    if (form.meetingProvider !== 'zoom') return
-    const manualUrl = selectedAgente?.zoomManual?.meetingUrl || ''
-    if (!manualUrl) return
-    setForm((prev) => {
-      if (prev.meetingProvider !== 'zoom') return prev
-      const trimmed = prev.meetingUrl.trim()
-      if (trimmed === manualUrl) {
-        return prev
-      }
-      if (trimmed.length > 0 && trimmed !== manualUrl) {
-        return prev
-      }
-      return { ...prev, meetingUrl: manualUrl }
-    })
-  }, [form.meetingProvider, selectedAgente])
-
-  useEffect(() => {
-    if (form.meetingProvider !== 'teams') return
-    const manualUrl = selectedAgente?.teamsManual?.meetingUrl || ''
-    if (!manualUrl) return
-    setForm((prev) => {
-      if (prev.meetingProvider !== 'teams') return prev
-      const trimmed = prev.meetingUrl.trim()
-      if (trimmed === manualUrl) {
-        return prev
-      }
-      if (trimmed.length > 0 && trimmed !== manualUrl) {
-        return prev
-      }
-      return { ...prev, meetingUrl: manualUrl }
-    })
-  }, [form.meetingProvider, selectedAgente])
-
-  useEffect(() => {
-    if (form.meetingProvider !== 'google_meet') return
-    if (form.meetingUrl.trim().length === 0) return
-    setForm((prev) => {
-      if (prev.meetingProvider !== 'google_meet') return prev
-      if (prev.meetingUrl.trim().length === 0) return prev
-      return { ...prev, meetingUrl: '' }
-    })
-  }, [form.meetingProvider, form.meetingUrl])
 
   const developerMap = useMemo(() => {
     const map = new Map<number, AgendaDeveloper>()
@@ -453,7 +457,7 @@ export default function AgendaPage() {
       setShowConnectModal(false)
       return
     }
-    setShowConnectModal(!selectedAgente.tokens.includes('google'))
+    setShowConnectModal(!(selectedAgente.tokens.includes('calcom') && selectedAgente.calcomDefaultEventTypeId))
   }, [actorId, form.agenteId, selectedAgente])
 
   useEffect(() => {
@@ -579,34 +583,63 @@ export default function AgendaPage() {
     rangeEnd.setHours(23, 59, 59, 999)
     const rangeStartIso = rangeStart.toISOString()
     const rangeEndIso = rangeEnd.toISOString()
+    const calRangeStart = new Date()
+    const selectedStartForCalRange = new Date(inicioIso)
+    if (hasSelectedCalcomSlot && selectedStartForCalRange > calRangeStart) {
+      selectedStartForCalRange.setHours(23, 59, 59, 999)
+    }
+    const calRangeEnd = new Date(calRangeStart)
+    calRangeEnd.setDate(calRangeEnd.getDate() + CALCOM_LOOKAHEAD_DAYS)
+    calRangeEnd.setHours(23, 59, 59, 999)
+    if (hasSelectedCalcomSlot && selectedStartForCalRange > calRangeEnd) {
+      calRangeEnd.setTime(selectedStartForCalRange.getTime())
+    }
+    const calRangeStartIso = calRangeStart.toISOString()
+    const calRangeEndIso = calRangeEnd.toISOString()
     const rangeLabel = formatAvailabilityRange(rangeStartIso, rangeEndIso)
 
     setSlotsLoading(true)
     setSlotsError(null)
     try {
       if (form.meetingProvider === 'calcom') {
-        const eventTypeId = Number(form.calEventTypeId)
+        const eventTypeId = Number(selectedAgente?.calcomDefaultEventTypeId)
         if (!Number.isFinite(eventTypeId)) {
-          throw new Error('Selecciona un evento de Cal.com')
+          throw new Error('Configura el evento predeterminado de Cal.com del agente en Integraciones')
         }
         const calParams = new URLSearchParams({
           usuario_id: String(agenteIdNumeric),
           event_type_id: String(eventTypeId),
-          start: rangeStartIso,
-          end: rangeEndIso,
+          start: calRangeStartIso,
+          end: calRangeEndIso,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Mexico_City'
         })
         const calResponse = await fetch(`/api/integraciones/calcom/slots?${calParams}`, { cache: 'no-store' })
         const calJson = await calResponse.json()
         if (!calResponse.ok) throw new Error(calJson.error || 'No se pudo consultar Cal.com')
-        const availableStarts = Object.values(calJson.slots || {})
-          .flatMap(value => Array.isArray(value) ? value : [])
-          .map((slot: { start?: string }) => slot.start)
-          .filter((start: string | undefined): start is string => Boolean(start))
-          .map(start => new Date(start).getTime())
+        const availableSlots = flattenCalcomSlots(calJson.slots || {})
+        setCalcomSlotOptions(availableSlots)
+        setSelectedCalcomDate((current) => {
+          if (current && availableSlots.some(slot => calcomSlotDateKey(slot.start) === current)) return current
+          return availableSlots[0] ? calcomSlotDateKey(availableSlots[0].start) : null
+        })
+        const availableStarts = availableSlots.map(slot => new Date(slot.start).getTime())
         const requestedStart = new Date(inicioIso).getTime()
-        if (!availableStarts.some((start: number) => Math.abs(start - requestedStart) < 60_000)) {
-          throw new Error('El horario seleccionado no está disponible en Cal.com')
+        if (availableSlots.length === 0) {
+          throw new Error(`Cal.com no devolvió horarios disponibles en los próximos ${CALCOM_LOOKAHEAD_DAYS} días. Revisa la disponibilidad del evento o el calendario conectado.`)
+        }
+        const requestedStartAvailable = availableStarts.some((start: number) => Math.abs(start - requestedStart) < 60_000)
+        if (!hasSelectedCalcomSlot) {
+          setSlots(null)
+          setHasCheckedAvailability(false)
+          setToast({ type: 'success', message: 'Horarios disponibles cargados. Elige un día y una hora de Cal.com.' })
+          return
+        }
+        if (!requestedStartAvailable) {
+          setSlots(null)
+          setHasSelectedCalcomSlot(false)
+          setHasCheckedAvailability(false)
+          setToast({ type: 'error', message: 'El horario elegido ya no está disponible en Cal.com. Selecciona otro horario.' })
+          return
         }
       }
       const data = await getAgendaSlots(ids, { desde: rangeStartIso, hasta: rangeEndIso })
@@ -766,6 +799,33 @@ export default function AgendaPage() {
     window.location.assign('/integraciones')
   }
 
+  function handleSelectCalcomSlot(slot: CalcomSlotOption) {
+    const start = new Date(slot.start)
+    if (Number.isNaN(start.getTime())) {
+      setToast({ type: 'error', message: 'El horario recibido de Cal.com no es válido.' })
+      return
+    }
+    const explicitEnd = slot.end ? new Date(slot.end) : null
+    const currentStart = isoFromLocalInput(form.inicio)
+    const currentEnd = isoFromLocalInput(form.fin)
+    const currentDurationMs = currentStart && currentEnd
+      ? Math.max(15 * 60_000, new Date(currentEnd).getTime() - new Date(currentStart).getTime())
+      : 30 * 60_000
+    const end = explicitEnd && !Number.isNaN(explicitEnd.getTime())
+      ? explicitEnd
+      : new Date(start.getTime() + currentDurationMs)
+
+    setForm((prev) => ({
+      ...prev,
+      inicio: formatLocalInputValue(start),
+      fin: formatLocalInputValue(end)
+    }))
+    setSelectedCalcomDate(calcomSlotDateKey(slot.start))
+    setHasSelectedCalcomSlot(true)
+    setHasCheckedAvailability(false)
+    setToast({ type: 'success', message: 'Horario de Cal.com seleccionado. Verifica disponibilidad interna antes de crear la cita.' })
+  }
+
   async function handleCreateCita(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!form.agenteId) {
@@ -783,7 +843,12 @@ export default function AgendaPage() {
       return
     }
     if (!availableProviders.find((provider) => provider.value === form.meetingProvider)) {
-      setToast({ type: 'error', message: 'El agente seleccionado no tiene configurado el proveedor elegido. Revisa las integraciones.' })
+      setToast({ type: 'error', message: 'El agente seleccionado no tiene Cal.com conectado o no tiene evento predeterminado configurado en Integraciones.' })
+      return
+    }
+
+    if (!hasSelectedCalcomSlot) {
+      setToast({ type: 'error', message: 'Busca y selecciona un horario disponible de Cal.com antes de crear la cita.' })
       return
     }
 
@@ -792,28 +857,14 @@ export default function AgendaPage() {
       return
     }
 
-    const isGoogleMeet = form.meetingProvider === 'google_meet'
     const isCalcom = form.meetingProvider === 'calcom'
-    const trimmedMeetingUrl = form.meetingUrl.trim()
+    const calDefaultEventTypeId = selectedAgente?.calcomDefaultEventTypeId ?? null
 
     if (isCalcom) {
-      if (!form.calEventTypeId) {
-        setToast({ type: 'error', message: 'Selecciona un evento de Cal.com.' })
+      if (!calDefaultEventTypeId) {
+        setToast({ type: 'error', message: 'Configura el evento predeterminado de Cal.com del agente en Integraciones.' })
         return
       }
-    } else if (isGoogleMeet) {
-      if (!selectedAgente?.tokens.includes('google')) {
-        setToast({ type: 'error', message: 'Conecta Google Calendar en Integraciones antes de agendar.' })
-        setShowConnectModal(true)
-        return
-      }
-      if (selectedAgente?.googleMeetAutoEnabled === false) {
-        setToast({ type: 'error', message: 'Habilita la generación automática de enlaces en Integraciones antes de usar Google Meet.' })
-        return
-      }
-    } else if (!trimmedMeetingUrl) {
-      setToast({ type: 'error', message: 'Este proveedor necesita un enlace personal guardado en Integraciones.' })
-      return
     }
 
     if (!form.prospectoId.trim()) {
@@ -854,10 +905,10 @@ export default function AgendaPage() {
       supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
       inicio: inicioIso,
       fin: finIso,
-  meetingProvider: form.meetingProvider,
-  meetingUrl: (isGoogleMeet || isCalcom) ? null : trimmedMeetingUrl || null,
-  generarEnlace: isGoogleMeet || isCalcom,
-      calEventTypeId: isCalcom ? Number(form.calEventTypeId) : null,
+      meetingProvider: 'calcom',
+      meetingUrl: null,
+      generarEnlace: true,
+      calEventTypeId: calDefaultEventTypeId,
       prospectoId: prospectoIdValue,
       prospectoNombre: form.prospectoNombre.trim() || null,
       prospectoEmail: form.prospectoEmail.trim() || null,
@@ -877,11 +928,14 @@ export default function AgendaPage() {
       const next = initialFormState()
       next.agenteId = form.agenteId
       next.supervisorId = form.supervisorId
-      next.meetingProvider = form.meetingProvider
-      next.calEventTypeId = form.calEventTypeId
+      next.meetingProvider = 'calcom'
+      next.calEventTypeId = calDefaultEventTypeId ? String(calDefaultEventTypeId) : ''
       next.prospectoEmail = ''
       setForm(next)
       setSlots(null)
+      setCalcomSlotOptions([])
+      setSelectedCalcomDate(null)
+      setHasSelectedCalcomSlot(false)
       if (form.agenteId) {
         try {
           const refreshed = await searchAgendaProspectos({ agenteId: Number(form.agenteId), limit: 50, includeConCita: true, includeSinCorreo: true })
@@ -950,10 +1004,10 @@ export default function AgendaPage() {
               <>
                 <h6 className="fw-semibold mb-2">Conecta tus integraciones</h6>
                 <p className="small mb-2">
-                  Conecta tu calendario de Google desde el módulo <strong>Integraciones</strong> para generar enlaces de Google Meet automáticamente.
+                  Conecta Cal.com desde el módulo <strong>Integraciones</strong> y selecciona tu evento predeterminado para agendar llamadas.
                 </p>
                 <p className="small mb-2">
-                  Ahí mismo puedes guardar tus enlaces personales de Zoom o Microsoft Teams para reutilizarlos al agendar.
+                  Google Calendar puede permanecer conectado para sincronizar disponibilidad y evitar empalmes.
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/integraciones')}>
                   Abrir integraciones
@@ -966,7 +1020,7 @@ export default function AgendaPage() {
                   Marca a los usuarios como desarrolladores y gestiona desde <strong>Parámetros &gt; Agenda interna</strong>. Ahí mismo podrás ver quién tiene acceso a la agenda y ajustar sus permisos.
                 </p>
                 <p className="small mb-2">
-                  Los enlaces personales de Zoom o Microsoft Teams se guardan en el módulo <strong>Integraciones</strong>. 
+                  Las llamadas se agendan con el evento predeterminado de Cal.com configurado por cada usuario en <strong>Integraciones</strong>.
                 </p>
                 <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => window.location.assign('/parametros#agenda-interna')}>
                   Abrir parámetros
@@ -1015,135 +1069,92 @@ export default function AgendaPage() {
                   </select>
                 </div>
 
-                <div className="col-md-6">
-                  <label className="form-label small">Inicio *</label>
-                  <input
-                    data-testid="agenda-form-start"
-                    type="datetime-local"
-                    className="form-control form-control-sm"
-                    value={form.inicio}
-                    onChange={(e) => setForm((prev) => ({ ...prev, inicio: e.target.value }))}
-                  />
+                {hasSelectedCalcomSlot ? (
+                <div className="col-12">
+                  <label className="form-label small">Horario elegido *</label>
+                  <div className="border rounded px-3 py-2 bg-light">
+                    <div className="fw-semibold small">{formatDateTimeRangeDetailed(isoFromLocalInput(form.inicio) || form.inicio, isoFromLocalInput(form.fin) || form.fin)}</div>
+                    <div className="text-muted small">Valida disponibilidad interna antes de crear la cita.</div>
+                  </div>
                 </div>
-                <div className="col-md-6">
-                  <label className="form-label small">Fin *</label>
-                  <input
-                    data-testid="agenda-form-end"
-                    type="datetime-local"
-                    className="form-control form-control-sm"
-                    value={form.fin}
-                    onChange={(e) => setForm((prev) => ({ ...prev, fin: e.target.value }))}
-                  />
-                </div>
-
-                <div className="col-md-6">
-                  <label className="form-label small">Proveedor *</label>
-                  <select
-                    data-testid="agenda-form-provider"
-                    className="form-select form-select-sm"
-                    value={form.meetingProvider}
-                    onChange={(e) => setForm((prev) => ({ ...prev, meetingProvider: e.target.value as AgendaFormState['meetingProvider'] }))}
-                    disabled={availableProviders.length === 0}
-                  >
-                    {availableProviders.length === 0 && <option value="google_meet">Sin proveedores configurados</option>}
-                    {availableProviders.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {form.meetingProvider === 'calcom' && (
-                  <div className="col-md-6">
-                    <label className="form-label small">Evento de Cal.com *</label>
-                    <select
-                      className="form-select form-select-sm"
-                      value={form.calEventTypeId}
-                      disabled={calEventsLoading}
-                      onChange={(event) => {
-                        const value = event.target.value
-                        const selected = calEventTypes.find(item => item.id === Number(value))
-                        setForm(prev => {
-                          if (!selected?.lengthInMinutes) return { ...prev, calEventTypeId: value }
-                          const start = new Date(prev.inicio)
-                          const end = new Date(start.getTime() + selected.lengthInMinutes * 60_000)
-                          return {
-                            ...prev,
-                            calEventTypeId: value,
-                            fin: formatLocalInputValue(end)
-                          }
-                        })
-                        setHasCheckedAvailability(false)
-                      }}
-                    >
-                      <option value="">{calEventsLoading ? 'Cargando…' : 'Seleccionar evento…'}</option>
-                      {calEventTypes.map(event => (
-                        <option key={event.id} value={event.id}>
-                          {event.title}{event.lengthInMinutes ? ` · ${event.lengthInMinutes} min` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="form-text">La plataforma de reunión será la configurada en este evento.</div>
+                ) : (
+                  <div className="col-12">
+                    <div className="alert alert-info small mb-0">
+                      Primero busca horarios disponibles de Cal.com. Después elige un día y una hora.
+                    </div>
                   </div>
                 )}
+
+                <div className="col-md-6">
+                  <label className="form-label small">Proveedor de llamada</label>
+                  <div className="border rounded px-3 py-2 bg-light small">
+                    Cal.com
+                    <div className="text-muted">Se usa automáticamente para todas las llamadas.</div>
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small">Evento de Cal.com *</label>
+                  {selectedCalcomEvent ? (
+                    <div className="border rounded px-3 py-2 bg-light small">
+                      <div className="fw-semibold">{selectedCalcomEvent.title}</div>
+                      {selectedCalcomEvent.bookingUrl && <div className="text-muted text-break">{selectedCalcomEvent.bookingUrl}</div>}
+                      <div className="text-muted">Configurado en Integraciones.</div>
+                    </div>
+                  ) : (
+                    <div className="alert alert-warning small mb-0">
+                      Selecciona el evento predeterminado de Cal.com del agente en Integraciones.
+                    </div>
+                  )}
+                </div>
                 {selectedAgente && availableProviders.length === 0 && (
                   <div className="col-12">
                     <div className="alert alert-warning small mb-0">
-                      Este usuario no tiene integraciones activas para agendar. Ve a <strong>Integraciones</strong> para conectar Google Calendar o guardar enlaces personales.
+                      Este usuario no tiene Cal.com conectado o no tiene evento predeterminado configurado. Ve a <strong>Integraciones</strong> para completarlo.
                     </div>
                   </div>
                 )}
-                {selectedAgente && selectedAgente.googleMeetAutoEnabled === false && (
+                {calcomSlotOptions.length > 0 && (
                   <div className="col-12">
-                    <div className="alert alert-warning small mb-0">
-                      Este agente tiene deshabilitada la generación automática de Google Meet. Activa la integración en <strong>Integraciones</strong> antes de agendar.
+                    <div className="border rounded p-3 bg-light">
+                      <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                        <div>
+                          <div className="fw-semibold small">Horarios disponibles en Cal.com</div>
+                          <div className="text-muted small">Primero elige día, luego una hora. Después valida disponibilidad interna para confirmar que no choque con supervisor o agenda del CRM.</div>
+                        </div>
+                        <span className="badge text-bg-primary">{calcomSlotsByDate.length} días disponibles</span>
+                      </div>
+                      <div className="d-flex flex-wrap gap-2 mb-3">
+                        {calcomSlotsByDate.map(group => (
+                          <button
+                            key={group.date}
+                            type="button"
+                            className={`btn btn-sm ${selectedCalcomDate === group.date ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => setSelectedCalcomDate(group.date)}
+                          >
+                            {group.label}
+                            <span className="badge text-bg-light border ms-2">{group.slots.length}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="d-flex flex-wrap gap-2">
+                        {visibleCalcomSlots.map(slot => {
+                          const currentStart = isoFromLocalInput(form.inicio)
+                          const isSelected = hasSelectedCalcomSlot && currentStart
+                            ? Math.abs(new Date(slot.start).getTime() - new Date(currentStart).getTime()) < 60_000
+                            : false
+                          return (
+                            <button
+                              key={`${slot.start}-${slot.end || ''}`}
+                              type="button"
+                              className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-outline-primary'}`}
+                              onClick={() => handleSelectCalcomSlot(slot)}
+                            >
+                              {formatCalcomSlotTimeLabel(slot)}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {form.meetingProvider === 'zoom' && (
-                  <div className="col-12">
-                    {selectedAgente?.zoomManual?.meetingUrl ? (
-                      <div className="alert alert-secondary small mb-0">
-                        Se usará el enlace personal guardado para {selectedAgente.nombre || selectedAgente.email}.
-                        <div className="mt-1 text-break">{selectedAgente.zoomManual.meetingUrl}</div>
-                        {selectedAgente.zoomManual?.meetingId && (
-                          <div className="mt-1">ID: {selectedAgente.zoomManual.meetingId}</div>
-                        )}
-                        {selectedAgente.zoomManual?.meetingPassword && (
-                          <div className="mt-1">Contraseña: {selectedAgente.zoomManual.meetingPassword}</div>
-                        )}
-                      </div>
-                    ) : selectedAgente?.zoomLegacy ? (
-                      <div className="alert alert-warning small mb-0">
-                        Este usuario tiene una conexión antigua de Zoom. Guarda un enlace personal actualizado en <strong>Integraciones</strong> antes de agendar.
-                      </div>
-                    ) : (
-                      <div className="alert alert-warning small mb-0">
-                        No hay enlace personal de Zoom guardado para este usuario. Regístralo en <strong>Integraciones</strong> para agendar con Zoom.
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {form.meetingProvider === 'teams' && (
-                  <div className="col-12">
-                    {selectedAgente?.teamsManual?.meetingUrl ? (
-                      <div className="alert alert-secondary small mb-0">
-                        Se usará el enlace de Teams guardado para {selectedAgente.nombre || selectedAgente.email}.
-                        <div className="mt-1 text-break">{selectedAgente.teamsManual.meetingUrl}</div>
-                        {selectedAgente.teamsManual?.meetingId && (
-                          <div className="mt-1">ID: {selectedAgente.teamsManual.meetingId}</div>
-                        )}
-                        {selectedAgente.teamsManual?.meetingPassword && (
-                          <div className="mt-1">Contraseña: {selectedAgente.teamsManual.meetingPassword}</div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="alert alert-warning small mb-0">
-                        No hay un enlace de Teams guardado para este usuario. Regístralo en <strong>Integraciones</strong> antes de agendar con este proveedor.
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1421,7 +1432,7 @@ export default function AgendaPage() {
                     {creating ? 'Creando cita…' : 'Crear cita'}
                   </button>
                   <button data-testid="agenda-availability-button" type="button" className="btn btn-outline-secondary btn-sm" onClick={handleCheckAvailability} disabled={slotsLoading}>
-                    {slotsLoading ? 'Consultando…' : 'Ver disponibilidad'}
+                    {slotsLoading ? 'Consultando…' : hasSelectedCalcomSlot ? 'Validar horario elegido' : 'Buscar horarios'}
                   </button>
                   {!hasCheckedAvailability && (
                     <span className="text-danger small">Verifica disponibilidad antes de crear la cita.</span>
@@ -1696,9 +1707,9 @@ export default function AgendaPage() {
       {showConnectModal && (
         <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex align-items-center justify-content-center" style={{ zIndex: 1050 }}>
           <div className="bg-white rounded shadow p-4" role="dialog" aria-modal="true" style={{ maxWidth: 420, width: '90%' }}>
-            <h5 className="fw-semibold">Conecta Google Calendar</h5>
+            <h5 className="fw-semibold">Configura Cal.com</h5>
             <p className="small mb-3">
-              Para usar la agenda interna necesitas conectar tu calendario de Google desde el módulo <strong>Integraciones</strong>. Una vez vinculado podrás generar enlaces automáticos.
+              Para usar la agenda interna necesitas conectar Cal.com y seleccionar un evento predeterminado desde el módulo <strong>Integraciones</strong>.
             </p>
             <div className="d-flex justify-content-end">
               <button type="button" className="btn btn-primary btn-sm" onClick={handleConnectModalAction}>

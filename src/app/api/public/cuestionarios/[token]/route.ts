@@ -146,8 +146,7 @@ export async function POST(
         questionnaireTitle: link.questionnaire.titulo,
         agentCode: link.agent_code,
         submissionId: submission.id,
-        prospectoId: submission.prospecto_id ? Number(submission.prospecto_id) : null,
-        sendEmail: false
+        prospectoId: submission.prospecto_id ? Number(submission.prospecto_id) : null
       })
     }
     return NextResponse.json({ success: true, result: pprResult })

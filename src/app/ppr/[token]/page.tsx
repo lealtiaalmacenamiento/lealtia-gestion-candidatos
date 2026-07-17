@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import Cal, { getCalApi, type EmbedEvent } from '@calcom/embed-react'
 import type { QuestionnaireQuestion, QuestionnaireSection } from '@/types'
 import type { PprPlanKey, PprResult } from '@/lib/pprCalculator'
 
@@ -26,6 +25,11 @@ interface Contact {
   edad: number
 }
 
+interface CalcomSlotOption {
+  start: string
+  end?: string | null
+}
+
 const money = new Intl.NumberFormat('es-MX', {
   style: 'currency',
   currency: 'MXN',
@@ -37,6 +41,67 @@ const udi = new Intl.NumberFormat('es-MX', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 })
+
+const CDMX_TIME_ZONE = 'America/Mexico_City'
+const SLOT_LOOKAHEAD_DAYS = 14
+const dateFormatter = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeZone: CDMX_TIME_ZONE })
+const timeFormatter = new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: CDMX_TIME_ZONE })
+const slotDateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: CDMX_TIME_ZONE
+})
+
+function flattenCalcomSlots(raw: unknown): CalcomSlotOption[] {
+  if (!raw || typeof raw !== 'object') return []
+  return Object.values(raw as Record<string, unknown>)
+    .flatMap(value => Array.isArray(value) ? value : [])
+    .map((slot): CalcomSlotOption | null => {
+      if (!slot || typeof slot !== 'object') return null
+      const record = slot as Record<string, unknown>
+      const start = typeof record.start === 'string'
+        ? record.start
+        : typeof record.time === 'string'
+          ? record.time
+          : typeof record.startTime === 'string'
+            ? record.startTime
+            : null
+      if (!start) return null
+      return {
+        start,
+        end: typeof record.end === 'string'
+          ? record.end
+          : typeof record.endTime === 'string'
+            ? record.endTime
+            : null
+      }
+    })
+    .filter((slot): slot is CalcomSlotOption => Boolean(slot))
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+}
+
+function slotDateKey(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10)
+  return slotDateKeyFormatter.format(date)
+}
+
+function formatSlotDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return dateFormatter.format(date)
+}
+
+function formatSlotTime(slot: CalcomSlotOption): string {
+  const start = new Date(slot.start)
+  const end = slot.end ? new Date(slot.end) : null
+  if (Number.isNaN(start.getTime())) return slot.start
+  if (end && !Number.isNaN(end.getTime())) {
+    return `${timeFormatter.format(start)} - ${timeFormatter.format(end)}`
+  }
+  return timeFormatter.format(start)
+}
 
 export default function PublicPprFlowPage() {
   const { token } = useParams<{ token: string }>()
@@ -52,6 +117,11 @@ export default function PublicPprFlowPage() {
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [slotsLoading, setSlotsLoading] = useState(false)
+  const [slotsError, setSlotsError] = useState<string | null>(null)
+  const [availableSlots, setAvailableSlots] = useState<CalcomSlotOption[]>([])
+  const [selectedSlotDate, setSelectedSlotDate] = useState<string | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<CalcomSlotOption | null>(null)
 
   useEffect(() => {
     fetch(`/api/public/cuestionarios/${token}`, { cache: 'no-store' })
@@ -65,6 +135,63 @@ export default function PublicPprFlowPage() {
   }, [token])
 
   const progress = step === 1 ? 25 : step === 2 ? 50 : step === 3 ? 75 : 100
+  const slotGroups = useMemo(() => {
+    const groups = new Map<string, CalcomSlotOption[]>()
+    for (const slot of availableSlots) {
+      const key = slotDateKey(slot.start)
+      const current = groups.get(key) || []
+      current.push(slot)
+      groups.set(key, current)
+    }
+    return Array.from(groups.entries()).map(([date, slots]) => ({
+      date,
+      label: formatSlotDate(slots[0]?.start || date),
+      slots
+    }))
+  }, [availableSlots])
+  const visibleSlots = useMemo(() => {
+    if (!selectedSlotDate) return slotGroups[0]?.slots || []
+    return slotGroups.find(group => group.date === selectedSlotDate)?.slots || []
+  }, [selectedSlotDate, slotGroups])
+
+  useEffect(() => {
+    if (step !== 3 || !flow?.event.id) return
+    let cancelled = false
+    const start = new Date()
+    const end = new Date(start)
+    end.setDate(end.getDate() + SLOT_LOOKAHEAD_DAYS)
+    end.setHours(23, 59, 59, 999)
+    const params = new URLSearchParams({
+      start: start.toISOString(),
+      end: end.toISOString(),
+      timeZone: CDMX_TIME_ZONE
+    })
+
+    setSlotsLoading(true)
+    setSlotsError(null)
+    setAvailableSlots([])
+    setSelectedSlot(null)
+    fetch(`/api/public/cuestionarios/${token}/slots?${params}`, { cache: 'no-store' })
+      .then(async response => {
+        const json = await response.json()
+        if (!response.ok) throw new Error(json.error || 'No se pudo cargar la disponibilidad')
+        const nextSlots = flattenCalcomSlots(json.slots || {})
+        if (cancelled) return
+        setAvailableSlots(nextSlots)
+        setSelectedSlotDate(nextSlots[0] ? slotDateKey(nextSlots[0].start) : null)
+        if (!nextSlots.length) {
+          setSlotsError('No hay horarios disponibles por el momento. Intenta nuevamente más tarde.')
+        }
+      })
+      .catch(err => {
+        if (!cancelled) setSlotsError(err instanceof Error ? err.message : 'No se pudo cargar la disponibilidad')
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [flow?.event.id, step, token])
 
   async function submitQuestionnaire(event: React.FormEvent) {
     event.preventDefault()
@@ -133,10 +260,11 @@ export default function PublicPprFlowPage() {
     }
   }
 
-  async function finalizeCalcomBooking(event: EmbedEvent<'bookingSuccessfulV2'>['detail']['data']) {
-    if (!submissionId) return
-    const fallbackStart = event.startTime || new Date().toISOString()
-    const fallbackEnd = event.endTime || fallbackStart
+  async function bookSelectedSlot() {
+    if (!submissionId || !selectedSlot) {
+      setError('Selecciona un horario disponible para agendar')
+      return
+    }
     setWorking(true)
     setError(null)
     try {
@@ -145,29 +273,23 @@ export default function PublicPprFlowPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           submission_id: submissionId,
-          booking_uid: event.uid,
-          start: fallbackStart,
-          end: fallbackEnd,
-          meetingUrl: event.videoCallUrl || null
+          start: selectedSlot.start,
+          end: selectedSlot.end || null,
+          timeZone: CDMX_TIME_ZONE
         })
       })
       const json = await response.json()
-      if (!response.ok) throw new Error(json.error || 'La cita se creó en Cal.com, pero no se pudo sincronizar con el CRM')
+      if (!response.ok) throw new Error(json.error || 'No se pudo crear la cita en Cal.com')
       setBooking({
-        start: json.booking?.start || fallbackStart,
-        end: json.booking?.end || fallbackEnd,
-        meetingUrl: json.booking?.meetingUrl || event.videoCallUrl || ''
+        start: json.booking?.start || selectedSlot.start,
+        end: json.booking?.end || selectedSlot.end || selectedSlot.start,
+        meetingUrl: json.booking?.meetingUrl || ''
       })
+      setStep(4)
     } catch (err) {
-      setBooking({
-        start: fallbackStart,
-        end: fallbackEnd,
-        meetingUrl: event.videoCallUrl || ''
-      })
-      setError(err instanceof Error ? err.message : 'La cita se creó en Cal.com, pero no se pudo sincronizar con el CRM')
+      setError(err instanceof Error ? err.message : 'No se pudo crear la cita en Cal.com')
     } finally {
       setWorking(false)
-      setStep(4)
     }
   }
 
@@ -264,14 +386,64 @@ export default function PublicPprFlowPage() {
           <div className="card-body p-4">
             <h2 className="h4">Agenda tu sesión</h2>
             <p className="text-muted">{flow.event.title || 'Sesión con tu asesor'}</p>
-            {flow.event.booking_url && contact && submissionId ? (
-              <CalcomBookingEmbed
-                bookingUrl={flow.event.booking_url}
-                contact={contact}
-                submissionId={submissionId}
-                questionnaireToken={token}
-                onSuccess={event => { void finalizeCalcomBooking(event) }}
-              />
+            {flow.event.id && contact && submissionId ? (
+              <div className="d-flex flex-column gap-3">
+                {slotsLoading && (
+                  <div className="text-center py-4">
+                    <span className="spinner-border text-primary" />
+                    <div className="small text-muted mt-2">Cargando disponibilidad de Cal.com…</div>
+                  </div>
+                )}
+                {slotsError && <div className="alert alert-warning">{slotsError}</div>}
+                {!slotsLoading && slotGroups.length > 0 && (
+                  <>
+                    <div>
+                      <div className="fw-semibold mb-2">Elige un día</div>
+                      <div className="d-flex flex-wrap gap-2">
+                        {slotGroups.map(group => (
+                          <button
+                            key={group.date}
+                            type="button"
+                            className={`btn btn-sm ${selectedSlotDate === group.date ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => {
+                              setSelectedSlotDate(group.date)
+                              setSelectedSlot(null)
+                            }}
+                          >
+                            {group.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="fw-semibold mb-2">Elige una hora</div>
+                      <div className="d-flex flex-wrap gap-2">
+                        {visibleSlots.map(slot => {
+                          const selected = selectedSlot?.start === slot.start
+                          return (
+                            <button
+                              key={`${slot.start}-${slot.end || ''}`}
+                              type="button"
+                              className={`btn btn-sm ${selected ? 'btn-success' : 'btn-outline-primary'}`}
+                              onClick={() => setSelectedSlot(slot)}
+                            >
+                              {formatSlotTime(slot)}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {selectedSlot && (
+                      <div className="alert alert-info mb-0">
+                        Horario seleccionado: <strong>{formatSlotDate(selectedSlot.start)} · {formatSlotTime(selectedSlot)}</strong>
+                      </div>
+                    )}
+                    <button className="btn btn-success btn-lg" type="button" onClick={() => void bookSelectedSlot()} disabled={working || !selectedSlot}>
+                      {working ? 'Agendando…' : 'Confirmar cita'}
+                    </button>
+                  </>
+                )}
+              </div>
             ) : (
               <div className="alert alert-warning">
                 El evento seleccionado no tiene un enlace de reserva disponible en Cal.com.
@@ -296,128 +468,6 @@ export default function PublicPprFlowPage() {
   )
 }
 
-function CalcomBookingEmbed({
-  bookingUrl,
-  contact,
-  submissionId,
-  questionnaireToken,
-  onSuccess
-}: {
-  bookingUrl: string
-  contact: Contact
-  submissionId: string
-  questionnaireToken: string
-  onSuccess: (event: EmbedEvent<'bookingSuccessfulV2'>['detail']['data']) => void
-}) {
-  const [embedReady, setEmbedReady] = useState(false)
-  const [embedError, setEmbedError] = useState<string | null>(null)
-  const parsedUrl = useMemo(() => {
-    try {
-      const url = new URL(bookingUrl)
-      return {
-        calLink: url.pathname.replace(/^\/+|\/+$/g, ''),
-        calOrigin: url.origin
-      }
-    } catch {
-      return null
-    }
-  }, [bookingUrl])
-  const namespace = useMemo(
-    () => `ppr-${submissionId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}`,
-    [submissionId]
-  )
-
-  useEffect(() => {
-    let disposed = false
-    let ready = false
-    let calApi: Awaited<ReturnType<typeof getCalApi>> | null = null
-    const handleSuccess = (event: EmbedEvent<'bookingSuccessfulV2'>) => {
-      if (!disposed) onSuccess(event.detail.data)
-    }
-    const handleReady = () => {
-      ready = true
-      if (!disposed) setEmbedReady(true)
-    }
-    const handleFailed = (event: EmbedEvent<'linkFailed'>) => {
-      if (!disposed) setEmbedError(event.detail.data.msg || 'Cal.com no pudo cargar el evento')
-    }
-    const timeout = window.setTimeout(() => {
-      if (!disposed && !ready) {
-        setEmbedError('Cal.com tardó demasiado en responder. Recarga la página para intentarlo nuevamente.')
-      }
-    }, 15_000)
-
-    void getCalApi({ namespace }).then(api => {
-      if (disposed) return
-      calApi = api
-      api('ui', {
-        theme: 'light',
-        layout: 'month_view',
-        hideEventTypeDetails: false
-      })
-      api('on', {
-        action: 'bookingSuccessfulV2',
-        callback: handleSuccess
-      })
-      api('on', { action: 'linkReady', callback: handleReady })
-      api('on', { action: 'linkFailed', callback: handleFailed })
-    }).catch(error => {
-      if (!disposed) {
-        setEmbedError(error instanceof Error ? error.message : 'No se pudo iniciar el calendario de Cal.com')
-      }
-    })
-
-    return () => {
-      disposed = true
-      window.clearTimeout(timeout)
-      calApi?.('off', {
-        action: 'bookingSuccessfulV2',
-        callback: handleSuccess
-      })
-      calApi?.('off', { action: 'linkReady', callback: handleReady })
-      calApi?.('off', { action: 'linkFailed', callback: handleFailed })
-    }
-  }, [namespace, onSuccess])
-
-  if (!parsedUrl?.calLink) {
-    return <div className="alert alert-warning">El enlace de Cal.com no es válido.</div>
-  }
-  if (embedError) {
-    return (
-      <div className="alert alert-warning">
-        <div className="fw-semibold mb-1">No se pudo cargar la agenda de Cal.com</div>
-        <div className="small mb-3">{embedError}</div>
-        <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => window.location.reload()}>
-          Reintentar
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="position-relative" style={{ minHeight: 720 }}>
-      {!embedReady && (
-        <div className="position-absolute top-50 start-50 translate-middle text-center">
-          <span className="spinner-border text-primary" />
-          <div className="small text-muted mt-2">Cargando disponibilidad de Cal.com…</div>
-        </div>
-      )}
-      <Cal
-        namespace={namespace}
-        calLink={parsedUrl.calLink}
-        calOrigin={parsedUrl.calOrigin}
-        style={{ width: '100%', minHeight: 720, overflow: 'auto' }}
-        config={{
-          layout: 'month_view',
-          name: contact.nombre,
-          email: contact.email,
-          'metadata[lealtiaSubmissionId]': submissionId,
-          'metadata[lealtiaQuestionnaireToken]': questionnaireToken
-        }}
-      />
-    </div>
-  )
-}
 
 function PprRow({
   label,

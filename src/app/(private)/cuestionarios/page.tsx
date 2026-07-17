@@ -53,9 +53,13 @@ export default function QuestionnaireLinksPage() {
       setLinks(linksJson.links || [])
       if (eventResponse.ok) {
         setEventTypes(eventJson.eventTypes || [])
-        if (calStatusResponse?.ok) {
+        if (eventJson.default_event_type_id) {
+          setEventTypeId(String(eventJson.default_event_type_id))
+        } else if (calStatusResponse?.ok) {
           const statusJson = await calStatusResponse.json() as { default_event_type_id?: number | null }
-          if (statusJson.default_event_type_id) setEventTypeId(String(statusJson.default_event_type_id))
+          setEventTypeId(statusJson.default_event_type_id ? String(statusJson.default_event_type_id) : '')
+        } else {
+          setEventTypeId('')
         }
       } else {
         setNotice({ type: 'warning', message: eventJson.error || 'Conecta tu cuenta de Cal.com para generar enlaces' })
@@ -95,7 +99,7 @@ export default function QuestionnaireLinksPage() {
 
   async function generate() {
     if (!questionnaireId || !eventTypeId) {
-      setNotice({ type: 'warning', message: 'Selecciona un cuestionario y un evento' })
+      setNotice({ type: 'warning', message: 'Selecciona un cuestionario y configura el evento predeterminado de Cal.com en Integraciones' })
       return
     }
     setSaving(true)
@@ -106,7 +110,6 @@ export default function QuestionnaireLinksPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionnaire_id: questionnaireId,
-          cal_event_type_id: Number(eventTypeId),
           agente_id: Number(targetAgentId)
         })
       })
@@ -165,7 +168,7 @@ export default function QuestionnaireLinksPage() {
             <div className="card border-0 shadow-sm">
               <div className="card-body">
                 <h5 className="card-title">Generar enlace</h5>
-                <p className="text-muted small">El prospecto quedará asociado con el agente y con el evento seleccionado.</p>
+                <p className="text-muted small">El prospecto quedará asociado con el agente y con el evento predeterminado de Cal.com configurado en Integraciones.</p>
                 {canChooseAgent && (
                   <div className="mb-3">
                     <label className="form-label">Agente responsable</label>
@@ -199,17 +202,21 @@ export default function QuestionnaireLinksPage() {
                 </div>
                 <div className="mb-3">
                   <label className="form-label">Evento de Cal.com</label>
-                  <select className="form-select" value={eventTypeId} onChange={event => setEventTypeId(event.target.value)}>
-                    <option value="">Seleccionar…</option>
-                    {eventTypes.map(event => (
-                      <option key={event.id} value={event.id}>
-                        {event.title}{event.lengthInMinutes ? ` · ${event.lengthInMinutes} min` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedEvent?.bookingUrl && <div className="form-text">{selectedEvent.bookingUrl}</div>}
+                  {selectedEvent ? (
+                    <div className="border rounded px-3 py-2 bg-light">
+                      <div className="fw-semibold">
+                        {selectedEvent.title}{selectedEvent.lengthInMinutes ? ` · ${selectedEvent.lengthInMinutes} min` : ''}
+                      </div>
+                      {selectedEvent.bookingUrl && <div className="small text-muted text-break">{selectedEvent.bookingUrl}</div>}
+                      <div className="small text-muted">Se toma del evento predeterminado configurado en Integraciones.</div>
+                    </div>
+                  ) : (
+                    <div className="alert alert-warning small mb-0">
+                      Configura el evento predeterminado de Cal.com del agente en Integraciones.
+                    </div>
+                  )}
                 </div>
-                <button className="btn btn-primary" type="button" onClick={() => void generate()} disabled={saving || eventTypes.length === 0}>
+                <button className="btn btn-primary" type="button" onClick={() => void generate()} disabled={saving || !eventTypeId}>
                   {saving ? 'Generando…' : 'Generar enlace personalizado'}
                 </button>
                 {lastUrl && (

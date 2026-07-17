@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getCalcomApiKey, getCalcomEventTypes } from '@/lib/integrations/calcom'
+import { resolveCalcomDefaultEventType } from '@/lib/integrations/calcom'
 
 export const LANDING_PPR_PARAM_TYPE = 'landing'
 export const LANDING_PPR_PARAM_KEY = 'ppr_questionnaire_id'
@@ -138,39 +138,15 @@ async function getActiveAgentCode(
 }
 
 async function resolveAgentEventType(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   agent: AgentRow
 ): Promise<{ id: number; title: string | null; bookingUrl: string | null }> {
   if (!agent.id_auth) throw new Error('El agente no tiene identidad de acceso')
-
-  const { data: tokenRow } = await supabase
-    .from('tokens_integracion')
-    .select('meta')
-    .eq('usuario_id', agent.id_auth)
-    .eq('proveedor', 'calcom')
-    .maybeSingle()
-
-  const meta = tokenRow?.meta && typeof tokenRow.meta === 'object'
-    ? tokenRow.meta as Record<string, unknown>
-    : {}
-  const defaultEventId = Number(meta.default_event_type_id)
-  if (Number.isFinite(defaultEventId) && defaultEventId > 0) {
-    return {
-      id: defaultEventId,
-      title: typeof meta.default_event_title === 'string' ? meta.default_event_title : null,
-      bookingUrl: typeof meta.default_booking_url === 'string' ? meta.default_booking_url : null
-    }
-  }
-
-  const apiKey = await getCalcomApiKey(agent.id_auth)
-  if (!apiKey) throw new Error('El agente no tiene Cal.com conectado')
-  const eventTypes = await getCalcomEventTypes(apiKey)
-  const first = eventTypes[0]
-  if (!first?.id) throw new Error('El agente no tiene eventos disponibles en Cal.com')
+  const { eventType } = await resolveCalcomDefaultEventType(agent.id_auth)
   return {
-    id: first.id,
-    title: first.title ?? null,
-    bookingUrl: first.bookingUrl ?? null
+    id: eventType.id,
+    title: eventType.title ?? null,
+    bookingUrl: eventType.bookingUrl ?? null
   }
 }
 
@@ -217,4 +193,3 @@ export async function createLandingQuestionnaireLink(
   if (error) throw new Error(error.message)
   return { token, eventTitle: eventType.title }
 }
-

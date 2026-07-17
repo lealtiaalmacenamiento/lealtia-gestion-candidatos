@@ -35,8 +35,26 @@ export async function GET(req: Request) {
   }
 
   try {
+    const supabase = ensureAdminClient()
+    const { data: tokenRow } = await supabase
+      .from('tokens_integracion')
+      .select('meta')
+      .eq('usuario_id', targetAuthId)
+      .eq('proveedor', 'calcom')
+      .maybeSingle()
+    const meta = tokenRow?.meta && typeof tokenRow.meta === 'object'
+      ? tokenRow.meta as Record<string, unknown>
+      : {}
+    const defaultEventTypeId = Number(meta.default_event_type_id)
     const eventTypes = await getCalcomEventTypes(apiKey)
-    return NextResponse.json({ eventTypes })
+    const defaultEventType = Number.isFinite(defaultEventTypeId)
+      ? eventTypes.find(event => event.id === defaultEventTypeId) ?? null
+      : null
+    return NextResponse.json({
+      eventTypes,
+      default_event_type: defaultEventType,
+      default_event_type_id: defaultEventType?.id ?? null
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error desconocido'
     return NextResponse.json({ error: message }, { status: 500 })

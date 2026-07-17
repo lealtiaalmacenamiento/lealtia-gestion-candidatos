@@ -204,6 +204,38 @@ export interface CalcomBooking {
   cancellationReason?: string | null
 }
 
+export interface ResolvedCalcomDefaultEventType {
+  apiKey: string
+  eventType: CalcomEventType
+}
+
+export async function resolveCalcomDefaultEventType(userId: string): Promise<ResolvedCalcomDefaultEventType> {
+  const [{ token, error }, apiKey] = await Promise.all([
+    getIntegrationToken(userId, 'calcom'),
+    getCalcomApiKey(userId)
+  ])
+  if (error) throw new Error(error.message)
+  if (!apiKey || !token?.accessToken) {
+    throw new Error('Conecta Cal.com en Integraciones antes de agendar llamadas.')
+  }
+
+  const meta = token.meta && typeof token.meta === 'object'
+    ? token.meta as Record<string, unknown>
+    : {}
+  const defaultEventTypeId = Number(meta.default_event_type_id)
+  if (!Number.isFinite(defaultEventTypeId) || defaultEventTypeId <= 0) {
+    throw new Error('Selecciona un evento predeterminado de Cal.com en Integraciones antes de agendar llamadas.')
+  }
+
+  const eventTypes = await getCalcomEventTypes(apiKey)
+  const eventType = eventTypes.find(event => event.id === defaultEventTypeId)
+  if (!eventType) {
+    throw new Error('El evento predeterminado de Cal.com ya no está disponible. Actualízalo en Integraciones.')
+  }
+
+  return { apiKey, eventType }
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------

@@ -107,6 +107,9 @@ export interface AgendaDeveloper {
   zoomLegacy?: boolean
   teamsManual?: TeamsManualSettings | null
   googleMeetAutoEnabled?: boolean
+  calcomDefaultEventTypeId?: number | null
+  calcomDefaultEventTitle?: string | null
+  calcomDefaultBookingUrl?: string | null
 }
 
 export interface AgendaBusySourceDetail {

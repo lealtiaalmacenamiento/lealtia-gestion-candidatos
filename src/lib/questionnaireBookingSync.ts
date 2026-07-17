@@ -170,7 +170,8 @@ export async function syncQuestionnaireBooking(
       submissionId: submission.id,
       prospectoId,
       bookingUid,
-      bookingStart: start
+      bookingStart: start,
+      sendEmail: false
     })
   }
 

@@ -7,7 +7,7 @@ import { getZoomManualSettings, getTeamsManualSettings } from '@/lib/zoomManual'
 import type { MeetingProvider, AgendaCita, AgendaParticipant, ManualMeetingSettings } from '@/types'
 import { syncPlanificacionCita } from './planificacionSync'
 import { sendMail } from '@/lib/mailer'
-import { createCalcomBooking, getCalcomApiKey, getCalcomEventTypes } from '@/lib/integrations/calcom'
+import { createCalcomBooking, resolveCalcomDefaultEventType } from '@/lib/integrations/calcom'
 import { notifyAgendaCitaEvent } from '@/lib/agendaNotifications'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
@@ -23,9 +23,7 @@ function canViewAgenda(usuario: { rol?: string | null; is_desarrollador?: boolea
 
 function normalizeProvider(value: unknown): MeetingProvider {
   if (value === 'calcom') return 'calcom'
-  if (value === 'zoom') return 'zoom'
-  if (value === 'teams') return 'teams'
-  return 'google_meet'
+  return 'calcom'
 }
 
 type ExtraParticipante = {
@@ -326,16 +324,12 @@ async function createAgendaCitaHandler(req: Request) {
   let externalEventId = payload.externalEventId ? String(payload.externalEventId) : null
   const generarEnlace = payload.generarEnlace ?? meetingUrl.length === 0
   const notas = typeof payload.notas === 'string' && payload.notas.trim().length > 0 ? payload.notas.trim() : null
-  const calEventTypeId = payload.calEventTypeId != null ? Number(payload.calEventTypeId) : null
 
   if (!Number.isFinite(agenteId)) {
     return NextResponse.json({ error: 'agenteId inválido' }, { status: 400 })
   }
   if (supervisorId != null && !Number.isFinite(supervisorId)) {
     return NextResponse.json({ error: 'supervisorId inválido' }, { status: 400 })
-  }
-  if (provider === 'calcom' && (!calEventTypeId || !Number.isFinite(calEventTypeId))) {
-    return NextResponse.json({ error: 'Selecciona un evento de Cal.com' }, { status: 400 })
   }
   if (!inicioRaw || !finRaw) {
     return NextResponse.json({ error: 'inicio y fin son obligatorios' }, { status: 400 })
@@ -574,18 +568,10 @@ async function createAgendaCitaHandler(req: Request) {
     if (!prospectoNombre || !prospectoEmail) {
       return NextResponse.json({ error: 'Cal.com requiere nombre y correo del prospecto principal' }, { status: 400 })
     }
-    const apiKey = await getCalcomApiKey(agente.id_auth)
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Conecta la cuenta de Cal.com del agente antes de agendar' }, { status: 409 })
-    }
     try {
-      const eventTypes = await getCalcomEventTypes(apiKey)
-      const eventType = eventTypes.find(event => event.id === calEventTypeId)
-      if (!eventType) {
-        return NextResponse.json({ error: 'El evento de Cal.com seleccionado ya no está disponible' }, { status: 409 })
-      }
+      const { apiKey, eventType } = await resolveCalcomDefaultEventType(agente.id_auth)
       const booking = await createCalcomBooking(apiKey, {
-        eventTypeId: calEventTypeId!,
+        eventTypeId: eventType.id,
         start: inicioIso,
         attendee: {
           name: prospectoNombre,
