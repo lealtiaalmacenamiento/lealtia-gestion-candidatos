@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getIntegrationToken, upsertIntegrationToken } from '@/lib/integrationTokens'
 
-type Provider = 'google'
+type Provider = 'google' | 'calcom'
 
 type IntegrationConfig = {
   provider: Provider
@@ -53,6 +53,27 @@ const PROVIDERS: Record<Provider, (origin: string) => IntegrationConfig | null> 
         prompt: 'consent'
       }
     }
+  },
+  calcom: () => {
+    const clientId = process.env.CALCOM_CLIENT_ID
+    const clientSecret = process.env.CALCOM_CLIENT_SECRET
+    if (!clientId || !clientSecret) return null
+    return {
+      provider: 'calcom',
+      clientId,
+      clientSecret,
+      authUrl: 'https://app.cal.com/auth/oauth2/authorize',
+      tokenUrl: 'https://api.cal.com/v2/auth/oauth2/token',
+      scopes: [
+        'EVENT_TYPE_READ',
+        'BOOKING_READ',
+        'BOOKING_WRITE',
+        'SCHEDULE_READ',
+        'PROFILE_READ',
+        'WEBHOOK_READ',
+        'WEBHOOK_WRITE'
+      ]
+    }
   }
 }
 
@@ -67,7 +88,9 @@ export function buildIntegrationConfig({ req, provider }: RequestContext): Build
   if (!builder) return null
   const base = builder(origin)
   if (!base) return null
-  const redirectUri = `${origin}/api/integraciones/${provider}/callback`
+  const redirectUri = provider === 'calcom' && process.env.CALCOM_REDIRECT_URI
+    ? process.env.CALCOM_REDIRECT_URI
+    : `${origin}/api/integraciones/${provider}/callback`
   const finishRedirect = `${origin}/integraciones`
   return {
     ...base,
@@ -84,6 +107,7 @@ export async function buildAuthorizationRedirect(ctx: RequestContext) {
   cookieStore.set(`integration_state_${ctx.provider}`, state, {
     httpOnly: true,
     sameSite: 'lax',
+    secure: new URL(ctx.req.url).protocol === 'https:',
     path: '/',
     maxAge: 15 * 60
   })
@@ -91,7 +115,9 @@ export async function buildAuthorizationRedirect(ctx: RequestContext) {
   const url = new URL(config.authUrl)
   url.searchParams.set('client_id', config.clientId)
   url.searchParams.set('redirect_uri', config.redirectUri)
-  url.searchParams.set('response_type', 'code')
+  if (config.provider === 'google') {
+    url.searchParams.set('response_type', 'code')
+  }
   url.searchParams.set('state', state)
   url.searchParams.set('scope', config.scopes.join(' '))
   if (config.provider === 'google') {
@@ -152,12 +178,24 @@ export async function handleIntegrationCallback(ctx: RequestContext, code: strin
   const scopes = tokens.scope ? tokens.scope.split(/[\s,]+/).filter(Boolean) : existing.token?.scopes ?? null
   const refreshToken = tokens.refreshToken ?? existing.token?.refreshToken ?? null
 
-  await upsertIntegrationToken(usuarioAuthId, ctx.provider, {
+  if (ctx.provider === 'calcom') {
+    const { connectCalcomOAuth } = await import('@/lib/integrations/calcom')
+    await connectCalcomOAuth(usuarioAuthId, {
+      accessToken: tokens.accessToken,
+      refreshToken,
+      expiresAt,
+      scopes
+    })
+    return
+  }
+
+  const { error } = await upsertIntegrationToken(usuarioAuthId, ctx.provider, {
     accessToken: tokens.accessToken,
     refreshToken,
     expiresAt,
     scopes
   })
+  if (error) throw new Error(error.message)
 }
 
 export async function validateState(provider: Provider, incoming: string | null) {
@@ -170,7 +208,7 @@ export async function validateState(provider: Provider, incoming: string | null)
 }
 
 export function toProviderKey(value: string): Provider | null {
-  if (value === 'google') return value
+  if (value === 'google' || value === 'calcom') return value
   return null
 }
 

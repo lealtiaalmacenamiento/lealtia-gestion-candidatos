@@ -7,6 +7,8 @@ import { getZoomManualSettings, getTeamsManualSettings } from '@/lib/zoomManual'
 import type { MeetingProvider, AgendaCita, AgendaParticipant, ManualMeetingSettings } from '@/types'
 import { syncPlanificacionCita } from './planificacionSync'
 import { sendMail } from '@/lib/mailer'
+import { createCalcomBooking, resolveCalcomDefaultEventType } from '@/lib/integrations/calcom'
+import { notifyAgendaCitaEvent } from '@/lib/agendaNotifications'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -20,9 +22,8 @@ function canViewAgenda(usuario: { rol?: string | null; is_desarrollador?: boolea
 }
 
 function normalizeProvider(value: unknown): MeetingProvider {
-  if (value === 'zoom') return 'zoom'
-  if (value === 'teams') return 'teams'
-  return 'google_meet'
+  if (value === 'calcom') return 'calcom'
+  return 'calcom'
 }
 
 type ExtraParticipante = {
@@ -45,6 +46,7 @@ type CreateCitaBody = {
   prospectoEmail?: string | null
   notas?: string | null
   extraParticipantes?: ExtraParticipante[] | null
+  calEventTypeId?: number | null
 }
 
 export async function GET(req: Request) {
@@ -347,6 +349,8 @@ async function createAgendaCitaHandler(req: Request) {
 
   const inicioIso = inicioDate.toISOString()
   const finIso = finDate.toISOString()
+  let effectiveInicioIso = inicioIso
+  let effectiveFinIso = finIso
 
   if (actorIsAgente) {
     if (!actor.id || !actor.id_auth) {
@@ -560,7 +564,41 @@ async function createAgendaCitaHandler(req: Request) {
     baseDescriptionParts.push(`Programada por: ${actor.email}`)
   }
 
-  if (generarEnlace) {
+  if (provider === 'calcom') {
+    if (!prospectoNombre || !prospectoEmail) {
+      return NextResponse.json({ error: 'Cal.com requiere nombre y correo del prospecto principal' }, { status: 400 })
+    }
+    try {
+      const { apiKey, eventType } = await resolveCalcomDefaultEventType(agente.id_auth)
+      const booking = await createCalcomBooking(apiKey, {
+        eventTypeId: eventType.id,
+        start: inicioIso,
+        attendee: {
+          name: prospectoNombre,
+          email: prospectoEmail,
+          timeZone: process.env.AGENDA_TZ || 'America/Mexico_City',
+          language: 'es'
+        },
+        guests: Array.from(new Set([
+          supervisorRecord?.email,
+          ...extraParticipantesList.map(participant => participant.email)
+        ].filter((email): email is string => Boolean(email && email.includes('@'))))),
+        metadata: {
+          lealtiaProspectoId: prospectoId != null ? String(prospectoId) : '',
+          lealtiaAgenteId: String(agenteId),
+          lealtiaSource: 'agenda_interna'
+        }
+      })
+      meetingUrl = booking.meetingUrl || booking.location || eventType.bookingUrl || 'https://cal.com'
+      externalEventId = booking.uid
+      effectiveInicioIso = booking.start || inicioIso
+      effectiveFinIso = booking.end || finIso
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'No se pudo crear la cita en Cal.com' }, { status: 502 })
+    }
+  }
+
+  if (generarEnlace && provider !== 'calcom') {
     if (provider === 'google_meet') {
       if (!googleMeetAutoEnabled) {
         return NextResponse.json({ error: 'La generación automática de enlaces está deshabilitada para este agente. Ingresa un enlace manual.' }, { status: 400 })
@@ -685,8 +723,8 @@ async function createAgendaCitaHandler(req: Request) {
     prospecto_id: prospectoId,
     agente_id: agente.id_auth,
     supervisor_id: supervisorAuthId,
-    inicio: inicioIso,
-    fin: finIso,
+    inicio: effectiveInicioIso,
+    fin: effectiveFinIso,
     meeting_url: meetingUrl,
     meeting_provider: provider,
     external_event_id: externalEventId,
@@ -707,7 +745,7 @@ async function createAgendaCitaHandler(req: Request) {
     try {
       const updatePayload: Record<string, unknown> = {
         cita_creada: true,
-        fecha_cita: inicioIso,
+        fecha_cita: effectiveInicioIso,
         estado: 'con_cita'
       }
       if (prospectoEmail) {
@@ -727,7 +765,7 @@ async function createAgendaCitaHandler(req: Request) {
       try {
         await supabase
           .from('prospectos')
-          .update({ cita_creada: true, fecha_cita: inicioIso, estado: 'con_cita' })
+          .update({ cita_creada: true, fecha_cita: effectiveInicioIso, estado: 'con_cita' })
           .eq('id', epId)
       } catch {}
     }
@@ -737,7 +775,8 @@ async function createAgendaCitaHandler(req: Request) {
     await syncPlanificacionCita({
       supabase,
       agenteId,
-      inicioIso,
+      inicioIso: effectiveInicioIso,
+      finIso: created.fin,
       prospectoId,
       prospectoNombre,
       citaId: created.id,
@@ -766,6 +805,14 @@ async function createAgendaCitaHandler(req: Request) {
       })
     } catch {}
   }
+
+  void notifyAgendaCitaEvent(supabase, {
+    citaId: Number(created.id),
+    event: 'scheduled',
+    nextStart: created.inicio,
+    bookingUid: created.external_event_id ?? null,
+    actorEmail: actor.email
+  })
 
   let developerRecipients: string[] = []
   if (!supervisorRecord) {
@@ -802,7 +849,9 @@ async function createAgendaCitaHandler(req: Request) {
       ? 'Zoom'
       : created.meeting_provider === 'teams'
         ? 'Microsoft Teams'
-        : 'Google Meet'
+        : created.meeting_provider === 'calcom'
+          ? 'Cal.com (según evento)'
+          : 'Google Meet'
     const subject = `Aviso: ${agenteLabel} agendó una cita sin supervisor`
     const htmlSections = [
       `<p>Hola equipo de desarrollo,</p>`,

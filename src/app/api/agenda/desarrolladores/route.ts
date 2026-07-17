@@ -3,8 +3,6 @@ import { getUsuarioSesion } from '@/lib/auth'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
 import type { IntegrationProvider } from '@/lib/integrationTokens'
-import { getTeamsManualSettings, getZoomManualSettings } from '@/lib/zoomManual'
-import type { TeamsManualSettings, ZoomManualSettings } from '@/types'
 
 function canManageAgenda(usuario: { rol?: string | null; is_desarrollador?: boolean | null }) {
   if (!usuario) return false
@@ -26,10 +24,10 @@ type UsuarioAgenda = {
   is_desarrollador: boolean
   id_auth?: string | null
   tokens: IntegrationProvider[]
-  zoomManual?: ZoomManualSettings | null
-  zoomLegacy?: boolean
-  teamsManual?: TeamsManualSettings | null
   googleMeetAutoEnabled?: boolean
+  calcomDefaultEventTypeId?: number | null
+  calcomDefaultEventTitle?: string | null
+  calcomDefaultBookingUrl?: string | null
 }
 
 export async function GET(req: Request) {
@@ -67,10 +65,11 @@ export async function GET(req: Request) {
 
   const tokensByUsuario = new Map<string, IntegrationProvider[]>()
   const scopesByUsuario = new Map<string, Record<IntegrationProvider, string[] | null>>()
+  const metaByUsuario = new Map<string, Record<string, Record<string, unknown>>>()
   if (authIds.length > 0) {
     const { data: tokens, error: tokenError } = await supabase
       .from('tokens_integracion')
-      .select('usuario_id, proveedor, scopes')
+      .select('usuario_id, proveedor, scopes, meta')
       .in('usuario_id', authIds)
 
     if (!tokenError) {
@@ -86,32 +85,14 @@ export async function GET(req: Request) {
           ? (row.scopes as string[])
           : null
         scopesByUsuario.set(row.usuario_id, scoped)
+        const metaMap = metaByUsuario.get(row.usuario_id) || {}
+        metaMap[row.proveedor as IntegrationProvider] = row.meta && typeof row.meta === 'object'
+          ? row.meta as Record<string, unknown>
+          : {}
+        metaByUsuario.set(row.usuario_id, metaMap)
       }
     }
   }
-
-  const manualDetails = new Map<string, {
-    zoom: { settings: ZoomManualSettings | null; legacy: boolean }
-    teams: { settings: TeamsManualSettings | null; legacy: boolean }
-  }>()
-  await Promise.all(filtered.map(async (usuario) => {
-    if (!usuario.id_auth) return
-    const [zoomResult, teamsResult] = await Promise.all([
-      getZoomManualSettings(usuario.id_auth),
-      getTeamsManualSettings(usuario.id_auth)
-    ])
-    if (zoomResult.error && teamsResult.error) return
-    manualDetails.set(usuario.id_auth, {
-      zoom: {
-        settings: zoomResult.error ? null : zoomResult.settings,
-        legacy: zoomResult.error ? false : zoomResult.legacy
-      },
-      teams: {
-        settings: teamsResult.error ? null : teamsResult.settings,
-        legacy: teamsResult.error ? false : teamsResult.legacy
-      }
-    })
-  }))
 
   const payload: UsuarioAgenda[] = filtered.map((u) => ({
     id: u.id,
@@ -123,33 +104,24 @@ export async function GET(req: Request) {
     id_auth: u.id_auth ?? null,
     tokens: (() => {
       if (!u.id_auth) return [] as IntegrationProvider[]
-      const base = [...(tokensByUsuario.get(u.id_auth) || [])]
-      const manual = manualDetails.get(u.id_auth)
-      const filtered = base.filter((token) => {
-        if (token === 'zoom') {
-          return Boolean(manual?.zoom.settings?.meetingUrl)
-        }
-        if (token === 'teams') {
-          return Boolean(manual?.teams.settings?.meetingUrl)
-        }
-        return true
-      })
-      return Array.from(new Set(filtered))
+      const base = (tokensByUsuario.get(u.id_auth) || [])
+        .filter(token => token === 'google' || token === 'calcom')
+      return Array.from(new Set(base))
     })(),
-    zoomManual: (() => {
+    calcomDefaultEventTypeId: (() => {
       if (!u.id_auth) return null
-      const info = manualDetails.get(u.id_auth)
-      return info?.zoom.settings ?? null
+      const value = Number(metaByUsuario.get(u.id_auth)?.calcom?.default_event_type_id)
+      return Number.isFinite(value) && value > 0 ? value : null
     })(),
-    zoomLegacy: (() => {
-      if (!u.id_auth) return false
-      const info = manualDetails.get(u.id_auth)
-      return Boolean(info?.zoom.legacy)
-    })(),
-    teamsManual: (() => {
+    calcomDefaultEventTitle: (() => {
       if (!u.id_auth) return null
-      const info = manualDetails.get(u.id_auth)
-      return info?.teams.settings ?? null
+      const value = metaByUsuario.get(u.id_auth)?.calcom?.default_event_title
+      return typeof value === 'string' ? value : null
+    })(),
+    calcomDefaultBookingUrl: (() => {
+      if (!u.id_auth) return null
+      const value = metaByUsuario.get(u.id_auth)?.calcom?.default_booking_url
+      return typeof value === 'string' ? value : null
     })(),
     googleMeetAutoEnabled: (() => {
       if (!u.id_auth) return true
@@ -230,10 +202,10 @@ export async function PATCH(req: Request) {
         is_desarrollador: Boolean(existente.is_desarrollador),
         id_auth: existente.id_auth ?? null,
         tokens: [],
-        zoomManual: null,
-        zoomLegacy: false,
-        teamsManual: null,
-        googleMeetAutoEnabled: true
+        googleMeetAutoEnabled: true,
+        calcomDefaultEventTypeId: null,
+        calcomDefaultEventTitle: null,
+        calcomDefaultBookingUrl: null
       })
       continue
     }
@@ -261,10 +233,10 @@ export async function PATCH(req: Request) {
       is_desarrollador: Boolean(updated.is_desarrollador),
       id_auth: updated.id_auth ?? null,
       tokens: [],
-      zoomManual: null,
-      zoomLegacy: false,
-      teamsManual: null,
-      googleMeetAutoEnabled: true
+      googleMeetAutoEnabled: true,
+      calcomDefaultEventTypeId: null,
+      calcomDefaultEventTitle: null,
+      calcomDefaultBookingUrl: null
     })
   }
 
@@ -274,34 +246,11 @@ export async function PATCH(req: Request) {
 
   if (resultadoAuthIds.length > 0) {
     const scopesByUsuario = new Map<string, Record<IntegrationProvider, string[] | null>>()
+    const metaByUsuario = new Map<string, Record<string, Record<string, unknown>>>()
     const { data: tokens, error: tokenError } = await supabase
       .from('tokens_integracion')
-      .select('usuario_id, proveedor, scopes')
+      .select('usuario_id, proveedor, scopes, meta')
       .in('usuario_id', resultadoAuthIds)
-
-    const manualByUsuario = new Map<string, {
-      zoom: { settings: ZoomManualSettings | null; legacy: boolean }
-      teams: { settings: TeamsManualSettings | null; legacy: boolean }
-    }>()
-
-    await Promise.all(resultado.map(async (usuario) => {
-      if (!usuario.id_auth) return
-      const [zoomResult, teamsResult] = await Promise.all([
-        getZoomManualSettings(usuario.id_auth),
-        getTeamsManualSettings(usuario.id_auth)
-      ])
-      if (zoomResult.error && teamsResult.error) return
-      manualByUsuario.set(usuario.id_auth, {
-        zoom: {
-          settings: zoomResult.error ? null : zoomResult.settings,
-          legacy: zoomResult.error ? false : zoomResult.legacy
-        },
-        teams: {
-          settings: teamsResult.error ? null : teamsResult.settings,
-          legacy: teamsResult.error ? false : teamsResult.legacy
-        }
-      })
-    }))
 
     if (!tokenError) {
       for (const row of tokens || []) {
@@ -311,34 +260,39 @@ export async function PATCH(req: Request) {
           ? (row.scopes as string[])
           : null
         scopesByUsuario.set(row.usuario_id, scoped)
+        const metaMap = metaByUsuario.get(row.usuario_id) || {}
+        metaMap[row.proveedor as IntegrationProvider] = row.meta && typeof row.meta === 'object'
+          ? row.meta as Record<string, unknown>
+          : {}
+        metaByUsuario.set(row.usuario_id, metaMap)
       }
     }
 
     for (const usuario of resultado) {
       if (!usuario.id_auth) continue
-      const manual = manualByUsuario.get(usuario.id_auth)
       if (!tokenError) {
         const matches = (tokens || []).filter((t) => t.usuario_id === usuario.id_auth)
-        const base = matches.map((t) => t.proveedor as IntegrationProvider)
-        const filtered = base.filter((token) => {
-          if (token === 'zoom') {
-            return Boolean(manual?.zoom.settings?.meetingUrl)
-          }
-          if (token === 'teams') {
-            return Boolean(manual?.teams.settings?.meetingUrl)
-          }
-          return true
-        })
-        usuario.tokens = Array.from(new Set(filtered))
+        const base = matches
+          .map((t) => t.proveedor as IntegrationProvider)
+          .filter(token => token === 'google' || token === 'calcom')
+        usuario.tokens = Array.from(new Set(base))
+        const calMeta = metaByUsuario.get(usuario.id_auth)?.calcom
+        const defaultEventTypeId = Number(calMeta?.default_event_type_id)
+        usuario.calcomDefaultEventTypeId = Number.isFinite(defaultEventTypeId) && defaultEventTypeId > 0
+          ? defaultEventTypeId
+          : null
+        usuario.calcomDefaultEventTitle = typeof calMeta?.default_event_title === 'string'
+          ? calMeta.default_event_title
+          : null
+        usuario.calcomDefaultBookingUrl = typeof calMeta?.default_booking_url === 'string'
+          ? calMeta.default_booking_url
+          : null
         const scoped = scopesByUsuario.get(usuario.id_auth)
         if (scoped) {
           const googleScopes = scoped.google ?? null
           usuario.googleMeetAutoEnabled = !googleScopes || !googleScopes.includes('auto_meet_disabled')
         }
       }
-      usuario.zoomManual = manual?.zoom.settings ?? null
-      usuario.zoomLegacy = Boolean(manual?.zoom.legacy)
-      usuario.teamsManual = manual?.teams.settings ?? null
       if (usuario.googleMeetAutoEnabled === undefined) {
         usuario.googleMeetAutoEnabled = true
       }

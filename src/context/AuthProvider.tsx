@@ -12,6 +12,13 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType>({ session: null, user: null, setUser: () => {}, loadingUser: true })
 
+const PUBLIC_AUTH_EXACT_PATHS = ['/', '/login', '/politica-privacidad', '/ppr']
+const PUBLIC_AUTH_PREFIXES = ['/ppr/']
+
+function isPublicAuthPath(pathname: string) {
+  return PUBLIC_AUTH_EXACT_PATHS.includes(pathname) ||
+    PUBLIC_AUTH_PREFIXES.some(prefix => pathname.startsWith(prefix))
+}
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null)
@@ -23,6 +30,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let cancelled = false
     let performedRecovery = false
     const init = async () => {
+      const pathname = typeof window !== 'undefined' ? window.location.pathname : ''
+      if (isPublicAuthPath(pathname)) {
+        if (!cancelled) setLoadingUser(false)
+        return
+      }
+
       try {
         const res = await fetch('/api/login')
         if (res.ok) {
@@ -40,9 +53,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (!performedRecovery) {
               performedRecovery = true
               try { await fetch('/api/logout', { method: 'POST' }) } catch {}
-              // Redirigir a login sólo si no estamos en rutas públicas (landing, login, política)
-              const publicRoutes = ['/', '/login', '/politica-privacidad']
-              if (typeof window !== 'undefined' && !publicRoutes.includes(window.location.pathname)) {
+              // Redirigir a login sólo si no estamos en rutas públicas (landing, login, política, PPR público)
+              if (typeof window !== 'undefined' && !isPublicAuthPath(window.location.pathname)) {
                 window.location.replace('/login')
               }
             }
@@ -56,9 +68,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (!performedRecovery) {
             performedRecovery = true
             try { await fetch('/api/logout', { method: 'POST' }) } catch {}
-            // Redirigir a login sólo si no estamos en rutas públicas (landing, login, política)
-            const publicRoutes = ['/', '/login', '/politica-privacidad']
-            if (typeof window !== 'undefined' && !publicRoutes.includes(window.location.pathname)) {
+            // Redirigir a login sólo si no estamos en rutas públicas (landing, login, política, PPR público)
+            if (typeof window !== 'undefined' && !isPublicAuthPath(window.location.pathname)) {
               window.location.replace('/login')
             }
           }

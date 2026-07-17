@@ -13,6 +13,7 @@ interface FormState {
   candidato?: string;
   fecha_nacimiento?: string | null;
   email_agente?: string;
+  codigo_agente?: string | null;
   fecha_creacion_ct?: string;
   dias_desde_ct?: number; // derivado
   proceso?: string; // derivado
@@ -455,6 +456,17 @@ export default function EditarCandidato() {
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">EMAIL (CANDIDATO)</label>
                 <input name="email_agente" type="email" className="form-control" value={form.email_agente || ''} onChange={handleChange} />
+              </div>
+              <div className="col-12">
+                <label className="form-label fw-semibold small mb-1">CÓDIGO DE AGENTE</label>
+                <input
+                  name="codigo_agente"
+                  className="form-control text-uppercase"
+                  value={form.codigo_agente || ''}
+                  onChange={handleChange}
+                  maxLength={32}
+                />
+                <div className="form-text small">Se conserva mientras no lo cambies. Déjalo vacío para desactivarlo.</div>
               </div>
               <div className="col-12">
                 <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>

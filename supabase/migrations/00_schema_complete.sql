@@ -170,11 +170,15 @@ CREATE TABLE IF NOT EXISTS usuarios (
   rol text NOT NULL CHECK (rol IN ('agente', 'supervisor', 'admin')),
   activo boolean NOT NULL DEFAULT true,
   eliminado boolean DEFAULT false,
+  foto_perfil_url text,
   last_login timestamptz,
   is_desarrollador boolean DEFAULT false,
   created_at timestamptz DEFAULT timezone('America/Mexico_City', now()),
   updated_at timestamptz
 );
+
+ALTER TABLE usuarios
+  ADD COLUMN IF NOT EXISTS foto_perfil_url text;
 
 CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email);
 CREATE INDEX IF NOT EXISTS idx_usuarios_id_auth ON usuarios(id_auth);
@@ -308,6 +312,7 @@ CREATE TABLE IF NOT EXISTS polizas (
   forma_pago forma_pago NOT NULL,
   periodicidad_pago periodicidad_pago NULL,
   tipo_pago text NULL,
+  auto_pago boolean NOT NULL DEFAULT false,
   dia_pago smallint NULL CHECK (dia_pago >= 1 AND dia_pago <= 31),
   meses_check jsonb NOT NULL DEFAULT '{}'::jsonb,
   prima_input numeric(14,2) NOT NULL,
@@ -324,6 +329,9 @@ CREATE TABLE IF NOT EXISTS polizas (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT uq_polizas_numero UNIQUE (numero_poliza)
 );
+
+ALTER TABLE polizas
+  ADD COLUMN IF NOT EXISTS auto_pago boolean NOT NULL DEFAULT false;
 
 CREATE INDEX IF NOT EXISTS idx_polizas_cliente_estado ON polizas(cliente_id, estatus);
 CREATE INDEX IF NOT EXISTS idx_polizas_producto ON polizas(producto_parametro_id);
@@ -374,6 +382,48 @@ CREATE TABLE IF NOT EXISTS puntos_thresholds (
 CREATE INDEX IF NOT EXISTS idx_puntos_thresholds_lookup 
   ON puntos_thresholds(tipo_producto, activo, orden) 
   WHERE activo = true;
+
+-- Insertar valores por defecto (equivalentes a la lógica hardcodeada actual)
+INSERT INTO puntos_thresholds (tipo_producto, umbral_min, umbral_max, puntos, clasificacion, descripcion, orden) VALUES
+('GMM', 0, 7500, 0, 'CERO', 'Prima menor a $7,500', 1),
+('GMM', 7500, NULL, 0.5, 'MEDIO', 'Prima de $7,500 o más', 2),
+('VI', 0, 15000, 0, 'CERO', 'Prima menor a $15,000', 1),
+('VI', 15000, 50000, 1, 'SIMPLE', 'Prima entre $15,000 y $50,000', 2),
+('VI', 50000, 150000, 2, 'DOBLE', 'Prima entre $50,000 y $150,000', 3),
+('VI', 150000, NULL, 3, 'TRIPLE', 'Prima de $150,000 o más', 4)
+ON CONFLICT DO NOTHING;
+
+-- Trigger para updated_at
+CREATE OR REPLACE FUNCTION trigger_set_timestamp_puntos_thresholds()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_timestamp_puntos_thresholds ON puntos_thresholds;
+CREATE TRIGGER set_timestamp_puntos_thresholds
+  BEFORE UPDATE ON puntos_thresholds
+  FOR EACH ROW
+  EXECUTE FUNCTION trigger_set_timestamp_puntos_thresholds();
+
+-- RLS policies (solo admin/supervisor pueden modificar)
+ALTER TABLE puntos_thresholds ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Todos pueden ver puntos_thresholds" ON puntos_thresholds
+  FOR SELECT
+  USING (true);
+
+CREATE POLICY "Solo admin/supervisor pueden modificar puntos_thresholds" ON puntos_thresholds
+  FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM usuarios
+      WHERE id_auth::text = auth.uid()::text
+      AND rol IN ('admin', 'supervisor')
+    )
+  );
 
 -- Tablas de historial y aprobaciones
 CREATE TABLE IF NOT EXISTS cliente_historial (
@@ -523,15 +573,25 @@ CREATE INDEX IF NOT EXISTS idx_planif_agente_semana ON planificaciones(agente_id
 CREATE TABLE IF NOT EXISTS tokens_integracion (
     id bigserial PRIMARY KEY,
     usuario_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    proveedor text NOT NULL CHECK (proveedor IN ('google', 'microsoft', 'zoom', 'teams')),
+    proveedor text NOT NULL CHECK (proveedor IN ('google', 'microsoft', 'zoom', 'teams', 'calcom', 'sendpilot')),
     access_token text NOT NULL,
     refresh_token text,
     expires_at timestamptz,
     scopes text[],
+    meta jsonb,
     created_at timestamptz DEFAULT timezone('utc', now()),
     updated_at timestamptz DEFAULT timezone('utc', now()),
     CONSTRAINT tokens_integracion_usuario_proveedor UNIQUE (usuario_id, proveedor)
 );
+
+ALTER TABLE tokens_integracion
+  DROP CONSTRAINT IF EXISTS tokens_integracion_proveedor_check;
+ALTER TABLE tokens_integracion
+  ADD CONSTRAINT tokens_integracion_proveedor_check
+  CHECK (proveedor IN ('google', 'microsoft', 'zoom', 'teams', 'calcom', 'sendpilot'));
+
+ALTER TABLE tokens_integracion
+  ADD COLUMN IF NOT EXISTS meta jsonb;
 
 CREATE TABLE IF NOT EXISTS citas (
     id bigserial PRIMARY KEY,
@@ -562,6 +622,22 @@ CREATE TABLE IF NOT EXISTS logs_integracion (
 );
 
 CREATE INDEX IF NOT EXISTS logs_integracion_created_idx ON logs_integracion (created_at DESC);
+
+-- =============================================================================
+-- 8.1 TABLAS ADICIONALES: ZOOM + FONDOS
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS zoom_fondos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  storage_path text NOT NULL,
+  public_url text NOT NULL,
+  uploaded_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS zoom_fondos_activo_created_idx
+  ON zoom_fondos (activo, created_at DESC);
 
 -- =============================================================================
 -- 9. TABLAS FASE 5: CAMPAÑAS Y SEGMENTOS
@@ -691,6 +767,193 @@ CREATE TABLE IF NOT EXISTS campaign_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_campaign_cache_campaign ON campaign_cache(campaign_id);
+
+-- =============================================================================
+-- 9.1 TABLAS FASE 7: RECLUTAMIENTO SENDPILOT + CAL.COM
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS sp_campanas (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre text NOT NULL,
+  descripcion text,
+  sendpilot_campaign_id text NOT NULL,
+  calcom_linkedin_identifier text NOT NULL DEFAULT 'LinkedIn',
+  estado text NOT NULL DEFAULT 'activa'
+    CHECK (estado IN ('activa', 'pausada', 'terminada')),
+  sp_sender_ids text[] NOT NULL DEFAULT '{}',
+  existe_en_sp boolean NOT NULL DEFAULT true,
+  sp_analytics jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sp_campana_reclutadores (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  campana_id uuid NOT NULL REFERENCES sp_campanas(id) ON DELETE CASCADE,
+  reclutador_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  calcom_event_type_id integer,
+  calcom_scheduling_url text,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (campana_id, reclutador_id)
+);
+
+CREATE TABLE IF NOT EXISTS sp_precandidatos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  campana_id uuid NOT NULL REFERENCES sp_campanas(id) ON DELETE CASCADE,
+  reclutador_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  sp_contact_id text,
+  nombre text NOT NULL,
+  apellido text,
+  linkedin_url text,
+  linkedin_urn text,
+  linkedin_slug text,
+  email text,
+  empresa text,
+  cargo text,
+  estado text NOT NULL DEFAULT 'en_secuencia'
+    CHECK (estado IN (
+      'en_secuencia',
+      'respondio',
+      'link_enviado',
+      'cita_agendada',
+      'promovido',
+      'descartado'
+    )),
+  calcom_booking_uid text,
+  candidato_id bigint,
+  notas text,
+  existe_en_sp boolean NOT NULL DEFAULT true,
+  sp_secuencia_terminada boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sp_actividades (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  precandidato_id uuid NOT NULL REFERENCES sp_precandidatos(id) ON DELETE CASCADE,
+  campana_id uuid REFERENCES sp_campanas(id) ON DELETE SET NULL,
+  tipo text NOT NULL,
+  descripcion text,
+  metadata jsonb,
+  sendpilot_event_id text UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sp_citas (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  precandidato_id uuid REFERENCES sp_precandidatos(id) ON DELETE SET NULL,
+  reclutador_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  campana_id uuid REFERENCES sp_campanas(id) ON DELETE SET NULL,
+  calcom_booking_uid text NOT NULL UNIQUE,
+  inicio timestamptz NOT NULL,
+  fin timestamptz NOT NULL,
+  meeting_url text,
+  estado text NOT NULL DEFAULT 'confirmada'
+    CHECK (estado IN ('confirmada', 'cancelada')),
+  notas text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sp_secuencia_pasos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  campana_id uuid NOT NULL REFERENCES sp_campanas(id) ON DELETE CASCADE,
+  paso int NOT NULL CHECK (paso >= 1),
+  dias_espera int NOT NULL DEFAULT 3 CHECK (dias_espera >= 1),
+  mensaje text NOT NULL,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (campana_id, paso)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sp_campanas_estado
+  ON sp_campanas(estado);
+
+CREATE INDEX IF NOT EXISTS idx_sp_campana_rec_campana
+  ON sp_campana_reclutadores(campana_id);
+
+CREATE INDEX IF NOT EXISTS idx_sp_campana_rec_reclutador
+  ON sp_campana_reclutadores(reclutador_id);
+
+CREATE INDEX IF NOT EXISTS idx_sp_precandidatos_campana
+  ON sp_precandidatos(campana_id);
+
+CREATE INDEX IF NOT EXISTS idx_sp_precandidatos_reclutador
+  ON sp_precandidatos(reclutador_id);
+
+CREATE INDEX IF NOT EXISTS idx_sp_precandidatos_estado
+  ON sp_precandidatos(estado);
+
+CREATE INDEX IF NOT EXISTS idx_sp_precandidatos_sp_contact
+  ON sp_precandidatos(sp_contact_id)
+  WHERE sp_contact_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sp_precandidatos_linkedin_slug
+  ON sp_precandidatos(linkedin_slug)
+  WHERE linkedin_slug IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sp_precandidatos_existe_en_sp
+  ON sp_precandidatos(existe_en_sp)
+  WHERE existe_en_sp = true;
+
+CREATE INDEX IF NOT EXISTS idx_sp_precandidatos_secuencia_terminada
+  ON sp_precandidatos(sp_secuencia_terminada)
+  WHERE sp_secuencia_terminada = true;
+
+CREATE INDEX IF NOT EXISTS idx_sp_actividades_precandidato
+  ON sp_actividades(precandidato_id);
+
+CREATE INDEX IF NOT EXISTS idx_sp_actividades_sp_event
+  ON sp_actividades(sendpilot_event_id)
+  WHERE sendpilot_event_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sp_citas_reclutador_inicio
+  ON sp_citas(reclutador_id, inicio);
+
+CREATE INDEX IF NOT EXISTS idx_sp_citas_precandidato
+  ON sp_citas(precandidato_id)
+  WHERE precandidato_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sp_citas_booking_uid
+  ON sp_citas(calcom_booking_uid);
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sp_precandidatos_campana_contact_unique'
+  ) THEN
+    ALTER TABLE sp_precandidatos
+      ADD CONSTRAINT sp_precandidatos_campana_contact_unique
+      UNIQUE (campana_id, sp_contact_id);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sp_precandidatos_campana_slug_unique'
+  ) THEN
+    ALTER TABLE sp_precandidatos
+      ADD CONSTRAINT sp_precandidatos_campana_slug_unique
+      UNIQUE (campana_id, linkedin_slug);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'tokens_integracion_proveedor_check'
+  ) THEN
+    ALTER TABLE tokens_integracion
+      DROP CONSTRAINT IF EXISTS tokens_integracion_proveedor_check;
+    ALTER TABLE tokens_integracion
+      ADD CONSTRAINT tokens_integracion_proveedor_check
+      CHECK (proveedor IN ('google', 'microsoft', 'zoom', 'teams', 'calcom', 'sendpilot'));
+  END IF;
+END $$;
 
 -- =============================================================================
 -- 10. TABLAS FASE 6: PAGOS Y COMISIONES
@@ -1607,6 +1870,53 @@ BEGIN
 END;
 $$;
 
+-- ========== apply_poliza_update_dbg (debug wrapper) ==========
+CREATE OR REPLACE FUNCTION public.apply_poliza_update_dbg(p_request_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $$
+DECLARE
+  v_row poliza_update_requests%ROWTYPE;
+  v_is_super boolean;
+  v_poliza_before polizas%ROWTYPE;
+  v_poliza_after polizas%ROWTYPE;
+  v_err text;
+  v_state text;
+BEGIN
+  v_is_super := is_super_role();
+  SELECT * INTO v_row FROM poliza_update_requests WHERE id = p_request_id;
+  IF v_row.poliza_id IS NOT NULL THEN
+    SELECT * INTO v_poliza_before FROM polizas WHERE id = v_row.poliza_id;
+  END IF;
+  BEGIN
+    PERFORM apply_poliza_update(p_request_id);
+    IF v_row.poliza_id IS NOT NULL THEN
+      SELECT * INTO v_poliza_after FROM polizas WHERE id = v_row.poliza_id;
+    END IF;
+    RETURN jsonb_build_object(
+      'status','ok',
+      'is_super', v_is_super,
+      'request_row', to_jsonb(v_row),
+      'poliza_before', to_jsonb(v_poliza_before),
+      'poliza_after', to_jsonb(v_poliza_after)
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_err := SQLERRM; v_state := SQLSTATE;
+    RETURN jsonb_build_object(
+      'status','error',
+      'is_super', v_is_super,
+      'sqlstate', v_state,
+      'error', v_err,
+      'request_row', to_jsonb(v_row)
+    );
+  END;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.apply_poliza_update_dbg(uuid) TO authenticated, service_role;
+
+
 CREATE OR REPLACE FUNCTION reject_poliza_update(p_request_id uuid, p_motivo text)
 RETURNS void
 LANGUAGE plpgsql
@@ -2041,6 +2351,13 @@ ALTER TABLE planificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tokens_integracion ENABLE ROW LEVEL SECURITY;
 ALTER TABLE citas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE logs_integracion ENABLE ROW LEVEL SECURITY;
+ALTER TABLE zoom_fondos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sp_campanas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sp_campana_reclutadores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sp_precandidatos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sp_actividades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sp_citas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sp_secuencia_pasos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE segments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_segments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_types ENABLE ROW LEVEL SECURITY;
@@ -2053,6 +2370,147 @@ ALTER TABLE campaign_custom_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE poliza_pagos_mensuales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notificaciones ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para zoom_fondos
+DROP POLICY IF EXISTS zoom_fondos_select ON zoom_fondos;
+CREATE POLICY zoom_fondos_select ON zoom_fondos
+  FOR SELECT TO authenticated
+  USING (activo = true);
+DROP POLICY IF EXISTS zoom_fondos_insert ON zoom_fondos;
+CREATE POLICY zoom_fondos_insert ON zoom_fondos
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM usuarios u
+      WHERE u.id_auth = auth.uid()
+        AND u.rol IN ('supervisor', 'admin')
+        AND u.activo = true
+    )
+  );
+DROP POLICY IF EXISTS zoom_fondos_update ON zoom_fondos;
+CREATE POLICY zoom_fondos_update ON zoom_fondos
+  FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM usuarios u
+      WHERE u.id_auth = auth.uid()
+        AND u.rol IN ('supervisor', 'admin')
+        AND u.activo = true
+    )
+  );
+DROP POLICY IF EXISTS zoom_fondos_delete ON zoom_fondos;
+CREATE POLICY zoom_fondos_delete ON zoom_fondos
+  FOR DELETE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM usuarios u
+      WHERE u.id_auth = auth.uid()
+        AND u.rol IN ('supervisor', 'admin')
+        AND u.activo = true
+    )
+  );
+
+-- Políticas para SP / reclutamiento
+DROP POLICY IF EXISTS sp_campanas_select ON sp_campanas;
+CREATE POLICY sp_campanas_select ON sp_campanas
+  FOR SELECT TO authenticated
+  USING (true);
+DROP POLICY IF EXISTS sp_campanas_insert ON sp_campanas;
+CREATE POLICY sp_campanas_insert ON sp_campanas
+  FOR INSERT TO authenticated
+  WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS sp_campanas_update ON sp_campanas;
+CREATE POLICY sp_campanas_update ON sp_campanas
+  FOR UPDATE TO authenticated
+  USING (is_super_role());
+DROP POLICY IF EXISTS sp_campanas_delete ON sp_campanas;
+CREATE POLICY sp_campanas_delete ON sp_campanas
+  FOR DELETE TO authenticated
+  USING (is_super_role());
+
+DROP POLICY IF EXISTS sp_campana_reclutadores_select ON sp_campana_reclutadores;
+CREATE POLICY sp_campana_reclutadores_select ON sp_campana_reclutadores
+  FOR SELECT TO authenticated
+  USING (true);
+DROP POLICY IF EXISTS sp_campana_reclutadores_insert ON sp_campana_reclutadores;
+CREATE POLICY sp_campana_reclutadores_insert ON sp_campana_reclutadores
+  FOR INSERT TO authenticated
+  WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS sp_campana_reclutadores_update ON sp_campana_reclutadores;
+CREATE POLICY sp_campana_reclutadores_update ON sp_campana_reclutadores
+  FOR UPDATE TO authenticated
+  USING (is_super_role());
+DROP POLICY IF EXISTS sp_campana_reclutadores_delete ON sp_campana_reclutadores;
+CREATE POLICY sp_campana_reclutadores_delete ON sp_campana_reclutadores
+  FOR DELETE TO authenticated
+  USING (is_super_role());
+
+DROP POLICY IF EXISTS sp_precandidatos_select ON sp_precandidatos;
+CREATE POLICY sp_precandidatos_select ON sp_precandidatos
+  FOR SELECT TO authenticated
+  USING (reclutador_id = auth.uid() OR is_super_role());
+DROP POLICY IF EXISTS sp_precandidatos_insert ON sp_precandidatos;
+CREATE POLICY sp_precandidatos_insert ON sp_precandidatos
+  FOR INSERT TO authenticated
+  WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS sp_precandidatos_update ON sp_precandidatos;
+CREATE POLICY sp_precandidatos_update ON sp_precandidatos
+  FOR UPDATE TO authenticated
+  USING (reclutador_id = auth.uid() OR is_super_role());
+DROP POLICY IF EXISTS sp_precandidatos_delete ON sp_precandidatos;
+CREATE POLICY sp_precandidatos_delete ON sp_precandidatos
+  FOR DELETE TO authenticated
+  USING (is_super_role());
+
+DROP POLICY IF EXISTS sp_actividades_select ON sp_actividades;
+CREATE POLICY sp_actividades_select ON sp_actividades
+  FOR SELECT TO authenticated
+  USING (
+    is_super_role() OR
+    EXISTS (
+      SELECT 1 FROM sp_precandidatos p
+      WHERE p.id = sp_actividades.precandidato_id
+        AND p.reclutador_id = auth.uid()
+    )
+  );
+DROP POLICY IF EXISTS sp_actividades_insert ON sp_actividades;
+CREATE POLICY sp_actividades_insert ON sp_actividades
+  FOR INSERT TO authenticated
+  WITH CHECK (is_super_role());
+
+DROP POLICY IF EXISTS sp_citas_select ON sp_citas;
+CREATE POLICY sp_citas_select ON sp_citas
+  FOR SELECT TO authenticated
+  USING (reclutador_id = auth.uid() OR is_super_role());
+DROP POLICY IF EXISTS sp_citas_insert ON sp_citas;
+CREATE POLICY sp_citas_insert ON sp_citas
+  FOR INSERT TO authenticated
+  WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS sp_citas_update ON sp_citas;
+CREATE POLICY sp_citas_update ON sp_citas
+  FOR UPDATE TO authenticated
+  USING (reclutador_id = auth.uid() OR is_super_role());
+DROP POLICY IF EXISTS sp_citas_delete ON sp_citas;
+CREATE POLICY sp_citas_delete ON sp_citas
+  FOR DELETE TO authenticated
+  USING (is_super_role());
+
+DROP POLICY IF EXISTS sp_secuencia_pasos_select ON sp_secuencia_pasos;
+CREATE POLICY sp_secuencia_pasos_select ON sp_secuencia_pasos
+  FOR SELECT TO authenticated
+  USING (true);
+DROP POLICY IF EXISTS sp_secuencia_pasos_insert ON sp_secuencia_pasos;
+CREATE POLICY sp_secuencia_pasos_insert ON sp_secuencia_pasos
+  FOR INSERT TO authenticated
+  WITH CHECK (is_super_role());
+DROP POLICY IF EXISTS sp_secuencia_pasos_update ON sp_secuencia_pasos;
+CREATE POLICY sp_secuencia_pasos_update ON sp_secuencia_pasos
+  FOR UPDATE TO authenticated
+  USING (is_super_role());
+DROP POLICY IF EXISTS sp_secuencia_pasos_delete ON sp_secuencia_pasos;
+CREATE POLICY sp_secuencia_pasos_delete ON sp_secuencia_pasos
+  FOR DELETE TO authenticated
+  USING (is_super_role());
 
 -- Políticas para udi_values y fx_values
 DROP POLICY IF EXISTS sel_udi_values ON udi_values;
@@ -2115,6 +2573,7 @@ CREATE POLICY sel_polizas ON polizas
     )
   );
 DROP POLICY IF EXISTS upd_polizas_super ON polizas;
+CREATE POLICY upd_polizas_super ON polizas
   FOR UPDATE TO authenticated
   USING (is_super_role());
 
@@ -2861,6 +3320,112 @@ ALTER TABLE prospectos ADD COLUMN IF NOT EXISTS motivo_descarte text;
 COMMENT ON COLUMN prospectos.motivo_descarte IS
   'Razón de descarte cuando estado = ''descartado'': '
   'precio, competencia, sin_interes, sin_respuesta, otro, etc.';
+
+-- =============================================================================
+-- 2.1. campaign datasets helper: calculate_campaign_datasets_for_user
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION calculate_campaign_datasets_for_user(p_usuario_id bigint)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_user_auth_id uuid;
+    v_result jsonb := '{}'::jsonb;
+    v_polizas_prima_minima jsonb;
+    v_polizas_recientes jsonb;
+    v_polizas_por_producto jsonb;
+BEGIN
+    SELECT id_auth::uuid INTO v_user_auth_id
+    FROM usuarios
+    WHERE id = p_usuario_id;
+
+    IF v_user_auth_id IS NULL THEN
+        RETURN v_result;
+    END IF;
+
+    WITH policy_data AS (
+        SELECT 
+            p.id,
+            p.prima_mxn,
+            p.fecha_emision,
+            p.estatus
+        FROM polizas p
+        JOIN clientes c ON c.id = p.cliente_id
+        WHERE c.asesor_id = v_user_auth_id
+          AND p.estatus != 'ANULADA'
+    )
+    SELECT jsonb_build_object(
+        'prima_25000', (SELECT COUNT(*) FROM policy_data WHERE prima_mxn >= 25000),
+        'prima_50000', (SELECT COUNT(*) FROM policy_data WHERE prima_mxn >= 50000),
+        'prima_100000', (SELECT COUNT(*) FROM policy_data WHERE prima_mxn >= 100000)
+    ) INTO v_polizas_prima_minima;
+
+    v_result := jsonb_set(v_result, '{polizas_prima_minima}', v_polizas_prima_minima);
+
+    WITH policy_data AS (
+        SELECT 
+            p.id,
+            p.prima_mxn,
+            p.fecha_emision,
+            p.estatus,
+            p.cliente_id,
+            (CURRENT_DATE - p.fecha_emision) as dias_desde_emision
+        FROM polizas p
+        JOIN clientes c ON c.id = p.cliente_id
+        WHERE c.asesor_id = v_user_auth_id
+          AND p.estatus != 'ANULADA'
+    ),
+    recent_counts AS (
+        SELECT
+            COUNT(*) FILTER (WHERE dias_desde_emision <= 30) as recientes_30,
+            COUNT(*) FILTER (WHERE dias_desde_emision <= 90) as recientes_90,
+            COUNT(*) FILTER (WHERE dias_desde_emision <= 180) as recientes_180,
+            COUNT(*) FILTER (WHERE dias_desde_emision <= 365) as recientes_365,
+            MIN(dias_desde_emision) as ultima_emision_dias
+        FROM policy_data
+    )
+    SELECT jsonb_build_object(
+        'ventana_30', recientes_30,
+        'ventana_90', recientes_90,
+        'ventana_180', recientes_180,
+        'ventana_365', recientes_365,
+        'ultima_emision_dias', COALESCE(ultima_emision_dias, 999999)
+    ) INTO v_polizas_recientes
+    FROM recent_counts;
+
+    v_result := jsonb_set(v_result, '{polizas_recientes}', v_polizas_recientes);
+
+    WITH policy_by_product AS (
+        SELECT 
+            pt.code as product_code,
+            COUNT(*) as cantidad
+        FROM polizas p
+        JOIN clientes c ON c.id = p.cliente_id
+        LEFT JOIN producto_parametros pp ON pp.id = p.producto_parametro_id
+        LEFT JOIN product_types pt ON pt.id = pp.product_type_id
+        WHERE c.asesor_id = v_user_auth_id
+          AND p.estatus != 'ANULADA'
+        GROUP BY pt.code
+    )
+    SELECT jsonb_object_agg(
+        COALESCE(product_code, 'sin_tipo'),
+        cantidad
+    ) INTO v_polizas_por_producto
+    FROM policy_by_product;
+
+    v_result := jsonb_set(v_result, '{polizas_por_producto}', COALESCE(v_polizas_por_producto, '{}'::jsonb));
+
+    RETURN v_result;
+END;
+$$;
+
+COMMENT ON FUNCTION calculate_campaign_datasets_for_user IS
+  'Calculates dynamic campaign datasets (polizas_prima_minima, polizas_recientes, polizas_por_producto) for a given user';
+
 
 -- =============================================================================
 -- 2. VISTA: vw_exec_asesores_base

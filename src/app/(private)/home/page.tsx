@@ -12,13 +12,14 @@ const modules = [
   { key: 'consulta_candidatos', title: 'Consulta de candidatos', desc: 'Listado y seguimiento', icon: 'card-list', roles: ['viewer', 'supervisor', 'admin'], color: 'success' },
   { key: 'usuarios', title: 'Usuarios', desc: 'Gestión de cuentas', icon: 'people', roles: ['supervisor', 'admin'], color: 'secondary' },
   { key: 'parametros', title: 'Parámetros', desc: 'Catálogos y configuración', icon: 'gear', roles: ['supervisor', 'admin'], color: 'warning' },
-  { key: 'integraciones', title: 'Integraciones', desc: 'Conecta Google o Zoom', icon: 'plug', roles: ['viewer','supervisor','admin','agente'], color: 'secondary' },
+  { key: 'integraciones', title: 'Integraciones', desc: 'Conecta Google Calendar y Cal.com', icon: 'plug', roles: ['viewer','supervisor','admin','agente'], color: 'secondary' },
   { key: 'auditoria', title: 'Registro de acciones', desc: 'Trazabilidad del sistema', icon: 'clock-history', roles: ['supervisor', 'admin'], color: 'info' },
   { key: 'eliminarcandidatos', title: 'Candidatos Eliminados', desc: 'Historial de bajas lógicas', icon: 'archive', roles: ['supervisor', 'admin'], color: 'dark' },
   // Fase 2
   { key: 'prospectos', title: 'Prospectos', desc: 'Gestión semanal de prospectos', icon: 'people-fill', roles: ['agente','supervisor','admin'], color: 'info' },
   { key: 'planificacion', title: 'Planificación', desc: 'Bloques de actividades y citas', icon: 'calendar-week', roles: ['agente','supervisor','admin'], color: 'primary' },
   { key: 'agenda', title: 'Agenda interna', desc: 'Agendar citas y gestionar desarrolladores', icon: 'calendar-event', roles: ['supervisor','admin','agente'], color: 'secondary' },
+  { key: 'cuestionarios', title: 'Cuestionarios', desc: 'Genera enlaces personalizados para prospectos', icon: 'ui-checks-grid', roles: ['supervisor','admin','agente'], color: 'success' },
   // Gestión unificada (CRUD + dispara solicitudes)
   { key: 'gestion', title: 'Clientes y Pólizas', desc: 'Gestión de clientes y pólizas', icon: 'collection', roles: ['supervisor','admin','agente'], color: 'primary' },
   // Fase 5: Campañas

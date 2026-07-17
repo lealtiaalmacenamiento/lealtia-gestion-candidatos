@@ -5,6 +5,7 @@ export const DERIVED_CANDIDATO_FIELDS = new Set<string>([
   'dias_desde_pop', // days between today and fecha_creacion_pop (derived)
   'dias_desde_ct',  // days between today and fecha_creacion_ct (derived)
   'proceso',        // server-calculated pipeline stage
+  'codigo_agente',  // managed through agent_codes, not candidatos
 ]);
 
 export function sanitizeCandidatoPayload<T extends Record<string, unknown>>(obj: T): T {

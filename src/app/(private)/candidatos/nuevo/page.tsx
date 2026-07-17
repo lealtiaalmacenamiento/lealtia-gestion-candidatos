@@ -17,6 +17,7 @@ interface FormState {
   fecha_creacion_pop?: string;
   mes_conexion?: string;
   email_agente: string; // correo del candidato (único) y para crear usuario agente
+  codigo_agente: string;
   mes: string;
   efc: string;
   fecha_tentativa_de_examen?: string; // entrada manual
@@ -33,7 +34,7 @@ interface FormState {
   inicio_escuela_fundamental?: string;
 }
 
-const initialForm: FormState = { pop: '', ct: '', candidato: '', fecha_nacimiento: '', email_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '', fecha_creacion_pop: '', mes_conexion: '' }
+const initialForm: FormState = { pop: '', ct: '', candidato: '', fecha_nacimiento: '', email_agente: '', codigo_agente: '', mes: '', efc: '', fecha_tentativa_de_examen: '', fecha_creacion_ct: '', fecha_creacion_pop: '', mes_conexion: '' }
 
 export default function NuevoCandidato() {
   const [meses, setMeses] = useState<CedulaA1[]>([])
@@ -367,6 +368,7 @@ export default function NuevoCandidato() {
     : computeMesConexion(form.fecha_creacion_ct, form.fecha_creacion_pop) || ''
   const normalizedForm = { ...form, mes_conexion: mesConexion || undefined }
   const payload = sanitizeCandidatoPayload(normalizedForm as unknown as Record<string, unknown>)
+  ;(payload as Record<string, unknown>).codigo_agente = form.codigo_agente.trim().toUpperCase()
   if (typeof (payload as Record<string, unknown>).email_agente === 'string') {
     const normalized = ((payload as Record<string, unknown>).email_agente as string).trim().toLowerCase()
     if (normalized) {
@@ -465,6 +467,16 @@ export default function NuevoCandidato() {
                   <label className="form-label fw-semibold small mb-1">EMAIL (CANDIDATO)</label>
                   <input name="email_agente" type="email" className="form-control" value={form.email_agente} onChange={handleChange} placeholder="correo@dominio.com" />
                   <div className="form-text small">Se usará como correo del candidato y para crear el usuario agente automáticamente.</div>
+                </div>
+                <div className="col-12">
+                  <label className="form-label fw-semibold small mb-1">CÓDIGO DE AGENTE</label>
+                  <input
+                    name="codigo_agente"
+                    className="form-control text-uppercase"
+                    value={form.codigo_agente}
+                    onChange={handleChange}
+                    maxLength={32}
+                  />
                 </div>
                 <div className="col-12">
                   <label className="form-label fw-semibold small mb-1">FECHA CREACIÓN CT</label>

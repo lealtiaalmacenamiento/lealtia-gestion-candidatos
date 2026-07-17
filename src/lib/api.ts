@@ -432,6 +432,7 @@ export interface CreateAgendaCitaPayload {
   notas?: string | null
   generarEnlace?: boolean
   extraParticipantes?: ExtraParticipante[] | null
+  calEventTypeId?: number | null
 }
 
 export async function createAgendaCita(payload: CreateAgendaCitaPayload & Record<string, unknown>): Promise<AgendaCita> {
@@ -449,6 +450,15 @@ export async function cancelAgendaCita(citaId: number, motivo?: string): Promise
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ citaId, motivo })
+  })
+  return handleResponse<{ success: boolean }>(res)
+}
+
+export async function rescheduleAgendaCita(citaId: number, start: string, reason?: string): Promise<{ success: boolean }> {
+  const res = await fetch('/api/agenda/citas/reschedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ citaId, start, reason })
   })
   return handleResponse<{ success: boolean }>(res)
 }

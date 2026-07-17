@@ -7,21 +7,15 @@ import type { IntegrationProviderKey } from '@/types'
 import { providerLabel } from '@/lib/integrations/providerLabels'
 import { useAuth } from '@/context/AuthProvider'
 
-interface ManualStatus {
-  settings: {
-    meetingUrl: string
-    meetingId?: string | null
-    meetingPassword?: string | null
-  } | null
-  legacy: boolean
-}
-
 interface ProviderStatus {
   provider: IntegrationProviderKey
   connected: boolean
   expiresAt: string | null
   scopes: string[] | null
-  manual?: ManualStatus
+  manual?: {
+    settings: { meetingUrl?: string; meetingId?: string | null; meetingPassword?: string | null } | null
+    legacy?: boolean
+  }
 }
 
 interface StatusResponse {
@@ -31,15 +25,15 @@ interface StatusResponse {
 const PROVIDER_META: Record<IntegrationProviderKey, { icon: string; description: string; doc?: string }> = {
   google: {
     icon: 'bi-google',
-    description: 'Sincroniza Google Calendar y genera enlaces de Google Meet automáticamente.'
+    description: 'Sincroniza Google Calendar para disponibilidad y evitar empalmes.'
   },
   zoom: {
     icon: 'bi-camera-video-fill',
-    description: 'Guarda tu enlace personal de Zoom para compartirlo al agendar.'
+    description: ''
   },
   teams: {
     icon: 'bi-calendar3',
-    description: 'Comparte tu sala de Microsoft Teams guardando un enlace personal.'
+    description: ''
   },
   // calcom and sendpilot are managed via their own sections below, not the generic provider card loop
   calcom: { icon: 'bi-calendar-check-fill', description: '' },
@@ -83,10 +77,12 @@ export default function IntegracionesPage() {
 
   // Cal.com state (per-user)
   const [calConnected, setCalConnected] = useState(false)
-  const [calInfo, setCalInfo] = useState<{ organizer_email?: string; username?: string } | null>(null)
-  const [calApiKey, setCalApiKey] = useState('')
-  const [calSaving, setCalSaving] = useState(false)
+  const [calOAuthConfigured, setCalOAuthConfigured] = useState(false)
+  const [calInfo, setCalInfo] = useState<{ organizer_email?: string; username?: string; auth_method?: string } | null>(null)
   const [calDisconnecting, setCalDisconnecting] = useState(false)
+  const [calEventTypes, setCalEventTypes] = useState<Array<{ id: number; title: string; lengthInMinutes: number }>>([])
+  const [calDefaultEventTypeId, setCalDefaultEventTypeId] = useState('')
+  const [calDefaultSaving, setCalDefaultSaving] = useState(false)
 
   const metaList = useMemo(() => PROVIDER_META, [])
 
@@ -147,9 +143,18 @@ export default function IntegracionesPage() {
       try {
         const res = await fetch('/api/integraciones/calcom', { cache: 'no-store' })
         if (res.ok) {
-          const d = await res.json() as { connected: boolean; organizer_email?: string; username?: string }
+          const d = await res.json() as { connected: boolean; oauth_configured?: boolean; organizer_email?: string; username?: string; auth_method?: string; default_event_type_id?: number | null }
           setCalConnected(d.connected)
-          if (d.connected) setCalInfo({ organizer_email: d.organizer_email, username: d.username })
+          setCalOAuthConfigured(Boolean(d.oauth_configured))
+          if (d.connected) {
+            setCalInfo({ organizer_email: d.organizer_email, username: d.username, auth_method: d.auth_method })
+            setCalDefaultEventTypeId(d.default_event_type_id ? String(d.default_event_type_id) : '')
+            const eventsResponse = await fetch('/api/integraciones/calcom/event-types', { cache: 'no-store' })
+            if (eventsResponse.ok) {
+              const eventsJson = await eventsResponse.json() as { eventTypes?: Array<{ id: number; title: string; lengthInMinutes: number }> }
+              setCalEventTypes(eventsJson.eventTypes || [])
+            }
+          }
         }
       } catch { /* ignore */ }
     }
@@ -195,32 +200,6 @@ export default function IntegracionesPage() {
     }
   }
 
-  const handleCalcomSave = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setCalSaving(true)
-    setNotif(null)
-    try {
-      const res = await fetch('/api/integraciones/calcom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: calApiKey.trim() })
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error || `Error ${res.status}`)
-      }
-      const d = await res.json() as { organizer_email?: string; username?: string }
-      setCalConnected(true)
-      setCalInfo({ organizer_email: d.organizer_email, username: d.username })
-      setCalApiKey('')
-      setNotif({ type: 'success', message: 'Cal.com conectado correctamente.' })
-    } catch (err) {
-      setNotif({ type: 'error', message: err instanceof Error ? err.message : 'No se pudo conectar Cal.com' })
-    } finally {
-      setCalSaving(false)
-    }
-  }
-
   const handleCalcomDisconnect = async () => {
     setCalDisconnecting(true)
     setNotif(null)
@@ -229,11 +208,33 @@ export default function IntegracionesPage() {
       if (!res.ok) throw new Error(`Error ${res.status}`)
       setCalConnected(false)
       setCalInfo(null)
+      setCalEventTypes([])
+      setCalDefaultEventTypeId('')
       setNotif({ type: 'info', message: 'Cal.com desconectado.' })
     } catch (err) {
       setNotif({ type: 'error', message: err instanceof Error ? err.message : 'Error al desconectar Cal.com' })
     } finally {
       setCalDisconnecting(false)
+    }
+  }
+
+  const handleCalDefaultSave = async () => {
+    if (!calDefaultEventTypeId) return
+    setCalDefaultSaving(true)
+    setNotif(null)
+    try {
+      const response = await fetch('/api/integraciones/calcom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_event_type_id: Number(calDefaultEventTypeId) })
+      })
+      const json = await response.json().catch(() => ({})) as { error?: string }
+      if (!response.ok) throw new Error(json.error || 'No se pudo guardar el evento')
+      setNotif({ type: 'success', message: 'Evento predeterminado guardado.' })
+    } catch (error) {
+      setNotif({ type: 'error', message: error instanceof Error ? error.message : 'No se pudo guardar el evento' })
+    } finally {
+      setCalDefaultSaving(false)
     }
   }
 
@@ -353,7 +354,7 @@ export default function IntegracionesPage() {
       {!loading && error && <div className="alert alert-danger">{error}</div>}
       {!loading && !error && (
         <div className="row g-4">
-          {providers.filter(p => p.provider !== 'calcom' && p.provider !== 'sendpilot').map((provider) => {
+          {providers.filter(p => p.provider === 'google').map((provider) => {
             const meta = metaList[provider.provider]
             const isZoom = provider.provider === 'zoom'
             const isTeams = provider.provider === 'teams'
@@ -552,7 +553,7 @@ export default function IntegracionesPage() {
       )}
 
       {/* ── Cal.com (reclutador segment only) ──────────────────────────── */}
-      {!loading && !error && (user?.segmentos?.includes('reclutador') ?? false) && (
+      {!loading && !error && ['agente', 'supervisor', 'admin'].includes((user?.rol || '').toLowerCase()) && (
         <div className="mt-4 mb-5">
           <h5 className="fw-semibold mb-3"><i className="bi bi-calendar-check-fill me-2 text-primary"></i>Cal.com (agenda de entrevistas)</h5>
           <div className="card shadow-sm border-0">
@@ -562,34 +563,69 @@ export default function IntegracionesPage() {
                   {calConnected ? 'Conectado' : 'Desconectado'}
                 </span>
                 {calConnected && calInfo && (
-                  <span className="small text-muted">{calInfo.organizer_email ?? calInfo.username}</span>
+                  <>
+                    <span className="small text-muted">{calInfo.organizer_email ?? calInfo.username}</span>
+                    <span className="badge bg-primary-subtle text-primary">
+                      {calInfo.auth_method === 'oauth' ? 'OAuth' : 'Conexión heredada'}
+                    </span>
+                  </>
                 )}
               </div>
               {!calConnected ? (
-                <form className="d-flex flex-column gap-3" onSubmit={handleCalcomSave}>
-                  <div className="form-floating">
-                    <input
-                      type="password"
-                      className="form-control"
-                      id="calcom-api-key"
-                      value={calApiKey}
-                      onChange={e => setCalApiKey(e.target.value)}
-                      placeholder="cal_live_..."
-                      autoComplete="new-password"
-                      required
-                    />
-                    <label htmlFor="calcom-api-key">API Key de Cal.com</label>
-                  </div>
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={calSaving}>
-                    {calSaving ? 'Conectando…' : 'Conectar Cal.com'}
+                <div className="d-flex flex-column align-items-start gap-2">
+                  <p className="small text-muted mb-0">
+                    Autoriza al CRM para consultar tus eventos y mantener sincronizadas tus citas.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => window.location.assign('/api/integraciones/calcom/start')}
+                    disabled={!calOAuthConfigured}
+                  >
+                    <i className="bi bi-box-arrow-up-right me-1" />
+                    Conectar con Cal.com
                   </button>
-                </form>
-              ) : (
-                <div className="d-flex gap-2">
-                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleCalcomDisconnect} disabled={calDisconnecting}>
-                    {calDisconnecting ? 'Desconectando…' : 'Desconectar Cal.com'}
-                  </button>
+                  {!calOAuthConfigured && (
+                    <div className="alert alert-warning small mb-0 py-2">
+                      Falta configurar el cliente OAuth de Cal.com en este ambiente.
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <>
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12 col-md-8">
+                      <label className="form-label small">Evento predeterminado para prospectos</label>
+                      <select className="form-select form-select-sm" value={calDefaultEventTypeId} onChange={event => setCalDefaultEventTypeId(event.target.value)}>
+                        <option value="">Seleccionar evento…</option>
+                        {calEventTypes.map(event => (
+                          <option key={event.id} value={event.id}>
+                            {event.title}{event.lengthInMinutes ? ` · ${event.lengthInMinutes} min` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="form-text">La plataforma de reunión será la configurada en Cal.com para ese evento.</div>
+                    </div>
+                    <div className="col-auto">
+                      <button type="button" className="btn btn-primary btn-sm" onClick={handleCalDefaultSave} disabled={!calDefaultEventTypeId || calDefaultSaving}>
+                        {calDefaultSaving ? 'Guardando…' : 'Guardar evento'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="d-flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary btn-sm"
+                      onClick={() => window.location.assign('/api/integraciones/calcom/start')}
+                      disabled={!calOAuthConfigured}
+                    >
+                      Renovar autorización
+                    </button>
+                    <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleCalcomDisconnect} disabled={calDisconnecting}>
+                      {calDisconnecting ? 'Desconectando…' : 'Desconectar Cal.com'}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           </div>

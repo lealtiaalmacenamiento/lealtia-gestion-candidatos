@@ -2,13 +2,12 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { logAccion } from '@/lib/logger'
 import { getIntegrationToken, removeIntegrationToken } from '@/lib/integrationTokens'
-import { getTeamsManualSettings, getZoomManualSettings } from '@/lib/zoomManual'
-import type { IntegrationProviderKey, ManualMeetingSettings } from '@/types'
+import type { IntegrationProviderKey } from '@/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const PROVIDERS: IntegrationProviderKey[] = ['google', 'zoom', 'teams']
+const PROVIDERS: IntegrationProviderKey[] = ['google']
 
 export async function GET() {
   const actor = await getUsuarioSesion()
@@ -23,33 +22,9 @@ export async function GET() {
     connected: boolean
     expiresAt: string | null
     scopes: string[] | null
-    manual?: {
-      settings: ManualMeetingSettings | null
-      legacy: boolean
-    }
   }>
 
   for (const provider of PROVIDERS) {
-    if (provider === 'zoom' || provider === 'teams') {
-      const { settings, legacy, error } = provider === 'zoom'
-        ? await getZoomManualSettings(actor.id_auth)
-        : await getTeamsManualSettings(actor.id_auth)
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-      statuses.push({
-        provider,
-        connected: Boolean(settings?.meetingUrl),
-        expiresAt: null,
-        scopes: settings ? ['manual'] : null,
-        manual: {
-          settings,
-          legacy
-        }
-      })
-      continue
-    }
-
     const { token, error } = await getIntegrationToken(actor.id_auth, provider)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

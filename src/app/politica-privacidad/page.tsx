@@ -18,7 +18,7 @@ const sections: Array<{ title: string; paragraphs: string[] }> = [
     title: '2. Finalidades del tratamiento',
     paragraphs: [
       'Utilizamos la informacion personal para administrar el pipeline de candidatos, coordinar agendas y reuniones, enviar confirmaciones y recordatorios por correo, emitir reportes operativos y mantener la seguridad de la aplicacion.',
-      'Cuando activas la integracion con Google Meet se generan enlaces automaticamente dentro de la plataforma. Las reuniones de Zoom o Microsoft Teams se registran manualmente; solo guardamos el enlace, ID y contraseña que agregues al expediente.'
+      'Cuando activas las integraciones de Google Calendar y Cal.com, se usan para consultar disponibilidad, sincronizar citas y generar enlaces de reunión según el evento configurado en Cal.com.'
     ]
   },
   {
@@ -30,7 +30,7 @@ const sections: Array<{ title: string; paragraphs: string[] }> = [
   {
     title: '4. Servicios y terceros involucrados',
     paragraphs: [
-      'La informacion se aloja en Supabase (PostgreSQL) y se sirve mediante la infraestructura de Vercel. Para correo usamos proveedores como Gmail o servicios SMTP configurados por el cliente. Las integraciones opcionales pueden comunicarse con APIs de Google, Microsoft o Zoom segun cada caso.',
+      'La informacion se aloja en Supabase (PostgreSQL) y se sirve mediante la infraestructura de Vercel. Para correo usamos proveedores como Gmail o servicios SMTP configurados por el cliente. Las integraciones opcionales pueden comunicarse con APIs de Google Calendar y Cal.com segun cada caso.',
       'Todos los proveedores operan bajo contratos que obligan a proteger la informacion. No comercializamos la informacion personal con terceros ajenos al servicio.'
     ]
   },

@@ -18,6 +18,12 @@ interface PlanificacionResponse { id?:number; agente_id:number; semana_iso:numbe
 // Mostrar calendario con 24 horas (00..23)
 const HORAS_BASE = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
 
+function bloqueHoraLabel(block: BloquePlanificacion) {
+  if (block.hora_inicio && block.hora_fin) return `${block.hora_inicio}-${block.hora_fin}`
+  if (block.hora_inicio) return block.hora_inicio
+  return `${block.hour}:00`
+}
+
 export default function PlanificacionPage(){
   const { user } = useAuth()
   const dialog = useDialog()
@@ -165,6 +171,9 @@ export default function PlanificacionPage(){
       if (existing.origin !== 'auto') return true
       if (target.agenda_cita_id != null && existing.agenda_cita_id != null) {
         return existing.agenda_cita_id !== target.agenda_cita_id
+      }
+      if (target.sp_cita_id && existing.sp_cita_id) {
+        return existing.sp_cita_id !== target.sp_cita_id
       }
       return !(existing.day === target.day && existing.hour === target.hour && existing.activity === 'CITAS')
     })
@@ -316,6 +325,7 @@ export default function PlanificacionPage(){
                     if(blk.activity==='SMNYL') titleParts.push(`Cita${blk.confirmada ? ' confirmada' : ''}`.trim())
                     if(blk.activity==='CITAS') {
                       titleParts.push(`Cita agenda${blk.confirmada ? ' confirmada' : ' por confirmar'}`)
+                      titleParts.push(`Horario: ${bloqueHoraLabel(blk)}`)
                       titleParts.push(blk.sp_cita_id ? 'Agendada vía SendPilot / Cal.com' : 'Sincronizada desde agenda interna')
                     }
                     if(blk.prospecto_nombre) titleParts.push(`Prospecto: ${blk.prospecto_nombre}`)
@@ -334,6 +344,7 @@ export default function PlanificacionPage(){
                           {blk.activity==='PROSPECCION' && 'Prospección'}
                           {(blk.activity==='SMNYL' || blk.activity==='CITAS') && 'Cita'}
                         </span>
+                        {blk.activity === 'CITAS' && <span style={{fontSize:'0.58rem'}}>{bloqueHoraLabel(blk)}</span>}
                         {blk.prospecto_nombre && <span className="text-wrap" style={{fontSize:'0.65rem'}}>{blk.prospecto_nombre}</span>}
                         {blk.activity!=='PROSPECCION' && (
                           <span className="badge rounded-pill bg-light text-dark" style={{fontSize:'0.55rem'}}>
@@ -428,7 +439,7 @@ function BloqueEditor({ modal, semanaBase, onSave, onDelete, pending = false }: 
   const diaNum = fechaBloque.getUTCDate().toString().padStart(2,'0')
   const mesNum = (fechaBloque.getUTCMonth()+1).toString().padStart(2,'0')
   return <div className="small">
-    <div className="mb-2 fw-semibold">{dias[modal.day]} {diaNum}/{mesNum} {modal.hour}:00</div>
+    <div className="mb-2 fw-semibold">{dias[modal.day]} {diaNum}/{mesNum} {modal.blk ? bloqueHoraLabel(modal.blk) : `${modal.hour}:00`}</div>
     {isAgendaCita ? (
       <div className="mb-2">
         <label className="form-label small mb-1">Tipo</label>

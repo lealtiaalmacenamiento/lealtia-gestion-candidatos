@@ -49,42 +49,84 @@ function getAdminClient(): { client?: SupabaseClient; error?: string } {
   return { client: createClient(SUPABASE_URL, SERVICE_KEY) }
 }
 
-function normalizeInitials(nombre?: string | null): string | null {
-  if (!nombre) return null
-  const ascii = nombre.normalize('NFD').replace(/\p{Diacritic}/gu, '')
-  const parts = ascii.split(/\s+/).filter(Boolean)
-  if (!parts.length) return null
-  return parts.map(p => p[0]!.toUpperCase()).join('')
+export function normalizeCodigoAgente(value: unknown): string | null {
+  if (value == null) return null
+  const normalized = String(value).trim().toUpperCase()
+  if (!normalized) return null
+  if (!/^[A-Z0-9_-]{3,32}$/.test(normalized)) {
+    throw new Error('El código de agente debe tener entre 3 y 32 caracteres y usar solo letras, números, guion o guion bajo')
+  }
+  return normalized
 }
 
-function last4Digits(ct?: string | null): string | null {
-  if (!ct) return null
-  const digits = String(ct).replace(/\D/g, '')
-  if (!digits) return null
-  return digits.slice(-4)
-}
+/**
+ * Assigns the code explicitly entered by the user. Previous codes are retained
+ * as inactive history when the active value changes.
+ */
+export async function setManualAgentCode(opts: {
+  usuarioId?: number | null
+  nombre?: string | null
+  code: unknown
+}): Promise<{ code: string | null; changed: boolean; error?: string }> {
+  const { usuarioId, nombre } = opts
+  if (!usuarioId) return { code: null, changed: false, error: 'No se encontró el usuario asociado al candidato' }
 
-export function buildCodigoAgente(nombre?: string | null, ct?: string | null): string | null {
-  const initials = normalizeInitials(nombre)
-  const last4 = last4Digits(ct)
-  if (!initials || !last4) return null
-  return `${initials}${last4}`.toUpperCase()
-}
+  let code: string | null
+  try {
+    code = normalizeCodigoAgente(opts.code)
+  } catch (error) {
+    return { code: null, changed: false, error: error instanceof Error ? error.message : 'Código de agente inválido' }
+  }
 
-export async function ensureAgentCodeForUsuario(opts: { usuarioId?: number | null; nombre?: string | null; ct?: string | null }): Promise<{ code?: string; skipped?: boolean; error?: string }>
-{
-  const { usuarioId, nombre, ct } = opts
-  if (!usuarioId) return { skipped: true, error: 'Sin usuarioId' }
-  const code = buildCodigoAgente(nombre, ct)
-  if (!code) return { skipped: true, error: 'Nombre o CT insuficientes para generar código' }
   const adminRes = getAdminClient()
-  if (!adminRes.client) return { error: adminRes.error || 'Sin cliente admin' }
+  if (!adminRes.client) return { code, changed: false, error: adminRes.error || 'Sin cliente admin' }
   const admin = adminRes.client
-  const { error } = await admin
+
+  const { data: currentRows, error: currentError } = await admin
     .from('agent_codes')
-    .upsert({ code, agente_id: usuarioId, nombre_agente: nombre ?? 'Agente', activo: true }, { onConflict: 'code' })
-  if (error) return { error: error.message }
-  return { code }
+    .select('code, agente_id, activo')
+    .eq('agente_id', usuarioId)
+    .eq('activo', true)
+  if (currentError) return { code, changed: false, error: currentError.message }
+
+  const current = (currentRows || []).find((row) => row.code === code)
+  if (code && current && currentRows?.length === 1) return { code, changed: false }
+
+  if (code) {
+    const { data: owner, error: ownerError } = await admin
+      .from('agent_codes')
+      .select('agente_id')
+      .eq('code', code)
+      .maybeSingle()
+    if (ownerError) return { code, changed: false, error: ownerError.message }
+    if (owner && Number(owner.agente_id) !== Number(usuarioId)) {
+      return { code, changed: false, error: 'El código de agente ya está asignado a otro usuario' }
+    }
+  }
+
+  const { error: deactivateError } = await admin
+    .from('agent_codes')
+    .update({ activo: false })
+    .eq('agente_id', usuarioId)
+    .eq('activo', true)
+  if (deactivateError) return { code, changed: false, error: deactivateError.message }
+
+  if (!code) return { code: null, changed: (currentRows?.length ?? 0) > 0 }
+
+  const { error: upsertError } = await admin
+    .from('agent_codes')
+    .upsert(
+      {
+        code,
+        agente_id: usuarioId,
+        nombre_agente: nombre?.trim() || 'Agente',
+        activo: true,
+        expires_at: null
+      },
+      { onConflict: 'code' }
+    )
+  if (upsertError) return { code, changed: false, error: upsertError.message }
+  return { code, changed: true }
 }
 
 export async function crearUsuarioAgenteAuto({ email, nombre }: CrearAgenteOpts): Promise<CrearAgenteResultado> {

@@ -227,6 +227,7 @@ function ConsultaCandidatosInner() {
     { key: 'pop' as unknown as keyof Candidato, label: 'POP' },
     { key: 'candidato', label: 'Candidato', sortable: true },
     { key: 'email_agente' as unknown as keyof Candidato, label: 'Email agente' },
+    { key: 'codigo_agente' as unknown as keyof Candidato, label: 'Código de agente', sortable: true },
     { key: 'fecha_nacimiento' as unknown as keyof Candidato, label: 'Fecha nacimiento', sortable: true },
   { key: 'fecha_creacion_ct', label: 'Fecha creación CT' },
   { key: 'mes_conexion', label: 'Mes conexión', sortable: true },

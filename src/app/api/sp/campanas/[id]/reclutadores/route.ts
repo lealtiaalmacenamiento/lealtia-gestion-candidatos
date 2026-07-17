@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUsuarioSesion } from '@/lib/auth'
 import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { logAccion } from '@/lib/logger'
+import { resolveCalcomDefaultEventType } from '@/lib/integrations/calcom'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,7 @@ export async function POST(req: Request, context: RouteContext) {
 
   const { id } = await context.params
 
-  let body: { reclutador_id?: string; calcom_event_type_id?: number | null; calcom_scheduling_url?: string | null }
+  let body: { reclutador_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -63,10 +64,17 @@ export async function POST(req: Request, context: RouteContext) {
   // Validate reclutador exists
   const { data: usuarioRow } = await supabase
     .from('usuarios')
-    .select('id')
+    .select('id,id_auth')
     .eq('id_auth', reclutador_id)
     .maybeSingle()
   if (!usuarioRow) return NextResponse.json({ error: 'Reclutador no encontrado' }, { status: 404 })
+
+  let calcomEventType
+  try {
+    calcomEventType = (await resolveCalcomDefaultEventType(reclutador_id)).eventType
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Configura el evento predeterminado de Cal.com del reclutador en Integraciones' }, { status: 409 })
+  }
 
   const { data, error } = await supabase
     .from('sp_campana_reclutadores')
@@ -74,8 +82,8 @@ export async function POST(req: Request, context: RouteContext) {
       {
         campana_id: id,
         reclutador_id,
-        calcom_event_type_id: body.calcom_event_type_id ?? null,
-        calcom_scheduling_url: body.calcom_scheduling_url?.trim() ?? null,
+        calcom_event_type_id: calcomEventType.id,
+        calcom_scheduling_url: calcomEventType.bookingUrl ?? null,
         activo: true
       },
       { onConflict: 'campana_id,reclutador_id' }

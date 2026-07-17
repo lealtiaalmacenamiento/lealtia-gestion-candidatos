@@ -2,11 +2,12 @@
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://YOUR_PROJECT_REF.supabase.co'
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  `connect-src 'self' ${supabaseUrl} ${supabaseUrl.replace('https://', 'wss://')} https://*.supabase.co`,
-  `img-src 'self' data: blob: ${supabaseUrl} https://*.supabase.co https://lh3.googleusercontent.com https://*.googleusercontent.com https://sendpilotstorage.blob.core.windows.net`,
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://app.cal.com",
+  `connect-src 'self' ${supabaseUrl} ${supabaseUrl.replace('https://', 'wss://')} https://*.supabase.co https://cal.com https://*.cal.com`,
+  `img-src 'self' data: blob: ${supabaseUrl} https://*.supabase.co https://lh3.googleusercontent.com https://*.googleusercontent.com https://sendpilotstorage.blob.core.windows.net https://cal.com https://*.cal.com`,
   "style-src 'self' 'unsafe-inline'",
-  "font-src 'self'"
+  "font-src 'self'",
+  "frame-src https://cal.com https://*.cal.com"
 ].join('; ')
 
 const securityHeaders = [

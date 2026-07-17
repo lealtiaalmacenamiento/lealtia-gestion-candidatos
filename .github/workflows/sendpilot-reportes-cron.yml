@@ -1,0 +1,62 @@
+name: SendPilot reportes programados
+
+on:
+  schedule:
+    - cron: '30 14 * * *' # 8:30 AM CDMX (UTC-6, México no tiene horario de verano)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno a usar'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - develop
+      dry_run:
+        description: 'Solo preview, sin enviar correos (dry=1)'
+        required: false
+        default: 'false'
+        type: boolean
+      report_id:
+        description: 'ID opcional de configuración para probar sólo un reporte'
+        required: false
+        default: ''
+
+jobs:
+  send-sendpilot-reports:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sendpilot-reportes
+        env:
+          URL: ${{ inputs.environment == 'develop' && secrets.APP_URL_DEV || secrets.APP_URL }}
+          SECRET: ${{ secrets.REPORTES_CRON_SECRET }}
+          BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${URL:?Need APP_URL secret (e.g. https://your-app.vercel.app)}"
+          : "${SECRET:?Need REPORTES_CRON_SECRET secret}"
+
+          QUERY=""
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then QUERY="?dry=1"; fi
+          if [[ -n "${{ inputs.report_id }}" ]]; then
+            SEP="?"
+            [[ "$QUERY" == *"?"* ]] && SEP="&"
+            QUERY="${QUERY}${SEP}id=${{ inputs.report_id }}"
+          fi
+
+          echo "→ POST ${URL%/}/api/cron/sendpilot-reportes${QUERY}"
+          RESPONSE=$(curl -sS -X POST "${URL%/}/api/cron/sendpilot-reportes${QUERY}" \
+            -H "Authorization: Bearer ${SECRET}" \
+            -H 'content-type: application/json' \
+            ${BYPASS_TOKEN:+-H "x-vercel-protection-bypass: ${BYPASS_TOKEN}"} \
+            -w '\n---HTTP_CODE:%{http_code}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | grep -o 'HTTP_CODE:[0-9]*' | cut -d: -f2)
+          BODY=$(echo "$RESPONSE" | sed '/---HTTP_CODE:/d')
+
+          echo "HTTP $HTTP_CODE"
+          echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
+
+          [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "207" ]] || exit 1
+

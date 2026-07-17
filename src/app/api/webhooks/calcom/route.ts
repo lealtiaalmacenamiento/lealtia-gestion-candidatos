@@ -2,7 +2,15 @@ import { ensureAdminClient } from '@/lib/supabaseAdmin'
 import { verifyCalcomSignature } from '@/lib/integrations/calcom'
 import { normalizeLinkedInSlug, updateLeadStatus } from '@/lib/integrations/sendpilot'
 import { sendMail } from '@/lib/mailer'
-import { syncPlanificacionSpCita } from '@/app/api/agenda/citas/planificacionSync'
+import {
+  detachPlanificacionSpCita,
+  detachPlanificacionCita,
+  syncPlanificacionCita,
+  syncPlanificacionSpCita
+} from '@/app/api/agenda/citas/planificacionSync'
+import { cancelAgendaCitaCascade } from '@/app/api/agenda/citas/cancel/cascade'
+import { notifyAgendaCitaEvent } from '@/lib/agendaNotifications'
+import { syncQuestionnaireBooking } from '@/lib/questionnaireBookingSync'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,12 +28,16 @@ export async function POST(req: Request) {
 
   const triggerEvent = payload.triggerEvent as string | undefined
   if (!triggerEvent) return new Response('ok', { status: 200 })
+  const eventPayload =
+    payload.payload && typeof payload.payload === 'object'
+      ? payload.payload as Record<string, unknown>
+      : payload
 
   const supabase = ensureAdminClient()
 
   // Step 1: Resolve organizer by email (guaranteed field in Cal.com Person structure)
   const organizerEmail = (
-    (payload.organizer as Record<string, unknown> | undefined)?.email
+    (eventPayload.organizer as Record<string, unknown> | undefined)?.email
   ) as string | undefined
 
   if (!organizerEmail) return new Response('ok', { status: 200 })
@@ -52,17 +64,24 @@ export async function POST(req: Request) {
   }
 
   const reclutadorAuthId = tokenRow.usuario_id
+  await logCalcomWebhookEvent(supabase, {
+    triggerEvent,
+    payload: eventPayload,
+    organizerEmail,
+    usuarioId: reclutadorAuthId
+  }).catch(() => {})
 
   try {
     if (triggerEvent === 'BOOKING_CREATED') {
-      await handleBookingCreated(supabase, payload, reclutadorAuthId)
+      await handleBookingCreated(supabase, eventPayload, reclutadorAuthId)
     } else if (triggerEvent === 'BOOKING_CANCELLED') {
-      await handleBookingCancelled(supabase, payload)
+      await handleBookingCancelled(supabase, eventPayload)
     } else if (triggerEvent === 'BOOKING_RESCHEDULED') {
-      await handleBookingRescheduled(supabase, payload)
+      await handleBookingRescheduled(supabase, eventPayload)
     }
   } catch (err) {
     console.error('[webhook/calcom] Error handling event', { triggerEvent, err })
+    return new Response('retry', { status: 500 })
   }
 
   return new Response('ok', { status: 200 })
@@ -86,12 +105,38 @@ async function handleBookingCreated(
 
   const inicio: string = payload.startTime as string ?? ''
   const fin: string = payload.endTime as string ?? ''
-  const videoCallUrl: string | null = (payload.videoCallUrl as string) ?? null
+  const videoCallData = payload.videoCallData as Record<string, unknown> | undefined
+  const metadata = payload.metadata as Record<string, unknown> | undefined
+  const videoCallUrl: string | null =
+    (payload.videoCallUrl as string) ??
+    (videoCallData?.url as string) ??
+    (metadata?.videoCallUrl as string) ??
+    null
 
   const attendee = (payload.attendees as Record<string, unknown>[] | undefined)?.[0]
   const attendeeEmail: string | null = (attendee?.email as string) ?? null
 
   if (!bookingUid) return
+
+  const lealtiaSubmissionId = typeof metadata?.lealtiaSubmissionId === 'string'
+    ? metadata.lealtiaSubmissionId
+    : null
+  const lealtiaProspectoId = metadata?.lealtiaProspectoId
+    ? Number(metadata.lealtiaProspectoId)
+    : null
+
+  if (lealtiaSubmissionId || (lealtiaProspectoId && Number.isFinite(lealtiaProspectoId))) {
+    await syncLealtiaCrmBooking(supabase, {
+      bookingUid,
+      reclutadorAuthId,
+      submissionId: lealtiaSubmissionId,
+      prospectoId: lealtiaProspectoId && Number.isFinite(lealtiaProspectoId) ? lealtiaProspectoId : null,
+      inicio,
+      fin,
+      meetingUrl: videoCallUrl
+    })
+    return
+  }
 
   // Step 1: Does eventTypeId belong to an active SP campaign assigned to this recruiter?
   let asignacion: { campana_id: string; calcom_linkedin_identifier: string } | null = null
@@ -250,14 +295,62 @@ async function handleBookingCancelled(
   supabase: ReturnType<typeof ensureAdminClient>,
   payload: Record<string, unknown>
 ) {
-  const bookingUid = (payload.uid ?? payload.bookingUid) as string | undefined
-  if (!bookingUid) return
+  const bookingUidCandidates = calcomBookingUidCandidates(payload)
+  const metadata = payload.metadata as Record<string, unknown> | undefined
+  const lealtiaSubmissionId = typeof metadata?.lealtiaSubmissionId === 'string'
+    ? metadata.lealtiaSubmissionId
+    : null
+  if (lealtiaSubmissionId) {
+    const { data: submission } = await supabase
+      .from('questionnaire_submissions')
+      .select('cal_booking_uid')
+      .eq('id', lealtiaSubmissionId)
+      .maybeSingle()
+    if (submission?.cal_booking_uid) {
+      bookingUidCandidates.push(String(submission.cal_booking_uid))
+    }
+  }
 
-  const { data: cita } = await supabase
+  const candidateUids = uniqueStrings(bookingUidCandidates)
+  if (!candidateUids.length) return
+  const bookingUid = candidateUids[0]
+
+  const { data: regularCitas } = await supabase
+    .from('citas')
+    .select('id,external_event_id,estado,updated_at')
+    .in('external_event_id', candidateUids)
+    .neq('estado', 'cancelada')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+  const regularCita = regularCitas?.[0]
+  if (regularCita?.id) {
+    await cancelAgendaCitaCascade({
+      citaId: Number(regularCita.id),
+      actor: null,
+      origin: 'calendar',
+      supabase,
+      skipRemote: true
+    })
+    await supabase
+      .from('questionnaire_submissions')
+      .update({ estado: 'cancelado', updated_at: new Date().toISOString() })
+      .in('cal_booking_uid', candidateUids)
+    return
+  }
+
+  await supabase
+    .from('questionnaire_submissions')
+    .update({ estado: 'cancelado', updated_at: new Date().toISOString() })
+    .in('cal_booking_uid', candidateUids)
+
+  const { data: citas } = await supabase
     .from('sp_citas')
     .select('id, precandidato_id, campana_id')
-    .eq('calcom_booking_uid', bookingUid)
-    .maybeSingle()
+    .in('calcom_booking_uid', candidateUids)
+    .neq('estado', 'cancelada')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+  const cita = citas?.[0]
 
   if (!cita) return
 
@@ -265,6 +358,11 @@ async function handleBookingCancelled(
     .from('sp_citas')
     .update({ estado: 'cancelada', updated_at: new Date().toISOString() })
     .eq('id', cita.id)
+
+  await detachPlanificacionSpCita({
+    supabase,
+    spCitaId: String(cita.id)
+  }).catch(() => {})
 
   if (cita.precandidato_id) {
     // Fetch current precandidato state — we need it to decide what to do
@@ -336,13 +434,83 @@ async function handleBookingRescheduled(
   supabase: ReturnType<typeof ensureAdminClient>,
   payload: Record<string, unknown>
 ) {
-  const oldUid = (payload.uid ?? payload.bookingUid) as string | undefined
-  const newUid = (payload.rescheduledToUid as string) ?? oldUid
-  if (!oldUid) return
-
+  const currentUid = (payload.uid ?? payload.bookingUid) as string | undefined
+  const oldUid = (
+    payload.rescheduledFromUid ??
+    payload.rescheduleUid ??
+    currentUid
+  ) as string | undefined
+  const newUid = (
+    payload.rescheduledToUid ??
+    (payload.rescheduledFromUid ? currentUid : undefined) ??
+    currentUid
+  ) as string | undefined
   const newStart = payload.startTime as string | undefined
   const newEnd = payload.endTime as string | undefined
-  const videoCallUrl = (payload.videoCallUrl as string) ?? null
+  const videoCallData = payload.videoCallData as Record<string, unknown> | undefined
+  const videoCallUrl = ((payload.videoCallUrl as string) ?? (videoCallData?.url as string)) || null
+  if (!oldUid) return
+
+  const { data: regularCita } = await supabase
+    .from('citas')
+    .select('id,agente_id,prospecto_id,inicio')
+    .eq('external_event_id', oldUid)
+    .maybeSingle()
+  if (regularCita) {
+    await supabase
+      .from('citas')
+      .update({
+        external_event_id: newUid ?? oldUid,
+        inicio: newStart ?? undefined,
+        fin: newEnd ?? undefined,
+        meeting_url: videoCallUrl ?? undefined,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', regularCita.id)
+    const { data: agent } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('id_auth', regularCita.agente_id)
+      .maybeSingle()
+    if (agent?.id && newStart) {
+      await detachPlanificacionCita({
+        supabase,
+        agenteId: Number(agent.id),
+        inicioIso: regularCita.inicio,
+        citaId: Number(regularCita.id)
+      })
+      const { data: prospect } = regularCita.prospecto_id
+        ? await supabase.from('prospectos').select('nombre').eq('id', regularCita.prospecto_id).maybeSingle()
+        : { data: null }
+      await syncPlanificacionCita({
+        supabase,
+        agenteId: Number(agent.id),
+        inicioIso: newStart,
+        finIso: newEnd ?? null,
+        prospectoId: regularCita.prospecto_id,
+        prospectoNombre: prospect?.nombre ?? null,
+        citaId: Number(regularCita.id)
+      })
+    }
+    await supabase
+      .from('questionnaire_submissions')
+      .update({
+        cal_booking_uid: newUid ?? oldUid,
+        booking_start: newStart ?? undefined,
+        booking_end: newEnd ?? undefined,
+        updated_at: new Date().toISOString()
+      })
+      .eq('cal_booking_uid', oldUid)
+    await notifyAgendaCitaEvent(supabase, {
+      citaId: Number(regularCita.id),
+      event: 'rescheduled',
+      previousStart: regularCita.inicio,
+      nextStart: newStart ?? null,
+      bookingUid: newUid ?? oldUid,
+      actorEmail: null
+    })
+    return
+  }
 
   const { data: cita } = await supabase
     .from('sp_citas')
@@ -380,6 +548,186 @@ async function handleBookingRescheduled(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function uniqueStrings(values: unknown[]): string[] {
+  return Array.from(new Set(
+    values
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  ))
+}
+
+function calcomBookingUidCandidates(payload: Record<string, unknown>): string[] {
+  const booking = payload.booking && typeof payload.booking === 'object'
+    ? payload.booking as Record<string, unknown>
+    : null
+  return uniqueStrings([
+    payload.uid,
+    payload.bookingUid,
+    payload.rescheduledFromUid,
+    payload.rescheduledToUid,
+    payload.rescheduleUid,
+    booking?.uid,
+    booking?.bookingUid,
+    booking?.rescheduledFromUid,
+    booking?.rescheduledToUid,
+    booking?.rescheduleUid
+  ])
+}
+
+async function logCalcomWebhookEvent(
+  supabase: ReturnType<typeof ensureAdminClient>,
+  input: {
+    triggerEvent: string
+    payload: Record<string, unknown>
+    organizerEmail: string
+    usuarioId: string
+  }
+) {
+  const metadata = input.payload.metadata && typeof input.payload.metadata === 'object'
+    ? input.payload.metadata as Record<string, unknown>
+    : null
+  await supabase.from('logs_integracion').insert({
+    usuario_id: input.usuarioId,
+    proveedor: 'calcom',
+    operacion: 'webhook_calcom_recibido',
+    nivel: 'info',
+    detalle: {
+      triggerEvent: input.triggerEvent,
+      organizerEmail: input.organizerEmail,
+      bookingUid: calcomBookingUidCandidates(input.payload)[0] ?? null,
+      bookingUidCandidates: calcomBookingUidCandidates(input.payload),
+      status: typeof input.payload.status === 'string' ? input.payload.status : null,
+      startTime: typeof input.payload.startTime === 'string' ? input.payload.startTime : null,
+      endTime: typeof input.payload.endTime === 'string' ? input.payload.endTime : null,
+      rescheduledFromUid: typeof input.payload.rescheduledFromUid === 'string' ? input.payload.rescheduledFromUid : null,
+      rescheduledToUid: typeof input.payload.rescheduledToUid === 'string' ? input.payload.rescheduledToUid : null,
+      metadata: metadata ? {
+        lealtiaSubmissionId: typeof metadata.lealtiaSubmissionId === 'string' ? metadata.lealtiaSubmissionId : null,
+        lealtiaProspectoId: typeof metadata.lealtiaProspectoId === 'string' ? metadata.lealtiaProspectoId : null,
+        lealtiaLinkId: typeof metadata.lealtiaLinkId === 'string' ? metadata.lealtiaLinkId : null
+      } : null
+    }
+  })
+}
+
+async function syncLealtiaCrmBooking(
+  supabase: ReturnType<typeof ensureAdminClient>,
+  input: {
+    bookingUid: string
+    reclutadorAuthId: string
+    submissionId: string | null
+    prospectoId: number | null
+    inicio: string
+    fin: string
+    meetingUrl: string | null
+  }
+) {
+  if (input.submissionId) {
+    await syncQuestionnaireBooking(supabase, {
+      submissionId: input.submissionId,
+      bookingUid: input.bookingUid,
+      start: input.inicio,
+      end: input.fin,
+      meetingUrl: input.meetingUrl
+    })
+    return
+  }
+
+  let prospectoId = input.prospectoId
+  if (input.submissionId) {
+    const { data: submission } = await supabase
+      .from('questionnaire_submissions')
+      .select('id,prospecto_id,questionnaire_snapshot,respuestas')
+      .eq('id', input.submissionId)
+      .maybeSingle()
+    if (submission?.prospecto_id) prospectoId = Number(submission.prospecto_id)
+  }
+
+  const { data: existing } = await supabase
+    .from('citas')
+    .select('id,meeting_url')
+    .eq('external_event_id', input.bookingUid)
+    .maybeSingle()
+
+  let citaId: number | null = existing?.id ? Number(existing.id) : null
+  if (existing?.id) {
+    await supabase
+      .from('citas')
+      .update({
+        inicio: input.inicio,
+        fin: input.fin,
+        meeting_url: input.meetingUrl || existing.meeting_url,
+        estado: 'confirmada',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existing.id)
+  } else if (prospectoId) {
+    const { data: created } = await supabase
+      .from('citas')
+      .insert({
+        prospecto_id: prospectoId,
+        agente_id: input.reclutadorAuthId,
+        supervisor_id: null,
+        inicio: input.inicio,
+        fin: input.fin,
+        meeting_url: input.meetingUrl || 'https://cal.com',
+        meeting_provider: 'calcom',
+        external_event_id: input.bookingUid,
+        estado: 'confirmada'
+      })
+      .select('id')
+      .single()
+    citaId = created?.id ? Number(created.id) : null
+  }
+
+  if (input.submissionId) {
+    await supabase
+      .from('questionnaire_submissions')
+      .update({
+        estado: 'cita_agendada',
+        cal_booking_uid: input.bookingUid,
+        booking_start: input.inicio,
+        booking_end: input.fin,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', input.submissionId)
+  }
+
+  if (prospectoId) {
+    await supabase
+      .from('prospectos')
+      .update({
+        estado: 'con_cita',
+        cita_creada: true,
+        fecha_cita: input.inicio,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', prospectoId)
+  }
+
+  if (citaId) {
+    const [{ data: agent }, { data: prospect }] = await Promise.all([
+      supabase.from('usuarios').select('id').eq('id_auth', input.reclutadorAuthId).maybeSingle(),
+      prospectoId
+        ? supabase.from('prospectos').select('nombre').eq('id', prospectoId).maybeSingle()
+        : Promise.resolve({ data: null })
+    ])
+    if (agent?.id) {
+      await syncPlanificacionCita({
+        supabase,
+        agenteId: Number(agent.id),
+        inicioIso: input.inicio,
+        finIso: input.fin,
+        prospectoId,
+        prospectoNombre: prospect?.nombre ?? null,
+        citaId
+      })
+    }
+  }
+
+}
 
 function extractLinkedinFromResponses(
   responses: Record<string, unknown>,

@@ -21,6 +21,9 @@ import CampaignsSection from './CampaignsSection';
 import PuntosThresholdsSection from './PuntosThresholdsSection';
 import EnlacesRapidosSection from './EnlacesRapidosSection';
 import FondosZoomSection from './FondosZoomSection';
+import QuestionnairesSection from './QuestionnairesSection';
+import SendPilotReportsSection from './SendPilotReportsSection';
+import { useAuth } from '@/context/AuthProvider';
 // Campos posibles para ficha de candidato (deben coincidir con los usados en el PDF)
 const FICHA_CAMPOS = [
   'CLAVE TEMPORAL',
@@ -52,6 +55,8 @@ import AppModal from '@/components/ui/AppModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 export default function ParametrosClient(){
+  const { user } = useAuth();
+  const isAdmin = user?.rol === 'admin';
   // Modal añadir mensaje ficha_candidato
   const [showAddFicha, setShowAddFicha] = useState(false);
   const [newFicha, setNewFicha] = useState<{clave: string; valor: string; descripcion?: string}>({ clave:'', valor:'', descripcion:'' });
@@ -403,6 +408,14 @@ export default function ParametrosClient(){
 
           {/* Accesos rápidos */}
           <EnlacesRapidosSection onNotify={(msg, type) => setNotif({ msg, type })} />
+
+          {/* Cuestionarios públicos para prospectos */}
+          <QuestionnairesSection onNotify={(msg, type) => setNotif({ msg, type })} />
+
+          {/* Reportes SendPilot por correo (solo admin) */}
+          {isAdmin && (
+            <SendPilotReportsSection onNotify={(msg, type) => setNotif({ msg, type })} />
+          )}
 
           {/* FASE 5: Campañas */}
           <section className="border rounded p-3 bg-body shadow-sm">
