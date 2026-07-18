@@ -30,6 +30,7 @@ export async function middleware(req: NextRequest) {
     '/api/cron/cumpleanos',
     '/api/cron/sp-sequence-recovery',
     '/api/cron/sp-post-cita-cleanup',
+    '/api/cron/sendpilot-reportes',
   ])
   // Rutas con prefijo público (no se pueden listar estáticamente)
   const isPublicPrefix =
