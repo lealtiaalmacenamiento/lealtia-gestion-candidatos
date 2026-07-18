@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { syncPlanificacionCita } from '@/app/api/agenda/citas/planificacionSync'
 import { notifyQuestionnaireAgent } from '@/lib/questionnaireNotifications'
 import { extractSemanticAnswers, type QuestionnaireSection } from '@/lib/validation/questionnaireSchemas'
+import { sendMail } from '@/lib/mailer'
 
 function firstOrValue<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null
@@ -15,6 +16,119 @@ function validIsoOrNull(value?: string | null) {
 
 function defaultEnd(startIso: string) {
   return new Date(new Date(startIso).getTime() + 30 * 60_000).toISOString()
+}
+
+function formatDateTime(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('es-MX', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: process.env.AGENDA_TZ || 'America/Mexico_City'
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
+async function notifyDevelopersQuestionnaireBookingWithoutSupervisor(
+  supabase: SupabaseClient,
+  input: {
+    citaId: number
+    agenteAuthId: string
+    agenteNombre?: string | null
+    agenteEmail?: string | null
+    prospectName: string
+    prospectEmail?: string | null
+    start: string
+    end: string
+    meetingUrl: string
+    questionnaireTitle: string
+    bookingUid: string
+  }
+) {
+  const { data: developers } = await supabase
+    .from('usuarios')
+    .select('email')
+    .eq('is_desarrollador', true)
+    .eq('activo', true)
+
+  const recipients = Array.from(new Set((developers || [])
+    .map(row => (typeof row?.email === 'string' && row.email.includes('@') ? row.email : null))
+    .filter((email): email is string => Boolean(email && email !== input.agenteEmail))))
+
+  if (!recipients.length) return
+
+  const agenteLabel = input.agenteNombre || input.agenteEmail || 'Asesor'
+  const timezone = process.env.AGENDA_TZ || 'America/Mexico_City'
+  const inicioLocal = formatDateTime(input.start)
+  const finLocal = formatDateTime(input.end)
+  const subject = `Aviso: ${input.prospectName} agendó una cita sin supervisor`
+  const html = [
+    '<p>Hola equipo de desarrollo,</p>',
+    `<p>${input.prospectName}${input.prospectEmail ? ` (${input.prospectEmail})` : ''} agendó una cita con ${agenteLabel} sin supervisor desde el flujo de cuestionario/PPR. Aquí están los detalles disponibles:</p>`,
+    '<ul>',
+    `<li><strong>Asesor:</strong> ${agenteLabel}${input.agenteEmail ? ` (${input.agenteEmail})` : ''}</li>`,
+    `<li><strong>Prospecto:</strong> ${input.prospectName}</li>`,
+    `<li><strong>Correo del prospecto:</strong> ${input.prospectEmail || 'Sin correo capturado'}</li>`,
+    `<li><strong>Cuestionario:</strong> ${input.questionnaireTitle}</li>`,
+    `<li><strong>Horario:</strong> ${inicioLocal} - ${finLocal}</li>`,
+    `<li><strong>Zona horaria:</strong> ${timezone}</li>`,
+    '<li><strong>Plataforma:</strong> Cal.com</li>',
+    `<li><strong>Enlace:</strong> <a href="${input.meetingUrl}">${input.meetingUrl}</a></li>`,
+    '</ul>',
+    '<p>Revisen si necesitan asignar supervisor o tomar alguna acción adicional.</p>',
+    '<p>Gracias.</p>'
+  ].join('\n')
+  const text = [
+    'Hola equipo de desarrollo,',
+    `${input.prospectName}${input.prospectEmail ? ` (${input.prospectEmail})` : ''} agendó una cita con ${agenteLabel} sin supervisor desde el flujo de cuestionario/PPR.`,
+    '',
+    `Asesor: ${agenteLabel}${input.agenteEmail ? ` (${input.agenteEmail})` : ''}`,
+    `Prospecto: ${input.prospectName}`,
+    `Correo del prospecto: ${input.prospectEmail || 'Sin correo capturado'}`,
+    `Cuestionario: ${input.questionnaireTitle}`,
+    `Horario: ${inicioLocal} - ${finLocal}`,
+    `Zona horaria: ${timezone}`,
+    'Plataforma: Cal.com',
+    `Enlace: ${input.meetingUrl}`,
+    '',
+    'Revisen si necesitan asignar supervisor o tomar alguna acción adicional.',
+    'Gracias.'
+  ].join('\n')
+
+  try {
+    await sendMail({ to: recipients.join(','), subject, html, text })
+    await supabase.from('logs_integracion').insert({
+      usuario_id: input.agenteAuthId,
+      proveedor: 'mailer',
+      operacion: 'cita_confirmacion_desarrolladores',
+      nivel: 'info',
+      detalle: {
+        citaId: input.citaId,
+        to: recipients,
+        booking_uid: input.bookingUid,
+        source: 'questionnaire_ppr',
+        motivo: 'sin_supervisor'
+      }
+    })
+  } catch (err) {
+    try {
+      await supabase.from('logs_integracion').insert({
+        usuario_id: input.agenteAuthId,
+        proveedor: 'mailer',
+        operacion: 'cita_confirmacion_desarrolladores',
+        nivel: 'error',
+        detalle: {
+          citaId: input.citaId,
+          to: recipients,
+          booking_uid: input.bookingUid,
+          source: 'questionnaire_ppr',
+          motivo: 'sin_supervisor',
+          error: err instanceof Error ? err.message : String(err)
+        }
+      })
+    } catch {}
+  }
 }
 
 export async function syncQuestionnaireBooking(
@@ -172,6 +286,20 @@ export async function syncQuestionnaireBooking(
       bookingUid,
       bookingStart: start,
       sendEmail: false
+    })
+
+    await notifyDevelopersQuestionnaireBookingWithoutSupervisor(supabase, {
+      citaId,
+      agenteAuthId: agente.id_auth,
+      agenteNombre: agente.nombre,
+      agenteEmail: agente.email,
+      prospectName,
+      prospectEmail,
+      start,
+      end,
+      meetingUrl,
+      questionnaireTitle: snapshot.titulo || questionnaire.titulo,
+      bookingUid
     })
   }
 
