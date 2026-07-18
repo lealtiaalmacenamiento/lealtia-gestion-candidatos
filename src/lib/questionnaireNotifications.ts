@@ -187,7 +187,7 @@ async function getSupervisors(supabase: SupabaseClient): Promise<CrmNotification
   const { data } = await supabase
     .from('usuarios')
     .select('id_auth,email,nombre')
-    .in('rol', ['supervisor', 'admin', 'superusuario'])
+    .eq('rol', 'supervisor')
     .eq('activo', true)
   return (data || []).map(user => ({
     id_auth: user.id_auth ?? null,
