@@ -580,7 +580,6 @@ async function createAgendaCitaHandler(req: Request) {
           language: 'es'
         },
         guests: Array.from(new Set([
-          supervisorRecord?.email,
           ...extraParticipantesList.map(participant => participant.email)
         ].filter((email): email is string => Boolean(email && email.includes('@'))))),
         metadata: {

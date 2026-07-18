@@ -14,33 +14,6 @@ import type { PprResult } from '@/lib/pprCalculator'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function uniqueEmails(values: Array<string | null | undefined>) {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const raw of values) {
-    const email = raw?.trim().toLowerCase()
-    if (!email || !email.includes('@') || seen.has(email)) continue
-    seen.add(email)
-    out.push(email)
-  }
-  return out
-}
-
-async function getSupervisorGuestEmails(
-  supabase: ReturnType<typeof ensureAdminClient>,
-  excludedEmails: Array<string | null | undefined> = []
-) {
-  const excluded = new Set(uniqueEmails(excludedEmails))
-  const { data } = await supabase
-    .from('usuarios')
-    .select('email')
-    .in('rol', ['supervisor', 'admin', 'superusuario'])
-    .eq('activo', true)
-
-  return uniqueEmails((data || []).map(user => user.email as string | null | undefined))
-    .filter(email => !excluded.has(email))
-}
-
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ token: string }> }
@@ -147,8 +120,6 @@ export async function POST(
   const apiKey = await getCalcomApiKey(link.agente.id_auth)
   if (!apiKey) return NextResponse.json({ error: 'La agenda del agente no está conectada' }, { status: 409 })
 
-  const supervisorGuests = await getSupervisorGuestEmails(supabase, [link.agente.email, email])
-
   let booking
   try {
     booking = await createCalcomBooking(apiKey, {
@@ -158,10 +129,9 @@ export async function POST(
         name,
         email,
         phoneNumber: phoneNumber ? `+52${phoneNumber.slice(-10)}` : undefined,
-        timeZone: body.timeZone || 'America/Mexico_City',
-        language: 'es'
-      },
-      guests: supervisorGuests,
+          timeZone: body.timeZone || 'America/Mexico_City',
+          language: 'es'
+        },
       metadata: {
         lealtiaSubmissionId: submission.id,
         lealtiaLinkId: link.id,
