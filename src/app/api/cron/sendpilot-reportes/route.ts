@@ -4,6 +4,7 @@ import { sendMail } from '@/lib/mailer'
 import { buildSendPilotCampaignReport } from '@/lib/sendpilotCampaignReport'
 import { buildSendPilotReportEmail } from '@/lib/sendpilotReportEmail'
 import { logAccion } from '@/lib/logger'
+import { syncSendPilotCampaignsAndLeads } from '@/lib/sendpilotCampaignSync'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -48,6 +49,16 @@ export async function POST(req: Request) {
     const onlyId = url.searchParams.get('id')
     const now = new Date()
     const supabase = ensureAdminClient()
+    const syncResult = await syncSendPilotCampaignsAndLeads(supabase)
+
+    await logAccion('sp_reportes_programados_sync_previa', {
+      tabla_afectada: 'sp_campanas',
+      snapshot: {
+        onlyId,
+        dryRun,
+        ...syncResult,
+      },
+    }).catch(() => {})
 
     let query = supabase
       .from('sp_reportes_programados')
@@ -169,6 +180,7 @@ export async function POST(req: Request) {
       sent,
       preview,
       failed,
+      sync: syncResult,
       results,
       timestamp: now.toISOString(),
     }, { status: failed > 0 ? 207 : 200 })
