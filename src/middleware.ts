@@ -20,6 +20,7 @@ export async function middleware(req: NextRequest) {
     // Endpoints landing public (sin auth)
     '/api/landing/resolve-agent',
     '/api/landing/create-prospecto',
+    '/api/landing/create-prospecto-vida-mujer',
     '/api/landing/recruitment',
     // Cron jobs internos
     '/api/cron/actualizar-pagos',
